@@ -671,6 +671,14 @@ export interface MediaOutletReputationView {
   linkedReports: number;
   status: "待观察" | "信誉稳定" | "受到质疑" | "高度可信";
   evidence: string[];
+  responsibleEditor?: {
+    name: string;
+    role: "责任编辑" | "值班核验编辑";
+    sourceTrust: number;
+    handledReports: number;
+    responsibility: "在岗核验" | "已签发更正" | "待复核";
+    evidence: string[];
+  };
 }
 
 export interface GameView {

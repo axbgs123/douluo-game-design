@@ -796,12 +796,12 @@ describe("第一部世界资料", () => {
     expect(game.view.news.some((item) => item.id === `${rumor.id}-media`)).toBe(false);
     advanceWorldTime(game, 14 * 1_440);
     expect(rumor.mediaStatus).toBe("已刊发");
-    expect(game.view.news.find((item) => item.id === `${rumor.id}-media`)?.detail).toMatch(/机构立场：地方治安与可核验风险；机构信誉：62（信誉稳定）；选稿依据：.+；来源：现场目击；交叉核验：跨关系网交叉核验（6项）；可信度 \d+%；覆盖：/);
-    expect(game.view.mediaOutlets.find((item) => item.name === "城市告示处")).toMatchObject({ trustScore: 62, publications: 1, corrections: 0, status: "信誉稳定" });
+    expect(game.view.news.find((item) => item.id === `${rumor.id}-media`)?.detail).toMatch(/机构立场：地方治安与可核验风险；机构信誉：62（信誉稳定）；值班核验编辑：沈砚（来源信任62）；选稿依据：.+；来源：现场目击；交叉核验：跨关系网交叉核验（6项）；可信度 \d+%；覆盖：/);
+    expect(game.view.mediaOutlets.find((item) => item.name === "城市告示处")).toMatchObject({ trustScore: 62, publications: 1, corrections: 0, status: "信誉稳定", responsibleEditor: { name: "沈砚", role: "值班核验编辑", sourceTrust: 62, handledReports: 1, responsibility: "在岗核验" } });
     expect(rumor.mediaVersions).toHaveLength(0);
     advanceWorldTime(game, 3 * 1_440);
     expect(rumor.mediaVersions?.[0]).toMatchObject({ outlet: "行旅商讯抄报", stance: "商路影响与交易风险", verificationStatus: "关联转载核验" });
-    expect(game.view.mediaOutlets.find((item) => item.name === "行旅商讯抄报")).toMatchObject({ trustScore: 61, publications: 1, linkedReports: 1 });
+    expect(game.view.mediaOutlets.find((item) => item.name === "行旅商讯抄报")).toMatchObject({ trustScore: 61, publications: 1, linkedReports: 1, responsibleEditor: { name: "程路", sourceTrust: 61, handledReports: 1 } });
     expect(game.view.news.find((item) => item.id === `${rumor.id}-secondary`)?.detail).toContain("本版本没有新增未公开事实");
   });
 
@@ -865,8 +865,9 @@ describe("第一部世界资料", () => {
     expect(rumor.correctionEvidence).toHaveLength(1);
     expect(rumor.verificationStatus).toBe("更正证据已核验");
     expect(rumor.mediaVersions?.[0]).toMatchObject({ verificationStatus: "更正证据已核验" });
-    expect(game.view.mediaOutlets.find((item) => item.name === "城市告示处")).toMatchObject({ trustScore: 54, corrections: 1, status: "待观察" });
-    expect(game.view.mediaOutlets.find((item) => item.name === "行旅商讯抄报")).toMatchObject({ trustScore: 57, corrections: 1, linkedReports: 1, status: "待观察" });
+    expect(game.view.mediaOutlets.find((item) => item.name === "城市告示处")).toMatchObject({ trustScore: 54, corrections: 1, status: "待观察", responsibleEditor: { name: "沈砚", sourceTrust: 54, responsibility: "已签发更正" } });
+    expect(game.view.mediaOutlets.find((item) => item.name === "行旅商讯抄报")).toMatchObject({ trustScore: 57, corrections: 1, linkedReports: 1, status: "待观察", responsibleEditor: { name: "程路", sourceTrust: 57, responsibility: "已签发更正" } });
+    expect(game.view.news.find((item) => item.id === `${rumor.id}-correction`)?.detail).toContain("沈砚签发更正");
     expect(game.view.news.some((item) => item.id === `${rumor.id}-correction`)).toBe(true);
     expect(game.view.news.some((item) => item.id === rumor.id)).toBe(true);
   });
