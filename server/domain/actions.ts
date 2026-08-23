@@ -1572,7 +1572,7 @@ function mechaResolution(game: StoredGame, action: string): ActionResolution {
     mecha.model = requested === "白级" ? "白色基础教学机甲" : requested === "黄级" ? "黄色民用制式机甲" : requested === "紫级" ? `紫色${character.martialSoul.name}专属机甲` : `黑色${character.martialSoul.name}超级机甲`;
     mecha.condition = "完好";
     mecha.energy = 100;
-    return { intent: "购买机甲", minutes: 180, ruleSummary: `支付${formatSoulCoins(cost)}，登记并取得${mecha.model}；所有权与驾驶执照均已核验。`, fallbackNarrative: "机体编号、能源记录和维修历史一项不少。付款后，登记员把所有权转到我的档案名下，我绕着外壳检查一圈，没把展厅灯光当成完好证明。", suggestions: ["进行低速试驾", "检查机甲维护手册", "购买备用能源"] };
+    return { intent: "购买机甲", minutes: 180, ruleSummary: `支付${formatSoulCoins(cost)}，登记并取得${mecha.model}；所有权与驾驶资质均已核验。`, fallbackNarrative: "机体编号、能源记录和维修历史一项不少。付款后，登记员把所有权转到我的档案名下，我绕着外壳检查一圈，没把展厅灯光当成完好证明。", suggestions: ["进行低速试驾", "检查机甲维护手册", "购买备用能源"] };
   }
   if (/驾驶|启动|出击|使用/.test(action)) {
     if (!mecha.model || mecha.condition === "大修") return impossible("当前没有可安全启动的自有机甲。", ["购买合规机甲", "完成机甲维修", "使用模拟舱训练"]);
@@ -1585,23 +1585,31 @@ function mechaResolution(game: StoredGame, action: string): ActionResolution {
 
 function starshipResolution(game: StoredGame, action: string): ActionResolution {
   if ((game.view.era ?? 1) < 4) return impossible("当前时代尚未形成可供个人训练与远航的星舰体系。", ["核对技术年代", "训练机甲与魂导器", "研究早期航天资料"]);
+  const character = game.view.character!;
+  if (/模拟|训练|课程|推演/.test(action) && character.age < 7) return impossible("七岁前只能接触星舰常识和安全启蒙，不能把儿童娱乐模拟算作战舰驾驶训练记录。", ["学习星舰基础常识", "参观民用飞船", "等待进入基础驾驶课程"]);
   const starship = game.view.starship ??= { license: "无", simulatorProgress: 0, simulatorSessions: 0, crew: [], missionsCompleted: 0 };
   const licenses = ["无", "见习指挥", "三级指挥", "二级指挥", "一级指挥"] as const;
 
   if (/模拟|训练|课程|推演/.test(action) && !/购买|招募/.test(action)) {
+    starship.trainingStartedAge ??= character.age;
     const gain = integer(actionRandom(game), 8, 15) + (game.view.character!.abilityDescriptors.perception === "顶尖" ? 5 : 1);
     starship.simulatorProgress = Math.min(100, starship.simulatorProgress + gain);
     starship.simulatorSessions += 1;
     game.world.fatiguePoints += 12;
-    return { intent: "星舰指挥训练", minutes: speedMinutes(game, 180, 720), ruleSummary: `完成第 ${starship.simulatorSessions} 次舰桥模拟，指挥进度增加 ${gain}%，当前 ${starship.simulatorProgress}%。`, fallbackNarrative: "屏幕上的星图不会因为口令漂亮就改变。补给、航向、动力和撤离窗口同时跳出警报，我必须先决定哪一项能晚十秒处理。复盘里，每个被我忽略的信号都对应一名可能回不了家的船员。", suggestions: ["继续星舰模拟训练", "参加见习指挥考核", "复盘舰桥事故"] };
+    return { intent: "星舰指挥训练", minutes: speedMinutes(game, 180, 720), ruleSummary: `完成第 ${starship.simulatorSessions} 次基础驾驶/舰桥模拟，训练始于 ${starship.trainingStartedAge} 岁，进度增加 ${gain}%，当前 ${starship.simulatorProgress}%。`, fallbackNarrative: "课程没有让我直接坐上舰长席。魂导车辆、飞行器、星际战机和舰桥岗位被拆成不同阶段；屏幕上的补给、航向、动力和撤离窗口同时跳出警报，每个被忽略的信号都对应一名可能回不了家的船员。", suggestions: ["继续基础驾驶训练", "复盘模拟事故", "核对资格年限"] };
   }
   if (/考核|执照|认证/.test(action)) {
     const requested = (["一级指挥", "二级指挥", "三级指挥", "见习指挥"] as const).find((level) => action.includes(level)) ?? "见习指挥";
     const targetIndex = licenses.indexOf(requested);
     const currentIndex = licenses.indexOf(starship.license);
     if (targetIndex !== currentIndex + 1) return impossible("星舰指挥资格必须逐级取得，不能跳级。", [`参加${licenses[currentIndex + 1] ?? "下一等级"}考核`, "继续舰桥模拟", "查看指挥档案"]);
-    const requiredSessions = targetIndex * 3;
-    const requiredProgress = targetIndex * 20;
+    const minimumAges = [0, 12, 18, 24, 30];
+    const trainingYears = [0, 3, 12, 20, 25];
+    const requiredSessions = targetIndex * 6;
+    const requiredProgress = [0, 25, 55, 75, 95][targetIndex];
+    const yearsStudied = starship.trainingStartedAge === undefined ? 0 : character.age - starship.trainingStartedAge;
+    if (character.age < minimumAges[targetIndex] || yearsStudied < trainingYears[targetIndex]) return impossible(`${requested}至少要求 ${minimumAges[targetIndex]} 岁，并有 ${trainingYears[targetIndex]} 年连续基础驾驶与战舰专业训练；当前记录 ${yearsStudied} 年。`, ["继续基础驾驶训练", "完成高等学院战舰课程", "积累星际飞行时间"]);
+    if (targetIndex >= 2 && !/优秀|顶尖/.test(character.abilityDescriptors.perception)) return impossible("正式战舰岗位需要高精神力支撑复杂信息处理；当前精神感知尚未达到课程评估标准。", ["训练精神感知", "继续模拟课程", "申请专业评估"]);
     const institution = game.view.affiliations.some((item) => /舰队|星际|史莱克|联邦|学院/.test(item.name));
     if (!institution) return impossible("星舰指挥考核需要舰队或星际学院受理。", ["加入联邦舰队", "申请星际学院", "继续模拟训练"]);
     if (starship.simulatorSessions < requiredSessions || starship.simulatorProgress < requiredProgress) return impossible(`${requested}至少需要 ${requiredSessions} 次模拟记录与 ${requiredProgress}% 指挥进度。`, ["继续星舰模拟训练", "复盘舰桥事故", "预约下一场考核"]);
@@ -1611,8 +1619,15 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
   if (/招募|邀请|任命/.test(action) && /船员|驾驶员|导航员|轮机师|战术员|医疗员|舰员/.test(action)) {
     const role = (["驾驶员", "导航员", "轮机师", "战术员", "医疗员"] as const).find((item) => action.includes(item)) ?? "驾驶员";
     if (starship.crew.some((member) => member.role === role)) return impossible(`${role}岗位已经有人，需要先处理现有任命。`, ["招募其他岗位", "检查船员状态", "调整岗位分工"]);
-    const relation = game.view.relations.find((item) => action.includes(item.name) && (item.dimensions?.trust ?? item.strength ?? 0) >= 30)
-      ?? game.view.relations.find((item) => !starship.crew.some((member) => member.relationId === item.id) && (item.dimensions?.trust ?? item.strength ?? 0) >= 45);
+    const professionallyFit = (item: typeof game.view.relations[number]) => role === "驾驶员"
+      ? /驾驶|飞行员|舰员|星际/.test(`${item.name}${item.relation}${item.impression}`)
+      : role === "导航员"
+        ? /导航|星图|航线/.test(`${item.name}${item.relation}${item.impression}`)
+        : role === "轮机师"
+          ? /轮机|工程|维修|动力/.test(`${item.name}${item.relation}${item.impression}`)
+          : true;
+    const relation = game.view.relations.find((item) => action.includes(item.name) && professionallyFit(item) && (item.dimensions?.trust ?? item.strength ?? 0) >= 30)
+      ?? game.view.relations.find((item) => professionallyFit(item) && !starship.crew.some((member) => member.relationId === item.id) && (item.dimensions?.trust ?? item.strength ?? 0) >= 45);
     if (!relation?.id) return impossible("没有找到愿意承担远航风险、且信任达到要求的人选。", ["先建立可信关系", "明确岗位与报酬", "寻找有航行经验的人"]);
     starship.crew.push({ relationId: relation.id, name: relation.name, role, readiness: Math.min(90, 35 + Math.round((relation.dimensions?.trust ?? relation.strength ?? 30) / 2)) });
     return { intent: "招募星舰船员", minutes: 90, ruleSummary: `${relation.name}接受${role}岗位；职责、风险与分配已记录。`, fallbackNarrative: `我没有只问${relation.name}愿不愿意冒险。值班表、报酬、撤退权限和谁能否决危险命令都摆在桌上。${relation.name}看完才在${role}一栏签名。`, suggestions: ["招募下一名船员", "进行船员协同训练", "检查远航准备"] };

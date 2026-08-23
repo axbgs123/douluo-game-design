@@ -74,7 +74,7 @@ npm run build
 npm run test:e2e
 ```
 
-当前基线为 10 个测试文件、122 项单元/集成测试和 4 条 Playwright 浏览器流程。生产依赖审计使用 `npm audit --omit=dev`。
+当前基线为 10 个测试文件、123 项单元/集成测试和 4 条 Playwright 浏览器流程。生产依赖审计使用 `npm audit --omit=dev`。
 
 更完整的交接、验证边界与剩余风险见：
 

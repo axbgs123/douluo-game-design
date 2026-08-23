@@ -301,14 +301,17 @@ describe("multi-era foundations", () => {
 
   it("requires a licensed command crew and resources for interplanetary travel", () => {
     const game = playingGame(4, "starship-command-loop");
+    game.view.character!.age = 7;
+    game.view.character!.abilityDescriptors.perception = "优秀";
     game.view.character!.coins = 0;
     game.view.affiliations.push({ id: "fleet", name: "斗罗联邦舰队", role: "学员", reputation: "在册", joinedAt: "测试" });
     game.view.relations.push(
-      { id: "crew-pilot", name: "林航", relation: "同伴", impression: "可靠", strength: 60 },
-      { id: "crew-nav", name: "周星图", relation: "同伴", impression: "可靠", strength: 60 },
-      { id: "crew-engineer", name: "顾轮机", relation: "同伴", impression: "可靠", strength: 60 },
+      { id: "crew-pilot", name: "林航", relation: "持证星际驾驶员", impression: "可靠", strength: 60 },
+      { id: "crew-nav", name: "周星图", relation: "持证导航员", impression: "熟悉航线", strength: 60 },
+      { id: "crew-engineer", name: "顾轮机", relation: "轮机工程师", impression: "熟悉动力维修", strength: 60 },
     );
-    for (let index = 0; index < 6; index += 1) resolveAction(game, "进行星舰指挥模拟训练");
+    for (let index = 0; index < 12; index += 1) resolveAction(game, "进行星舰指挥模拟训练");
+    game.view.character!.age = 19;
     expect(resolveAction(game, "参加见习指挥考核").intent).toBe("星舰指挥考核");
     expect(resolveAction(game, "参加三级指挥考核").intent).toBe("星舰指挥考核");
     resolveAction(game, "招募林航担任驾驶员成为船员");
@@ -326,5 +329,17 @@ describe("multi-era foundations", () => {
     expect(game.view.starship?.fuel).toBeLessThan(100);
     expect(resolveAction(game, "执行第一次星球探索任务").intent).toBe("星球探索");
     expect(game.view.starship?.missionsCompleted).toBe(1);
+  });
+
+  it("does not turn childhood starship interest into a command qualification", () => {
+    const game = playingGame(4, "starship-childhood-boundary");
+    game.view.affiliations.push({ id: "school", name: "天罗学院", role: "学员", reputation: "在册", joinedAt: "测试" });
+    expect(resolveAction(game, "进行星舰指挥模拟训练").intent).toBe("无法完成");
+    game.view.character!.age = 7;
+    for (let index = 0; index < 6; index += 1) resolveAction(game, "进行星舰指挥模拟训练");
+    expect(resolveAction(game, "参加见习指挥考核").intent).toBe("无法完成");
+    game.view.character!.age = 12;
+    expect(resolveAction(game, "参加见习指挥考核").intent).toBe("星舰指挥考核");
+    expect(resolveAction(game, "参加三级指挥考核").intent).toBe("无法完成");
   });
 });

@@ -155,6 +155,7 @@ export interface StarshipProgressView {
   license: "无" | "见习指挥" | "三级指挥" | "二级指挥" | "一级指挥";
   simulatorProgress: number;
   simulatorSessions: number;
+  trainingStartedAge?: number;
   crew: Array<{ relationId: string; name: string; role: "驾驶员" | "导航员" | "轮机师" | "战术员" | "医疗员"; readiness: number }>;
   shipName?: string;
   shipClass?: "穿梭艇" | "小型探索舰" | "护卫舰";
