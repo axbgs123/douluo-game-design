@@ -1,3 +1,5 @@
+import type { GameEra } from "./game.js";
+
 export interface WorldMapPoint {
   id: string;
   name: string;
@@ -62,6 +64,19 @@ export const WORLD_MAP_POINTS: WorldMapPoint[] = [
   { id: "sea-god-island", name: "海神岛", x: 7, y: 73, kind: "海域" },
   { id: "whale-sea", name: "魔鲸海域", x: 19, y: 80, kind: "海域" },
 ];
+
+const LATER_ERA_MAP_IDS: Record<2 | 3 | 4, Set<string>> = {
+  2: new Set(["radiant-city", "evil-forest", "jing-yang-mountains", "heavenly-soul-city", "dou-ling-city", "shrek-city", "star-luo-city", "extreme-north-edge", "extreme-north-core"]),
+  3: new Set(["shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city", "blood-god-camp", "abyss-passage", "d3-star-luo-capital", "d3-dou-spirit-capital", "extreme-north-edge", "extreme-north-core"]),
+  4: new Set(["mother-ship-port", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star", "shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
+};
+
+const FUTURE_MAP_IDS = new Set([...LATER_ERA_MAP_IDS[2], ...LATER_ERA_MAP_IDS[3], ...LATER_ERA_MAP_IDS[4]]);
+
+export function worldMapPointsForEra(era: GameEra): WorldMapPoint[] {
+  if (era === 1) return WORLD_MAP_POINTS.filter((point) => !FUTURE_MAP_IDS.has(point.id));
+  return WORLD_MAP_POINTS.filter((point) => LATER_ERA_MAP_IDS[era].has(point.id));
+}
 
 export function worldMapPoint(id: string): WorldMapPoint {
   return WORLD_MAP_POINTS.find((point) => point.id === id) ?? WORLD_MAP_POINTS.find((point) => point.id === "notting-city")!;

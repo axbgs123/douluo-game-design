@@ -167,6 +167,7 @@ export default function App() {
       </>}
 
       {game?.status === "candidate_selection" && <CandidateScreen
+        era={game.era}
         candidates={game.candidates}
         birthProfileCount={game.birthProfileCount}
         rerollIndex={game.rerollIndex}

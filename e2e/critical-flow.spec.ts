@@ -38,3 +38,14 @@ test("玩家可以完成角色创建、推进故事并管理存档", async ({ pa
   await expect(page.locator(".save-shelf")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "抽取三名角色" })).toBeVisible();
 });
+
+test("玩家可以从界面进入斗四且出生地图不会显示斗一地标", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "斗四" }).click();
+  await expect(page.getByRole("heading", { name: "终极斗罗" })).toBeVisible();
+  await page.getByRole("button", { name: "抽取三名角色" }).click();
+  await expect(page.getByRole("heading", { name: "选择角色" })).toBeVisible();
+  await expect(page.locator(".candidate-meta").first()).toContainText("蓝轩宇");
+  await expect(page.getByText("武魂城", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("诺丁城", { exact: true })).toHaveCount(0);
+});

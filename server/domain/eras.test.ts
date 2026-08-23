@@ -200,7 +200,7 @@ describe("multi-era foundations", () => {
 
   it("requires a licensed command crew and resources for interplanetary travel", () => {
     const game = playingGame(4, "starship-command-loop");
-    game.view.character!.coins = 100_000;
+    game.view.character!.coins = 0;
     game.view.affiliations.push({ id: "fleet", name: "斗罗联邦舰队", role: "学员", reputation: "在册", joinedAt: "测试" });
     game.view.relations.push(
       { id: "crew-pilot", name: "林航", relation: "同伴", impression: "可靠", strength: 60 },
@@ -214,8 +214,9 @@ describe("multi-era foundations", () => {
     resolveAction(game, "招募周星图担任导航员成为船员");
     resolveAction(game, "招募顾轮机担任轮机师成为船员");
     expect(game.view.starship?.crew).toHaveLength(3);
-    expect(resolveAction(game, "取得一艘小型探索舰").intent).toBe("取得星舰");
+    expect(resolveAction(game, "申请配发学院项目舰").intent).toBe("取得星舰");
     expect(game.view.starship?.shipName).toBeTruthy();
+    expect(game.view.tasks.some((task) => task.id?.startsWith("starship-project-") && task.status === "进行中")).toBe(true);
     expect(resolveAction(game, "驾驶星舰前往森罗星").intent).toBe("星际航行");
     expect(game.view.locationId).toBe("senluo-planet");
     expect(game.view.starship?.fuel).toBeLessThan(100);

@@ -1127,7 +1127,8 @@ function npcConflictResolution(game: StoredGame, action: string): ActionResoluti
 
 function workResolution(game: StoredGame): ActionResolution {
   const random = actionRandom(game);
-  const earned = Math.max(1, Math.round(integer(random, 3, 8) * DIFFICULTY_RULES[game.view.difficulty].money));
+  const eraWageMultiplier = [0, 1, 5, 12, 25][game.view.era ?? 1];
+  const earned = Math.max(1, Math.round(integer(random, 3, 8) * eraWageMultiplier * DIFFICULTY_RULES[game.view.difficulty].money));
   game.view.character!.coins += earned;
   game.world.fatiguePoints += 15;
   return {
@@ -1524,15 +1525,18 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
     const requiredRoles = ["驾驶员", "导航员", "轮机师"];
     const missing = requiredRoles.filter((role) => !starship.crew.some((member) => member.role === role));
     if (missing.length) return impossible(`基础船员组仍缺少：${missing.join("、")}。`, missing.map((role) => `招募${role}`));
-    const cost = 50_000;
+    const sponsored = /申请配发|项目舰|任务舰/.test(action);
+    if (sponsored && !game.view.affiliations.some((item) => /舰队|星际|史莱克|联邦/.test(item.name) && /学员|成员|军|指挥|核心/.test(item.role))) return impossible("项目舰只向承担正式任务的在册成员开放。", ["加入舰队或星际学院", "取得正式岗位", "购买自有探索舰"]);
+    const cost = sponsored ? 0 : 50_000;
     if (game.view.character!.coins < cost) return impossible(`一艘合规小型探索舰需要${formatSoulCoins(cost)}及持续维护能力。`, ["完成舰队任务积累资金", "申请学院项目舰", "缩小为穿梭艇计划"]);
     game.view.character!.coins -= cost;
-    starship.shipName = `${game.view.character!.name}号`;
+    starship.shipName = sponsored ? `${game.view.character!.name}项目组任务舰` : `${game.view.character!.name}号`;
     starship.shipClass = "小型探索舰";
     starship.hull = 100;
     starship.fuel = 100;
     starship.supplies = 100;
-    return { intent: "取得星舰", minutes: 360, ruleSummary: `支付${formatSoulCoins(cost)}并完成登记，取得小型探索舰“${starship.shipName}”。`, fallbackNarrative: `舰名写上船壳以前，验船师先拆了三块检修盖板。动力、维生、逃生舱和旧事故记录全部签字后，这艘船才真正归到我们名下。拥有它也意味着往后的燃料、维修和每个船员的命都进入同一本账。`, suggestions: ["补满燃料与物资", "进行船员协同训练", "申请第一次探索任务"], systemMessages: [`星舰 · ${starship.shipName} · 小型探索舰`] };
+    if (sponsored) ensureTask(game, { id: `starship-project-${game.actionIndex}`, title: "完成三次项目舰探索任务", kind: "计划", detail: "项目舰只有任务使用权；三次可复核调查完成前不得转卖、私用或拒绝审计。", status: "进行中" });
+    return { intent: "取得星舰", minutes: 360, ruleSummary: `${sponsored ? "签署项目使用与审计责任" : `支付${formatSoulCoins(cost)}并完成登记`}，取得小型探索舰“${starship.shipName}”。`, fallbackNarrative: `舰名写上船壳以前，验船师先拆了三块检修盖板。动力、维生、逃生舱和旧事故记录全部签字后，这艘船才真正交到我们手中。${sponsored ? "它仍属于项目，航线和样本都必须接受审计。" : "拥有它也意味着往后的燃料、维修和每个船员的命都进入同一本账。"}`, suggestions: ["补满燃料与物资", "进行船员协同训练", "申请第一次探索任务"], systemMessages: [`星舰 · ${starship.shipName} · 小型探索舰`] };
   }
   if (/补给|加注|补充燃料|维修星舰/.test(action)) {
     if (!starship.shipName) return impossible("当前没有需要补给维护的自有星舰。", ["取得小型探索舰", "申请训练航次", "继续指挥训练"]);
@@ -1566,6 +1570,10 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
   if (/调查|扫描|探索任务|采样/.test(action)) {
     if (!starship.shipName || !/森罗星|精灵星|天龙星|天马星/.test(game.view.location ?? "")) return impossible("需要驾驶已登记星舰抵达目标星球后才能执行星际调查。", ["规划星际航线", "组建船员组", "取得探索舰"]);
     starship.missionsCompleted += 1;
+    if (starship.missionsCompleted >= 3) {
+      const projectTask = game.view.tasks.find((task) => task.id?.startsWith("starship-project-") && task.status === "进行中");
+      if (projectTask) projectTask.status = "完成";
+    }
     game.world.metrics.discoveries += 2;
     return { intent: "星球探索", minutes: speedMinutes(game, 720, 2880), ruleSummary: `完成第 ${starship.missionsCompleted} 次星球调查；样本、坐标和风险均已登记。`, fallbackNarrative: "采样不是把发光的东西装进箱子。船员先划出隔离区，再记录空气、微生物和能量变化。所有样本都带着坐标与时间，返航后能由别人复核。", suggestions: ["复核样本污染", "调查当地势力", "规划返航"] };
   }
@@ -1711,7 +1719,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/魂灵/.test(action)) resolution = soulSpiritResolution(game, action);
   else if (/斗铠/.test(action) && !/购买|买|采购/.test(action) && !(game.view.combat && /攻击|防御|格挡|闪避|逃跑|弱点/.test(action))) resolution = battleArmorResolution(game, action);
   else if (/机甲/.test(action) && (!game.view.combat || !/攻击|防御|格挡|闪避|逃跑|弱点/.test(action) || !game.view.mecha?.model)) resolution = mechaResolution(game, action);
-  else if (/星舰|舰桥|船员|舰员|星际航行|探索舰|星球探索|星球调查|指挥考核|指挥资格/.test(action)) resolution = starshipResolution(game, action);
+  else if (/星舰|舰桥|船员|舰员|星际航行|探索舰|项目舰|星球探索|星球调查|指挥考核|指挥资格/.test(action)) resolution = starshipResolution(game, action);
   else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
   else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
   else if (/建立|创建|招募|任命|扩建|领地|外交|情报网|经营势力|管理宗门/.test(action) && /宗门|势力|组织|成员|领地|外交|情报/.test(action)) resolution = factionManagementResolution(game, action);
