@@ -169,4 +169,29 @@ describe("multi-era foundations", () => {
     expect(resolveAction(game, "驾驶机甲进行低速试驾").intent).toBe("驾驶机甲");
     expect(game.view.mecha?.energy).toBe(90);
   });
+
+  it("requires a licensed command crew and resources for interplanetary travel", () => {
+    const game = playingGame(4, "starship-command-loop");
+    game.view.character!.coins = 100_000;
+    game.view.affiliations.push({ id: "fleet", name: "斗罗联邦舰队", role: "学员", reputation: "在册", joinedAt: "测试" });
+    game.view.relations.push(
+      { id: "crew-pilot", name: "林航", relation: "同伴", impression: "可靠", strength: 60 },
+      { id: "crew-nav", name: "周星图", relation: "同伴", impression: "可靠", strength: 60 },
+      { id: "crew-engineer", name: "顾轮机", relation: "同伴", impression: "可靠", strength: 60 },
+    );
+    for (let index = 0; index < 6; index += 1) resolveAction(game, "进行星舰指挥模拟训练");
+    expect(resolveAction(game, "参加见习指挥考核").intent).toBe("星舰指挥考核");
+    expect(resolveAction(game, "参加三级指挥考核").intent).toBe("星舰指挥考核");
+    resolveAction(game, "招募林航担任驾驶员成为船员");
+    resolveAction(game, "招募周星图担任导航员成为船员");
+    resolveAction(game, "招募顾轮机担任轮机师成为船员");
+    expect(game.view.starship?.crew).toHaveLength(3);
+    expect(resolveAction(game, "取得一艘小型探索舰").intent).toBe("取得星舰");
+    expect(game.view.starship?.shipName).toBeTruthy();
+    expect(resolveAction(game, "驾驶星舰前往森罗星").intent).toBe("星际航行");
+    expect(game.view.locationId).toBe("senluo-planet");
+    expect(game.view.starship?.fuel).toBeLessThan(100);
+    expect(resolveAction(game, "执行第一次星球探索任务").intent).toBe("星球探索");
+    expect(game.view.starship?.missionsCompleted).toBe(1);
+  });
 });
