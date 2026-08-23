@@ -841,6 +841,8 @@ const COMBAT_COMBOS = [
   { roles: ["强攻", "防护", "控制"], name: "攻守枢纽", damage: 54, reduction: 24, healing: 0, needsInsight: false },
   { roles: ["防护", "控制", "治疗"], name: "生息铁壁", damage: 18, reduction: 42, healing: 20, needsInsight: false },
   { roles: ["强攻", "控制", "侦察"], name: "猎杀三角", damage: 68, reduction: 10, healing: 0, needsInsight: true },
+  { roles: ["强攻", "防护", "控制", "治疗"], name: "四象战阵", damage: 72, reduction: 38, healing: 24, needsInsight: false },
+  { roles: ["强攻", "防护", "控制", "侦察"], name: "逐影围猎", damage: 86, reduction: 24, healing: 0, needsInsight: true },
 ] as const;
 
 function combatComboFor(first: CompanionRole, second: CompanionRole) {
@@ -849,6 +851,19 @@ function combatComboFor(first: CompanionRole, second: CompanionRole) {
 
 function combatTacticFor(roles: CompanionRole[]) {
   return COMBAT_COMBOS.find((combo) => combo.roles.length === roles.length && combo.roles.every((role) => roles.includes(role)));
+}
+
+function fixedSizeGroups<T>(items: T[], size: number): T[][] {
+  const groups: T[][] = [];
+  const visit = (start: number, picked: T[]) => {
+    if (picked.length === size) {
+      groups.push(picked);
+      return;
+    }
+    for (let index = start; index <= items.length - (size - picked.length); index += 1) visit(index + 1, [...picked, items[index]]);
+  };
+  visit(0, []);
+  return groups;
 }
 
 function inferredCompanionRole(relation: StoredGame["view"]["relations"][number]): CompanionRole {
@@ -862,7 +877,7 @@ function inferredCompanionRole(relation: StoredGame["view"]["relations"][number]
 
 function comboTrainingResolution(game: StoredGame, action: string): ActionResolution {
   const relations = game.view.relations.filter((relation) => action.includes(relation.name));
-  if (relations.length !== 2 && relations.length !== 3) return impossible("连携训练必须明确指定两名同伴，阵型训练必须明确指定三名同伴，不能由程序替我挑人。", ["写出全部同伴姓名", "查看关系档案", "先建立可信关系"]);
+  if (![2, 3, 4].includes(relations.length)) return impossible("连携训练必须明确指定两名同伴，阵型训练必须明确指定三名或四名同伴，不能由程序替我挑人。", ["写出全部同伴姓名", "查看关系档案", "先建立可信关系"]);
   for (const relation of relations) {
     const trust = relation.dimensions?.trust ?? relation.strength ?? 0;
     const npc = relation.id ? game.world.npcs[relation.id] : undefined;
@@ -885,16 +900,16 @@ function comboTrainingResolution(game: StoredGame, action: string): ActionResolu
   if (exhausted) training.failures += 1;
   const gain = exhausted ? 0 : integer(actionRandom(game), 10, 15);
   training.mastery = Math.min(100, training.mastery + gain);
-  const branchByCombo: Record<string, string> = { 锁定爆发: "精准锁链", 破绽突袭: "交叉突进", 生命防线: "轮换救护", 封锁阵线: "双层封锁", 攻守枢纽: "轮转锋线", 生息铁壁: "复苏阵地", 猎杀三角: "交叉猎线" };
-  const branchSessions = roles.length === 3 ? 4 : 3;
-  const branchMastery = roles.length === 3 ? 45 : 35;
+  const branchByCombo: Record<string, string> = { 锁定爆发: "精准锁链", 破绽突袭: "交叉突进", 生命防线: "轮换救护", 封锁阵线: "双层封锁", 攻守枢纽: "轮转锋线", 生息铁壁: "复苏阵地", 猎杀三角: "交叉猎线", 四象战阵: "四角轮换", 逐影围猎: "双层合围" };
+  const branchSessions = roles.length === 4 ? 5 : roles.length === 3 ? 4 : 3;
+  const branchMastery = roles.length === 4 ? 55 : roles.length === 3 ? 45 : 35;
   if (!exhausted && !training.branch && training.sessions >= branchSessions && training.mastery >= branchMastery) training.branch = branchByCombo[training.name];
   const result = exhausted ? "疲劳导致口令和站位失误，只保留失败复盘" : `完成站位、口令与魂力节奏训练，熟练度+${gain}`;
   training.evidence.push({ date: relationshipDate(game), result });
   training.evidence = training.evidence.slice(-20);
   for (const relation of relations) recordPlayerRelation(game, relation, `与${names.filter((name) => name !== relation.name).join("、")}共同训练${combo.name}并记录${exhausted ? "失败复盘" : "岗位配合"}`, exhausted ? { respect: 1 } : { trust: 1, closeness: 1 });
   game.world.fatiguePoints += exhausted ? 8 : 16;
-  return { intent: exhausted ? "连携训练复盘" : "连携训练", minutes: speedMinutes(game, 180, 720), ruleSummary: `${names.join("与")}完成第${training.sessions}次${combo.name}训练；熟练度${training.mastery}%${training.branch ? `，解锁分支“${training.branch}”` : ""}。${result}。`, fallbackNarrative: exhausted ? "口令喊到了，人却慢了半步。我们没有把这次失败抹掉，而是把错位、迟疑和体力透支逐项记下来，停止继续硬练。" : `两个人先把站位拆开走，再把魂力接续压到同一个节拍。每次提前或延误都重新来过，直到${combo.name}不再只是一句口令。`, suggestions: exhausted ? ["休息恢复", "查看失败复盘", "状态恢复后再训练"] : [`继续训练${combo.name}`, "查看连携档案", "进行实战验证"], systemMessages: [`连携训练 · ${combo.name} · ${training.mastery}%${training.branch ? ` · ${training.branch}` : ""}`] };
+  return { intent: exhausted ? "连携训练复盘" : "连携训练", minutes: speedMinutes(game, 180, 720), ruleSummary: `${names.join("与")}完成第${training.sessions}次${combo.name}训练；熟练度${training.mastery}%${training.branch ? `，解锁分支“${training.branch}”` : ""}。${result}。`, fallbackNarrative: exhausted ? "口令喊到了，人却慢了半步。我们没有把这次失败抹掉，而是把错位、迟疑和体力透支逐项记下来，停止继续硬练。" : `${names.length}个人先把站位拆开走，再把魂力接续压到同一个节拍。每次提前或延误都重新来过，直到${combo.name}不再只是一句口令。`, suggestions: exhausted ? ["休息恢复", "查看失败复盘", "状态恢复后再训练"] : [`继续训练${combo.name}`, "查看连携档案", "进行实战验证"], systemMessages: [`连携训练 · ${combo.name} · ${training.mastery}%${training.branch ? ` · ${training.branch}` : ""}`] };
 }
 
 function combatResolution(game: StoredGame, action: string): ActionResolution {
@@ -904,8 +919,8 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   combat.allies ??= [];
   for (const ally of combat.allies) ally.role ??= "协同";
   combat.comboHistory ??= [];
-  const comboPreparing = /准备|排练|布置/.test(action) && /连携|合击|组合技|阵型/.test(action);
-  const comboExecuting = /发动|施展|释放/.test(action) && /连携|合击|组合技|阵型/.test(action);
+  const comboPreparing = /准备|排练|布置/.test(action) && /连携|合击|组合技|阵型|战阵|围猎/.test(action);
+  const comboExecuting = /发动|施展|释放/.test(action) && /连携|合击|组合技|阵型|战阵|围猎/.test(action);
   let comboActive: typeof COMBAT_COMBOS[number] | undefined;
   let comboMastery = 0;
   let comboBranch: string | undefined;
@@ -918,20 +933,24 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
       const evidence = `${relation?.relation ?? ""}${relation?.impression ?? ""}${relation?.history?.map((item) => item.reason).join("") ?? ""}`;
       return trust >= 50 && /可靠|信任|共同|训练|战斗|协同|生死/.test(evidence);
     });
-    const wantsFormation = /阵型|三人|攻守枢纽|生息铁壁|猎杀三角/.test(action);
+    const wantsFour = /四人|四象战阵|逐影围猎/.test(action);
+    const wantsFormation = wantsFour || /阵型|三人|攻守枢纽|生息铁壁|猎杀三角/.test(action);
+    const size = wantsFour ? 4 : wantsFormation ? 3 : 2;
     const mentioned = eligible.filter((ally) => action.includes(ally.name));
-    const pool = mentioned.length >= (wantsFormation ? 3 : 2) ? mentioned : eligible;
+    const pool = mentioned.length >= size ? mentioned : eligible;
     let selected: { allies: typeof pool; combo: typeof COMBAT_COMBOS[number] } | undefined;
-    const size = wantsFormation ? 3 : 2;
-    for (let first = 0; first < pool.length && !selected; first += 1) for (let second = first + 1; second < pool.length && !selected; second += 1) for (let third = size === 2 ? second : second + 1; third < (size === 2 ? second + 1 : pool.length) && !selected; third += 1) {
-      const allies = size === 2 ? [pool[first], pool[second]] : [pool[first], pool[second], pool[third]];
+    for (const allies of fixedSizeGroups(pool, size)) {
       const combo = combatTacticFor(allies.map((ally) => ally.role!));
-      if (combo && (!combo.needsInsight || (combat.insight ?? 0) >= 1)) selected = { allies, combo };
+      if (combo && (!combo.needsInsight || (combat.insight ?? 0) >= 1)) {
+        selected = { allies, combo };
+        break;
+      }
     }
-    if (!selected) return impossible(`没有${wantsFormation ? "三名" : "两名"}同时满足岗位互补、协同、信任和训练证据的队友；侦察突袭类战术还需要至少一层观察。`, ["先观察敌人", "采用普通协同", "战后与队友共同训练"]);
+    if (!selected) return impossible(`没有${size}名同时满足岗位互补、协同、信任和训练证据的队友；侦察突袭类战术还需要至少一层观察。`, ["先观察敌人", "采用普通协同", "战后与队友共同训练"]);
     const names = selected.allies.map((ally) => ally.name).sort();
     const training = game.view.comboTrainings.find((item) => item.name === selected!.combo.name && [...item.companionNames].sort().join(":") === names.join(":"));
-    if (wantsFormation && (!training || training.mastery < 15)) return impossible("三人阵型必须先由同一组成员完成共同训练并达到 15% 熟练度，不能在战斗中临时拼装。", ["战后共同训练三人阵型", "采用双人连携", "普通协同防守"]);
+    const minimumMastery = size === 4 ? 25 : 15;
+    if (wantsFormation && (!training || training.mastery < minimumMastery)) return impossible(`${size}人阵型必须先由同一组成员完成共同训练并达到 ${minimumMastery}% 熟练度，不能在战斗中临时拼装。`, [`战后共同训练${size}人阵型`, "采用较小规模连携", "普通协同防守"]);
     combat.round += 1;
     for (const ally of selected.allies) ally.readiness = Math.max(0, ally.readiness - 5);
     combat.comboPreparation = { name: selected.combo.name, roles: [...selected.combo.roles], allyNames: selected.allies.map((ally) => ally.name), preparedAtRound: combat.round, expiresAfterRound: combat.round + 2, mastery: training?.mastery ?? 0, branch: training?.branch };
@@ -949,7 +968,7 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
     }
     comboActive = COMBAT_COMBOS.find((combo) => combo.name === prepared.name);
     if (!comboActive) return impossible("连携记录无法对应已知战术模板。", ["重新准备多人连携", "采用普通协同"]);
-    for (const ally of participants) ally.readiness = Math.max(0, ally.readiness - (participants.length === 3 ? 15 : 10));
+    for (const ally of participants) ally.readiness = Math.max(0, ally.readiness - (participants.length === 4 ? 20 : participants.length === 3 ? 15 : 10));
     comboMastery = prepared.mastery ?? 0;
     comboBranch = prepared.branch;
     combat.comboHistory.push(`第${combat.round + 1}回合：${prepared.allyNames.join("与")}发动${prepared.name}`);
@@ -958,7 +977,7 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   }
   const random = actionRandom(game);
   if (!comboPreparing) combat.round += 1;
-  if (comboActive) combat.comboCooldownUntilRound = combat.round + (comboActive.roles.length === 3 ? (comboBranch ? 3 : 4) : (comboBranch ? 2 : 3));
+  if (comboActive) combat.comboCooldownUntilRound = combat.round + (comboActive.roles.length === 4 ? (comboBranch ? 4 : 5) : comboActive.roles.length === 3 ? (comboBranch ? 3 : 4) : (comboBranch ? 2 : 3));
   if (!comboPreparing && !comboExecuting && combat.comboPreparation && combat.round >= combat.comboPreparation.expiresAfterRound) {
     combat.comboHistory.push(`第${combat.round}回合：${combat.comboPreparation.name}因站位和节奏变化失效`);
     combat.comboHistory = combat.comboHistory.slice(-8);
@@ -2640,7 +2659,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克|舰队|联邦|传灵塔|战神/.test(action)) resolution = factionResolution(game, action);
   else if (/拜师|拜.*为师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
   else if (/成为朋友|确认朋友|建立友情|长期关系|成为伴侣|确认恋爱|表达.*心意|求婚|婚姻|结婚|成婚|婚礼|组建家庭|家庭住所|共同住所|家庭准备|生育|收养.*孩子|孩子.*加入家庭|孩子出生/.test(action)) resolution = relationshipResolution(game, action);
-  else if (/训练|排练|复盘/.test(action) && /连携|合击|组合技|阵型|生命防线|锁定爆发|破绽突袭|封锁阵线|攻守枢纽|生息铁壁|猎杀三角/.test(action) && !game.view.combat) resolution = comboTrainingResolution(game, action);
+  else if (/训练|排练|复盘/.test(action) && /连携|合击|组合技|阵型|生命防线|锁定爆发|破绽突袭|封锁阵线|攻守枢纽|生息铁壁|猎杀三角|四象战阵|逐影围猎/.test(action) && !game.view.combat) resolution = comboTrainingResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);
   else if (/修炼|冥想|运转|练功|闭关/.test(action)) resolution = trainingResolution(game, action);
   else if (/休息|睡觉|疗伤|恢复/.test(action)) resolution = restResolution(game);
@@ -2654,7 +2673,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);
   else if (/调查|搜索|观察周围|查找|研究/.test(action)) resolution = investigateResolution(game, action);
   else if (/等待|快进|过去一天|过去一月|过去一年|休整一/.test(action)) resolution = waitResolution(game, action);
-  else if (/攻击|战斗|防御|闪避|逃跑|弱点|连携|合击|组合技|阵型/.test(action) && game.view.combat) resolution = combatResolution(game, action);
+  else if (/攻击|战斗|防御|闪避|逃跑|弱点|连携|合击|组合技|阵型|战阵|围猎/.test(action) && game.view.combat) resolution = combatResolution(game, action);
   else if (/攻击|杀|刺杀|偷袭/.test(action) && CANON_CHARACTERS.some((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)))) resolution = npcConflictResolution(game, action);
   else if (/攻击|杀|抢|闯入/.test(action)) resolution = impossible("当前缺少明确目标或足够条件，强行行动只会引来警惕。", ["观察目标", "先做准备", "暂时退开"]);
   else resolution = generalResolution(game);

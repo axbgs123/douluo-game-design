@@ -214,6 +214,40 @@ describe("完整游玩规则", () => {
     expect(game.view.combat.comboCooldownUntilRound).toBe(5);
   });
 
+  it("四人编队要求四个互补岗位和更高熟练度，并按全体成员结算储备与冷却", () => {
+    const game = awakened("four-person-formation");
+    game.view.relations.push(
+      { id: "squad-striker", name: "陆锋", relation: "强攻系战士", impression: "可靠并擅长正面攻击", strength: 70, category: "同伴", dimensions: { closeness: 60, trust: 70, respect: 60, sharedInterest: 40, vigilance: 0, hostility: 0, favorDebt: 0, identityKnowledge: 80 }, history: [] },
+      { id: "squad-guard", name: "石岳", relation: "防御系护卫", impression: "可靠并擅长盾牌守护", strength: 70, category: "同伴", dimensions: { closeness: 60, trust: 70, respect: 60, sharedInterest: 40, vigilance: 0, hostility: 0, favorDebt: 0, identityKnowledge: 80 }, history: [] },
+      { id: "squad-control", name: "宁索", relation: "控制系魂师", impression: "可靠并擅长束缚阵法", strength: 70, category: "同伴", dimensions: { closeness: 60, trust: 70, respect: 60, sharedInterest: 40, vigilance: 0, hostility: 0, favorDebt: 0, identityKnowledge: 80 }, history: [] },
+      { id: "squad-healer", name: "苏叶", relation: "治疗系医师", impression: "可靠并擅长治愈救护", strength: 70, category: "同伴", dimensions: { closeness: 60, trust: 70, respect: 60, sharedInterest: 40, vigilance: 0, hostility: 0, favorDebt: 0, identityKnowledge: 80 }, history: [] },
+    );
+    const enterCombat = (id: string) => {
+      game.view.hunting = { stage: "战斗", ringIndex: 1, recommendations: [], preparation: [], trailProgress: "测试" };
+      game.view.combat = { id, enemyName: "测试魂兽", enemyPower: "千年", round: 0, playerCondition: "良好", enemyCondition: "完好", distance: "中距离", escaped: false, allies: [
+        { name: "陆锋", role: "强攻", readiness: 80, condition: "完好" }, { name: "石岳", role: "防护", readiness: 80, condition: "完好" }, { name: "宁索", role: "控制", readiness: 80, condition: "完好" }, { name: "苏叶", role: "治疗", readiness: 80, condition: "完好" },
+      ] };
+      game.world.flags.combatEnemyHp = 600;
+    };
+    enterCombat("squad-before-training");
+    expect(resolveAction(game, "让陆锋石岳宁索苏叶准备四象战阵").intent).toBe("无法完成");
+    game.view.combat = undefined;
+    game.view.hunting = undefined;
+    for (let index = 0; index < 6; index += 1) {
+      game.world.fatiguePoints = 0;
+      expect(resolveAction(game, "与陆锋石岳宁索苏叶共同训练四象战阵").intent).toBe("连携训练");
+    }
+    const training = game.view.comboTrainings.find((item) => item.name === "四象战阵")!;
+    expect(training).toMatchObject({ companionNames: ["宁索", "石岳", "苏叶", "陆锋"], sessions: 6, failures: 0, branch: "四角轮换" });
+    expect(training.mastery).toBeGreaterThanOrEqual(60);
+    enterCombat("squad-after-training");
+    expect(resolveAction(game, "让陆锋石岳宁索苏叶准备四象战阵").intent).toBe("战斗");
+    expect(game.view.combat!.comboPreparation).toMatchObject({ name: "四象战阵", allyNames: ["陆锋", "石岳", "宁索", "苏叶"], branch: "四角轮换" });
+    expect(resolveAction(game, "发动四象战阵").intent).toBe("战斗");
+    expect(game.view.combat!.allies?.map((ally) => ally.readiness)).toEqual([55, 55, 55, 55]);
+    expect(game.view.combat!.comboCooldownUntilRound).toBe(6);
+  });
+
   it("斗四现役人员必须先参谋部述职并完成一个月多模块培训，岗位按能力证据分配", () => {
     const prepare = (seed: string) => {
       const game = awakened(seed);
