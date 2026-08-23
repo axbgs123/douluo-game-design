@@ -512,6 +512,15 @@ export interface CombatView {
   allies?: Array<{ name: string; role?: CompanionRole; readiness: number; condition: "完好" | "疲惫" | "受伤" }>;
   controlResistance?: number;
   controlStatus?: string;
+  comboPreparation?: {
+    name: string;
+    roles: [CompanionRole, CompanionRole];
+    allyNames: [string, string];
+    preparedAtRound: number;
+    expiresAfterRound: number;
+  };
+  comboCooldownUntilRound?: number;
+  comboHistory?: string[];
   lastExchange?: string;
 }
 

@@ -124,6 +124,40 @@ describe("完整游玩规则", () => {
     expect(result.ruleSummary).toContain("苏叶（治疗");
   });
 
+  it("多人连携需要互补岗位、信任与共同训练证据，并经过准备后才能发动", () => {
+    const game = awakened("combat-combo-evidence");
+    game.view.hunting = { stage: "战斗", ringIndex: 2, targetBeastId: "datura-snake", targetName: "曼陀罗蛇", targetYears: 500, locationId: game.view.locationId, recommendations: [], preparation: [], trailProgress: "已锁定目标" };
+    game.view.relations = [
+      { id: "guard", name: "石岳", relation: "可靠同伴", impression: "共同训练过防护站位", strength: 70, category: "同伴" },
+      { id: "healer", name: "苏叶", relation: "普通同伴", impression: "治疗系魂师", strength: 40, category: "同伴" },
+    ];
+    game.view.combat = { id: "combat-combo", enemyName: "曼陀罗蛇", enemyPower: "500 年", round: 0, playerCondition: "轻伤", enemyCondition: "完好", distance: "中距离", escaped: false, allies: [{ name: "石岳", role: "防护", readiness: 60, condition: "完好" }, { name: "苏叶", role: "治疗", readiness: 60, condition: "完好" }] };
+    game.world.healthPoints = 55;
+    game.world.flags.combatEnemyHp = 1_000;
+
+    expect(resolveAction(game, "发动生命防线连携").intent).toBe("无法完成");
+    expect(game.view.combat.round).toBe(0);
+    expect(resolveAction(game, "让石岳和苏叶准备生命防线连携").intent).toBe("无法完成");
+    expect(game.view.combat.round).toBe(0);
+
+    game.view.relations[1].strength = 70;
+    game.view.relations[1].impression = "治疗系魂师，已共同训练生命防线";
+    const prepared = resolveAction(game, "让石岳和苏叶准备生命防线连携");
+    expect(prepared.ruleSummary).toContain("已准备连携“生命防线”");
+    expect(game.view.combat.comboPreparation).toMatchObject({ name: "生命防线", allyNames: ["石岳", "苏叶"], preparedAtRound: 1 });
+    expect(game.world.flags.combatEnemyHp).toBe(1_000);
+
+    const executed = resolveAction(game, "发动生命防线连携");
+    expect(executed.ruleSummary).toContain("发动连携“生命防线”");
+    expect(game.view.combat.comboPreparation).toBeUndefined();
+    expect(game.view.combat.comboCooldownUntilRound).toBe(5);
+    expect(game.view.combat.comboHistory?.at(-1)).toContain("石岳与苏叶发动生命防线");
+    expect(game.view.combat.allies?.map((ally) => ally.readiness)).toEqual([45, 45]);
+    const roundAfterCombo = game.view.combat.round;
+    expect(resolveAction(game, "让石岳和苏叶准备生命防线连携").intent).toBe("无法完成");
+    expect(game.view.combat.round).toBe(roundAfterCombo);
+  });
+
   it("控制魂技有可累积抗性且战斗会保存同行者状态", () => {
     const game = awakened("combat-control-resistance");
     game.view.character!.soulRank = 30;

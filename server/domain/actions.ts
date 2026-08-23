@@ -709,12 +709,75 @@ function trackBeast(game: StoredGame): ActionResolution {
   };
 }
 
+const COMBAT_COMBOS = [
+  { roles: ["控制", "强攻"], name: "锁定爆发", damage: 46, reduction: 8, healing: 0, needsInsight: false },
+  { roles: ["侦察", "强攻"], name: "破绽突袭", damage: 58, reduction: 5, healing: 0, needsInsight: true },
+  { roles: ["防护", "治疗"], name: "生命防线", damage: 10, reduction: 34, healing: 12, needsInsight: false },
+  { roles: ["防护", "控制"], name: "封锁阵线", damage: 22, reduction: 26, healing: 0, needsInsight: false },
+] as const;
+
+function combatComboFor(first: CompanionRole, second: CompanionRole) {
+  return COMBAT_COMBOS.find((combo) => combo.roles.includes(first as never) && combo.roles.includes(second as never));
+}
+
 function combatResolution(game: StoredGame, action: string): ActionResolution {
   const combat = game.view.combat;
   const hunting = game.view.hunting;
   if (!combat || !hunting) return impossible("当前没有可结算的战斗。");
+  combat.allies ??= [];
+  for (const ally of combat.allies) ally.role ??= "协同";
+  combat.comboHistory ??= [];
+  const comboPreparing = /准备|排练|布置/.test(action) && /连携|合击|组合技/.test(action);
+  const comboExecuting = /发动|施展|释放/.test(action) && /连携|合击|组合技/.test(action);
+  let comboActive: typeof COMBAT_COMBOS[number] | undefined;
+  if (comboPreparing) {
+    if ((combat.comboCooldownUntilRound ?? 0) > combat.round) return impossible(`连携口令和魂力节奏仍在冷却，要到第 ${combat.comboCooldownUntilRound} 回合后才能重新准备。`, ["采用普通协同", "防守并恢复节奏", "观察敌人动作"]);
+    const eligible = combat.allies.filter((ally) => {
+      if (ally.condition === "受伤" || ally.readiness < 45 || ally.role === "协同") return false;
+      const relation = game.view.relations.find((item) => item.name === ally.name);
+      const trust = relation?.dimensions?.trust ?? relation?.strength ?? 0;
+      const evidence = `${relation?.relation ?? ""}${relation?.impression ?? ""}${relation?.history?.map((item) => item.reason).join("") ?? ""}`;
+      return trust >= 50 && /可靠|信任|共同|训练|战斗|协同|生死/.test(evidence);
+    });
+    const mentioned = eligible.filter((ally) => action.includes(ally.name));
+    const pool = mentioned.length >= 2 ? mentioned : eligible;
+    let selected: { first: typeof pool[number]; second: typeof pool[number]; combo: typeof COMBAT_COMBOS[number] } | undefined;
+    for (let firstIndex = 0; firstIndex < pool.length && !selected; firstIndex += 1) for (let secondIndex = firstIndex + 1; secondIndex < pool.length && !selected; secondIndex += 1) {
+      const combo = combatComboFor(pool[firstIndex].role!, pool[secondIndex].role!);
+      if (combo && (!combo.needsInsight || (combat.insight ?? 0) >= 1)) selected = { first: pool[firstIndex], second: pool[secondIndex], combo };
+    }
+    if (!selected) return impossible("没有两名同时满足岗位互补、协同至少 45、信任至少 50 且有共同训练证据的队友；破绽突袭还需要至少一层观察。", ["先观察敌人", "采用普通协同", "战后与队友共同训练"]);
+    combat.round += 1;
+    selected.first.readiness = Math.max(0, selected.first.readiness - 5);
+    selected.second.readiness = Math.max(0, selected.second.readiness - 5);
+    combat.comboPreparation = { name: selected.combo.name, roles: [...selected.combo.roles], allyNames: [selected.first.name, selected.second.name], preparedAtRound: combat.round, expiresAfterRound: combat.round + 2 };
+  } else if (comboExecuting) {
+    const prepared = combat.comboPreparation;
+    if (!prepared) return impossible("还没有完成可核验的连携准备，不能用一句口令直接发动合击。", ["准备多人连携", "采用普通协同", "观察队友位置"]);
+    if (combat.round >= prepared.expiresAfterRound) {
+      combat.comboPreparation = undefined;
+      return impossible("预定站位和魂力节奏已经失效，需要重新准备连携。", ["重新准备多人连携", "采用普通攻击", "防守并重整队形"]);
+    }
+    const participants = combat.allies.filter((ally) => prepared.allyNames.includes(ally.name));
+    if (participants.length !== 2 || participants.some((ally) => ally.condition === "受伤" || ally.readiness < 20)) {
+      combat.comboPreparation = undefined;
+      return impossible("准备连携的队友已经受伤或协同储备不足，原定组合无法发动。", ["保护受伤队友", "采用普通协同", "尝试撤退"]);
+    }
+    comboActive = COMBAT_COMBOS.find((combo) => combo.name === prepared.name);
+    if (!comboActive) return impossible("连携记录无法对应已知战术模板。", ["重新准备多人连携", "采用普通协同"]);
+    for (const ally of participants) ally.readiness = Math.max(0, ally.readiness - 10);
+    combat.comboHistory.push(`第${combat.round + 1}回合：${prepared.allyNames.join("与")}发动${prepared.name}`);
+    combat.comboHistory = combat.comboHistory.slice(-8);
+    combat.comboPreparation = undefined;
+  }
   const random = actionRandom(game);
-  combat.round += 1;
+  if (!comboPreparing) combat.round += 1;
+  if (comboActive) combat.comboCooldownUntilRound = combat.round + 3;
+  if (!comboPreparing && !comboExecuting && combat.comboPreparation && combat.round >= combat.comboPreparation.expiresAfterRound) {
+    combat.comboHistory.push(`第${combat.round}回合：${combat.comboPreparation.name}因站位和节奏变化失效`);
+    combat.comboHistory = combat.comboHistory.slice(-8);
+    combat.comboPreparation = undefined;
+  }
   let enemyHp = Number(game.world.flags.combatEnemyHp ?? 80);
   const beast = soulBeastById(hunting.targetBeastId ?? "");
   const danger = beast?.danger ?? 2;
@@ -734,11 +797,9 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   const reckless = /全力|拼命|不顾防御/.test(action);
   const controlAttempt = /控制|缠绕|束缚|冰封|眩晕|迟缓|定身/.test(action);
   const playerControlSource = character.soulRings.some((ring) => action.includes(ring.skillName) || /控制|缠绕|束缚|冰封|眩晕|迟缓|定身/.test(ring.skillDescription));
-  const teamTactic = /配合|协同|夹击|掩护|队友|同伴/.test(action);
+  const teamTactic = /配合|协同|夹击|掩护|队友|同伴|连携|合击|组合技/.test(action);
   combat.insight ??= 0;
   combat.guard ??= 0;
-  combat.allies ??= [];
-  for (const ally of combat.allies) ally.role ??= "协同";
   const readyAllies = combat.allies.filter((ally) => ally.condition !== "受伤");
   const controllingAlly = readyAllies.find((ally) => ally.role === "控制" && teamTactic);
   const controlSource = playerControlSource || Boolean(controllingAlly);
@@ -781,7 +842,8 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   }
   const tacticalBonus = combat.insight * 5 + (usedSoulSkill ? 10 : 0) + allyPower + allyAttack + allyScout * 3;
   const damageMultiplier = controlAttempt ? (controlSucceeded ? .65 : .25) : reckless ? 1.3 : 1;
-  const damage = flee || observe ? 0 : defend ? Math.round((attackBase + tacticalBonus) * .35) : Math.round((attackBase + tacticalBonus) * damageMultiplier);
+  const comboDamage = comboActive ? comboActive.damage + Math.round(readyAllies.filter((ally) => combat.comboHistory?.at(-1)?.includes(ally.name)).reduce((sum, ally) => sum + ally.readiness, 0) / 5) : 0;
+  const damage = comboPreparing || flee || observe ? 0 : defend ? Math.round((attackBase + tacticalBonus) * .35) : Math.round((attackBase + tacticalBonus) * damageMultiplier) + comboDamage;
   enemyHp -= damage;
   const distanceReduction = combat.distance === "远距离" ? 6 : combat.distance === "近距离" ? -4 : 0;
   const observationReduction = observe ? 8 + combat.insight * 2 : 0;
@@ -789,14 +851,14 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   const equipmentReduction = (activeBattleArmor ? activeBattleArmor.tier * 5 + Math.round(activeBattleArmor.compatibility / 14) : 0) + (activeMecha ? 12 : 0);
   const allyReduction = Math.round(allyPower * .45 + allyDefense);
   const controlReduction = controlSucceeded ? 18 + danger * 2 : 0;
-  const enemyAttack = Math.max(2, integer(random, 5, 15) + danger * 4 + Math.round((hunting.targetYears ?? 100) / 180) - Math.round(playerPower * 0.14) - distanceReduction - observationReduction - guardReduction - equipmentReduction - allyReduction - controlReduction + (reckless ? 8 : 0));
+  const enemyAttack = Math.max(2, integer(random, 5, 15) + danger * 4 + Math.round((hunting.targetYears ?? 100) / 180) - Math.round(playerPower * 0.14) - distanceReduction - observationReduction - guardReduction - equipmentReduction - allyReduction - controlReduction - (comboActive?.reduction ?? 0) + (reckless ? 8 : 0));
   if (enemyHp > 0) game.world.healthPoints -= enemyAttack;
   if (enemyHp > 0 && combat.allies.length && enemyAttack >= 10 && random() < .18 + danger * .03) {
     const exposedAlly = combat.allies.find((ally) => ally.role === "防护" && ally.condition === "完好") ?? combat.allies.find((ally) => ally.condition === "完好") ?? combat.allies.find((ally) => ally.condition === "疲惫");
     if (exposedAlly) exposedAlly.condition = enemyAttack >= 22 ? "受伤" : "疲惫";
   }
   const healer = readyAllies.find((ally) => ally.role === "治疗" && teamTactic);
-  const healed = healer && enemyHp > 0 ? Math.max(1, Math.round(healer.readiness / 24)) : 0;
+  const healed = enemyHp > 0 ? (healer ? Math.max(1, Math.round(healer.readiness / 24)) : 0) + (comboActive?.healing ?? 0) : 0;
   if (healed) game.world.healthPoints = Math.min(100, game.world.healthPoints + healed);
   game.world.fatiguePoints += 8 + danger + (reckless ? 5 : 0);
   game.world.flags.combatEnemyHp = enemyHp;
@@ -806,6 +868,10 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
     ? `撤离失败，承受${enemyAttack}点伤害。`
     : observe
       ? `完成第${combat.insight}层观察，没有冒险出手，承受${enemyAttack}点伤害。`
+      : comboPreparing
+        ? `${combat.comboPreparation!.allyNames.join("与")}完成${combat.comboPreparation!.name}站位准备，没有冒险出手，承受${enemyAttack}点伤害。`
+      : comboActive
+        ? `${comboActive.name}发动，造成${damage}点伤害，承受${enemyHp > 0 ? enemyAttack : 0}点伤害。`
       : defend
         ? `以防守反击造成${damage}点伤害，承受${enemyAttack}点伤害。`
         : controlAttempt
@@ -822,7 +888,7 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   return {
     intent: "战斗",
     minutes: 10,
-    ruleSummary: `第 ${combat.round} 回合，${combat.allies.length ? "玩家与同行者" : "玩家"}造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。${healed ? `${healer!.name}治疗恢复${healed}点状态。` : ""}${controlAttempt ? `控制结果：${combat.controlStatus}；当前控制抗性 ${combat.controlResistance}%。` : ""}${combat.allies.length ? `同行者：${combat.allies.map((ally) => `${ally.name}（${ally.role}·${ally.condition}）`).join("、")}。` : ""}${activeBattleArmor ? `${activeBattleArmor.title}提供增幅与减伤。` : ""}${activeMecha ? `${activeMecha.model}消耗 6% 能源参战。` : ""}敌方状态 ${combat.enemyCondition}，玩家状态 ${combat.playerCondition}。`,
+    ruleSummary: `第 ${combat.round} 回合，${combat.allies.length ? "玩家与同行者" : "玩家"}造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。${comboPreparing ? `已准备连携“${combat.comboPreparation!.name}”，最迟在第 ${combat.comboPreparation!.expiresAfterRound} 回合发动。` : ""}${comboActive ? `发动连携“${comboActive.name}”，冷却至第 ${combat.comboCooldownUntilRound} 回合。` : ""}${healed ? `${healer ? healer.name : comboActive?.name}治疗恢复${healed}点状态。` : ""}${controlAttempt ? `控制结果：${combat.controlStatus}；当前控制抗性 ${combat.controlResistance}%。` : ""}${combat.allies.length ? `同行者：${combat.allies.map((ally) => `${ally.name}（${ally.role}·协同${ally.readiness}·${ally.condition}）`).join("、")}。` : ""}${activeBattleArmor ? `${activeBattleArmor.title}提供增幅与减伤。` : ""}${activeMecha ? `${activeMecha.model}消耗 6% 能源参战。` : ""}敌方状态 ${combat.enemyCondition}，玩家状态 ${combat.playerCondition}。`,
     fallbackNarrative: enemyHp <= 0
       ? `我抓住它转身的空当，把最后一下送了进去。${combat.enemyName}撞断一根矮树，挣了几下，不再起来。魂环从尸身上浮出时，我的手还在抖。`
       : flee
@@ -2166,7 +2232,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);
   else if (/调查|搜索|观察周围|查找|研究/.test(action)) resolution = investigateResolution(game, action);
   else if (/等待|快进|过去一天|过去一月|过去一年|休整一/.test(action)) resolution = waitResolution(game, action);
-  else if (/攻击|战斗|防御|闪避|逃跑|弱点/.test(action) && game.view.combat) resolution = combatResolution(game, action);
+  else if (/攻击|战斗|防御|闪避|逃跑|弱点|连携|合击|组合技/.test(action) && game.view.combat) resolution = combatResolution(game, action);
   else if (/攻击|杀|刺杀|偷袭/.test(action) && CANON_CHARACTERS.some((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)))) resolution = npcConflictResolution(game, action);
   else if (/攻击|杀|抢|闯入/.test(action)) resolution = impossible("当前缺少明确目标或足够条件，强行行动只会引来警惕。", ["观察目标", "先做准备", "暂时退开"]);
   else resolution = generalResolution(game);
