@@ -1160,8 +1160,16 @@ function workResolution(game: StoredGame): ActionResolution {
 
 function buyResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
-  const item = /稀有金属|魂导金属/.test(action) ? "魂导器用稀有金属" : /魂导核心|核心阵法材料|魂导晶体/.test(action) ? "魂导核心晶体" : /魂导图纸|空白图纸/.test(action) ? "魂导器空白图纸" : /药/.test(action) ? "止血散" : /食|干粮/.test(action) ? "两日干粮" : /绳/.test(action) ? "猎魂绳" : "基础补给包";
-  const baseCost = item === "魂导器用稀有金属" ? 80 : item === "魂导核心晶体" ? 60 : item === "魂导器空白图纸" ? 15 : item === "基础补给包" ? 10 : 5;
+  const item = /斗铠/.test(action) && /天锻|神锻|四字/.test(action) ? "天锻斗铠金属胚料"
+    : /斗铠/.test(action) && /魂锻|三字/.test(action) ? "魂锻斗铠金属胚料"
+      : /斗铠/.test(action) && /灵锻|二字/.test(action) ? "灵锻斗铠金属胚料"
+        : /斗铠.*稀有金属|千锻/.test(action) ? "千锻斗铠金属胚料"
+          : /稀有金属|魂导金属/.test(action) ? "魂导器用稀有金属"
+            : /魂导核心|核心阵法材料|魂导晶体/.test(action) ? "魂导核心晶体"
+              : /魂导图纸|空白图纸/.test(action) ? "魂导器空白图纸"
+                : /药/.test(action) ? "止血散" : /食|干粮/.test(action) ? "两日干粮" : /绳/.test(action) ? "猎魂绳" : "基础补给包";
+  const baseCosts: Record<string, number> = { "魂导器用稀有金属": 80, "魂导核心晶体": 60, "魂导器空白图纸": 15, "基础补给包": 10, "千锻斗铠金属胚料": 200, "灵锻斗铠金属胚料": 800, "魂锻斗铠金属胚料": 3_000, "天锻斗铠金属胚料": 10_000 };
+  const baseCost = baseCosts[item] ?? 5;
   const cost = Math.max(1, Math.round(baseCost * DIFFICULTY_RULES[game.view.difficulty].resourceCost));
   if (character.coins < cost) return impossible(`购买${item}需要${formatSoulCoins(cost)}，当前只有${formatSoulCoins(character.coins)}。`, ["找临时工作", "换便宜的东西", "离开商店"]);
   character.coins -= cost;
@@ -1393,7 +1401,13 @@ function soulSpiritResolution(game: StoredGame, action: string): ActionResolutio
   return impossible("需要明确选择调查、评估、签约或放弃魂灵。", ["评估魂灵适配", "签订魂灵契约", "放弃这份魂灵"]);
 }
 
-const BATTLE_ARMOR_PIECES = ["右臂甲", "左臂甲", "胸铠", "双腿甲", "头盔", "双翼"];
+const BATTLE_ARMOR_PIECES = ["右手前臂甲", "左手前臂甲", "右肩大臂甲", "左肩大臂甲", "胸铠", "腰铠与战裙", "右腿足甲", "左腿足甲", "头盔"];
+const BATTLE_ARMOR_MATERIALS: Record<1 | 2 | 3 | 4, { name: string; pattern: RegExp }> = {
+  1: { name: "千锻斗铠金属胚料", pattern: /千锻斗铠金属胚料/ },
+  2: { name: "灵锻斗铠金属胚料", pattern: /灵锻斗铠金属胚料/ },
+  3: { name: "魂锻斗铠金属胚料", pattern: /魂锻斗铠金属胚料/ },
+  4: { name: "天锻斗铠金属胚料", pattern: /天锻斗铠金属胚料/ },
+};
 
 function battleArmorResolution(game: StoredGame, action: string): ActionResolution {
   const era = game.view.era ?? 1;
@@ -1401,23 +1415,30 @@ function battleArmorResolution(game: StoredGame, action: string): ActionResoluti
   if (era < 3) return impossible("成熟斗铠体系尚未出现在当前时代。", ["研究金属与武魂共鸣", "制作当前时代的魂导护具", "核对技术年代"]);
   const tierToken = action.match(/([一二三四1-4])字斗铠/)?.[1] ?? "一";
   const tier = Math.max(1, Math.min(4, Number(tierToken.replace(/[一二三四]/, (value) => String("一二三四".indexOf(value) + 1))))) as 1 | 2 | 3 | 4;
-  const rankRequirements = [0, 40, 60, 80, 95];
+  const rankRequirements = [0, 50, 60, 70, 90];
   if (character.soulRank < rankRequirements[tier]) return impossible(`${tier}字斗铠工程至少需要 ${rankRequirements[tier]} 级魂力来承受共鸣与增幅。`, ["继续修炼", "先学习斗铠设计", "寻找低负载训练护具"]);
-  character.battleArmors ??= [];
-  const previous = tier > 1 ? character.battleArmors.find((armor) => armor.tier === tier - 1 && armor.status === "完整") : undefined;
+  const isDesignAction = /设计|测量|推演|共鸣测试|适配/.test(action) && !/制作|锻造/.test(action);
+  const playerDesign = game.view.professions.find((item) => item.name === "魂导器研究" && item.progress >= 35);
+  const designer = game.view.relations.some((item) => /斗铠设计师|机甲设计师|魂导师/.test(`${item.name}${item.relation}`));
+  if (isDesignAction && !playerDesign && !designer) return impossible("斗铠设计需要达到入门水平的魂导设计能力，或由可信的专业设计师参与。", ["学习魂导器设计", "寻找斗铠设计师", "先研究核心法阵"]);
+  const battleArmors = character.battleArmors ?? [];
+  const previous = tier > 1 ? battleArmors.find((armor) => armor.tier === tier - 1 && armor.status === "完整") : undefined;
   if (tier > 1 && !previous) return impossible(`必须先拥有完整的${tier - 1}字斗铠，才能升华到${tier}字。`, [`完成${tier - 1}字斗铠`, "改良现有斗铠", "提升锻造与设计能力"]);
 
-  let armor = character.battleArmors.find((item) => item.tier === tier);
+  let armor = battleArmors.find((item) => item.tier === tier);
   if (!armor) {
+    if (!isDesignAction) return impossible(`尚未完成${tier}字斗铠立项与适配设计，不能直接检查或制造部件。`, [`设计${tier}字斗铠`, "寻找斗铠设计师", "先准备工程档案"]);
     armor = { tier, title: `${tier}字斗铠`, pieces: [], completion: 0, compatibility: 0, status: "设计中", maker: character.name };
-    character.battleArmors.push(armor);
+    battleArmors.push(armor);
+    character.battleArmors = battleArmors;
   }
   if (!game.view.battleArmorProject || game.view.battleArmorProject.tier !== tier) {
+    if (!isDesignAction) return impossible(`当前没有进行中的${tier}字斗铠工程。`, [`设计${tier}字斗铠`, "检查已有斗铠", "准备升级方案"]);
     game.view.battleArmorProject = { tier, blueprintProgress: 0, compatibility: 0, failedPieces: 0, nextPiece: BATTLE_ARMOR_PIECES[0] };
   }
   const project = game.view.battleArmorProject;
 
-  if (/设计|测量|推演|共鸣测试|适配/.test(action) && !/制作|锻造/.test(action)) {
+  if (isDesignAction) {
     const perception = character.abilityDescriptors.perception === "顶尖" ? 8 : character.abilityDescriptors.perception === "优秀" ? 4 : 1;
     const gain = integer(actionRandom(game), 17, 27) + perception;
     project.blueprintProgress = Math.min(100, project.blueprintProgress + gain);
@@ -1430,11 +1451,14 @@ function battleArmorResolution(game: StoredGame, action: string): ActionResoluti
   }
   if (/制作|锻造|打造|组装|升华/.test(action)) {
     if (project.blueprintProgress < 100) return impossible(`图纸只有 ${project.blueprintProgress}%，不能在关键魂力回路未闭合时制作。`, ["继续设计斗铠", "测试武魂共鸣", "请斗铠设计师复核"]);
-    const metalIndex = game.view.inventory.findIndex((item) => /稀有金属|魂导器用.*金属|灵锻金属|魂锻金属/.test(item));
-    if (metalIndex < 0) return impossible("下一件斗铠缺少已登记的稀有金属胚料。", ["购买斗铠稀有金属", "委托锻造师准备胚料", "检查仓库存料"]);
+    const requiredMaterial = BATTLE_ARMOR_MATERIALS[tier];
+    const metalIndex = game.view.inventory.findIndex((item) => requiredMaterial.pattern.test(item));
+    if (metalIndex < 0) return impossible(`下一件${tier}字斗铠缺少${requiredMaterial.name}。`, [`购买${requiredMaterial.name}`, "委托锻造师准备胚料", "检查仓库存料"]);
     const craft = game.view.professions.find((item) => /锻造|炼器/.test(item.name));
     const design = game.view.professions.find((item) => item.name === "魂导器研究");
-    const collaborator = game.view.relations.some((item) => /锻造师|设计师|机甲师|魂导师/.test(`${item.name}${item.relation}`));
+    const collaborator = game.view.relations.some((item) => /锻造师|制造师|机甲师|魂导师/.test(`${item.name}${item.relation}`));
+    if ((craft?.progress ?? 0) < 35 && !collaborator) return impossible("斗铠部件制造需要达到入门水平的锻造/制造能力，或由可信的专业制造者参与。", ["学习锻造与炼器", "寻找斗铠制造师", "委托锻造师协作"]);
+    if ((craft?.progress ?? 0) < 35 && (design?.progress ?? 0) < 35) return impossible("斗铠必须由使用者亲自参与至少一种第二职业工序，不能把设计和制造全部外包。", ["学习魂导器设计", "学习锻造与炼器", "先完成个人参与记录"]);
     const expertise = (craft?.progress ?? 0) + (design?.progress ?? 0) * .5 + (collaborator ? 24 : 0);
     const random = actionRandom(game);
     const success = random() < Math.min(.94, .48 + expertise / 180 + project.compatibility / 300 - tier * .07);
@@ -1453,7 +1477,7 @@ function battleArmorResolution(game: StoredGame, action: string): ActionResoluti
       game.view.battleArmorProject = undefined;
       character.reputation = `${tier}字斗铠师`;
     }
-    return { intent: "斗铠制作", minutes: speedMinutes(game, 480, 1920), ruleSummary: `${piece}制作成功；${armor.title}完成度 ${armor.completion}%，适配 ${armor.compatibility}%。`, fallbackNarrative: armor.status === "完整" ? `最后一件甲片扣合时，前面五件依次亮起。魂力不再分段停留，整套斗铠沿着武魂的节奏完成了一次呼吸。它没有凭空让我无敌，但每一处增幅都能解释、测试和维护。` : `${piece}第一次启动没有出现过热。我拆下、复测、再装回，确认接口能和已有甲片同时共鸣，才在工程册上划掉这一项。`, suggestions: armor.status === "完整" ? ["测试完整斗铠", "为斗铠命名", "记录维护周期"] : [`制作${tier}字斗铠${project.nextPiece}`, "检查套装共鸣", "补充稀有金属"], systemMessages: [`斗铠 · ${armor.title} · ${piece}`] };
+    return { intent: "斗铠制作", minutes: speedMinutes(game, 480, 1920), ruleSummary: `${piece}制作成功；${armor.title}完成度 ${armor.completion}%，适配 ${armor.compatibility}%。`, fallbackNarrative: armor.status === "完整" ? `最后一件甲片扣合时，前面八件依次亮起。魂力不再分段停留，整套斗铠沿着武魂的节奏完成了一次呼吸。它没有凭空让我无敌，但每一处增幅都能解释、测试和维护。` : `${piece}第一次启动没有出现过热。我拆下、复测、再装回，确认接口能和已有甲片同时共鸣，才在工程册上划掉这一项。`, suggestions: armor.status === "完整" ? ["测试完整斗铠", "为斗铠命名", "记录维护周期"] : [`制作${tier}字斗铠${project.nextPiece}`, "检查套装共鸣", "补充稀有金属"], systemMessages: [`斗铠 · ${armor.title} · ${piece}`] };
   }
   return impossible("需要明确进行斗铠设计、检查进度或制作具体部件。", ["设计一字斗铠", "查看斗铠进度", "制作斗铠部件"]);
 }

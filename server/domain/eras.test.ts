@@ -194,11 +194,18 @@ describe("multi-era foundations", () => {
     expect(profession.level).toBe("1级魂导师");
   });
 
-  it("builds battle armor through design and six persistent pieces", () => {
+  it("builds battle armor through a qualified nine-piece engineering chain", () => {
     const game = playingGame(3, "battle-armor-loop");
-    game.view.character!.soulRank = 40;
     game.view.character!.coins = 20_000;
     game.view.character!.abilityDescriptors.perception = "顶尖";
+    game.view.character!.soulRank = 40;
+    expect(resolveAction(game, "设计一字斗铠").intent).toBe("无法完成");
+    game.view.character!.soulRank = 50;
+    expect(resolveAction(game, "设计一字斗铠").intent).toBe("无法完成");
+    expect(game.view.character!.battleArmors).toHaveLength(0);
+    expect(game.view.battleArmorProject).toBeUndefined();
+    game.view.professions.push({ id: "battle-armor-design", name: "魂导器研究", level: "入门", progress: 80, experiments: 8, failures: 1, knownMethods: ["斗铠核心法阵"] });
+    game.view.professions.push({ id: "battle-armor-forging", name: "锻造与炼器", level: "入门", progress: 80, experiments: 8, failures: 1, knownMethods: ["千锻"] });
     for (let index = 0; index < 6 && (game.view.battleArmorProject?.blueprintProgress ?? 0) < 100; index += 1) {
       resolveAction(game, "继续设计一字斗铠并做武魂适配测试");
     }
@@ -210,9 +217,15 @@ describe("multi-era foundations", () => {
     }
     const armor = game.view.character!.battleArmors?.[0];
     expect(armor?.status).toBe("完整");
-    expect(armor?.pieces).toEqual(["右臂甲", "左臂甲", "胸铠", "双腿甲", "头盔", "双翼"]);
+    expect(armor?.pieces).toEqual(["右手前臂甲", "左手前臂甲", "右肩大臂甲", "左肩大臂甲", "胸铠", "腰铠与战裙", "右腿足甲", "左腿足甲", "头盔"]);
     expect(armor?.completion).toBe(100);
     expect(game.view.battleArmorProject).toBeUndefined();
+
+    game.view.character!.soulRank = 60;
+    for (let index = 0; index < 6 && (game.view.battleArmorProject?.blueprintProgress ?? 0) < 100; index += 1) resolveAction(game, "继续设计二字斗铠并做武魂适配测试");
+    resolveAction(game, "购买斗铠稀有金属");
+    expect(resolveAction(game, "制作二字斗铠右手前臂甲").intent).toBe("无法完成");
+    expect(game.view.inventory).toContain("千锻斗铠金属胚料");
   });
 
   it("requires training and a license before buying a mecha", () => {
