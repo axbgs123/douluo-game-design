@@ -103,6 +103,27 @@ async function seedBattleArmorGame() {
   database.saveGame(game, "e2e.battle-armor-fixture");
 }
 
+async function seedStarshipCrewGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 4, gender: "女", difficulty: "标准", seed: "e2e-starship-crew" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "舰桥验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.character!.age = 18;
+  game.view.starship = { license: "见习指挥", simulatorProgress: 50, simulatorSessions: 6, trainingStartedAge: 12, loggedFlightHours: 0, crew: [], missionsCompleted: 0, crewDrills: 0, crewCoordination: 0, crewEvidence: [] };
+  game.view.affiliations.push({ id: "e2e-interstellar-academy", name: "星际史莱克学院", role: "战舰专业学员", contribution: 20, completedAssignments: 0, rankEvidence: ["学院正式学籍"] });
+  game.view.relations.push(
+    { id: "e2e-pilot", name: "林飞", relation: "星际驾驶员", impression: "可靠并通过飞行训练", strength: 70, category: "同伴" },
+    { id: "e2e-navigator", name: "周航", relation: "星图导航员", impression: "可靠并熟悉航线计算", strength: 70, category: "同伴" },
+    { id: "e2e-engineer", name: "程机", relation: "轮机工程师", impression: "可靠并擅长动力维修", strength: 70, category: "同伴" },
+  );
+  database.saveGame(game, "e2e.starship-crew-fixture");
+}
+
 async function createPlayingCharacter(page: import("@playwright/test").Page, era: 1 | 2 | 3 | 4) {
   await page.goto("/");
   if (era > 1) await page.getByRole("button", { name: `斗${era === 2 ? "二" : era === 3 ? "三" : "四"}` }).click();
@@ -341,6 +362,28 @@ test("斗三斗铠必须完成设计、材料门禁与逐件制作", async ({ pa
   }
   await expect(project).toContainText("下一件 左手前臂甲");
   await expect(page.getByText("斗铠 · 1字斗铠 · 右手前臂甲", { exact: true })).toBeVisible();
+});
+
+test("斗四星舰必须按岗位招募船员后才能协同并登记真实航时", async ({ page }) => {
+  await seedStarshipCrewGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "舰桥验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  const starship = page.locator(".special-system-card").filter({ hasText: "星舰资格" });
+  await starship.getByRole("button", { name: "船员协同" }).click();
+  await expect(starship).toContainText("船员 0 · 舰桥协同 0%");
+  await starship.getByRole("button", { name: "招募驾驶员" }).click();
+  await submitAction(page, "检查可信关系并招募导航员船员");
+  await submitAction(page, "检查可信关系并招募轮机师船员");
+  await expect(starship).toContainText("船员 3");
+  await starship.getByRole("button", { name: "船员协同" }).click();
+  await expect(starship).toContainText(/舰桥协同 [1-9][0-9]?%/);
+  await starship.getByRole("button", { name: "随舰航次" }).click();
+  await expect(starship).toContainText(/真实飞行 [1-9][0-9]? 小时/);
+  await expect(page.getByText(/舰桥协同 · [1-9][0-9]?%/, { exact: true })).toBeVisible();
 });
 
 test("有效结算可以在同一存档开启下一时代并核验累积谱系", async ({ page }) => {
