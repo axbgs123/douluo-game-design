@@ -158,6 +158,7 @@ export interface HiddenWorldState {
   };
   actionLedger: Array<{
     index: number;
+    requestId?: string;
     action: string;
     intent: string;
     result: string;
@@ -175,6 +176,7 @@ export interface StoredGame {
   world: HiddenWorldState;
   storyMemory: StoryMemory;
   lastCommittedAction?: {
+    requestId?: string;
     playerInput: string;
     ruleAction: string;
     resolution: ActionResolution;

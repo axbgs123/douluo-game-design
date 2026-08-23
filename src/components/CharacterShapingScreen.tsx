@@ -6,7 +6,7 @@ interface CharacterShapingScreenProps {
   shaping: CharacterShapingView;
   busy: boolean;
   onReroll: () => Promise<void>;
-  onComplete: (input: { keywords: string[]; answers: Record<string, string> }) => Promise<void>;
+  onComplete: (input: { personalityId: string; keywords: string[]; answers: Record<string, string> }) => Promise<void>;
 }
 
 export function CharacterShapingScreen({ candidate, shaping, busy, onReroll, onComplete }: CharacterShapingScreenProps) {
@@ -56,7 +56,7 @@ export function CharacterShapingScreen({ candidate, shaping, busy, onReroll, onC
       </fieldset>)}</div>
     </section>
 
-    <button type="button" className="primary-button shaping-submit" disabled={!ready || busy} onClick={() => void onComplete({ keywords, answers })}>
+    <button type="button" className="primary-button shaping-submit" disabled={!ready || busy} onClick={() => void onComplete({ personalityId, keywords, answers })}>
       {busy ? "写入角色…" : ready ? "确认性格，进入觉醒" : `还需完成 ${questions.filter((question) => !answers[question.id]).length} 道选择`}
     </button>
   </main>;

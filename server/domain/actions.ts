@@ -1317,6 +1317,7 @@ export function applyActionResult(
   result: ActionResolution,
   narrative: string,
   suggestions: string[],
+  requestId?: string,
 ): void {
   const character = game.view.character;
   const thirdPerson = character ? toThirdPersonNarrative(narrative, character.name, character.gender) : narrative;
@@ -1324,7 +1325,7 @@ export function applyActionResult(
   for (const message of result.systemMessages ?? []) game.view.narrative.push(entry("system", message));
   game.view.suggestions = sanitizeNarrativeSuggestions(game, suggestions, result.suggestions);
   game.actionIndex += 1;
-  game.world.actionLedger.push({ index: game.actionIndex, action: input.slice(0, 180), intent: result.intent, result: result.ruleSummary.slice(0, 220), year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1 });
+  game.world.actionLedger.push({ index: game.actionIndex, requestId, action: input.slice(0, 180), intent: result.intent, result: result.ruleSummary.slice(0, 220), year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1 });
   game.world.actionLedger = game.world.actionLedger.slice(-400);
   const objective = game.view.chapterObjective;
   if (objective && !/无法完成|规则阻止/.test(result.intent)) {

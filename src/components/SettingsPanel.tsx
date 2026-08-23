@@ -47,6 +47,11 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
         <label className="engine-toggle"><input type="checkbox" checked={novelEngineEnabled} onChange={(event) => setNovelEngineEnabled(event.target.checked)} /><span><b>增强小说引擎</b><small>按情境启用连续性、世界规则、人物声音与第三人称正文审校。</small></span></label>
         {message && <p className="settings-message">{message}</p>}
         <button type="submit" className="primary-button" disabled={!apiKey.trim() && !view?.hasKey}>保存设置</button>
+        {view?.hasKey && <button type="button" className="ghost-button" onClick={() => {
+          void saveDeepSeekSettings({ clearApiKey: true, baseUrl, model, novelEngineEnabled })
+            .then((settings) => { setView(settings); setApiKey(""); setMessage("已删除本机保存的 API Key。"); onSaved?.(settings); })
+            .catch((error: Error) => setMessage(error.message));
+        }}>断开并删除 API Key</button>}
       </form>
     </section>
   </div>;

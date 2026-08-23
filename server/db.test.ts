@@ -27,4 +27,16 @@ describe("存档数据库", () => {
     expect(database.listSaves().some((save) => save.id === game.view.id)).toBe(false);
     expect(database.listCheckpoints(game.view.id)).toHaveLength(0);
   });
+
+  it("rewards each run id only once even after a checkpoint-style replay", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "settlement-idempotency" });
+    database.saveGame(game, "test.created");
+    const settlement = { ending: "测试结局", baseScore: 20, multiplier: 1, legacyPoints: 20, highlights: [], qualified: true };
+
+    const first = database.recordRunSettlement(game, settlement);
+    const second = database.recordRunSettlement(game, settlement);
+
+    expect(second.completedRuns).toBe(first.completedRuns);
+    expect(second.legacyPoints).toBe(first.legacyPoints);
+  });
 });

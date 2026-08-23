@@ -1281,10 +1281,19 @@ export function rerollCharacterShaping(game: StoredGame, part: "goals" | "person
   game.view.updatedAt = new Date().toISOString();
 }
 
-export function finalizeCharacterShaping(game: StoredGame, input: { keywords: string[]; answers: Record<string, string> }): void {
+export function finalizeCharacterShaping(game: StoredGame, input: { personalityId?: string; keywords: string[]; answers: Record<string, string> }): void {
   if (game.view.status !== "character_shaping") throw new Error("当前不处于角色塑造阶段");
   const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId);
   if (!candidate) throw new Error("请先选择角色");
+  if (input.personalityId) {
+    const selected = game.view.shaping?.personalityOptions.find((option) => option.id === input.personalityId);
+    if (!selected) throw new Error("性格方案已经失效，请重新选择");
+    const expectedQuestionIds = new Set(selected.questions.map((question) => question.id));
+    if (Object.keys(input.answers).some((id) => !expectedQuestionIds.has(id))) throw new Error("答案包含不属于当前性格方案的题目");
+    for (const question of selected.questions) {
+      if (!question.options.some((option) => option.id === input.answers[question.id])) throw new Error("请完成当前性格方案的全部情境题");
+    }
+  }
   const keywords = [...new Set([...candidate.public.fixedTraits, ...input.keywords.map((item) => item.trim()).filter(Boolean)])].slice(0, 8);
   if (keywords.length < 3) throw new Error("至少需要三个性格关键词");
   const setup: PersonalitySetup = { keywords, answers: input.answers };

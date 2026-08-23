@@ -153,6 +153,18 @@ describe("candidate generation", () => {
     expect(game.view.status).toBe("playing");
   });
 
+  it("rejects forged answers that do not belong to the selected personality draft", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "forged-shaping-answers" });
+    selectCandidate(game, game.view.candidates[0].id);
+    const draft = game.view.shaping!.personalityOptions[0];
+
+    expect(() => finalizeCharacterShaping(game, {
+      personalityId: draft.id,
+      keywords: draft.keywords,
+      answers: Object.fromEntries(draft.questions.map((question) => [question.id, "forged-option"])),
+    })).toThrow("请完成当前性格方案的全部情境题");
+  });
+
   it("supports a custom name and keeps candidate prose in third person", () => {
     const game = createGame({ gender: "女", difficulty: "标准", personality, seed: "custom-name" });
     const candidateId = game.view.candidates[0].id;

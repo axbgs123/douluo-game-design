@@ -65,7 +65,7 @@ export function rerollCharacterShaping(id: string, part: "goals" | "personality"
   return request(`/api/games/${id}/shaping/reroll`, { method: "POST", body: JSON.stringify({ part, lockedSlots }) });
 }
 
-export function completeCharacterShaping(id: string, input: { keywords: string[]; answers: Record<string, string> }): Promise<GameView> {
+export function completeCharacterShaping(id: string, input: { personalityId: string; keywords: string[]; answers: Record<string, string> }): Promise<GameView> {
   return request(`/api/games/${id}/shaping/complete`, { method: "POST", body: JSON.stringify(input) });
 }
 
@@ -120,13 +120,14 @@ export class ActionStreamError extends Error {
 export async function streamAction(
   id: string,
   input: string,
+  requestId: string,
   onEvent: (event: ActionStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<GameView> {
   const response = await fetch(`/api/games/${id}/action/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ input }),
+    body: JSON.stringify({ input, requestId }),
     signal,
   });
   if (!response.ok) {
@@ -202,6 +203,7 @@ export function getDeepSeekSettings(): Promise<DeepSeekSettingsView> {
 
 export function saveDeepSeekSettings(input: {
   apiKey?: string;
+  clearApiKey?: boolean;
   baseUrl: string;
   model: string;
   novelEngineEnabled: boolean;

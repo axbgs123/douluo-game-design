@@ -2,6 +2,7 @@ import express from "express";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { DIFFICULTIES } from "../shared/game.js";
 import { applyActionResult, resolveAction } from "./domain/actions.js";
@@ -61,11 +62,12 @@ const slotLocksSchema = z.array(z.number().int().min(0).max(2)).max(3).default([
 const candidateRerollSchema = z.object({ lockedSlots: slotLocksSchema }).default({ lockedSlots: [] });
 const shapingRerollSchema = z.object({ part: z.enum(["goals", "personality"]), lockedSlots: slotLocksSchema });
 const shapingSchema = z.object({
+  personalityId: z.string().trim().min(1),
   keywords: z.array(z.string().trim().min(1).max(12)).min(1).max(8),
   answers: z.record(z.string(), z.string()).refine((answers) => Object.keys(answers).length >= 6, "请完成六道情境题"),
 });
 const lifeGoalSchema = z.object({ lifeGoal: z.string().trim().min(6).max(160) });
-const actionSchema = z.object({ input: z.string().trim().min(1).max(1200) });
+const actionSchema = z.object({ input: z.string().trim().min(1).max(1200), requestId: z.string().uuid().optional() });
 const speedSchema = z.object({ speed: z.enum(["标准", "高速"]) });
 const mapPinSchema = z.object({ label: z.string().trim().min(1).max(24), x: z.number().min(0).max(100), y: z.number().min(0).max(100) });
 const endSchema = z.object({ reason: z.string().trim().max(200).optional() });
@@ -83,7 +85,10 @@ const settingsSchema = z.object({
   baseUrl: z.string().url(),
   model: z.string().trim().min(1),
   novelEngineEnabled: z.boolean().default(true),
+  clearApiKey: z.boolean().optional(),
 });
+
+const activeActionGames = new Set<string>();
 
 app.get("/api/health", (_request, response) => {
   response.json({ ok: true });
@@ -188,6 +193,7 @@ app.post("/api/games/:id/select", (request, response) => {
   const input = candidateSchema.parse(request.body);
   const game = loadGame(request.params.id);
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  if (game.view.status !== "candidate_selection") return response.status(409).json({ error: "角色已经选定，不能再次选择候选角色" });
   if (!game.view.candidates.some((candidate) => candidate.id === input.candidateId)) return response.status(404).json({ error: "候选角色不存在" });
   const forcedSoul = claimEquippedMartialSoul();
   selectCandidate(game, input.candidateId, input.customName, forcedSoul);
@@ -279,40 +285,32 @@ app.post("/api/games/:id/action", async (request, response) => {
     return response.status(409).json({ error: "当前阶段还不能自由行动" });
   }
   if (!requireAi(response)) return;
+  const requestId = input.requestId ?? randomUUID();
+  if (game.world.actionLedger.some((entry) => entry.requestId === requestId)) return response.json(publicView(game));
+  if (activeActionGames.has(game.view.id)) return response.status(409).json({ error: "这个存档正在推演另一项行动，请等待当前行动完成" });
+  activeActionGames.add(game.view.id);
 
-  const working = structuredClone(game);
-  let ruleAction = input.input;
-  const blockedBeforeInterpretation = guardActionByStoryRules(working, input.input);
-  if (!blockedBeforeInterpretation) {
-    ruleAction = await interpretActionWithDeepSeek(working, input.input) ?? input.input;
+  try {
+    const working = structuredClone(game);
+    let ruleAction = input.input;
+    const blockedBeforeInterpretation = guardActionByStoryRules(working, input.input);
+    if (!blockedBeforeInterpretation) ruleAction = await interpretActionWithDeepSeek(working, input.input) ?? input.input;
+    const resolution = resolveAction(working, ruleAction);
+    let generated;
+    if (!/规则阻止|无法完成/.test(resolution.intent)) generated = await narrateWithAuditRetries(working, input.input, resolution);
+    if (!generated && !/规则阻止|无法完成/.test(resolution.intent)) throw new Error("AI 没有返回可提交的正文，本次行动未推进");
+    const beforeNarrative = new Set(working.view.narrative.map((entry) => entry.id));
+    applyActionResult(working, input.input, resolution, generated?.narrative ?? resolution.fallbackNarrative, generated?.suggestions.length === 3 ? generated.suggestions : resolution.suggestions, requestId);
+    if (generated) applyNarrativeMemory(working, generated);
+    const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
+    if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString() };
+    settleAndRecord(working);
+    saveCheckpoint(game, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`);
+    saveGame(working, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds });
+    return response.json(publicView(working));
+  } finally {
+    activeActionGames.delete(game.view.id);
   }
-  const resolution = resolveAction(working, ruleAction);
-  let generated;
-  if (!/规则阻止|无法完成/.test(resolution.intent)) {
-    generated = await narrateWithAuditRetries(working, input.input, resolution);
-  }
-  if (!generated && !/规则阻止|无法完成/.test(resolution.intent)) throw new Error("AI 没有返回可提交的正文，本次行动未推进");
-  const beforeNarrative = new Set(working.view.narrative.map((entry) => entry.id));
-  applyActionResult(
-    working,
-    input.input,
-    resolution,
-    generated?.narrative ?? resolution.fallbackNarrative,
-    generated?.suggestions.length === 3 ? generated.suggestions : resolution.suggestions,
-  );
-  if (generated) applyNarrativeMemory(working, generated);
-  const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
-  if (narrativeEntry) working.lastCommittedAction = { playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString() };
-  settleAndRecord(working);
-  saveCheckpoint(game, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`);
-  saveGame(working, "action.resolved", {
-    input: input.input,
-    ruleAction,
-    minutes: resolution.minutes,
-    usedAiNarrator: true,
-    appliedRuleIds: resolution.appliedRuleIds,
-  });
-  return response.json(publicView(working));
 });
 
 app.post("/api/games/:id/action/stream", async (request, response) => {
@@ -321,6 +319,8 @@ app.post("/api/games/:id/action/stream", async (request, response) => {
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
   if (game.view.status !== "playing") return response.status(409).json({ error: "当前阶段还不能自由行动" });
   if (!readDeepSeekSettings().apiKey) return response.status(409).json({ error: "尚未连接 AI。可以继续创建角色、查看资料和设置模型，但不能正式推演剧情。" });
+  const requestId = input.requestId ?? randomUUID();
+  if (activeActionGames.has(game.view.id)) return response.status(409).json({ error: "这个存档正在推演另一项行动，请等待当前行动完成" });
 
   response.status(200);
   response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
@@ -332,6 +332,13 @@ app.post("/api/games/:id/action/stream", async (request, response) => {
   response.on("close", () => { if (!response.writableEnded) { cancelled = true; controller.abort(); } });
   const send = (event: Record<string, unknown>) => { if (!cancelled && !response.writableEnded) response.write(`${JSON.stringify(event)}\n`); };
   const phase = (id: string, label: string) => send({ type: "phase", phase: id, label });
+
+  if (game.world.actionLedger.some((entry) => entry.requestId === requestId)) {
+    send({ type: "done", game: publicView(game), explanation: "该行动已经提交，已返回现有结果" });
+    response.end();
+    return;
+  }
+  activeActionGames.add(game.view.id);
 
   try {
     const working = structuredClone(game);
@@ -360,20 +367,22 @@ app.post("/api/games/:id/action/stream", async (request, response) => {
 
     phase("committing", "写入存档");
     const beforeNarrative = new Set(working.view.narrative.map((entry) => entry.id));
-    applyActionResult(working, input.input, resolution, generated.narrative, generated.suggestions.length === 3 ? generated.suggestions : resolution.suggestions);
+    applyActionResult(working, input.input, resolution, generated.narrative, generated.suggestions.length === 3 ? generated.suggestions : resolution.suggestions, requestId);
     if ("memory" in generated) applyNarrativeMemory(working, generated);
     const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
-    if (narrativeEntry) working.lastCommittedAction = { playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString() };
+    if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString() };
     settleAndRecord(working);
     if (cancelled) return;
     saveCheckpoint(game, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`);
-    saveGame(working, "action.resolved", { input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds });
+    saveGame(working, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds });
     send({ type: "done", game: publicView(working), explanation: resolution.ruleSummary });
     response.end();
   } catch (error) {
     if (cancelled || controller.signal.aborted) return;
     send({ type: "error", message: error instanceof Error ? error.message : "AI 推演失败，本次行动未推进", retryable: true });
     response.end();
+  } finally {
+    activeActionGames.delete(game.view.id);
   }
 });
 
@@ -390,6 +399,7 @@ app.post("/api/games/:id/action/rewrite", async (request, response) => {
   if (!narrativeEntry) return response.status(409).json({ error: "上一段正文已不在当前存档中" });
   narrativeEntry.text = generated.narrative;
   working.view.suggestions = generated.suggestions.length === 3 ? generated.suggestions : previous.resolution.suggestions;
+  applyNarrativeMemory(working, generated);
   working.view.updatedAt = new Date().toISOString();
   saveGame(working, "action.prose_rewritten", { actionIndex: working.actionIndex, ruleAction: previous.ruleAction });
   return response.json(publicView(working));
@@ -445,6 +455,10 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
   return response.status(500).json({ error: error instanceof Error ? error.message : "本地服务发生未知错误" });
 });
 
-app.listen(port, "127.0.0.1", () => {
-  console.log(`Douluo local server listening on http://127.0.0.1:${port}`);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  app.listen(port, "127.0.0.1", () => {
+    console.log(`Douluo local server listening on http://127.0.0.1:${port}`);
+  });
+}
+
+export { app };

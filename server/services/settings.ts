@@ -42,9 +42,10 @@ export function settingsView(): DeepSeekSettingsView {
   };
 }
 
-export function writeDeepSeekSettings(input: Omit<DeepSeekSettingsFile, "apiKey"> & { apiKey?: string }): DeepSeekSettingsView {
+export function writeDeepSeekSettings(input: Omit<DeepSeekSettingsFile, "apiKey"> & { apiKey?: string; clearApiKey?: boolean }): DeepSeekSettingsView {
   const current = readDeepSeekSettings();
   mkdirSync(dirname(settingsPath), { recursive: true });
-  writeFileSync(settingsPath, JSON.stringify({ ...input, apiKey: input.apiKey?.trim() || current.apiKey }, null, 2), { encoding: "utf8", mode: 0o600 });
+  const { clearApiKey, ...settings } = input;
+  writeFileSync(settingsPath, JSON.stringify({ ...settings, apiKey: clearApiKey ? "" : input.apiKey?.trim() || current.apiKey }, null, 2), { encoding: "utf8", mode: 0o600 });
   return settingsView();
 }

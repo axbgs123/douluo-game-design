@@ -21,4 +21,9 @@ describe("模型设置", () => {
     settings.writeDeepSeekSettings({ baseUrl: "https://api.deepseek.com", model: "deepseek-test", novelEngineEnabled: true });
     expect(settings.readDeepSeekSettings()).toMatchObject({ apiKey: "test-key", novelEngineEnabled: true });
   });
+
+  it("can explicitly remove a saved API key", () => {
+    settings.writeDeepSeekSettings({ clearApiKey: true, baseUrl: "https://api.deepseek.com", model: "deepseek-test", novelEngineEnabled: true });
+    expect(settings.settingsView().hasKey).toBe(false);
+  });
 });

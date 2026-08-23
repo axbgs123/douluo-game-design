@@ -42,6 +42,7 @@ export default function App() {
   const [actionPhase, setActionPhase] = useState("");
   const [actionDraft, setActionDraft] = useState("");
   const [lastAction, setLastAction] = useState("");
+  const [lastActionRequestId, setLastActionRequestId] = useState("");
   const [lastExplanation, setLastExplanation] = useState("");
   const [actionController, setActionController] = useState<AbortController | null>(null);
   const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]);
@@ -71,8 +72,9 @@ export default function App() {
     }
   };
 
-  const runAction = async (input: string) => {
+  const runAction = async (input: string, retryRequestId?: string) => {
     if (!game) return;
+    const requestId = retryRequestId || crypto.randomUUID();
     const controller = new AbortController();
     setActionController(controller);
     setBusy(true);
@@ -86,7 +88,7 @@ export default function App() {
       for (let requestAttempt = 0; requestAttempt < 2 && !nextGame; requestAttempt += 1) {
         try {
           if (requestAttempt > 0) { setActionDraft(""); setActionPhase("故事正在重新续写"); }
-          nextGame = await streamAction(game.id, input, (event) => {
+          nextGame = await streamAction(game.id, input, requestId, (event) => {
             if (event.type === "phase") setActionPhase(event.label);
             if (event.type === "retry") { setActionDraft(""); setActionPhase(`故事正在重新续写 · ${event.attempt}`); }
             if (event.type === "draft") setActionDraft((draft) => draft ? `${draft}\n\n${event.text}` : event.text);
@@ -104,9 +106,11 @@ export default function App() {
       setActionDraft("");
       setActionPhase("");
       setLastAction("");
+      setLastActionRequestId("");
       await refreshSaves();
     } catch (caught) {
       setLastAction(input);
+      setLastActionRequestId(requestId);
       if (caught instanceof DOMException && caught.name === "AbortError") setError("已经停笔。刚才的行动没有发生。");
       else setError("这段故事暂时没能续上，刚才的行动没有发生。");
     } finally {
@@ -201,7 +205,7 @@ export default function App() {
         checkpoints={checkpoints}
         onOpenSettings={() => setSettingsOpen(true)}
         onCancelAction={() => actionController?.abort()}
-        onRetry={() => { if (lastAction) return runAction(lastAction); }}
+        onRetry={() => { if (lastAction) return runAction(lastAction, lastActionRequestId || undefined); }}
         onRewrite={() => run(() => rewriteLastAction(game.id))}
         onCreateCheckpoint={async () => { setCheckpoints(await createCheckpoint(game.id)); }}
         onRestoreCheckpoint={(checkpointId) => run(() => restoreCheckpoint(game.id, checkpointId))}
