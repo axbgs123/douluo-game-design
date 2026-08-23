@@ -279,6 +279,18 @@ export interface EconomyView {
   bounty: number;
   blackMarketAccess: boolean;
   transactions: EconomyTransactionView[];
+  marketReports: MarketReportView[];
+}
+
+export interface MarketReportView {
+  locationId: string;
+  location: string;
+  category: "药材" | "金属" | "粮食" | "魂导材料" | "日用品";
+  supply: number;
+  demand: number;
+  priceIndex: number;
+  reason: string;
+  updatedAt: string;
 }
 
 export interface EconomyTransactionView {

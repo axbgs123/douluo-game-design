@@ -151,6 +151,35 @@ function recordEconomyTransaction(game: StoredGame, kind: StoredGame["view"]["ec
   game.view.economy.transactions = game.view.economy.transactions.slice(-80);
 }
 
+type MarketCategory = StoredGame["view"]["economy"]["marketReports"][number]["category"];
+
+function updateMarketReport(game: StoredGame, category: MarketCategory) {
+  const locationId = game.view.locationId ?? "local";
+  const location = game.view.location ?? "当地";
+  const locationText = `${location}${locationById(locationId)?.region ?? ""}`;
+  let supply = 50;
+  let demand = 50;
+  const reasons: string[] = [];
+  if (category === "药材" && /森林|村|山|冰火|药/.test(locationText)) { supply += 24; reasons.push("临近采集地"); }
+  if (category === "粮食" && /村|农|平原|港|海滨/.test(locationText)) { supply += 20; reasons.push("基础产地或运输节点"); }
+  if (category === "金属" && /矿|铁匠|锻造|工业|明都|庚辛/.test(locationText)) { supply += 22; reasons.push("临近矿产或加工地"); }
+  if (category === "魂导材料") {
+    if ((game.view.era ?? 1) === 1) { supply -= 35; demand -= 25; reasons.push("魂导产业尚未形成公开市场"); }
+    else if (/明都|日月|史莱克|联邦|城市|城/.test(locationText)) { supply += 15; demand += 22; reasons.push("魂导产业与学院需求集中"); }
+  }
+  if (/城|学院|宗门|联邦/.test(locationText)) { demand += 14; reasons.push("人口与机构采购集中"); }
+  const disruptions = game.world.dynamicEvents.filter((event) => event.status === "可介入" && event.locationId === locationId && /失踪|封锁|袭击|灾|短缺|中断/.test(`${event.title}${event.detail}`));
+  if (disruptions.length) { supply -= 12 * disruptions.length; demand += 10 * disruptions.length; reasons.push(`${disruptions.length}项本地事件扰乱运输`); }
+  supply = Math.max(5, Math.min(95, supply));
+  demand = Math.max(5, Math.min(95, demand));
+  const priceIndex = Math.max(65, Math.min(165, Math.round(100 + (demand - supply) * .75)));
+  const report = { locationId, location, category, supply, demand, priceIndex, reason: reasons.join("；") || "供需接近平衡", updatedAt: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日` };
+  game.view.economy.marketReports = game.view.economy.marketReports.filter((item) => !(item.locationId === locationId && item.category === category));
+  game.view.economy.marketReports.push(report);
+  game.view.economy.marketReports = game.view.economy.marketReports.slice(-30);
+  return report;
+}
+
 function tryResurrection(game: StoredGame): boolean {
   const character = game.view.character;
   if (!character) return false;
@@ -1308,7 +1337,9 @@ function buyResolution(game: StoredGame, action: string): ActionResolution {
                 : /药/.test(action) ? "止血散" : /食|干粮/.test(action) ? "两日干粮" : /绳/.test(action) ? "猎魂绳" : "基础补给包";
   const baseCosts: Record<string, number> = { "魂导器用稀有金属": 80, "魂导核心晶体": 60, "魂导器空白图纸": 15, "基础补给包": 10, "千锻斗铠金属胚料": 200, "灵锻斗铠金属胚料": 800, "魂锻斗铠金属胚料": 3_000, "天锻斗铠金属胚料": 10_000 };
   const baseCost = baseCosts[item] ?? 5;
-  const cost = Math.max(1, Math.round(baseCost * DIFFICULTY_RULES[game.view.difficulty].resourceCost));
+  const category: MarketCategory = /魂导|斗铠/.test(item) ? "魂导材料" : /金属/.test(item) ? "金属" : /药/.test(item) ? "药材" : /粮/.test(item) ? "粮食" : "日用品";
+  const market = updateMarketReport(game, category);
+  const cost = Math.max(1, Math.round(baseCost * market.priceIndex / 100 * DIFFICULTY_RULES[game.view.difficulty].resourceCost));
   if (character.coins < cost) return impossible(`购买${item}需要${formatSoulCoins(cost)}，当前只有${formatSoulCoins(character.coins)}。`, ["找临时工作", "换便宜的东西", "离开商店"]);
   character.coins -= cost;
   game.view.inventory.push(item);
@@ -1316,7 +1347,7 @@ function buyResolution(game: StoredGame, action: string): ActionResolution {
   return {
     intent: "购买",
     minutes: 20,
-    ruleSummary: `花费${formatSoulCoins(cost)}，获得${item}。`,
+    ruleSummary: `按${game.view.location ?? "当地"}${category}行情（价格指数 ${market.priceIndex}）花费${formatSoulCoins(cost)}，获得${item}。`,
     fallbackNarrative: `我把魂币在柜台上排开。老板数完，收走${formatSoulCoins(cost)}，把${item}推了过来。我拆开看过一遍才塞进包里。`,
     suggestions: ["继续采购", "整理背包", "离开商店"],
   };
@@ -1325,6 +1356,11 @@ function buyResolution(game: StoredGame, action: string): ActionResolution {
 function economyResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
   const economy = game.view.economy;
+  if (/市场行情|调查物价|打听物价|询价|供需/.test(action)) {
+    const requested: MarketCategory[] = /药/.test(action) ? ["药材"] : /金属/.test(action) ? ["金属"] : /粮/.test(action) ? ["粮食"] : /魂导/.test(action) ? ["魂导材料"] : ["药材", "金属", "粮食", "魂导材料", "日用品"];
+    const reports = requested.map((category) => updateMarketReport(game, category));
+    return { intent: "调查市场", minutes: 90, ruleSummary: `记录${game.view.location ?? "当地"}${reports.map((item) => `${item.category} ${item.priceIndex}`).join("、")}的供需价格指数；报告会随地点、时代和事件变化。`, fallbackNarrative: `我没有只问一家铺子。进货价、柜台价和真正成交的数分开记，连问几处后，哪些货压仓、哪些货断供已经能看出轮廓。`, suggestions: ["采购低价物资", "调查运输中断", "安排一轮经营"] };
+  }
   if (/完成.*悬赏|交付.*悬赏/.test(action)) {
     const task = game.view.tasks.find((item) => item.kind === "悬赏" && item.status === "进行中");
     if (!task) return impossible("当前没有能够交付的悬赏记录。", ["查看任务", "接受悬赏", "核对委托人"]);
@@ -1389,7 +1425,13 @@ function economyResolution(game: StoredGame, action: string): ActionResolution {
     if (investment < 20) return impossible("开业所需押金、货物和地方关系还不够。", ["积攒魂币", "寻找合伙人", "先摆摊试卖"]);
     character.coins -= investment; economy.business = economy.business ?? `${game.view.location ?? "当地"}的小型商铺`;
     recordEconomyTransaction(game, "投资", investment, economy.business, "一轮进货、摊位与经营损耗");
-    return { intent: "商业经营", minutes: speedMinutes(game, 720, 4320), ruleSummary: `向${economy.business}投入${formatSoulCoins(investment)}，完成一轮进货、销售与损耗结算。`, fallbackNarrative: `账面上的进项看着不少，扣掉摊位、损耗和请人搬货的钱，真正留下的没有那么漂亮。我把卖不动的货单独圈了出来。`, suggestions: ["调整货物", "调查当地需求", "核对账目"] };
+    const category: MarketCategory = /药/.test(action) ? "药材" : /金属|锻造/.test(action) ? "金属" : /粮|食/.test(action) ? "粮食" : /魂导/.test(action) ? "魂导材料" : "日用品";
+    const market = updateMarketReport(game, category);
+    const sales = Math.max(0, Math.round(investment * (.58 + market.demand / 100 * .72)));
+    character.coins += sales;
+    if (sales) recordEconomyTransaction(game, "收入", sales, `${game.view.location ?? "当地"}顾客`, `${category}销售回款`);
+    const profit = sales - investment;
+    return { intent: "商业经营", minutes: speedMinutes(game, 720, 4320), ruleSummary: `向${economy.business}投入${formatSoulCoins(investment)}，按${category}需求 ${market.demand} 完成销售回款${formatSoulCoins(sales)}，本轮${profit >= 0 ? `盈利${formatSoulCoins(profit)}` : `亏损${formatSoulCoins(Math.abs(profit))}`}。`, fallbackNarrative: `进货、摊位、损耗和搬运费先从钱袋里出去，卖货的钱再一笔笔回来。柜台热闹不等于挣钱，我把最后余额和开门前的数对过，才在这轮账后落笔。`, suggestions: ["调整货物", "调查当地需求", "核对账目"] };
   }
   return impossible("这项经济行动缺少明确对象或数额。", ["说明存取或借贷数额", "查看魂币", "寻找当地钱庄"]);
 }
@@ -1947,7 +1989,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
   else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
   else if (/建立|创建|招募|任命|扩建|领地|外交|情报网|经营势力|管理宗门/.test(action) && /宗门|势力|组织|成员|领地|外交|情报/.test(action)) resolution = factionManagementResolution(game, action);
-  else if (/存入.*(?:魂币|钱)|存钱|取出.*(?:魂币|钱)|取钱|借贷|借钱|贷款|还债|偿还债务|黑市|开店|商铺|经营生意|悬赏/.test(action)) resolution = economyResolution(game, action);
+  else if (/存入.*(?:魂币|钱)|存钱|取出.*(?:魂币|钱)|取钱|借贷|借钱|贷款|还债|偿还债务|黑市|开店|商铺|经营生意|悬赏|市场行情|调查物价|打听物价|询价|供需/.test(action)) resolution = economyResolution(game, action);
   else if (/存放|收进仓库|放回住处|取回|从.*取出|拿回/.test(action)) resolution = storageResolution(game, action);
   else if (/化名|伪装身份|假名|自称/.test(action)) resolution = disguiseResolution(game, action);
   else if (/偷窃|盗窃|抢劫|诈骗|绑架|放火|勒索/.test(action)) resolution = crimeResolution(game, action);

@@ -675,6 +675,22 @@ describe("第一部世界资料", () => {
     expect(game.view.economy.transactions.at(-1)?.balance).toBe(game.view.character!.coins);
   });
 
+  it("区域供需改变价格并让经营留下进货与销售盈亏", () => {
+    const village = awakened("market-village");
+    village.view.locationId = "holy-soul-village";
+    village.view.location = "圣魂村";
+    expect(resolveAction(village, "调查药材市场行情").intent).toBe("调查市场");
+    const villageHerbs = village.view.economy.marketReports.find((item) => item.category === "药材")!;
+    expect(villageHerbs.supply).toBeGreaterThan(villageHerbs.demand);
+    expect(villageHerbs.priceIndex).toBeLessThan(100);
+
+    village.view.character!.coins = 100;
+    const business = resolveAction(village, "经营药材商铺生意");
+    expect(business.ruleSummary).toMatch(/盈利|亏损/);
+    expect(village.view.economy.transactions.slice(-2).map((item) => item.kind)).toEqual(["投资", "收入"]);
+    expect(village.view.economy.transactions.at(-1)?.balance).toBe(village.view.character!.coins);
+  });
+
   it("连续世代档案需要分步核验且不会把历史权益变成当前资产", () => {
     const parent = awakened("inheritance-verification");
     parent.view.managedFactions.push({ id: "archive-sect", name: "青册门", role: "门主", members: 36, resources: 120, territory: ["青册谷"], departments: ["档案堂"], internalIssues: [] });

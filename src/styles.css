@@ -425,6 +425,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .economy-ledger header { display: flex; justify-content: space-between; gap: 12px; }
 .economy-ledger p { margin: 5px 0; font-size: 12px; color: var(--muted); }
 .economy-ledger small { color: var(--muted); }
+.market-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin-top: 10px; }
+.market-report-grid article { padding: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.35); }
+.market-report-grid header { display: flex; justify-content: space-between; }
+.market-report-grid p { margin: 5px 0; color: var(--muted); font-size: 12px; }
+.market-report-grid small { color: var(--muted); }
 .lineage-list { display: grid; gap: 10px; }
 .lineage-list article { display: grid; gap: 6px; padding: 12px; border-left: 3px solid var(--gold); background: rgba(255,255,255,.4); }
 .lineage-list header { display: flex; justify-content: space-between; gap: 12px; }
