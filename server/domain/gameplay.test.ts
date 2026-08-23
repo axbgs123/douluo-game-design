@@ -609,13 +609,48 @@ describe("第一部世界资料", () => {
 
   it("经济系统记录存款、债务和悬赏的自然报酬", () => {
     const game = awakened("economy");
+    game.view.character!.coins = 0;
+    expect(resolveAction(game, "存钱").intent).toBe("无法完成");
+    expect(resolveAction(game, "取钱").intent).toBe("无法完成");
+    expect(game.view.character!.coins).toBe(0);
     game.view.character!.coins = 50;
     resolveAction(game, "存钱20金魂币");
     expect(game.view.economy.bankBalance).toBe(20);
     resolveAction(game, "借钱");
     expect(game.view.economy.debt).toBeGreaterThan(0);
+    expect(game.view.economy.transactions.map((item) => item.kind)).toEqual(["存款", "借贷"]);
+    expect(game.view.economy.transactions.at(-1)?.balance).toBe(game.view.character!.coins);
     resolveAction(game, "接受当地公开悬赏");
     expect(game.view.tasks.some((task) => task.kind === "悬赏")).toBe(true);
+  });
+
+  it("未成年只能承接安全短工，工钱与雇主关系都有证据", () => {
+    const game = awakened("child-work");
+    expect(game.view.character!.age).toBe(6);
+    const startingCoins = game.view.character!.coins;
+    expect(resolveAction(game, "去矿井上夜班做重体力工作").intent).toBe("无法完成");
+    expect(game.view.character!.coins).toBe(startingCoins);
+
+    const first = resolveAction(game, "去店铺打工赚钱");
+    expect(first.intent).toBe("工作");
+    expect(game.view.character!.coins).toBeGreaterThan(startingCoins);
+    expect(game.view.economy.transactions.at(-1)).toMatchObject({ kind: "收入", balance: game.view.character!.coins });
+    const employer = game.view.relations.find((item) => item.id === `employer-${game.view.locationId}`)!;
+    expect(employer.relation).toContain("雇佣");
+    expect(employer.history).toHaveLength(1);
+
+    resolveAction(game, "继续去店铺干活");
+    expect(employer.history).toHaveLength(2);
+    expect(employer.dimensions!.trust).toBeGreaterThan(6);
+  });
+
+  it("采购写入支出流水且账面余额与钱袋一致", () => {
+    const game = awakened("purchase-ledger");
+    game.view.character!.coins = 30;
+    resolveAction(game, "购买止血药");
+    expect(game.view.inventory).toContain("止血散");
+    expect(game.view.economy.transactions.at(-1)).toMatchObject({ kind: "支出", counterparty: expect.stringContaining("商铺") });
+    expect(game.view.economy.transactions.at(-1)?.balance).toBe(game.view.character!.coins);
   });
 
   it("随身物品超载会阻止长途旅行，但住处仓储不计负重", () => {

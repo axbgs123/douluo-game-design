@@ -136,6 +136,21 @@ function syncInventoryAndEconomy(game: StoredGame): void {
   game.view.economy.cash = character.coins;
 }
 
+function recordEconomyTransaction(game: StoredGame, kind: StoredGame["view"]["economy"]["transactions"][number]["kind"], amount: number, counterparty: string, note: string): void {
+  const character = game.view.character;
+  if (!character || amount <= 0) return;
+  game.view.economy.transactions.push({
+    id: randomUUID(),
+    date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`,
+    kind,
+    amount,
+    balance: character.coins,
+    counterparty,
+    note,
+  });
+  game.view.economy.transactions = game.view.economy.transactions.slice(-80);
+}
+
 function tryResurrection(game: StoredGame): boolean {
   const character = game.view.character;
   if (!character) return false;
@@ -1182,17 +1197,43 @@ function npcConflictResolution(game: StoredGame, action: string): ActionResoluti
   return { intent: "袭击重要人物", minutes: 20, ruleSummary: `袭击${definition.name}失败，受到 ${harm} 点内部伤害，对方已经记住这次敌意。`, fallbackNarrative: `我才动，他就已经转过身。下一瞬胸口像被重锤砸中，脚底擦着地面退了很远。想好的后手只来得及用一半，他看我的眼神已经彻底变了。`, suggestions: ["设法脱身", "处理伤势", "准备面对追查"] };
 }
 
-function workResolution(game: StoredGame): ActionResolution {
+function workResolution(game: StoredGame, action: string): ActionResolution {
+  const character = game.view.character!;
+  const dangerous = /夜班|矿井|下矿|危险|重体力|猎杀|战斗护卫|押运|通宵/.test(action);
+  if (character.age < 16 && dangerous) return impossible(`${character.age}岁的角色不能被合法安排危险、夜间或重体力雇工。`, ["寻找白天跑腿短工", "帮店铺整理货物", "向监护人询问合适工作"]);
   const random = actionRandom(game);
   const eraWageMultiplier = [0, 1, 5, 12, 25][game.view.era ?? 1];
-  const earned = Math.max(1, Math.round(integer(random, 3, 8) * eraWageMultiplier * DIFFICULTY_RULES[game.view.difficulty].money));
-  game.view.character!.coins += earned;
-  game.world.fatiguePoints += 15;
+  const job = /锻造|铁匠/.test(action) ? { name: "铁匠铺帮工", profession: "锻造与炼器", wage: 1.3, fatigue: 18, scene: "整理矿料、拉动风箱并清扫炉渣" }
+    : /药铺|药材/.test(action) ? { name: "药铺帮工", profession: "炼药", wage: 1.1, fatigue: 11, scene: "辨认标签、晾晒药材并清点药包" }
+      : /抄写|文书|账房/.test(action) ? { name: "抄写短工", profession: "魂师学术", wage: 1.2, fatigue: 8, scene: "誊清单据并逐行复核数目" }
+        : /搬运|码头/.test(action) ? { name: "搬运短工", profession: "综合研究", wage: 1.15, fatigue: 20, scene: "按货签搬运并核对交接数目" }
+          : /采集|采药/.test(action) ? { name: "采集短工", profession: "炼药", wage: 1, fatigue: 14, scene: "按图样采集并剔除不合格材料" }
+            : { name: character.age < 10 ? "店铺跑腿短工" : "店铺杂务短工", profession: "商业", wage: .9, fatigue: 10, scene: character.age < 10 ? "送递近处包裹、整理空盒并当面交接" : "理货、跑腿并清扫柜台" };
+  const profession = game.view.professions.find((item) => item.name === job.profession);
+  const skillMultiplier = 1 + Math.min(.35, (profession?.progress ?? 0) / 300);
+  const locationText = `${game.view.location ?? ""}${locationById(game.view.locationId ?? "")?.region ?? ""}`;
+  const locationMultiplier = /城|史莱克|明都|天斗|星罗|联邦|母星/.test(locationText) ? 1.2 : /村|镇|聚居地/.test(locationText) ? .85 : 1;
+  const childMultiplier = character.age < 10 ? .45 : character.age < 16 ? .72 : 1;
+  const baseWage = integer(random, 4, 7);
+  const earned = Math.max(1, Math.round(baseWage * eraWageMultiplier * job.wage * locationMultiplier * childMultiplier * skillMultiplier * DIFFICULTY_RULES[game.view.difficulty].money));
+  character.coins += earned;
+  game.world.fatiguePoints += Math.round(job.fatigue * (character.age < 10 ? .65 : 1));
+  const employerId = `employer-${game.view.locationId ?? "local"}`;
+  let employer = game.view.relations.find((item) => item.id === employerId);
+  if (!employer) {
+    employer = { id: employerId, name: `${game.view.location ?? "当地"}雇工管事`, relation: "按工结算的雇佣关系", impression: "只确认做过的工，仍在观察是否可靠。", faction: game.view.location ?? "当地", strength: 8, category: "其他", dimensions: relationDimensions(8), history: [] };
+    game.view.relations.push(employer);
+    game.world.metrics.relationshipsBuilt += 1;
+  }
+  recordPlayerRelation(game, employer, `完成一轮${job.name}并当面验收`, { trust: 1, respect: 2, sharedInterest: 2 });
+  if (profession) profession.progress = Math.min(100, profession.progress + 1);
+  game.view.economy.salary = earned;
+  recordEconomyTransaction(game, "收入", earned, employer.name, `${job.name}工钱`);
   return {
     intent: "工作",
-    minutes: speedMinutes(game, 360, 1440),
-    ruleSummary: `完成临时工作，获得 ${formatSoulCoins(earned)}，疲劳增加。`,
-    fallbackNarrative: `活不难，就是一遍遍搬东西。收工时掌心磨红了一块，管事把${formatSoulCoins(earned)}倒进我手里，当面数清。`,
+    minutes: speedMinutes(game, character.age < 10 ? 120 : 360, character.age < 10 ? 360 : 1440),
+    ruleSummary: `完成${job.name}，按年龄、地点与熟练度结算${formatSoulCoins(earned)}，雇主留下验收记录。`,
+    fallbackNarrative: `这轮活是${job.scene}。管事验过结果，才把${formatSoulCoins(earned)}倒进我手里；数目、工时和差错都记进了当天的工账。`,
     suggestions: ["购买补给", "回去休息", "继续工作"],
   };
 }
@@ -1213,6 +1254,7 @@ function buyResolution(game: StoredGame, action: string): ActionResolution {
   if (character.coins < cost) return impossible(`购买${item}需要${formatSoulCoins(cost)}，当前只有${formatSoulCoins(character.coins)}。`, ["找临时工作", "换便宜的东西", "离开商店"]);
   character.coins -= cost;
   game.view.inventory.push(item);
+  recordEconomyTransaction(game, "支出", cost, `${game.view.location ?? "当地"}商铺`, `购买${item}`);
   return {
     intent: "购买",
     minutes: 20,
@@ -1232,6 +1274,7 @@ function economyResolution(game: StoredGame, action: string): ActionResolution {
     if (!proof) return impossible("行动记录中没有足以证明悬赏目标已经完成的因果链。", ["完成悬赏要求", "收集证明", "向委托人核对条件"]);
     const reward = Number(task.detail.match(/报酬(\d+)金魂币/)?.[1] ?? 20);
     character.coins += reward; task.status = "完成";
+    recordEconomyTransaction(game, "收入", reward, "悬赏委托人", `交付${task.title}`);
     return { intent: "交付悬赏", minutes: 60, ruleSummary: `凭行动记录和证据交付${task.title}，获得${formatSoulCoins(reward)}。`, fallbackNarrative: `委托人没有只听主角描述。他把证物、日期和两名见证人的口供都核过，才解开钱袋的绳结。`, suggestions: ["核对报酬", "处理悬赏后果", "寻找下一项工作"] };
   }
   if (/接受.*悬赏|领取.*悬赏/.test(action)) {
@@ -1244,24 +1287,28 @@ function economyResolution(game: StoredGame, action: string): ActionResolution {
     const reward = Math.min(character.coins, Math.max(10, Number(action.match(/\d+/)?.[0] ?? 20)));
     if (reward < 10) return impossible("发布公开悬赏至少要先交付十枚金魂币或等价担保。", ["筹集赏金", "缩小委托范围", "改为私下请托"]);
     character.coins -= reward;
+    recordEconomyTransaction(game, "支出", reward, `${game.view.location ?? "当地"}委托机构`, "预付公开悬赏赏金");
     return { intent: "发布悬赏", minutes: 60, ruleSummary: `向当地委托机构预付${formatSoulCoins(reward)}，发布具名悬赏；接取者与传播范围将受当地关系影响。`, fallbackNarrative: `赏金先封进柜上的木匣，告示才盖章。管事把不肯承担的风险逐条划掉，剩下的内容没有最初设想得那么万能。`, suggestions: ["观察接取者", "补充可靠情报", "准备验收条件"] };
   }
   if (/存入|存钱/.test(action)) {
-    const amount = Math.max(1, Math.min(character.coins, Number(action.match(/\d+/)?.[0] ?? character.coins)));
+    const amount = Math.min(character.coins, Math.max(0, Number(action.match(/\d+/)?.[0] ?? character.coins)));
     if (amount <= 0) return impossible("身上没有可以存入的钱。", ["找工作", "查看账目", "离开钱庄"]);
     character.coins -= amount; economy.bankBalance += amount;
+    recordEconomyTransaction(game, "存款", amount, `${game.view.location ?? "当地"}钱庄`, "现金转入具名存款");
     return { intent: "钱庄存款", minutes: 30, ruleSummary: `在当地钱庄存入${formatSoulCoins(amount)}，取得具名凭据。`, fallbackNarrative: `柜上把魂币称了两遍，又让我在存据上按印。纸上的数和柜台收走的数对得上，我才把凭据折好。`, suggestions: ["收好存据", "打听借贷条件", "离开钱庄"] };
   }
   if (/取出|取钱/.test(action)) {
-    const amount = Math.max(1, Math.min(economy.bankBalance, Number(action.match(/\d+/)?.[0] ?? economy.bankBalance)));
+    const amount = Math.min(economy.bankBalance, Math.max(0, Number(action.match(/\d+/)?.[0] ?? economy.bankBalance)));
     if (amount <= 0) return impossible("钱庄账户里没有可取余额。", ["查看账目", "找工作", "离开钱庄"]);
     economy.bankBalance -= amount; character.coins += amount;
+    recordEconomyTransaction(game, "取款", amount, `${game.view.location ?? "当地"}钱庄`, "具名存款转回现金");
     return { intent: "钱庄取款", minutes: 30, ruleSummary: `凭具名存据取出${formatSoulCoins(amount)}。`, fallbackNarrative: `掌柜把存据对着灯看过，才从柜后取钱。魂币落在盘里叮当作响，我数清后收进贴身袋。`, suggestions: ["购买物资", "收好余款", "离开钱庄"] };
   }
   if (/借贷|借钱|贷款/.test(action)) {
     const trust = game.view.relations.reduce((sum, item) => sum + Math.max(0, item.dimensions?.trust ?? item.strength ?? 0), 0);
     const amount = Math.min(120, 15 + Math.floor(trust / 20) + game.view.affiliations.length * 20);
     economy.debt += amount + Math.ceil(amount * .2); character.coins += amount;
+    recordEconomyTransaction(game, "借贷", amount, `${game.view.location ?? "当地"}钱庄`, `新增应还债务${formatSoulCoins(amount + Math.ceil(amount * .2))}`);
     ensureTask(game, { id: `debt-${game.actionIndex}`, title: `偿还${formatSoulCoins(economy.debt)}债务`, kind: "承诺", detail: "逾期会影响担保人、钱庄声望与后续借贷。", status: "进行中" });
     return { intent: "借贷", minutes: 60, ruleSummary: `凭身份与担保借到${formatSoulCoins(amount)}，应还${formatSoulCoins(amount + Math.ceil(amount * .2))}。`, fallbackNarrative: `契据念得很慢，利息那一行又念了一遍。钱拿到手时，我的名字和担保关系也一起留在了账本里。`, suggestions: ["记录还款期限", "只购买必要物资", "寻找稳定收入"] };
   }
@@ -1269,6 +1316,7 @@ function economyResolution(game: StoredGame, action: string): ActionResolution {
     const amount = Math.min(character.coins, economy.debt);
     if (!amount) return impossible("当前没有可偿还的钱或未结债务。", ["查看账目", "找工作", "安排收入"]);
     character.coins -= amount; economy.debt -= amount;
+    recordEconomyTransaction(game, "还款", amount, `${game.view.location ?? "当地"}钱庄`, `偿还后剩余债务${formatSoulCoins(economy.debt)}`);
     if (!economy.debt) { const task = game.view.tasks.find((item) => item.id?.startsWith("debt-") && item.status === "进行中"); if (task) task.status = "完成"; }
     return { intent: "偿还债务", minutes: 30, ruleSummary: `偿还${formatSoulCoins(amount)}，剩余债务${formatSoulCoins(economy.debt)}。`, fallbackNarrative: `魂币一枚枚推过去，账房在每一栏旁盖了小印。债没有因为还了一部分就消失，至少数字确实少了。`, suggestions: economy.debt ? ["继续安排收入", "核对到期日", "暂缓非必要花费"] : ["取回结清凭证", "恢复正常采购", "离开钱庄"] };
   }
@@ -1282,6 +1330,7 @@ function economyResolution(game: StoredGame, action: string): ActionResolution {
     const investment = Math.min(character.coins, 50);
     if (investment < 20) return impossible("开业所需押金、货物和地方关系还不够。", ["积攒魂币", "寻找合伙人", "先摆摊试卖"]);
     character.coins -= investment; economy.business = economy.business ?? `${game.view.location ?? "当地"}的小型商铺`;
+    recordEconomyTransaction(game, "投资", investment, economy.business, "一轮进货、摊位与经营损耗");
     return { intent: "商业经营", minutes: speedMinutes(game, 720, 4320), ruleSummary: `向${economy.business}投入${formatSoulCoins(investment)}，完成一轮进货、销售与损耗结算。`, fallbackNarrative: `账面上的进项看着不少，扣掉摊位、损耗和请人搬货的钱，真正留下的没有那么漂亮。我把卖不动的货单独圈了出来。`, suggestions: ["调整货物", "调查当地需求", "核对账目"] };
   }
   return impossible("这项经济行动缺少明确对象或数额。", ["说明存取或借贷数额", "查看魂币", "寻找当地钱庄"]);
@@ -1858,7 +1907,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/休息|睡觉|疗伤|恢复/.test(action)) resolution = restResolution(game);
   else if (/使用|服用|吃下|吃掉/.test(action)) resolution = useItemResolution(game, action);
   else if (/购买|买|采购/.test(action)) resolution = buyResolution(game, action);
-  else if (/打工|工作|赚钱|干活/.test(action)) resolution = workResolution(game);
+  else if (/打工|工作|赚钱|干活/.test(action)) resolution = workResolution(game, action);
   else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);

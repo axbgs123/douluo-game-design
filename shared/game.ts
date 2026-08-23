@@ -278,6 +278,17 @@ export interface EconomyView {
   business?: string;
   bounty: number;
   blackMarketAccess: boolean;
+  transactions: EconomyTransactionView[];
+}
+
+export interface EconomyTransactionView {
+  id: string;
+  date: string;
+  kind: "收入" | "支出" | "存款" | "取款" | "借贷" | "还款" | "投资";
+  amount: number;
+  balance: number;
+  counterparty: string;
+  note: string;
 }
 
 export interface InventoryLoadView {

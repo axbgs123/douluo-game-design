@@ -1456,7 +1456,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       inventoryLoad: { used: 0, capacity: 18, state: "轻便", storage: [] },
       professions: [],
       managedFactions: [],
-      economy: { cash: 0, bankBalance: 0, debt: 0, salary: 0, bounty: 0, blackMarketAccess: false },
+      economy: { cash: 0, bankBalance: 0, debt: 0, salary: 0, bounty: 0, blackMarketAccess: false, transactions: [] },
       map: [],
       mapHierarchy: { continentName: "斗罗大陆", settlementName: "尚未选定", buildingName: "尚未选定", nodes: [] },
       mapPins: [],
