@@ -365,6 +365,18 @@ describe("multi-era foundations", () => {
     resolveAction(game, "招募周星图担任导航员成为船员");
     resolveAction(game, "招募顾轮机担任轮机师成为船员");
     expect(game.view.starship?.crew).toHaveLength(3);
+    const simulatorSessions = game.view.starship!.simulatorSessions;
+    const readinessBefore = game.view.starship!.crew.map((member) => member.readiness);
+    expect(resolveAction(game, "进行船员舰桥协同与损管演练").intent).toBe("星舰船员协同演练");
+    expect(game.view.starship?.simulatorSessions).toBe(simulatorSessions);
+    expect(game.view.starship?.crewDrills).toBe(1);
+    expect(game.view.starship?.crewCoordination).toBeGreaterThan(0);
+    expect(game.view.starship?.crewEvidence?.[0]).toMatchObject({ roles: ["驾驶员", "导航员", "轮机师"] });
+    expect(game.view.starship!.crew.every((member, index) => member.readiness > readinessBefore[index])).toBe(true);
+    game.view.relations.push({ id: "unqualified-crew", name: "路人甲", relation: "普通熟人", impression: "没有舰上专业履历", strength: 80 });
+    expect(resolveAction(game, "招募路人甲担任战术员成为船员").intent).toBe("无法完成");
+    game.view.relations.push({ id: "tactical-crew", name: "陈策", relation: "舰队战术军官", impression: "有作战与侦察履历", strength: 60 });
+    expect(resolveAction(game, "招募陈策担任战术员成为船员").intent).toBe("招募星舰船员");
     expect(resolveAction(game, "前往森罗星").intent).toBe("无法完成");
     expect(resolveAction(game, "申请配发学院项目舰").intent).toBe("取得星舰");
     expect(game.view.starship?.shipName).toBeTruthy();

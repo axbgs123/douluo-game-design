@@ -2152,8 +2152,11 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
   if ((game.view.era ?? 1) < 4) return impossible("当前时代尚未形成可供个人训练与远航的星舰体系。", ["核对技术年代", "训练机甲与魂导器", "研究早期航天资料"]);
   const character = game.view.character!;
   if (/模拟|训练|课程|推演/.test(action) && character.age < 7) return impossible("七岁前只能接触星舰常识和安全启蒙，不能把儿童娱乐模拟算作战舰驾驶训练记录。", ["学习星舰基础常识", "参观民用飞船", "等待进入基础驾驶课程"]);
-  const starship = game.view.starship ??= { license: "无", simulatorProgress: 0, simulatorSessions: 0, crew: [], missionsCompleted: 0 };
+  const starship = game.view.starship ??= { license: "无", simulatorProgress: 0, simulatorSessions: 0, crew: [], missionsCompleted: 0, crewDrills: 0, crewCoordination: 0, crewEvidence: [] };
   starship.loggedFlightHours ??= 0;
+  starship.crewDrills ??= 0;
+  starship.crewCoordination ??= 0;
+  starship.crewEvidence ??= [];
   const licenses = ["无", "见习指挥", "三级指挥", "二级指挥", "一级指挥"] as const;
 
   if (/带教航次|实习航次|随舰训练|真实飞行/.test(action)) {
@@ -2164,6 +2167,21 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
     starship.loggedFlightHours += hours;
     if (institution.militaryRank) institution.flightHours = (institution.flightHours ?? 0) + hours;
     return { intent: "随舰训练航次", minutes: hours * 60, ruleSummary: `完成 ${hours} 小时真实随舰轮值；累计真实飞行 ${starship.loggedFlightHours} 小时。模拟时长未计入。`, fallbackNarrative: `离开模拟舱以后，每一次换班都有人签字。航向偏差、轮机警报和交接遗漏写进值勤表，靠港后才汇总成真正的飞行时长。`, suggestions: ["复盘随舰记录", "申请下一次航次", "领取舰队事务"] };
+  }
+
+  if (/船员协同|舰桥协同|损管演练|岗位轮值|全舰演练/.test(action)) {
+    const requiredRoles = ["驾驶员", "导航员", "轮机师"];
+    const missing = requiredRoles.filter((role) => !starship.crew.some((member) => member.role === role));
+    if (missing.length) return impossible(`舰桥协同演练至少需要驾驶、导航和轮机岗位，当前缺少：${missing.join("、")}。`, missing.map((role) => `招募${role}`));
+    const drill = /损管/.test(action) ? "舰体破损、动力隔离与撤离损管演练" : /轮值/.test(action) ? "跨班次岗位轮值与交接演练" : "舰桥航向、动力与警报协同演练";
+    const gain = integer(actionRandom(game), 6, 11);
+    starship.crewDrills += 1;
+    starship.crewCoordination = Math.min(100, starship.crewCoordination + gain);
+    for (const member of starship.crew) member.readiness = Math.min(100, member.readiness + Math.max(2, Math.floor(gain / 2)));
+    starship.crewEvidence.push({ date: relationshipDate(game), drill, roles: starship.crew.map((member) => member.role), result: `协同增加${gain}，逐项记录误差、交接与否决危险命令的责任` });
+    starship.crewEvidence = starship.crewEvidence.slice(-20);
+    game.world.fatiguePoints += 10;
+    return { intent: "星舰船员协同演练", minutes: speedMinutes(game, 180, 720), ruleSummary: `完成第${starship.crewDrills}次${drill}；舰桥协同提升至${starship.crewCoordination}%，各岗位准备度同步更新。`, fallbackNarrative: "这次没有把所有报警都交给舰长。驾驶守住姿态，导航重新算返航窗，轮机隔离故障回路；每次口令延迟和交接遗漏都被记下来，演练结束后逐条追责复盘。", suggestions: ["进行损管演练", "安排岗位轮值", "复核船员协同记录"], systemMessages: [`舰桥协同 · ${starship.crewCoordination}%`] };
   }
 
   if (/模拟|训练|课程|推演/.test(action) && !/购买|招募/.test(action)) {
@@ -2199,9 +2217,11 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
       ? /驾驶|飞行员|舰员|星际/.test(`${item.name}${item.relation}${item.impression}`)
       : role === "导航员"
         ? /导航|星图|航线/.test(`${item.name}${item.relation}${item.impression}`)
-        : role === "轮机师"
+      : role === "轮机师"
           ? /轮机|工程|维修|动力/.test(`${item.name}${item.relation}${item.impression}`)
-          : true;
+          : role === "战术员"
+            ? /战术|作战|侦察|控制|军官/.test(`${item.name}${item.relation}${item.impression}`)
+            : /医疗|医师|治疗|药师|救护/.test(`${item.name}${item.relation}${item.impression}`);
     const relation = game.view.relations.find((item) => action.includes(item.name) && professionallyFit(item) && (item.dimensions?.trust ?? item.strength ?? 0) >= 30)
       ?? game.view.relations.find((item) => professionallyFit(item) && !starship.crew.some((member) => member.relationId === item.id) && (item.dimensions?.trust ?? item.strength ?? 0) >= 45);
     if (!relation?.id) return impossible("没有找到愿意承担远航风险、且信任达到要求的人选。", ["先建立可信关系", "明确岗位与报酬", "寻找有航行经验的人"]);
@@ -2248,7 +2268,7 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
     starship.fuel = (starship.fuel ?? 0) - fuelCost;
     starship.supplies = (starship.supplies ?? 0) - supplyCost;
     const random = actionRandom(game);
-    const hazard = random() < Math.max(.04, .18 - starship.crew.reduce((sum, member) => sum + member.readiness, 0) / 2000);
+    const hazard = random() < Math.max(.03, .22 - starship.crew.reduce((sum, member) => sum + member.readiness, 0) / 2000 - (starship.crewCoordination ?? 0) / 1000);
     if (hazard) starship.hull = Math.max(1, (starship.hull ?? 100) - integer(random, 6, 18));
     game.view.locationId = destination.id;
     game.view.location = destination.name;

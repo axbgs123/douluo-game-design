@@ -919,6 +919,11 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.economy ??= { cash: game.view.character?.coins ?? 0, bankBalance: 0, debt: 0, salary: 0, bounty: 0, blackMarketAccess: false, transactions: [], marketReports: [] };
   game.view.economy.transactions ??= [];
   game.view.economy.marketReports ??= [];
+  if (game.view.starship) {
+    game.view.starship.crewDrills ??= 0;
+    game.view.starship.crewCoordination ??= 0;
+    game.view.starship.crewEvidence ??= [];
+  }
   if (game.view.starship?.shipClass) {
     const legacyShipClass = game.view.starship.shipClass as string;
     if (legacyShipClass === "穿梭艇") game.view.starship.shipClass = "民用穿梭艇";

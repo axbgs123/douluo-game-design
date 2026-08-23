@@ -164,6 +164,9 @@ export interface StarshipProgressView {
   fuel?: number;
   supplies?: number;
   missionsCompleted: number;
+  crewDrills?: number;
+  crewCoordination?: number;
+  crewEvidence?: Array<{ date: string; drill: string; roles: string[]; result: string }>;
 }
 
 export interface MartialSoulView {
