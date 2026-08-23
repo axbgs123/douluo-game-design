@@ -4,7 +4,7 @@ import { awakenCharacter, createGame, ERA_BASE_YEARS, finalizeCharacterShaping, 
 import { settleRun } from "./endings.js";
 import { guardActionByStoryRules, selectNarrativeRules, violatesCanonChronology } from "./story-rules.js";
 import { resolveAction } from "./actions.js";
-import { createHiddenWorld } from "./world.js";
+import { buildMapView, createHiddenWorld } from "./world.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 
 function playingGame(era: GameEra, seed: string) {
@@ -62,6 +62,26 @@ describe("multi-era foundations", () => {
     expect(era4.npcs["tang-wulin"].alive).toBe(false);
     expect(era4.npcs["lan-xuanyu"].alive).toBe(true);
     expect(era4.npcs["di-tian"].alive).toBe(true);
+    expect(era4.npcs["lan-xuanyu"].locationId).toBe("tianluo-planet");
+    expect(era4.npcs["lan-xiao"].locationId).toBe("tianluo-planet");
+    expect(era4.npcs["na-na-teacher"].locationId).toBe("tiandou-planet");
+  });
+
+  it("exposes the two early fourth-era administrative planets and requires valid interplanetary transport", () => {
+    const game = playingGame(4, "d4-administrative-planets");
+    game.view.locationId = "tianluo-planet";
+    game.view.location = "天罗星";
+    game.world.discoveredLocations.push("tianluo-planet");
+    game.view.map = buildMapView(game);
+    game.view.character!.coins = 1_000;
+
+    expect(game.view.map.some((location) => location.id === "tianluo-planet")).toBe(true);
+    expect(game.view.map.some((location) => location.id === "tiandou-planet")).toBe(true);
+    expect(resolveAction(game, "直接前往天斗星").intent).toBe("无法完成");
+    const beforeCoins = game.view.character!.coins;
+    expect(resolveAction(game, "购买船票并搭乘客运航班前往天斗星").intent).toBe("星际客运");
+    expect(game.view.locationId).toBe("tiandou-planet");
+    expect(game.view.character!.coins).toBeLessThan(beforeCoins);
   });
 
   it("does not expose first-era factions as active organizations in later eras", () => {

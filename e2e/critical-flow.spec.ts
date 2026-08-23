@@ -64,6 +64,8 @@ test("玩家可以从界面进入斗四且出生地图不会显示斗一地标",
   await expect(page.getByText("武魂城", { exact: true })).toHaveCount(0);
   await expect(page.getByText("诺丁城", { exact: true })).toHaveCount(0);
   await expect(page.getByText("斗罗联邦", { exact: true })).toBeVisible();
+  await expect(page.getByText("天罗星", { exact: true })).toBeVisible();
+  await expect(page.getByText("天斗星", { exact: true })).toBeVisible();
   await expect(page.getByText("天斗帝国", { exact: true })).toHaveCount(0);
 });
 

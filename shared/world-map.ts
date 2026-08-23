@@ -25,6 +25,8 @@ export const WORLD_MAP_POINTS: WorldMapPoint[] = [
   { id: "d3-star-luo-capital", name: "海外星罗城", x: 91, y: 75, kind: "城市" },
   { id: "d3-dou-spirit-capital", name: "海外斗灵城", x: 87, y: 22, kind: "城市" },
   { id: "mother-ship-port", name: "联邦母舰港", x: 50, y: 88, kind: "城市" },
+  { id: "tianluo-planet", name: "天罗星", x: 63, y: 18, kind: "城市" },
+  { id: "tiandou-planet", name: "天斗星", x: 74, y: 29, kind: "城市" },
   { id: "senluo-planet", name: "森罗星", x: 72, y: 13, kind: "森林" },
   { id: "elf-planet", name: "精灵星", x: 82, y: 22, kind: "森林" },
   { id: "dragon-horse-star", name: "天龙星", x: 91, y: 38, kind: "城市" },
@@ -68,7 +70,7 @@ export const WORLD_MAP_POINTS: WorldMapPoint[] = [
 const LATER_ERA_MAP_IDS: Record<2 | 3 | 4, Set<string>> = {
   2: new Set(["radiant-city", "evil-forest", "jing-yang-mountains", "heavenly-soul-city", "dou-ling-city", "shrek-city", "star-luo-city", "extreme-north-edge", "extreme-north-core"]),
   3: new Set(["shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city", "blood-god-camp", "abyss-passage", "d3-star-luo-capital", "d3-dou-spirit-capital", "extreme-north-edge", "extreme-north-core"]),
-  4: new Set(["mother-ship-port", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star", "shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
+  4: new Set(["mother-ship-port", "tianluo-planet", "tiandou-planet", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star", "shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
 };
 
 const FUTURE_MAP_IDS = new Set([...LATER_ERA_MAP_IDS[2], ...LATER_ERA_MAP_IDS[3], ...LATER_ERA_MAP_IDS[4]]);

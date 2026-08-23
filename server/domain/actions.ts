@@ -317,6 +317,7 @@ function findTravelTarget(game: StoredGame, action: string) {
 
 function travelResolution(game: StoredGame, action: string): ActionResolution {
   syncInventoryAndEconomy(game);
+  const character = game.view.character!;
   if (game.view.inventoryLoad.state === "超载") return impossible(`随身物品${game.view.inventoryLoad.used}/${game.view.inventoryLoad.capacity}负重，已经无法正常赶路。`, ["把物品存入住处", "租用马车", "丢弃或出售普通物品"]);
   const target = findTravelTarget(game, action);
   if (!target) {
@@ -324,8 +325,21 @@ function travelResolution(game: StoredGame, action: string): ActionResolution {
     return impossible(reachable ? `没有确认目的地。当前可直接前往 ${reachable}。` : "没有找到可直接到达的地点。", ["查看地图", "打听路线", "留在原地"]);
   }
   if (target.travelMinutes < 0) return impossible(`${target.name} 不能从当前位置直接到达。`, ["查看地图", "先去中转地点", "打听路线"]);
-  const offWorldIds = new Set(["senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star"]);
+  const offWorldIds = new Set(["tianluo-planet", "tiandou-planet", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star"]);
   if (offWorldIds.has(target.id) || offWorldIds.has(game.view.locationId ?? "")) {
+    const passengerRoute = (game.view.era ?? 1) === 4 && /船票|客运|航班|民航|搭乘/.test(action) && !["dragon-horse-star", "sky-horse-star"].includes(target.id);
+    if (passengerRoute) {
+      const fare = Math.max(80, Math.ceil(target.travelMinutes / 72));
+      if (character.coins < fare) return impossible(`联邦客运船票与保险需要${formatSoulCoins(fare)}。`, ["打工筹措船票", "申请学院交通补助", "继续留在当前星球"]);
+      character.coins -= fare;
+      const origin = game.view.location ?? "当前星球";
+      game.view.locationId = target.id;
+      game.view.location = target.name;
+      if (!game.world.discoveredLocations.includes(target.id)) game.world.discoveredLocations.push(target.id);
+      game.view.map = buildMapView(game);
+      game.view.mapHierarchy = buildMapHierarchy(game);
+      return { intent: "星际客运", minutes: target.travelMinutes, ruleSummary: `支付${formatSoulCoins(fare)}并通过安检，搭乘联邦客运航班从${origin}抵达${target.name}。`, fallbackNarrative: `船票、身份和行李连续核验了三遍。我没有碰驾驶舱，只按客运广播进入固定舱位。跨过漫长航程后，舷窗外的${target.name}才从光点变成完整的世界。`, suggestions: ["确认返程航班", "观察当地环境", "寻找合法住处"] };
+    }
     return impossible("跨星球移动必须通过星舰航线结算船员、燃料、物资与舰体风险。", [`驾驶星舰前往${target.name}`, "检查星舰状态", "申请舰队航次"]);
   }
   const random = actionRandom(game);
@@ -1553,7 +1567,7 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
   }
   if (/前往|航行|跃迁|出发/.test(action)) {
     if (!starship.shipName) return impossible("没有完成登记、补给与船员配置的星舰。", ["取得小型探索舰", "组建基础船员组", "申请舰队航次"]);
-    const destination = ["mother-ship-port", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star"].map((id) => locationById(id)!).find((location) => action.includes(location.name));
+    const destination = ["mother-ship-port", "tianluo-planet", "tiandou-planet", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star"].map((id) => locationById(id)!).find((location) => action.includes(location.name));
     if (!destination) return impossible("没有识别出航线终点。", ["前往森罗星", "前往精灵星", "返回联邦母舰港"]);
     const fuelCost = /天龙星|天马星/.test(destination.name) ? 45 : 18;
     const supplyCost = Math.max(8, starship.crew.length * 3);
@@ -1724,6 +1738,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/斗铠/.test(action) && !/购买|买|采购/.test(action) && !(game.view.combat && /攻击|防御|格挡|闪避|逃跑|弱点/.test(action))) resolution = battleArmorResolution(game, action);
   else if (/机甲/.test(action) && (!game.view.combat || !/攻击|防御|格挡|闪避|逃跑|弱点/.test(action) || !game.view.mecha?.model)) resolution = mechaResolution(game, action);
   else if (/星舰|舰桥|船员|舰员|星际航行|探索舰|项目舰|星球探索|星球调查|指挥考核|指挥资格/.test(action)) resolution = starshipResolution(game, action);
+  else if (/前往|去往|出发去|旅行到/.test(action) && /船票|客运|航班|民航|搭乘/.test(action)) resolution = travelResolution(game, action);
   else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
   else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
   else if (/建立|创建|招募|任命|扩建|领地|外交|情报网|经营势力|管理宗门/.test(action) && /宗门|势力|组织|成员|领地|外交|情报/.test(action)) resolution = factionManagementResolution(game, action);
