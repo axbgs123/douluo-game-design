@@ -49,6 +49,7 @@ export interface LocationDefinition {
 export interface CanonEventDefinition {
   id: string;
   year: number;
+  day?: number;
   title: string;
   locationId?: string;
   participantIds: string[];
@@ -197,21 +198,21 @@ export const CANON_CHARACTERS: CanonCharacterDefinition[] = [
 ];
 
 export const CANON_EVENTS: CanonEventDefinition[] = [
-  { id: "tang-awakening", year: 0, title: "唐三与小舞进入诺丁学院", locationId: "notting-academy", participantIds: ["tang-san", "xiao-wu", "yu-xiaogang"], inertia: 5, publicSummary: "诺丁学院迎来两名先天满魂力的新生。" },
-  { id: "shrek-enrollment", year: 6, title: "史莱克七怪聚首", locationId: "shrek-village", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 5, publicSummary: "数名年轻魂师进入史莱克学院。" },
-  { id: "shrek-relocation", year: 7, title: "史莱克学院迁入天斗城", locationId: "heaven-dou-city", participantIds: ["flender", "yu-xiaogang", "zhao-wuji", "tang-san"], inertia: 4, publicSummary: "一所来自索托城的小学院在天斗城重新落脚。" },
-  { id: "academy-tournament", year: 8, title: "全大陆高级魂师学院精英大赛", locationId: "spirit-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun", "bibi-dong", "huliena"], inertia: 5, publicSummary: "两大帝国与武魂殿共同关注的学院赛事举行。" },
-  { id: "pope-palace-conflict", year: 9, title: "教皇殿前的冲突", locationId: "spirit-city", participantIds: ["tang-san", "xiao-wu", "tang-hao", "bibi-dong", "gui-mei", "yue-guan"], inertia: 5, publicSummary: "大赛结束后的冲突使多方关系骤然紧张，公开消息受到严格控制。" },
+  { id: "tang-awakening", year: 0, day: 20, title: "唐三与小舞进入诺丁学院", locationId: "notting-academy", participantIds: ["tang-san", "xiao-wu", "yu-xiaogang"], inertia: 5, publicSummary: "诺丁学院迎来两名先天满魂力的新生。" },
+  { id: "shrek-enrollment", year: 6, day: 20, title: "史莱克七怪聚首", locationId: "shrek-village", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 5, publicSummary: "数名年轻魂师进入史莱克学院。" },
+  { id: "shrek-relocation", year: 7, day: 45, title: "史莱克学院迁入天斗城", locationId: "heaven-dou-city", participantIds: ["flender", "yu-xiaogang", "zhao-wuji", "tang-san"], inertia: 4, publicSummary: "一所来自索托城的小学院在天斗城重新落脚。" },
+  { id: "academy-tournament", year: 8, day: 120, title: "全大陆高级魂师学院精英大赛", locationId: "spirit-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun", "bibi-dong", "huliena"], inertia: 5, publicSummary: "两大帝国与武魂殿共同关注的学院赛事举行。" },
+  { id: "pope-palace-conflict", year: 8, day: 300, title: "教皇殿前的冲突", locationId: "spirit-city", participantIds: ["tang-san", "xiao-wu", "tang-hao", "bibi-dong", "gui-mei", "yue-guan"], inertia: 5, publicSummary: "大赛结束后的冲突使多方关系骤然紧张，公开消息受到严格控制。" },
   { id: "five-year-reunion", year: 13, title: "史莱克五年之约", locationId: "heaven-dou-city", participantIds: ["tang-san", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 4, publicSummary: "昔日史莱克学员约定重聚。" },
   { id: "tang-sect-founded", year: 14, title: "唐门在天斗城立足", locationId: "heaven-dou-city", participantIds: ["tang-san", "tai-tan", "bai-he", "niu-gao", "yang-wudi", "ning-rongrong"], inertia: 4, publicSummary: "一个结合多个单属性家族的新兴魂师势力开始活动。" },
   { id: "seven-treasure-attack", year: 15, title: "七宝琉璃宗遇袭", locationId: "seven-treasure-fort", participantIds: ["ning-fengzhi", "chen-xin", "bibi-dong"], inertia: 5, publicSummary: "上三宗遭到突然袭击，大陆魂师势力开始重新站队。" },
   { id: "heaven-dou-coup", year: 17, title: "天斗皇室局势突变", locationId: "heaven-dou-city", participantIds: ["qian-renxue", "xue-ye", "xue-xing", "tang-san", "dugu-bo"], inertia: 5, publicSummary: "围绕皇位与太子身份的争夺公开化，天斗城进入戒严。" },
   { id: "continental-war", year: 18, title: "大陆战争进入决战", locationId: "spirit-city", participantIds: ["tang-san", "bibi-dong", "qian-renxue"], inertia: 5, publicSummary: "帝国与武魂帝国的冲突改写大陆秩序。" },
-  { id: "suotuo-spirit-arena", year: 6, title: "史莱克学员进入索托大斗魂场", locationId: "suotuo-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 3, publicSummary: "一支年轻魂师队伍在索托大斗魂场连续参赛。" },
-  { id: "imperial-team-battle", year: 6, title: "史莱克战队与皇斗战队交锋", locationId: "suotuo-city", participantIds: ["tang-san", "qin-ming", "yu-tianheng", "dugu-yan", "ye-lingling"], inertia: 4, publicSummary: "两支天才战队的交锋改变了多名教师和学员的去向。" },
-  { id: "ice-fire-herbs", year: 7, title: "冰火两仪眼仙草被取用", locationId: "ice-fire-spring", participantIds: ["tang-san", "dugu-bo"], inertia: 5, publicSummary: "落日森林深处的一批珍稀药草改变了数名年轻魂师的根基。" },
-  { id: "golden-triangle-reunion", year: 7, title: "黄金铁三角重聚", locationId: "heaven-dou-city", participantIds: ["flender", "yu-xiaogang", "liu-erlong"], inertia: 3, publicSummary: "昔日黄金铁三角在蓝霸学院重聚。" },
-  { id: "five-elements-clash", year: 8, title: "史莱克迎战五元素学院", locationId: "heaven-dou-city", participantIds: ["tang-san", "feng-xiaotian", "huo-wu", "shui-binger"], inertia: 4, publicSummary: "预选赛中，多支元素学院与史莱克战队争夺出线位置。" },
+  { id: "suotuo-spirit-arena", year: 6, day: 60, title: "史莱克学员进入索托大斗魂场", locationId: "suotuo-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 3, publicSummary: "一支年轻魂师队伍在索托大斗魂场连续参赛。" },
+  { id: "imperial-team-battle", year: 6, day: 150, title: "史莱克战队与皇斗战队交锋", locationId: "suotuo-city", participantIds: ["tang-san", "qin-ming", "yu-tianheng", "dugu-yan", "ye-lingling"], inertia: 4, publicSummary: "两支天才战队的交锋改变了多名教师和学员的去向。" },
+  { id: "ice-fire-herbs", year: 7, day: 120, title: "冰火两仪眼仙草被取用", locationId: "ice-fire-spring", participantIds: ["tang-san", "dugu-bo"], inertia: 5, publicSummary: "落日森林深处的一批珍稀药草改变了数名年轻魂师的根基。" },
+  { id: "golden-triangle-reunion", year: 7, day: 60, title: "黄金铁三角重聚", locationId: "heaven-dou-city", participantIds: ["flender", "yu-xiaogang", "liu-erlong"], inertia: 3, publicSummary: "昔日黄金铁三角在蓝霸学院重聚。" },
+  { id: "five-elements-clash", year: 8, day: 180, title: "史莱克迎战五元素学院", locationId: "heaven-dou-city", participantIds: ["tang-san", "feng-xiaotian", "huo-wu", "shui-binger"], inertia: 4, publicSummary: "预选赛中，多支元素学院与史莱克战队争夺出线位置。" },
   { id: "slaughter-training", year: 11, title: "唐三与胡列娜进入杀戮之都", locationId: "slaughter-city", participantIds: ["tang-san", "huliena", "tang-chen"], inertia: 5, publicSummary: "两名年轻魂师先后进入与外界隔绝的杀戮之都。" },
   { id: "clear-sky-return", year: 13, title: "唐三返回昊天宗", locationId: "clear-sky-mountain", participantIds: ["tang-san", "tang-xiao", "tang-yuehua"], inertia: 4, publicSummary: "唐昊之子带着昊天令返回封山宗门。" },
   { id: "single-clans-gather", year: 14, title: "单属性四宗族聚会", locationId: "longxing-city", participantIds: ["tang-san", "tai-tan", "bai-he", "niu-gao", "yang-wudi", "bai-chenxiang"], inertia: 4, publicSummary: "脱离昊天宗的四个单属性宗族重新讨论联合与去向。" },

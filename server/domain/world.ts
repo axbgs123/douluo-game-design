@@ -560,10 +560,11 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
   return [...messages.filter((message) => !message.startsWith("新事件 ·")), ...currentEventMessages];
 }
 
-function simulateCanonEvents(game: StoredGame, previousYear: number, currentYear: number): string[] {
+function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentOrdinal: number): string[] {
   const messages: string[] = [];
   for (const event of CANON_EVENTS) {
-    if (event.year < previousYear || event.year > currentYear || game.world.firedCanonEvents.includes(event.id)) continue;
+    const eventOrdinal = ordinal(event.year, event.day ?? 1);
+    if (eventOrdinal < previousOrdinal || eventOrdinal > currentOrdinal || game.world.firedCanonEvents.includes(event.id) || game.world.suppressedCanonEvents.includes(event.id)) continue;
     const participantFactions = new Set(event.participantIds.flatMap((id) => characterById(id)?.factionIds ?? []));
     const linkedCauses = game.world.canonCausalFootprints.filter((cause) => cause.atYear <= event.year && (
       cause.affectedNpcIds.some((id) => event.participantIds.includes(id))
@@ -632,7 +633,6 @@ function simulateNpcYears(game: StoredGame, year: number): void {
 export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
   const time = game.view.worldTime;
   if (!time) return [];
-  const previousYear = time.year;
   const previousOrdinal = ordinal(time.year, time.day);
   const [hours, minute] = time.time.split(":").map(Number);
   const total = hours * 60 + minute + minutes;
@@ -649,7 +649,7 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
   time.era = eraAtYear(time.year);
   simulateNpcYears(game, time.year);
   const currentOrdinal = ordinal(time.year, time.day);
-  const messages = [...simulateNpcAutonomy(game, previousOrdinal, currentOrdinal), ...simulateCanonEvents(game, previousYear, time.year)];
+  const messages = [...simulateNpcAutonomy(game, previousOrdinal, currentOrdinal), ...simulateCanonEvents(game, previousOrdinal, currentOrdinal)];
   game.view.map = buildMapView(game);
   game.view.knownFigures = buildKnownFigures(game);
   game.view.npcRelations = buildNpcRelationViews(game);

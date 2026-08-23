@@ -93,7 +93,7 @@ describe("完整游玩规则", () => {
     expect(game.world.discoveredLocations).toContain(target!.id);
   });
 
-  it("跨年会推进年龄并触发原作时间节点", () => {
+  it("跨年会推进年龄但不会提前触发年内原作节点", () => {
     const game = awakened("timeline");
     game.world = createHiddenWorld(-1, game.view.locationId!);
     game.view.worldTime = { era: "与唐三同年参加武魂觉醒", year: -1, day: 360, time: "23:00", season: "冬" };
@@ -101,7 +101,10 @@ describe("完整游玩规则", () => {
     const messages = advanceWorldTime(game, 120);
     expect(game.view.worldTime.year).toBe(0);
     expect(game.view.character!.age).toBe(age + 1);
-    expect(messages.some((message) => message.includes("唐三与小舞"))).toBe(true);
+    expect(messages.some((message) => message.includes("唐三与小舞"))).toBe(false);
+    expect(game.view.news.some((item) => item.id === "tang-awakening")).toBe(false);
+    const laterMessages = advanceWorldTime(game, 20 * 1440);
+    expect(laterMessages.some((message) => message.includes("唐三与小舞"))).toBe(true);
     expect(game.view.news.some((item) => item.id === "tang-awakening")).toBe(true);
   });
 
@@ -209,9 +212,24 @@ describe("完整游玩规则", () => {
     game.world = createHiddenWorld(-1, game.view.locationId!);
     game.world.deviation = 999;
     game.view.worldTime = { era: "比唐三早一年", year: -1, day: 360, time: "23:00", season: "冬" };
-    advanceWorldTime(game, 120);
+    advanceWorldTime(game, 20 * 1440 + 120);
     expect(game.world.firedCanonEvents).toContain("tang-awakening");
     expect(game.world.suppressedCanonEvents).not.toContain("tang-awakening");
+  });
+
+  it("原作事件按年内日期依次发生而不是在元旦一起触发", () => {
+    const game = awakened("canon-day-order");
+    game.world = createHiddenWorld(5, game.view.locationId!);
+    game.view.worldTime = { era: "唐三觉醒后 5 年", year: 5, day: 360, time: "23:00", season: "冬" };
+    advanceWorldTime(game, 2 * 1440);
+    expect(game.world.firedCanonEvents).not.toContain("shrek-enrollment");
+    expect(game.world.firedCanonEvents).not.toContain("suotuo-spirit-arena");
+    advanceWorldTime(game, 19 * 1440);
+    expect(game.world.firedCanonEvents).toContain("shrek-enrollment");
+    expect(game.world.firedCanonEvents).not.toContain("suotuo-spirit-arena");
+    advanceWorldTime(game, 40 * 1440);
+    expect(game.world.firedCanonEvents).toContain("suotuo-spirit-arena");
+    expect(game.world.firedCanonEvents).not.toContain("imperial-team-battle");
   });
 
   it("a strong linked cause can change the matching canon event", () => {
@@ -220,7 +238,7 @@ describe("完整游玩规则", () => {
     game.view.canonInfluences = [];
     game.view.worldTime = { era: "比唐三早一年", year: -1, day: 360, time: "23:00", season: "冬" };
     recordCanonInfluence(game, { source: "测试", description: "提前改变唐三的入学条件", affectedNpcIds: ["tang-san"], strength: 50 });
-    advanceWorldTime(game, 120);
+    advanceWorldTime(game, 20 * 1440 + 120);
     expect(game.world.suppressedCanonEvents).toContain("tang-awakening");
     expect(game.view.canonInfluences[0].affects).toContain("唐三");
   });
