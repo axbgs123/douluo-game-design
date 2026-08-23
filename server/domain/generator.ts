@@ -1415,7 +1415,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 10,
+    schemaVersion: 11,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1449,6 +1449,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       narrative: [createEntry("system", `这一轮从${eraName}时代抽出三个人。先看出身和征兆，武魂要等选定后才会揭晓。`)],
       suggestions: [],
       relations: [],
+      family: { children: [], householdNotes: [] },
       npcRelations: [],
       reputations: [],
       tasks: [],
@@ -1508,6 +1509,7 @@ export function createEraSuccessor(parent: StoredGame, meta?: MetaProgressionVie
     `${ancestor.name}在第${sourceEra}时代以“${parent.view.runProgress.settlement.ending}”留下记载`,
     `旧世最高魂力${parent.view.runProgress.highestSoulRank}级，历史影响${parent.world.metrics.historicalImpact}`,
     ...parent.world.canonCausalFootprints.slice(-2).map((footprint) => footprint.description),
+    ...(parent.view.family.partner ? [`家庭档案记载${ancestor.name}与${parent.view.family.partner.name}结为${parent.view.family.partner.status}`] : []),
   ].slice(0, 4);
   const previousLineage = parent.view.worldInheritance?.lineage ?? [];
   const lineage = [...previousLineage, {
@@ -1519,6 +1521,15 @@ export function createEraSuccessor(parent: StoredGame, meta?: MetaProgressionVie
     historicalImpact: parent.world.metrics.historicalImpact,
     verification: "传闻" as const,
     evidence: [`${legacyArtifact}保存了这一代的结算摘要`],
+    family: {
+      partnerName: parent.view.family.partner?.name,
+      childCount: parent.view.family.children.length,
+      evidence: [
+        ...(parent.view.family.partner ? [`家庭册保存了与${parent.view.family.partner.name}的双方同意与关系记录`] : []),
+        ...parent.view.family.children.map((child) => `${child.name}以${child.route}路径进入家庭档案`),
+        "家庭谱系只提供历史调查线索，不复制武魂、等级、财产或战斗能力",
+      ],
+    },
   }];
   const carriedInstitutions = (parent.view.worldInheritance?.institutions ?? []).map((institution) => ({
     ...institution,

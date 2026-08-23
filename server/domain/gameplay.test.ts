@@ -333,7 +333,7 @@ describe("完整游玩规则", () => {
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(10);
+    expect(migrated.schemaVersion).toBe(11);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -877,6 +877,60 @@ describe("第一部世界资料", () => {
     expect(resolveAction(game, `前往${target.name}`).intent).toBe("无法完成");
     resolveAction(game, "把沉重矿石0存放在住处");
     expect(game.view.inventoryLoad.storage).toContain("沉重矿石0");
+  });
+
+  it("伴侣、婚姻与家庭必须经过共同经历、双方确认和现实等待", () => {
+    const game = awakened("adult-family-evidence");
+    game.view.character!.age = 25;
+    game.view.character!.coins = 200;
+    game.view.relations.push({
+      name: "阿宁",
+      age: 24,
+      relation: "挚友",
+      lifeStage: "挚友",
+      impression: "多年共同生活与冒险留下了稳定信任",
+      category: "同伴",
+      dimensions: { closeness: 82, trust: 84, respect: 70, sharedInterest: 65, vigilance: 0, hostility: 0, favorDebt: 0, identityKnowledge: 90 },
+      history: Array.from({ length: 6 }, (_, index) => ({ date: `旧历第${index + 1}日`, reason: `共同完成第${index + 1}次旅行与互助`, changes: "信任经行动验证" })),
+    });
+
+    expect(resolveAction(game, "与阿宁登记结婚").intent).toBe("无法完成");
+    expect(resolveAction(game, "与阿宁讨论长期关系").intent).toBe("讨论伴侣关系");
+    expect(resolveAction(game, "询问阿宁是否愿意成为伴侣").intent).toBe("无法完成");
+    advanceWorldTime(game, 7 * 1440);
+    expect(resolveAction(game, "询问阿宁是否愿意成为伴侣").intent).toBe("确认伴侣");
+    expect(game.view.family.partner?.status).toBe("伴侣");
+
+    advanceWorldTime(game, 30 * 1440);
+    expect(resolveAction(game, "与阿宁讨论婚姻").intent).toBe("讨论婚姻");
+    advanceWorldTime(game, 7 * 1440);
+    expect(resolveAction(game, "与阿宁登记结婚").intent).toBe("登记婚姻");
+    expect(game.view.family.partner?.consentEvidence.length).toBeGreaterThanOrEqual(3);
+
+    advanceWorldTime(game, 90 * 1440);
+    expect(resolveAction(game, "与阿宁讨论组建家庭").intent).toBe("共同家庭计划");
+    expect(game.view.family.children).toHaveLength(0);
+    advanceWorldTime(game, 30 * 1440);
+    expect(resolveAction(game, "与阿宁准备共同家庭住所").intent).toBe("完成家庭准备");
+    advanceWorldTime(game, 240 * 1440);
+    expect(resolveAction(game, "与阿宁收养名为小禾的孩子").intent).toBe("建立子女档案");
+    expect(game.view.family.children[0]).toMatchObject({ name: "小禾", route: "收养" });
+  });
+
+  it("家庭记录进入结局和连续世代，但不会复制成后代战力或资产", () => {
+    const parent = awakened("family-lineage");
+    parent.view.character!.age = 30;
+    parent.view.family.partner = { name: "阿宁", status: "配偶", establishedAt: "旧历", establishedAtOrdinal: 1, consentEvidence: ["双方明确同意"] };
+    parent.view.family.children.push({ id: "child-1", name: "小禾", joinedAt: "旧历", route: "收养", parentNames: [parent.view.character!.name, "阿宁"], evidence: ["家庭册与收养登记"] });
+    parent.actionIndex = 8;
+    const settlement = settleRun(parent);
+    expect(settlement.highlights).toContain("配偶 阿宁（有双方同意记录）");
+    expect(settlement.highlights).toContain("家庭子女档案 1 份（不继承战力）");
+
+    const successor = createEraSuccessor(parent);
+    expect(successor.view.worldInheritance!.lineage.at(-1)?.family).toMatchObject({ partnerName: "阿宁", childCount: 1 });
+    expect(successor.view.family).toEqual({ children: [], householdNotes: [] });
+    expect(successor.view.inventory).toHaveLength(0);
   });
 
   it("未成年角色不会进入成人化关系情节", () => {

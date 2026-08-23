@@ -64,6 +64,8 @@ export function settleRun(game: StoredGame, reason?: string): RunSettlementView 
     `发现地点 ${game.world.discoveredLocations.length} 处`,
     `建立关系 ${metrics.relationshipsBuilt} 段`,
   ];
+  if (game.view.family.partner) highlights.push(`${game.view.family.partner.status} ${game.view.family.partner.name}（有双方同意记录）`);
+  if (game.view.family.children.length > 0) highlights.push(`家庭子女档案 ${game.view.family.children.length} 份（不继承战力）`);
   if (reloadPenalty > 0) highlights.push(`回溯存档扣除表现分 ${reloadPenalty}`);
   if (!qualified) highlights.unshift("行动不足 8 次，本次视为中止，不计通关与传承收益");
   const settlement: RunSettlementView = { ending, baseScore, multiplier, legacyPoints, highlights, qualified };

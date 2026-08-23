@@ -854,7 +854,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 10;
+  legacy.schemaVersion = 11;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -869,6 +869,9 @@ export function ensureGameState(game: StoredGame): StoredGame {
   legacy.world.intelligenceRecords ??= [];
   legacy.world.actionLedger ??= [];
   game.view.npcRelations ??= [];
+  game.view.family ??= { children: [], householdNotes: [] };
+  game.view.family.children ??= [];
+  game.view.family.householdNotes ??= [];
   for (const task of game.view.tasks ?? []) {
     task.createdActionIndex ??= 0;
     task.progressEvidence ??= [];

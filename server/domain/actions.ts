@@ -118,6 +118,130 @@ function recordPlayerRelation(game: StoredGame, relation: StoredGame["view"]["re
   relation.strength = Math.max(0, Math.min(100, Math.round((relation.dimensions.closeness + relation.dimensions.trust + relation.dimensions.respect - relation.dimensions.hostility) / 3)));
 }
 
+function relationshipOrdinal(game: StoredGame): number {
+  return (game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
+}
+
+function relationshipDate(game: StoredGame): string {
+  return `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`;
+}
+
+function relationshipResolution(game: StoredGame, action: string): ActionResolution {
+  const namedCandidates = game.view.relations.filter((relation) => action.includes(relation.name));
+  const partnerRelation = game.view.family.partner ? game.view.relations.find((relation) => relation.name === game.view.family.partner?.name) : undefined;
+  const candidates = namedCandidates.length === 0 && partnerRelation && /家庭|住所|孩子|生育|收养/.test(action) ? [partnerRelation] : namedCandidates;
+  if (candidates.length !== 1) return impossible(candidates.length > 1 ? "这句话同时指向多人，程序不能替我决定关系对象。" : "关系档案里没有能与这句话唯一对应的人。", ["先与对方当面交谈", "明确写出对方姓名", "查看关系明细"]);
+  const relation = candidates[0];
+  if (["亲属", "敌对", "势力"].includes(relation.category ?? "其他")) return impossible(`${relation.name}当前的关系类别不允许进入伴侣流程。`, ["保持合适边界", "处理现有关系矛盾", "查看关系明细"]);
+  const dimensions = relation.dimensions ?? relationDimensions(relation.strength ?? 0);
+  relation.dimensions ??= dimensions;
+  const npcAge = relation.id ? game.world.npcs[relation.id]?.age : undefined;
+  const otherAge = npcAge ?? relation.age;
+  const playerAge = game.view.character?.age ?? 0;
+  const now = relationshipOrdinal(game);
+  const sharedHistory = (relation.history ?? []).filter((item) => /共同|并肩|帮助|救助|支持|训练|战斗|旅行|履约|照料|相处|合作/.test(item.reason));
+  const adultRequired = /伴侣|恋爱|心意|求婚|婚姻|结婚|成婚|家庭|孩子|生育|收养|婚礼/.test(action);
+  if (adultRequired && (playerAge < 18 || otherAge === undefined || otherAge < 18)) return impossible(otherAge === undefined ? `尚无可靠档案证明${relation.name}已经成年，不能进入成人伴侣流程。` : "双方尚未都达到成年人阶段，不能进入成人伴侣流程。", ["继续正常相处", "积累共同经历", "等待双方成年"]);
+  if (dimensions.hostility > 10 || dimensions.vigilance > 45) return impossible(`${relation.name}仍有明显敌意或戒备，不能把单方面指令当作同意。`, [`先化解与${relation.name}的矛盾`, "通过真实行动建立信任", "尊重对方边界"]);
+
+  const isMarriageDiscussion = /讨论.*(?:婚姻|结婚|成婚|婚礼)|求婚/.test(action);
+  const isMarriage = /登记结婚|正式结婚|举行婚礼|与.*(?:结婚|成婚)/.test(action) && !isMarriageDiscussion;
+  const isFamilyDiscussion = /讨论.*(?:组建家庭|生育|收养|孩子)|商量.*(?:家庭|孩子)/.test(action);
+  const isFamilyPreparation = /准备.*(?:家庭住所|共同住所|迎接孩子)|完成.*家庭准备/.test(action);
+  const isChildArrival = /迎接.*孩子|收养.*孩子|孩子.*加入家庭|孩子出生/.test(action) && !isFamilyDiscussion && !isFamilyPreparation;
+  const isPartnerDiscussion = /讨论.*(?:长期关系|成为伴侣|恋爱)|表达.*心意/.test(action);
+  const isPartnerConfirmation = /确认.*(?:伴侣|恋爱)|询问.*愿意成为伴侣|正式成为伴侣/.test(action) && !isPartnerDiscussion;
+  const isFriendship = /成为朋友|确认朋友|建立友情/.test(action);
+  const family = game.view.family;
+
+  if (isFriendship) {
+    if (dimensions.trust < 20 || dimensions.closeness < 20 || sharedHistory.length < 2) return impossible(`友情需要至少两段真实共同经历，且亲近与信任均达到 20；当前共同经历 ${sharedHistory.length} 段、亲近 ${dimensions.closeness}、信任 ${dimensions.trust}。`, [`与${relation.name}共同完成一件事`, `在困难中帮助${relation.name}`, `继续与${relation.name}相处`]);
+    relation.lifeStage = dimensions.trust >= 45 && dimensions.closeness >= 45 && sharedHistory.length >= 4 ? "挚友" : "朋友";
+    relation.relation = relation.lifeStage;
+    recordPlayerRelation(game, relation, `双方依据${sharedHistory.length}段共同经历确认${relation.lifeStage}关系`, { trust: 2, closeness: 2 });
+    return { intent: "确认友情", minutes: 30, ruleSummary: `以共同经历确认与${relation.name}的${relation.lifeStage}关系。`, fallbackNarrative: `我和${relation.name}没有靠一句漂亮话跳过过去。我们把一起做过的事说了一遍，最后都承认，这段友情已经有了分量。`, suggestions: [`与${relation.name}共同训练`, `邀请${relation.name}同行`, "查看关系记录"], systemMessages: [`关系阶段 · ${relation.name} · ${relation.lifeStage}`] };
+  }
+
+  if (isPartnerDiscussion) {
+    if (family.partner && family.partner.name !== relation.name) return impossible(`我已有伴侣${family.partner.name}，不能在未处理现有承诺时建立另一段伴侣关系。`, [`与${family.partner.name}坦诚沟通`, "尊重现有承诺", "暂停关系决定"]);
+    if (dimensions.trust < 60 || dimensions.closeness < 60 || sharedHistory.length < 4) return impossible(`讨论长期伴侣关系需要至少四段真实共同经历，且亲近与信任均达到 60；当前共同经历 ${sharedHistory.length} 段、亲近 ${dimensions.closeness}、信任 ${dimensions.trust}。`, [`与${relation.name}共同完成重要经历`, `继续了解${relation.name}的边界`, "不要急于作出承诺"]);
+    relation.partnerDiscussedAtOrdinal = now;
+    relation.consentEvidence ??= [];
+    relation.consentEvidence.push(`${relationshipDate(game)}：主角表达长期关系意向；${relation.name}同意在冷静期后再次明确确认`);
+    return { intent: "讨论伴侣关系", minutes: 60, ruleSummary: `${relation.name}只同意进入讨论与冷静期，尚未建立伴侣关系。`, fallbackNarrative: `我把自己的想法说清楚，也把拒绝的余地留给${relation.name}。对方没有被一句话替代回答，只说愿意认真想一段时间，再给我明确答复。`, suggestions: ["等待至少七天", `询问${relation.name}是否愿意成为伴侣`, "继续维持正常相处"], systemMessages: [`关系意向 · ${relation.name} · 等待再次确认`] };
+  }
+
+  if (isPartnerConfirmation) {
+    if (relation.partnerDiscussedAtOrdinal === undefined) return impossible("还没有经过双方可追溯的关系讨论。", [`与${relation.name}讨论长期关系`, "继续相处", "尊重对方边界"]);
+    if (now - relation.partnerDiscussedAtOrdinal < 7) return impossible("冷静期尚未满七天，不能把当下情绪直接写成长期承诺。", ["等待至少七天", "继续正常相处", "暂不推进关系"]);
+    if (family.partner && family.partner.name !== relation.name) return impossible(`现有伴侣是${family.partner.name}，关系状态冲突。`);
+    const evidence = [...(relation.consentEvidence ?? []), `${relationshipDate(game)}：${relation.name}在无胁迫状态下明确同意成为伴侣`];
+    relation.consentEvidence = evidence;
+    relation.lifeStage = "伴侣";
+    relation.relation = "伴侣";
+    family.partner = { relationId: relation.id, name: relation.name, status: "伴侣", establishedAt: relationshipDate(game), establishedAtOrdinal: now, consentEvidence: evidence };
+    recordPlayerRelation(game, relation, "双方在冷静期后明确确认伴侣关系", { trust: 3, closeness: 3 });
+    return { intent: "确认伴侣", minutes: 60, ruleSummary: `双方在冷静期后明确同意，建立伴侣关系。`, fallbackNarrative: `${relation.name}亲口给出了答复。我又确认了一次这不是压力下的选择。直到双方都说清楚，我们才把这一天记进共同档案。`, suggestions: [`与${relation.name}共同生活一段时间`, "继续积累共同经历", "查看家庭档案"], systemMessages: [`人生关系 · ${relation.name} · 伴侣`] };
+  }
+
+  if (isMarriageDiscussion) {
+    if (family.partner?.name !== relation.name || family.partner.status !== "伴侣") return impossible("婚姻讨论只能在已经建立并持续一段时间的伴侣关系上进行。", [`先与${relation.name}建立伴侣关系`, "继续共同生活", "查看伴侣记录"]);
+    if (now - family.partner.establishedAtOrdinal < 30) return impossible("伴侣关系建立不足三十天，尚缺稳定相处期。", ["等待关系稳定", "共同处理现实事务", "继续积累共同经历"]);
+    if (dimensions.trust < 75 || dimensions.closeness < 75 || sharedHistory.length < 6) return impossible(`讨论婚姻需要至少六段共同经历，且亲近与信任均达到 75；当前共同经历 ${sharedHistory.length} 段、亲近 ${dimensions.closeness}、信任 ${dimensions.trust}。`);
+    relation.marriageDiscussedAtOrdinal = now;
+    relation.consentEvidence ??= [];
+    relation.consentEvidence.push(`${relationshipDate(game)}：双方讨论婚姻、居所与责任，${relation.name}同意七天后再次确认`);
+    return { intent: "讨论婚姻", minutes: 120, ruleSummary: "双方完成婚姻责任讨论，但尚未登记。", fallbackNarrative: `这次谈的不是仪式，而是住在哪里、如何分担风险，以及谁都可以在最终确认前改变决定。${relation.name}听完后，同意七天后再作正式答复。`, suggestions: ["等待至少七天", `与${relation.name}登记结婚`, "继续核对共同生活安排"], systemMessages: [`婚姻意向 · ${relation.name} · 待再次确认`] };
+  }
+
+  if (isMarriage) {
+    if (family.partner?.name !== relation.name || family.partner.status !== "伴侣" || relation.marriageDiscussedAtOrdinal === undefined) return impossible("缺少有效伴侣关系或双方婚姻讨论记录，不能直接结婚。", [`与${relation.name}讨论婚姻`, "继续共同生活", "查看同意记录"]);
+    if (now - relation.marriageDiscussedAtOrdinal < 7) return impossible("婚姻再次确认的七天冷静期尚未结束。", ["等待至少七天", "继续处理共同生活安排", "允许任一方改变决定"]);
+    const evidence = `${relationshipDate(game)}：双方再次明确同意并完成婚姻登记`;
+    relation.consentEvidence ??= [];
+    relation.consentEvidence.push(evidence);
+    relation.lifeStage = "配偶";
+    relation.relation = "配偶";
+    family.partner = { ...family.partner, status: "配偶", establishedAt: relationshipDate(game), establishedAtOrdinal: now, consentEvidence: [...family.partner.consentEvidence, evidence] };
+    family.householdNotes.push(`${relationshipDate(game)}：${game.view.character?.name}与${relation.name}完成婚姻登记`);
+    return { intent: "登记婚姻", minutes: 240, ruleSummary: `伴侣关系、共同经历、两次明确同意与冷静期均有记录，婚姻成立。`, fallbackNarrative: `我们又把决定从头确认了一遍。没有人替${relation.name}回答，也没有把过去的相处省略掉。登记落笔后，这段婚姻才真正进入家庭档案。`, suggestions: [`与${relation.name}讨论组建家庭`, "安排共同住所", "查看家庭档案"], systemMessages: [`家庭档案 · 配偶 · ${relation.name}`] };
+  }
+
+  if (isFamilyDiscussion) {
+    if (family.partner?.name !== relation.name || family.partner.status !== "配偶") return impossible("组建家庭必须由已登记的成年配偶共同讨论。", ["先完成婚姻阶段", "尊重双方选择", "维持现有家庭"]);
+    if (now - family.partner.establishedAtOrdinal < 90) return impossible("婚姻建立不足九十天，先经历稳定共同生活再决定。", ["继续共同生活", "处理居所与经济", "等待关系稳定"]);
+    family.familyPlan = { agreedAt: relationshipDate(game), agreedAtOrdinal: now, route: "出生或收养", evidence: [`${relationshipDate(game)}：双方明确同意开始家庭计划，保留出生或收养两种路径`] };
+    return { intent: "共同家庭计划", minutes: 120, ruleSummary: "双方建立可撤回的家庭计划，尚未产生子女记录。", fallbackNarrative: `我和${relation.name}把责任、风险和两种路径都谈清楚。我们只记下共同计划，没有把愿望写成已经发生的事实。`, suggestions: ["准备共同家庭住所", "储备家庭资金", "等待至少三十天后完成准备"], systemMessages: ["家庭计划 · 双方同意 · 尚在准备"] };
+  }
+
+  if (isFamilyPreparation) {
+    if (!family.familyPlan) return impossible("尚无双方同意的家庭计划。", [`与${relation.name}讨论组建家庭`, "先稳定共同生活", "暂不推进"]);
+    if (now - family.familyPlan.agreedAtOrdinal < 30) return impossible("家庭计划建立不足三十天，准备阶段不能被一句话跳过。", ["等待至少三十天", "准备住所", "积累家庭资金"]);
+    if ((game.view.character?.coins ?? 0) < 50) return impossible("当前至少需要五十枚铜魂币作为基础住所与照料储备。", ["继续工作赚钱", "减少非必要支出", "延后家庭计划"]);
+    game.view.character!.coins -= 50;
+    family.familyPlan.preparedAtOrdinal = now;
+    family.familyPlan.evidence.push(`${relationshipDate(game)}：共同住所与基础照料资金准备完成，支出五十枚铜魂币`);
+    family.householdNotes.push(`${relationshipDate(game)}：完成家庭住所与照料准备`);
+    return { intent: "完成家庭准备", minutes: 1440, ruleSummary: "完成住所与基础资金准备；仍需等待长期计划成熟。", fallbackNarrative: `住所、日常开销和紧急余量都逐项核过。五十枚铜魂币花出去后，档案里第一次有了能承担照料责任的现实证据。`, suggestions: ["等待家庭计划满二百七十天", "继续储备资金", "维持家庭关系"], systemMessages: ["家庭准备 · 已完成"] };
+  }
+
+  if (isChildArrival) {
+    const plan = family.familyPlan;
+    if (!plan?.preparedAtOrdinal) return impossible("尚未完成双方家庭计划与住所准备，不能直接生成子女记录。", ["讨论组建家庭", "完成家庭准备", "暂不推进"]);
+    if (now - plan.agreedAtOrdinal < 270) return impossible("家庭计划尚未满二百七十天，不能跳过长期等待与照料准备。", ["等待家庭计划成熟", "继续维持住所与收入", "允许双方重新评估"]);
+    const route = /收养/.test(action) ? "收养" as const : "出生" as const;
+    const nameMatch = action.match(/名为([^，。\s]{1,8})的孩子/);
+    const childName = nameMatch?.[1] ?? `${game.view.character?.name.slice(0, 1) ?? "家"}家孩子${family.children.length + 1}`;
+    const evidence = [...plan.evidence, `${relationshipDate(game)}：通过${route}路径，${childName}正式进入家庭档案`];
+    family.children.push({ id: randomUUID(), name: childName, joinedAt: relationshipDate(game), route, parentNames: [game.view.character!.name, relation.name], evidence });
+    family.householdNotes.push(`${relationshipDate(game)}：${childName}通过${route}加入家庭；记录不附带任何战力继承`);
+    delete family.familyPlan;
+    return { intent: "建立子女档案", minutes: 1440, ruleSummary: `${childName}通过${route}进入家庭档案；该记录不复制父母武魂、等级或资产。`, fallbackNarrative: `${childName}的名字被写进家庭册。前面的共同决定、等待和现实准备都附在记录后面；这是一段人生关系，不是一份凭空增加力量的奖励。`, suggestions: ["照料孩子的日常生活", "整理家庭档案", "继续承担家庭责任"], systemMessages: [`家庭成员 · ${childName} · ${route}`] };
+  }
+
+  return impossible("这条关系行动缺少明确阶段。", [`与${relation.name}讨论长期关系`, `确认与${relation.name}的友情`, "查看关系明细"]);
+}
+
 function itemWeight(item: string): number {
   if (/封签货箱/.test(item)) return 6;
   if (/魂导器|戒指|腰带|钱袋|钥匙|令|纸|册|药|草|丹/.test(item)) return 0.5;
@@ -2292,6 +2416,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|推进.*机构事务|登记.*阶段|提交.*阶段|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正/.test(action)) resolution = institutionResolution(game, action);
   else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克|舰队|联邦|传灵塔|战神/.test(action)) resolution = factionResolution(game, action);
   else if (/拜师|拜.*为师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
+  else if (/成为朋友|确认朋友|建立友情|长期关系|成为伴侣|确认恋爱|表达.*心意|求婚|婚姻|结婚|成婚|婚礼|组建家庭|家庭住所|共同住所|家庭准备|生育|收养.*孩子|孩子.*加入家庭|孩子出生/.test(action)) resolution = relationshipResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);
   else if (/修炼|冥想|运转|练功|闭关/.test(action)) resolution = trainingResolution(game, action);
   else if (/休息|睡觉|疗伤|恢复/.test(action)) resolution = restResolution(game);

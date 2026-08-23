@@ -248,6 +248,38 @@ export interface RelationView {
   category?: "亲属" | "师友" | "同伴" | "势力" | "敌对" | "其他";
   dimensions?: { closeness: number; trust: number; respect: number; sharedInterest: number; vigilance: number; hostility: number; favorDebt: number; identityKnowledge: number };
   history?: Array<{ date: string; reason: string; changes: string }>;
+  age?: number;
+  lifeStage?: "相识" | "朋友" | "挚友" | "伴侣" | "配偶";
+  consentEvidence?: string[];
+  partnerDiscussedAtOrdinal?: number;
+  marriageDiscussedAtOrdinal?: number;
+}
+
+export interface FamilyView {
+  partner?: {
+    relationId?: string;
+    name: string;
+    status: "伴侣" | "配偶";
+    establishedAt: string;
+    establishedAtOrdinal: number;
+    consentEvidence: string[];
+  };
+  children: Array<{
+    id: string;
+    name: string;
+    joinedAt: string;
+    route: "出生" | "收养";
+    parentNames: [string, string];
+    evidence: string[];
+  }>;
+  householdNotes: string[];
+  familyPlan?: {
+    agreedAt: string;
+    agreedAtOrdinal: number;
+    preparedAtOrdinal?: number;
+    route: "出生或收养";
+    evidence: string[];
+  };
 }
 
 export interface ReputationNetworkView {
@@ -589,6 +621,7 @@ export interface LineageRecordView {
   historicalImpact: number;
   verification: "传闻" | "部分核验" | "已核验";
   evidence: string[];
+  family?: { partnerName?: string; childCount: number; evidence: string[] };
 }
 
 export interface InheritedInstitutionView {
@@ -623,6 +656,7 @@ export interface GameView {
   suggestions: string[];
   worldTime?: WorldTimeView;
   relations: RelationView[];
+  family: FamilyView;
   npcRelations: NpcRelationEvidenceView[];
   reputations: ReputationNetworkView[];
   tasks: TaskView[];

@@ -63,7 +63,7 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
   if (age < 18 && /性行为|发生关系|圆房|成人关系|露骨|强迫.*亲密/.test(action)) {
     return impossible(game, `${name}目前仍是未成年人。童年阶段只处理友情、依赖、朦胧情感与正常成长，不进行成人化情节。`, ["与对方正常交谈", "确认彼此边界", "把注意力放回当前生活"], [621, 631, 691]);
   }
-  if (age < 16 && /结婚|成婚|求婚/.test(action)) {
+  if (age < 18 && /结婚|成婚|求婚|订婚|成为伴侣|确认恋爱|组建家庭|生育|收养孩子/.test(action)) {
     return impossible(game, `${name}的年龄、法律身份和社会权限不足以完成婚姻决定。`, ["表达珍视但不作成人承诺", "与家人或导师交谈", "等年龄与关系成熟后再决定"], [621, 631, 691]);
   }
   if (/^(?:先)?(?:试探一下(?:他|她|对方)?|处理一下|想办法|采取行动|随便做点准备)[。！]?$/u.test(action) && (game.view.combat || game.world.dynamicEvents.some((event) => event.status === "可介入"))) {
