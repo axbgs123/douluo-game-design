@@ -44,6 +44,26 @@ async function seedMediaAccountabilityGame() {
   database.saveGame(game, "e2e.media-fixture");
 }
 
+async function seedFourPersonFormationGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 1, gender: "男", difficulty: "标准", seed: "e2e-four-person-formation" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "战阵验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.relations.push(
+    { id: "e2e-four-striker", name: "陆锋", relation: "强攻系战士", impression: "可靠并擅长正面攻击", strength: 70, category: "同伴" },
+    { id: "e2e-four-guard", name: "石岳", relation: "防御系护卫", impression: "可靠并擅长盾牌守护", strength: 70, category: "同伴" },
+    { id: "e2e-four-control", name: "宁索", relation: "控制系魂师", impression: "可靠并擅长束缚阵法", strength: 70, category: "同伴" },
+    { id: "e2e-four-healer", name: "苏叶", relation: "治疗系医师", impression: "可靠并擅长治愈救护", strength: 70, category: "同伴" },
+  );
+  game.view.hunting = { stage: "准备", ringIndex: 2, targetBeastId: "datura-snake", targetName: "曼陀罗蛇", targetYears: 700, locationId: "soul-hunting-forest", recommendations: [], preparation: [], trailProgress: "四人编队验收" };
+  database.saveGame(game, "e2e.four-person-fixture");
+}
+
 async function createPlayingCharacter(page: import("@playwright/test").Page, era: 1 | 2 | 3 | 4) {
   await page.goto("/");
   if (era > 1) await page.getByRole("button", { name: `斗${era === 2 ? "二" : era === 3 ? "三" : "四"}` }).click();
@@ -201,6 +221,39 @@ test("责任编辑采访、独立补证与更正会形成完整浏览器责任�
   await expect(editor).toContainText("已签发更正");
   await expect(page.locator(".news-list")).toContainText("更正说明");
   await expect(page.locator(".news-list")).toContainText("旧消息");
+});
+
+test("四人编队可以从共同训练、明确出发一路进入实战并发动", async ({ page }) => {
+  await seedFourPersonFormationGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "战阵验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  for (let session = 1; session <= 4; session += 1) await submitAction(page, "与陆锋石岳宁索苏叶共同训练四象战阵");
+  await submitAction(page, "休息恢复");
+  for (let session = 5; session <= 6; session += 1) await submitAction(page, "与陆锋石岳宁索苏叶共同训练四象战阵");
+  await page.getByRole("button", { name: /^猎魂/ }).click();
+  const training = page.locator(".player-relation-ledger article").filter({ hasText: "四象战阵" });
+  await expect(training).toContainText("四角轮换");
+  for (const [name, role] of [["陆锋", "强攻"], ["石岳", "防护"], ["宁索", "控制"], ["苏叶", "治疗"]] as const) await submitAction(page, `邀请${name}担任${role}岗位同行猎魂`);
+  await expect(page.locator(".hunt-stage strong")).toHaveText("准备");
+  await submitAction(page, "出发猎魂");
+  await expect(page.locator(".hunt-stage strong")).toHaveText("旅行");
+  await submitAction(page, "出发前往魂兽栖息地");
+  await expect(page.locator(".hunt-stage strong")).toHaveText("追踪");
+  const prepareFormation = page.getByRole("button", { name: "准备四人编队" });
+  for (let attempt = 0; attempt < 6 && !await prepareFormation.isVisible(); attempt += 1) await submitAction(page, "寻找足迹追踪魂兽");
+  await expect(prepareFormation).toBeVisible();
+  await prepareFormation.click();
+  await expect(page.locator(".hunt-target").filter({ hasText: "连携准备" })).toContainText("四象战阵");
+  await expect(page.locator(".hunt-target").filter({ hasText: "连携准备" })).toContainText("四角轮换");
+  await page.getByRole("button", { name: "发动连携" }).click();
+  await expect(page.locator("blockquote.player-entry").last()).toContainText("发动已准备的多人连携");
+  await page.getByText("查看判定", { exact: true }).click();
+  await expect(page.locator(".action-receipt p")).toContainText("发动连携“四象战阵”");
+  await expect(page.locator(".hunt-stage strong")).toHaveText("吸收");
+  await expect(page.locator(".hunt-stage")).toContainText("目标已被击败");
 });
 
 test("有效结算可以在同一存档开启下一时代并核验累积谱系", async ({ page }) => {

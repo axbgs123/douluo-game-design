@@ -728,6 +728,17 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
   const hunting = game.view.hunting!;
   const additions: string[] = [];
   const character = game.view.character!;
+  if (/出发|启程|开始前往|进入.*(?:森林|栖息地)/.test(action)) {
+    if (hunting.preparation.length < 2) return impossible("至少完成两项可核验准备后才能出发猎魂。", ["购买猎魂补给", "寻找同行者", "研究目标习性"]);
+    hunting.stage = "旅行";
+    return {
+      intent: "猎魂出发确认",
+      minutes: 30,
+      ruleSummary: `确认携带 ${hunting.preparation.length} 项准备并按既定路线出发；未邀请的同行者不会在途中凭空加入。`,
+      fallbackNarrative: "我把名单和包裹最后核了一遍。留下的人不会因为一句‘全队’突然出现在路上；已经签下名字的同伴各自背好东西，我们才真正离开。",
+      suggestions: ["沿路线进入魂兽栖息地", "核对同行者名单", "检查撤离路线"],
+    };
+  }
   if (/买|购买|药|补给|绳|食物/.test(action)) {
     const cost = Math.min(character.coins, 8);
     character.coins -= cost;
@@ -761,11 +772,10 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
   if (!additions.length) additions.push("简易路线图");
   for (const addition of additions) if (!hunting.preparation.includes(addition)) hunting.preparation.push(addition);
   const ready = hunting.preparation.length >= 2 || game.view.speed === "高速";
-  if (ready) hunting.stage = "旅行";
   return {
     intent: "猎魂准备",
     minutes: speedMinutes(game, 120, 720),
-    ruleSummary: `新增准备：${additions.join("、")}。准备度 ${hunting.preparation.length} 项。${ready ? "可以出发。" : "仍建议补充准备。"}`,
+    ruleSummary: `新增准备：${additions.join("、")}。准备度 ${hunting.preparation.length} 项。${ready ? "已经具备出发条件，是否继续补充人员和物资仍由玩家决定。" : "仍建议补充准备。"}`,
     fallbackNarrative: `东西一样样摆在桌上。我把绳结重新打过，药包塞进最顺手的位置。钱花得有点心疼，真进了森林，少一件都可能要命。`,
     suggestions: ready ? ["出发猎魂", "再找一名同行者", "最后检查补给"] : ["购买猎魂补给", "寻找同行者", "研究目标习性"],
   };
@@ -919,8 +929,8 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   combat.allies ??= [];
   for (const ally of combat.allies) ally.role ??= "协同";
   combat.comboHistory ??= [];
-  const comboPreparing = /准备|排练|布置/.test(action) && /连携|合击|组合技|阵型|战阵|围猎/.test(action);
   const comboExecuting = /发动|施展|释放/.test(action) && /连携|合击|组合技|阵型|战阵|围猎/.test(action);
+  const comboPreparing = !comboExecuting && /准备|排练|布置/.test(action) && /连携|合击|组合技|阵型|战阵|围猎/.test(action);
   let comboActive: typeof COMBAT_COMBOS[number] | undefined;
   let comboMastery = 0;
   let comboBranch: string | undefined;

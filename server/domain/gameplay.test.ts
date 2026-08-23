@@ -243,7 +243,7 @@ describe("完整游玩规则", () => {
     enterCombat("squad-after-training");
     expect(resolveAction(game, "让陆锋石岳宁索苏叶准备四象战阵").intent).toBe("战斗");
     expect(game.view.combat!.comboPreparation).toMatchObject({ name: "四象战阵", allyNames: ["陆锋", "石岳", "宁索", "苏叶"], branch: "四角轮换" });
-    expect(resolveAction(game, "发动四象战阵").intent).toBe("战斗");
+    expect(resolveAction(game, "发动已准备的多人连携").intent).toBe("战斗");
     expect(game.view.combat!.allies?.map((ally) => ally.readiness)).toEqual([55, 55, 55, 55]);
     expect(game.view.combat!.comboCooldownUntilRound).toBe(6);
   });
@@ -401,8 +401,28 @@ describe("完整游玩规则", () => {
     resolveAction(game, `选择${target}作为魂环目标`);
     expect(game.view.hunting?.stage).toBe("准备");
     resolveAction(game, "购买药物和猎魂绳作为补给");
+    expect(game.view.hunting?.stage).toBe("准备");
+    expect(resolveAction(game, "出发猎魂").intent).toBe("猎魂出发确认");
     expect(game.view.hunting?.stage).toBe("旅行");
     expect(game.view.inventory).toContain("止血散");
+  });
+
+  it("猎魂准备不会替玩家提前出发，可以登记四名固定编队成员", () => {
+    const game = awakened("four-person-hunt-departure");
+    game.view.hunting = { stage: "准备", ringIndex: 2, targetBeastId: "datura-snake", targetName: "曼陀罗蛇", targetYears: 700, locationId: "soul-hunting-forest", recommendations: [], preparation: [], trailProgress: "待准备" };
+    game.view.relations.push(
+      { id: "departure-striker", name: "陆锋", relation: "强攻系战士", impression: "可靠并擅长正面攻击", strength: 70, category: "同伴" },
+      { id: "departure-guard", name: "石岳", relation: "防御系护卫", impression: "可靠并擅长盾牌守护", strength: 70, category: "同伴" },
+      { id: "departure-control", name: "宁索", relation: "控制系魂师", impression: "可靠并擅长束缚阵法", strength: 70, category: "同伴" },
+      { id: "departure-healer", name: "苏叶", relation: "治疗系医师", impression: "可靠并擅长治愈救护", strength: 70, category: "同伴" },
+    );
+    for (const [name, role] of [["陆锋", "强攻"], ["石岳", "防护"], ["宁索", "控制"], ["苏叶", "治疗"]] as const) {
+      expect(resolveAction(game, `邀请${name}担任${role}岗位同行猎魂`).intent).toBe("猎魂准备");
+      expect(game.view.hunting.stage).toBe("准备");
+    }
+    expect(game.view.hunting.preparation.filter((item) => item.startsWith("同行者："))).toHaveLength(4);
+    expect(resolveAction(game, "出发猎魂").intent).toBe("猎魂出发确认");
+    expect(game.view.hunting.stage).toBe("旅行");
   });
 
   it("未到魂环瓶颈时不能提前猎取魂环", () => {
