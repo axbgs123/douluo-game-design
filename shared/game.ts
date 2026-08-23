@@ -348,6 +348,14 @@ export interface TaskView {
   createdActionIndex?: number;
   progressEvidence?: string[];
   logistics?: LogisticsContractView;
+  institutionAssignment?: InstitutionAssignmentView;
+}
+
+export interface InstitutionAssignmentView {
+  route: string;
+  stageIndex: number;
+  stageStartedActionIndex: number;
+  stages: Array<{ title: string; detail: string; evidenceKeywords: string[] }>;
 }
 
 export interface LogisticsContractView {

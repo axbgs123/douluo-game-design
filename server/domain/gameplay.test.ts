@@ -801,14 +801,39 @@ describe("第一部世界资料", () => {
     const game = awakened("institution-route");
     game.view.era = 2;
     game.view.worldTime!.year = 10_010;
+    game.view.character!.coins = 10_000;
     game.view.affiliations = [{ id: "sun-moon-royal-academy", name: "日月皇家魂导师学院", role: "外围成员", reputation: "生疏", joinedAt: "测试", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
+    const commitAction = (action: string) => {
+      const result = resolveAction(game, action);
+      applyActionResult(game, action, result, result.fallbackNarrative, result.suggestions);
+      return result;
+    };
     const receive = resolveAction(game, "向日月皇家魂导师学院领取机构事务");
     applyActionResult(game, "向日月皇家魂导师学院领取机构事务", receive, receive.fallbackNarrative, receive.suggestions);
     expect(game.view.tasks.some((item) => item.title.includes("魂导器") && item.status === "进行中")).toBe(true);
     expect(resolveAction(game, "向日月皇家魂导师学院交付机构事务").intent).toBe("无法完成");
 
-    const study = resolveAction(game, "学习一级魂导器核心阵法");
-    applyActionResult(game, "学习一级魂导器核心阵法", study, study.fallbackNarrative, study.suggestions);
+    commitAction("学习一级魂导器核心阵法");
+    expect(commitAction("向日月皇家魂导师学院推进机构事务").ruleSummary).toContain("进度 1/5");
+    commitAction("购买魂导器用稀有金属");
+    expect(commitAction("向日月皇家魂导师学院推进机构事务").ruleSummary).toContain("进度 2/5");
+    commitAction("购买魂导核心晶体");
+    expect(commitAction("向日月皇家魂导师学院推进机构事务").ruleSummary).toContain("进度 3/5");
+
+    const profession = game.view.professions.find((item) => item.name === "魂导器研究")!;
+    profession.progress = 100;
+    game.view.relations.push({ id: "soul-tool-tutor", name: "测试魂导师", relation: "导师", impression: "监督一级制作", strength: 70, category: "师友" });
+    let crafted = false;
+    for (let attempt = 0; attempt < 5 && !crafted; attempt += 1) {
+      if (!game.view.inventory.some((item) => /稀有金属/.test(item))) commitAction("购买魂导器用稀有金属");
+      if (!game.view.inventory.some((item) => /核心晶体/.test(item))) commitAction("购买魂导核心晶体");
+      crafted = commitAction("制作一级储物魂导器").ruleSummary.includes("制作成功");
+    }
+    expect(crafted).toBe(true);
+    expect(commitAction("向日月皇家魂导师学院推进机构事务").ruleSummary).toContain("进度 4/5");
+    commitAction("实验测试一级魂导器");
+    expect(commitAction("向日月皇家魂导师学院推进机构事务").ruleSummary).toContain("进度 5/5");
+
     const delivery = resolveAction(game, "向日月皇家魂导师学院交付机构事务");
     expect(delivery.intent).toBe("交付机构事务");
     expect(game.view.affiliations[0].contribution).toBeGreaterThan(0);

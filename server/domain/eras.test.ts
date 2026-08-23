@@ -395,4 +395,24 @@ describe("multi-era foundations", () => {
     expect(fleet.militaryRank).toBe("下士");
     expect(fleet.rankEvidence?.at(-1)).toContain("50小时飞行晋升下士");
   });
+
+  it("assigns distinct evidence stages to later-era institutions instead of one-step generic errands", () => {
+    const cases = [
+      { era: 3 as const, id: "spirit-pagoda", name: "传灵塔", route: "魂灵来源与适配审计", stages: 4, includes: "完成适配评估" },
+      { era: 3 as const, id: "war-god-temple", name: "战神殿", route: "城市巡防与事件复盘", stages: 4, includes: "处理现场问题" },
+      { era: 4 as const, id: "d4-federal-fleet", name: "斗罗联邦舰队", route: "舰桥值勤与真实航次", stages: 5, includes: "取得真实航时" },
+      { era: 4 as const, id: "shrek-space-command", name: "史莱克星际体系", route: "星际学院综合考核", stages: 4, includes: "完成团队协同" },
+      { era: 4 as const, id: "academy-mother-ship-port", name: "联邦星际学院", route: "星际学院综合考核", stages: 4, includes: "完成基础驾驶课程" },
+    ];
+    for (const item of cases) {
+      const game = playingGame(item.era, `institution-chain-${item.id}`);
+      game.view.affiliations = [{ id: item.id, name: item.name, role: "外围成员", reputation: "生疏", joinedAt: "测试", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
+      expect(resolveAction(game, `向${item.name}领取机构事务`).intent).toBe("领取机构事务");
+      const assignment = game.view.tasks.find((task) => task.institutionAssignment)?.institutionAssignment!;
+      expect(assignment.route).toBe(item.route);
+      expect(assignment.stages).toHaveLength(item.stages);
+      expect(assignment.stages.map((stage) => stage.title)).toContain(item.includes);
+      expect(resolveAction(game, `向${item.name}交付机构事务`).intent).toBe("无法完成");
+    }
+  });
 });

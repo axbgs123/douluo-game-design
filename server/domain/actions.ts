@@ -1193,6 +1193,47 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
   return { intent: "加入势力", minutes: 360, ruleSummary: `通过初步审核，成为${target.name}${activeFleet ? "列兵" : "外围成员"}。`, fallbackNarrative: `负责登记的人问得很细，连家里做什么都记了。我拿到的牌子只够进外院，背面还有一行小字，损坏要赔。`, suggestions: ["领取第一件事务", "打听内部规矩", "认识同批成员"], systemMessages: [`身份 · ${target.name} · ${activeFleet ? "列兵" : "外围成员"}`] };
 }
 
+function institutionAssignmentFor(game: StoredGame, affiliationName: string) {
+  const era = game.view.era ?? 1;
+  if (era === 2 && /魂导|日月/.test(affiliationName)) return { route: "魂导器合规研制", stages: [
+    { title: "登记核心阵法方案", detail: "学习并记录与当前等级匹配的核心阵法。", evidenceKeywords: ["核心阵法", "魂导理论"] },
+    { title: "取得稀有金属", detail: "通过公开采购或有来源记录的方式取得魂导金属。", evidenceKeywords: ["魂导器用稀有金属", "魂导金属", "稀有金属"] },
+    { title: "取得核心晶体", detail: "登记核心晶体的采购与来源。", evidenceKeywords: ["魂导核心晶体", "核心晶体"] },
+    { title: "完成原型制作", detail: "实际制作一件合规一级魂导器。", evidenceKeywords: ["制作一级", "制作魂导器", "魂导器制作"] },
+    { title: "完成安全复核", detail: "对成品进行实验、测试并记录失败风险。", evidenceKeywords: ["实验测试", "安全测试", "复核魂导器"] },
+  ] };
+  if (era >= 3 && /传灵塔/.test(affiliationName)) return { route: "魂灵来源与适配审计", stages: [
+    { title: "核对魂灵来源", detail: "调查魂灵来源、死亡记录与授权档案。", evidenceKeywords: ["魂灵来源", "魂灵档案", "调查魂灵"] },
+    { title: "完成适配评估", detail: "记录精神负担与武魂适配结论。", evidenceKeywords: ["魂灵适配评估", "评估魂灵适配"] },
+    { title: "复核契约风险", detail: "调查失败案例、退契与知情同意。", evidenceKeywords: ["魂灵风险", "契约风险", "失败案例"] },
+    { title: "提交独立复核", detail: "向另一名工作人员询问并形成第二来源。", evidenceKeywords: ["询问", "交谈", "第二来源"] },
+  ] };
+  if (era === 3 && /战神/.test(affiliationName)) return { route: "城市巡防与事件复盘", stages: [
+    { title: "调查巡防路线", detail: "亲自核对辖区路线与治安风险。", evidenceKeywords: ["巡防路线", "城市治安", "调查当前位置"] },
+    { title: "完成战术训练", detail: "留下防守、控制或协同训练记录。", evidenceKeywords: ["战术训练", "协同训练", "防守训练"] },
+    { title: "处理现场问题", detail: "实际调查或介入一项地方事件。", evidenceKeywords: ["介入世界事件", "调查世界事件", "处理事件"] },
+    { title: "提交巡防复盘", detail: "复核经过、损失和未解决风险。", evidenceKeywords: ["巡防复盘", "事件复盘", "复核报告"] },
+  ] };
+  if (era === 4 && /舰队/.test(affiliationName)) return { route: "舰桥值勤与真实航次", stages: [
+    { title: "完成舰桥模拟", detail: "留下损管、航线和撤离模拟记录。", evidenceKeywords: ["星舰指挥训练", "舰桥模拟"] },
+    { title: "完成船员协同", detail: "与驾驶、导航或轮机岗位完成协同。", evidenceKeywords: ["船员协同", "招募星舰船员", "舰员协同"] },
+    { title: "取得真实航时", detail: "参加有签字记录的随舰航次，模拟时长不算。", evidenceKeywords: ["随舰训练航次", "真实飞行"] },
+    { title: "完成航行任务", detail: "驾驶登记星舰完成一次实际航线。", evidenceKeywords: ["星际航行", "驾驶星舰"] },
+    { title: "提交值勤复盘", detail: "复核航时、故障、补给和船员记录。", evidenceKeywords: ["值勤复盘", "航次复盘", "复核航行"] },
+  ] };
+  if (era === 4 && /星际|史莱克/.test(affiliationName)) return { route: "星际学院综合考核", stages: [
+    { title: "完成基础驾驶课程", detail: "完成受监护的舰桥模拟。", evidenceKeywords: ["星舰指挥训练", "舰桥模拟"] },
+    { title: "复盘模拟事故", detail: "调查并复核一次模拟中的错误。", evidenceKeywords: ["复盘模拟", "模拟事故"] },
+    { title: "完成团队协同", detail: "留下船员岗位协同记录。", evidenceKeywords: ["船员协同", "舰员协同", "招募星舰船员"] },
+    { title: "提交课程报告", detail: "复核课程、风险与下一阶段资格。", evidenceKeywords: ["课程报告", "训练复盘", "资格复核"] },
+  ] };
+  return { route: `${affiliationName}在册综合事务`, stages: [
+    { title: "调查事务需求", detail: "通过调查或询问确认对象与验收条件。", evidenceKeywords: ["调查", "询问"] },
+    { title: "实际执行事务", detail: "留下工作、训练、护送或处理记录。", evidenceKeywords: ["工作", "训练", "护送", "处理"] },
+    { title: "复核并形成报告", detail: "检查结果并明确未完成风险。", evidenceKeywords: ["复核", "检查", "报告"] },
+  ] };
+}
+
 function institutionResolution(game: StoredGame, action: string): ActionResolution {
   const affiliation = game.view.affiliations.find((item) => action.includes(item.name)) ?? game.view.affiliations[0];
   if (!affiliation) return impossible("我还没有任何能够发放正式事务的在册机构身份。", ["加入当地机构", "申请学院", "先完成外围委托"]);
@@ -1202,21 +1243,37 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
   const active = game.view.tasks.find((task) => task.id?.startsWith(`institution-${affiliation.id}-`) && task.status === "进行中");
   if (/领取|申请.*任务|申请.*事务/.test(action) && !/晋升/.test(action)) {
     if (active) return impossible(`${affiliation.name}已有一项未交付事务：${active.title}。`, [`处理${active.title}`, `核对${active.title}的验收条件`, "放弃或说明失败原因"]);
-    const assignment = (game.view.era ?? 1) === 2 && /魂导|日月/.test(affiliation.name) ? "制作并测试一件合规一级魂导器"
-      : (game.view.era ?? 1) === 3 && /传灵塔/.test(affiliation.name) ? "核对一份魂灵来源与适配档案"
-        : (game.view.era ?? 1) === 3 && /战神/.test(affiliation.name) ? "完成一次有记录的城市巡防"
-          : (game.view.era ?? 1) === 4 && /舰队|星际|联邦/.test(affiliation.name) ? "完成一次舰桥模拟与船员协同记录"
-            : `完成${affiliation.name}的一项在册外围事务`;
-    ensureTask(game, { id: `institution-${affiliation.id}-${game.actionIndex}`, title: assignment, kind: "计划", detail: `委托方为${affiliation.name}；必须有领取后的行动记录才能验收，不能用一句“完成”跳过。`, status: "进行中", ownerId: affiliation.id });
-    return { intent: "领取机构事务", minutes: 30, ruleSummary: `从${affiliation.name}领取“${assignment}”，尚未获得贡献或报酬。`, fallbackNarrative: `事务牌背面写着期限、验收人和失败责任。登记员把副本留在柜里，我拿走的这一份只有完成记录对得上，才会盖第二个章。`, suggestions: [`处理${assignment}`, "确认验收证据", "准备所需资源"] };
+    const assignment = institutionAssignmentFor(game, affiliation.name);
+    ensureTask(game, { id: `institution-${affiliation.id}-${game.actionIndex}`, title: assignment.route, kind: "计划", detail: `当前阶段 1/${assignment.stages.length}：${assignment.stages[0].title}；${assignment.stages[0].detail}`, status: "进行中", ownerId: affiliation.id, institutionAssignment: { route: assignment.route, stageIndex: 0, stageStartedActionIndex: game.actionIndex, stages: assignment.stages } });
+    return { intent: "领取机构事务", minutes: 30, ruleSummary: `从${affiliation.name}领取“${assignment.route}”共 ${assignment.stages.length} 个阶段；当前为“${assignment.stages[0].title}”，尚未获得贡献或报酬。`, fallbackNarrative: `事务牌不再只有一句结果。每一段都有开始时间、验收关键词和签字人，前一页没盖章，后一页就不能假装已经做完。`, suggestions: [assignment.stages[0].detail, `向${affiliation.name}推进机构事务`, "准备所需资源"] };
+  }
+  if (/推进|登记.*阶段|提交.*阶段/.test(action) && !/晋升/.test(action)) {
+    if (!active?.institutionAssignment) return impossible(`${affiliation.name}没有可以逐阶段推进的在册事务链。`, ["领取机构事务", "查看当前任务", "核对所属机构"]);
+    const chain = active.institutionAssignment;
+    const stage = chain.stages[chain.stageIndex];
+    if (!stage) return impossible("所有阶段已经登记完成，应进入最终交付而不是重复推进。", [`向${affiliation.name}交付机构事务`, "核对全部阶段证据", "查看报酬条件"]);
+    const evidence = game.world.actionLedger.filter((entry) => entry.index > chain.stageStartedActionIndex && !["领取机构事务", "推进机构事务", "交付机构事务", "一般行动", "无法完成", "规则阻止"].includes(entry.intent) && !/失败|无法完成|缺少/.test(entry.result) && stage.evidenceKeywords.some((keyword) => `${entry.action}${entry.intent}${entry.result}`.includes(keyword)));
+    if (!evidence.length) return impossible(`阶段“${stage.title}”缺少领取该阶段后的真实行动记录；需要：${stage.evidenceKeywords.join("、")}。`, [stage.detail, "完成要求后再登记阶段", "核对行动收据"]);
+    const proof = evidence.at(-1)!;
+    active.progressEvidence ??= [];
+    active.progressEvidence.push(`${stage.title}：${proof.action}（${proof.intent}）`);
+    chain.stageIndex += 1;
+    chain.stageStartedActionIndex = game.actionIndex;
+    const next = chain.stages[chain.stageIndex];
+    active.detail = next ? `当前阶段 ${chain.stageIndex + 1}/${chain.stages.length}：${next.title}；${next.detail}` : `全部 ${chain.stages.length} 个阶段已登记，等待最终交付与独立验收。`;
+    return { intent: "推进机构事务", minutes: 45, ruleSummary: `${affiliation.name}核验“${stage.title}”的行动收据并登记通过；进度 ${chain.stageIndex}/${chain.stages.length}${next ? `，下一阶段为“${next.title}”` : "，可以最终交付"}。`, fallbackNarrative: `验收人没有听我概述，而是翻到行动发生后的那一页，对上时间、对象和结果才盖章。下一页随即露出来，前面的记录不能替代后面的工作。`, suggestions: next ? [next.detail, `向${affiliation.name}推进机构事务`, "查看阶段证据"] : [`向${affiliation.name}交付机构事务`, "复核全部记录", "准备最终答辩"] };
   }
   if (/完成|交付|验收/.test(action)) {
     if (!active) return impossible(`${affiliation.name}没有等待交付的在册事务。`, ["领取机构事务", "查看任务", "询问内部规矩"]);
+    if (active.institutionAssignment && active.institutionAssignment.stageIndex < active.institutionAssignment.stages.length) {
+      const stage = active.institutionAssignment.stages[active.institutionAssignment.stageIndex];
+      return impossible(`“${active.title}”尚未完成全部阶段，当前 ${active.institutionAssignment.stageIndex}/${active.institutionAssignment.stages.length}；下一阶段是“${stage.title}”。`, [stage.detail, `向${affiliation.name}推进机构事务`, "查看行动收据"]);
+    }
     const evidencePattern = /魂导器/.test(active.title) ? /魂导|核心阵法|制作|实验/ : /魂灵/.test(active.title) ? /魂灵|适配|来源|档案/ : /巡防/.test(active.title) ? /巡防|调查|战斗|治安/ : /舰桥/.test(active.title) ? /舰桥|星舰|船员|指挥|模拟/ : /事务/.test(active.title) ? /工作|调查|介入|护送|处理/ : new RegExp(active.title.slice(0, 8));
-    const evidence = game.world.actionLedger.filter((entry) => entry.index > (active.createdActionIndex ?? -1) && !["领取机构事务", "交付机构事务", "一般行动", "无法完成", "规则阻止"].includes(entry.intent) && evidencePattern.test(`${entry.action}${entry.intent}${entry.result}`));
+    const evidence = active.institutionAssignment ? active.progressEvidence ?? [] : game.world.actionLedger.filter((entry) => entry.index > (active.createdActionIndex ?? -1) && !["领取机构事务", "交付机构事务", "一般行动", "无法完成", "规则阻止"].includes(entry.intent) && evidencePattern.test(`${entry.action}${entry.intent}${entry.result}`));
     if (!evidence.length) return impossible(`“${active.title}”缺少领取后的可核验行动记录。`, [`实际处理${active.title}`, "收集制作、巡防或训练记录", "核对验收条件"]);
     active.status = "完成";
-    active.progressEvidence = evidence.slice(-3).map((entry) => `${entry.action}（${entry.result}）`);
+    if (!active.institutionAssignment) active.progressEvidence = evidence.slice(-3).map((entry) => typeof entry === "string" ? entry : `${entry.action}（${entry.result}）`);
     const contribution = Math.min(20, 8 + evidence.length * 2);
     affiliation.contribution += contribution;
     affiliation.completedAssignments += 1;
@@ -1663,6 +1720,12 @@ function professionResolution(game: StoredGame, action: string): ActionResolutio
       if (!profession.knownMethods.includes(method)) profession.knownMethods.push(method);
       game.world.fatiguePoints += 10;
       return { intent: "魂导理论学习", minutes: speedMinutes(game, 180, 720), ruleSummary: `完成一次核心阵法临摹与误差检查，熟练度增加 ${gain}%。`, fallbackNarrative: "刻刀没有碰金属。我先把阵线放大临摹，再逐段标出魂力流向。三处看似对称的节点实际负载不同，抄错一笔，成品就会在启动时烧毁。", suggestions: ["购买稀有金属与核心晶体", "制作一级魂导器", "请魂导师检查图纸"] };
+    }
+    if (/测试|复核/.test(action) && !/制作|打造|组装/.test(action)) {
+      const product = game.view.inventory.find((item) => /\d+级.*魂导器/.test(item));
+      if (!product) return impossible("没有可供负载与安全复核的成品魂导器。", ["先制作一级魂导器", "检查成品库存", "复盘失败件"]);
+      profession.progress = Math.min(100, profession.progress + 3);
+      return { intent: "魂导器安全测试", minutes: speedMinutes(game, 180, 720), ruleSummary: `对${product}完成连续启停、负载、温度和失效保护实验测试；结果已形成安全复核记录。`, fallbackNarrative: `我没有把能亮一次当成合格。连续启停、满载升温和断流保护逐项做完，外壳拆开后又检查了烧蚀痕迹，数据才写进复核页。`, suggestions: ["提交安全复核记录", "修正图纸误差", "申请机构验收"] };
     }
     const maxCraftGrade = Math.max(1, Math.min(9, Math.floor(profession.progress / 18) + 1, certifiedGrade + 1));
     if (requestedGrade > maxCraftGrade) return impossible(`当前只能尝试 ${maxCraftGrade} 级及以下魂导器，不能跳过阵法与认证基础。`, [`制作${maxCraftGrade}级魂导器`, "学习核心阵法", "申请魂导师认证"]);
@@ -2226,7 +2289,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/完成承诺|履行承诺/.test(action)) resolution = fulfillPromiseResolution(game, action);
   else if (/上课|课程|学院学习|参加实战课/.test(action)) resolution = academyStudyResolution(game);
   else if (/入学|报名.*学院|申请.*学院|成为工读生/.test(action)) resolution = academyResolution(game);
-  else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正/.test(action)) resolution = institutionResolution(game, action);
+  else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|推进.*机构事务|登记.*阶段|提交.*阶段|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正/.test(action)) resolution = institutionResolution(game, action);
   else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克|舰队|联邦|传灵塔|战神/.test(action)) resolution = factionResolution(game, action);
   else if (/拜师|拜.*为师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);
