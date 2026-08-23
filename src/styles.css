@@ -379,6 +379,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .identity-block small { color: var(--gold); font-size: 11px; letter-spacing: .14em; }
 .identity-block strong { font: 30px var(--display-font); margin: 7px 0; }
 .identity-block span { color: var(--muted); font-size: 11px; }
+.identity-block[class*="soul-grade-"] { padding-left: 13px; border-left: 3px solid var(--line); }
+.identity-block.soul-grade-优秀 { border-left-color: #5f86ae; }
+.identity-block.soul-grade-稀有 { border-left-color: #7956a8; }
+.identity-block.soul-grade-传奇 { border-left-color: #b48829; }
+.identity-block.soul-grade-神话 { border-left-color: #a43c35; background: linear-gradient(90deg, rgba(155,51,45,.055), transparent 70%); }
 .stat-list { margin: 20px 0; }
 .stat-list div { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px dashed var(--line); }
 .stat-list dt { color: var(--muted); font-size: 12px; }

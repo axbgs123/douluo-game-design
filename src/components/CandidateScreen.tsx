@@ -57,7 +57,7 @@ export function CandidateScreen({
           <article id={`candidate-${candidate.id}`} className={`candidate-card rarity-${candidate.rarity} ${lockedSlots.includes(index) ? "candidate-locked" : ""}`} key={candidate.id}>
             <div className="candidate-index">{String(index + 1).padStart(2, "0")}</div>
             <button type="button" className={`slot-lock ${lockedSlots.includes(index) ? "active" : ""}`} onClick={() => setLockedSlots((current) => current.includes(index) ? current.filter((slot) => slot !== index) : [...current, index])}>{lockedSlots.includes(index) ? "已锁定" : "锁定"}</button>
-            <div className="candidate-meta"><span>{candidate.gender}</span><span>{candidate.eraRelation}</span><strong className="rarity-badge">{candidate.rarity} · {candidate.route}</strong></div>
+            <div className="candidate-meta"><span>{candidate.gender}</span><span>{candidate.eraRelation}</span><strong className="rarity-badge">出身 {candidate.rarity} · {candidate.route}</strong></div>
             <label className="candidate-name-field"><span>姓名</span><input value={names[candidate.id] ?? candidate.name} maxLength={12} onChange={(event) => setNames((current) => ({ ...current, [candidate.id]: event.target.value }))} /></label>
             <p className="candidate-origin">{candidate.originName}</p>
             <p className="candidate-summary">{candidate.originSummary}</p>

@@ -1,4 +1,4 @@
-import type { CandidatePublic, CharacterPublic, ConditionLabel, GameView, PersonalitySetup } from "../../shared/game.js";
+import type { CandidatePublic, CandidateRarity, CharacterPublic, ConditionLabel, GameView, PersonalitySetup } from "../../shared/game.js";
 
 export interface MartialSoulTemplate {
   id: string;
@@ -9,6 +9,7 @@ export interface MartialSoulTemplate {
   soulPowerRange: [number, number];
   omens: string[];
   metaRarity?: import("../../shared/game.js").MartialSoulRarity;
+  grade?: CandidateRarity;
 }
 
 export interface HiddenCandidate {

@@ -99,7 +99,7 @@ export interface SoulRingView {
 
 export interface CharacterPublic extends CandidatePublic {
   age: number;
-  martialSoul: { name: string; category: string; description: string; rarity?: MartialSoulRarity };
+  martialSoul: { name: string; category: string; description: string; rarity?: MartialSoulRarity; grade?: CandidateRarity };
   innateSoulPower: number;
   soulRank: number;
   cultivationProgress: string;

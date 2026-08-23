@@ -6,6 +6,7 @@ import { toThirdPersonNarrative } from "./narrative.js";
 import { refreshStoryArchive } from "./story-rules.js";
 import { createRandom, integer, pick } from "./random.js";
 import { worldMapPoint } from "../../shared/world-map.js";
+import { martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 
 const DAYS_PER_YEAR = 360;
 
@@ -703,6 +704,8 @@ export function ensureGameState(game: StoredGame): StoredGame {
   for (const hidden of game.hiddenCandidates) {
     hidden.originId ??= "legacy-origin";
     hidden.roleTags ??= ["本地人"];
+    hidden.martialSoul.name = normalizeMartialSoulName(hidden.martialSoul.name);
+    hidden.martialSoul.grade ??= martialSoulGrade(hidden.martialSoul.name, hidden.martialSoul.metaRarity, hidden.martialSoul.soulPowerRange[1]);
     hidden.originStart ??= { coins: 12, items: [], reputation: "默默无闻", advantage: hidden.public.originAdvantage, burden: hidden.public.originBurden, pressure: 1 };
   }
   game.view.lifeGoal ??= "成为自己认可的强者";
@@ -757,6 +760,8 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.view.character.reputation ??= "默默无闻";
     game.view.character.injuries ??= [];
     game.view.character.soulRings ??= [];
+    game.view.character.martialSoul.name = normalizeMartialSoulName(game.view.character.martialSoul.name);
+    game.view.character.martialSoul.grade ??= martialSoulGrade(game.view.character.martialSoul.name, game.view.character.martialSoul.rarity, game.view.character.innateSoulPower);
     for (const relation of game.view.relations) {
       relation.strength ??= /亲属|父亲|母亲/.test(relation.relation) ? 75 : /师徒/.test(relation.relation) ? 45 : 12;
       relation.category ??= /亲属|父亲|母亲/.test(relation.relation) ? "亲属" : /势力|学院/.test(relation.relation) ? "势力" : /敌|仇/.test(relation.relation) ? "敌对" : "师友";

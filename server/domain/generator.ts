@@ -7,6 +7,7 @@ import type {
   NarrativeEntry,
   PersonalitySetup,
   LifeGoalDifficulty,
+  CandidateRarity,
 } from "../../shared/game.js";
 import type {
   CreateGameInput,
@@ -22,6 +23,7 @@ import { worldMapPoint } from "../../shared/world-map.js";
 import { EXPANDED_ORIGINS } from "../data/expanded-origins.js";
 import { metaSoulById } from "../data/meta-martial-souls.js";
 import { buildSystemCoreOrigins } from "../data/system-core-origins.js";
+import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 
 interface OriginTemplate {
   id: string;
@@ -425,7 +427,7 @@ export const CORE_ORIGIN_COUNT = ORIGINS.length;
 export const CORE_ORIGIN_UNIQUE_NAME_COUNT = new Set(ORIGINS.map((origin) => origin.name)).size;
 export const CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT = new Set(ORIGINS.map((origin) => [origin.advantage, origin.burden, origin.route, origin.startingCoins, origin.startingItems?.join("、")].join("|"))).size;
 
-const MARTIAL_SOULS: MartialSoulTemplate[] = [
+const BASE_MARTIAL_SOULS: MartialSoulTemplate[] = [
   {
     id: "blue-silver-grass",
     name: "蓝银草",
@@ -538,6 +540,11 @@ const MARTIAL_SOULS: MartialSoulTemplate[] = [
   { id: "void-ledger", name: "无字命册", category: "器武魂", description: "能记录因果痕迹的空白册页，前期能力弱，成长方向取决于长期选择。", rarity: 2, soulPowerRange: [5, 10], omens: ["你写下的日期很少记错", "偶尔会梦见一页页没有文字的旧纸"] },
 ];
 
+const MARTIAL_SOULS: MartialSoulTemplate[] = BASE_MARTIAL_SOULS.map((soul) => {
+  const name = normalizeMartialSoulName(soul.name);
+  return { ...soul, name, grade: martialSoulGrade(name, soul.metaRarity, soul.soulPowerRange[1]) };
+});
+
 const TRAIT_LABELS: Record<string, [string, string]> = {
   courage: ["谨慎", "勇敢"],
   empathy: ["冷静自持", "富有同理心"],
@@ -632,6 +639,10 @@ function originPool(preferences?: WeightPreferences): OriginTemplate[] {
   return ORIGINS.map((origin) => ({ ...origin, weight: origin.weight * (preferredIds.includes(origin.id) || matchesGeneratedPreference(origin) ? 2.4 : 1) }));
 }
 
+function resolvedOriginTier(origin: OriginTemplate): CandidateRarity {
+  return origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "优秀" : "平凡");
+}
+
 function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences): MartialSoulTemplate {
   const preferredCategory = preferences?.martialSoul;
   const originSoulIds: Record<string, string[]> = {
@@ -646,13 +657,16 @@ function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: 
     "evil-soul-remnant": ["blood-shadow-vine", "bone-mark", "blood-thorn"],
   };
   const forced = originSoulIds[origin.id];
-  const minimumPotential = origin.tier === "传奇" ? 9 : origin.tier === "稀有" ? 8 : 0;
-  const source = forced ? MARTIAL_SOULS.filter((soul) => forced.includes(soul.id)) : MARTIAL_SOULS.filter((soul) => soul.soulPowerRange[1] >= minimumPotential);
+  const identityTier = resolvedOriginTier(origin);
+  const identityIndex = MARTIAL_SOUL_GRADE_ORDER.indexOf(identityTier);
+  const baseSource = forced ? MARTIAL_SOULS.filter((soul) => forced.includes(soul.id)) : MARTIAL_SOULS;
+  const compatibleSource = baseSource.filter((soul) => MARTIAL_SOUL_GRADE_ORDER.indexOf(soul.grade ?? "平凡") >= identityIndex);
+  const source = compatibleSource.length ? compatibleSource : baseSource;
   const choices = source.map((soul) => ({
     ...soul,
     weight: soul.rarity
       * (origin.preferredCategories.includes(soul.category) ? 1.8 : 0.65)
-      * (["稀有", "传奇"].includes(origin.tier ?? "寻常") && soul.soulPowerRange[1] >= 9 ? 2 : 1)
+      * (soul.grade === identityTier ? 2.4 : 1)
       * (preferredCategory && preferredCategory !== "均衡" && soul.category === preferredCategory ? 2.25 : 1),
   }));
   return weightedPick(random, choices);
@@ -941,7 +955,7 @@ export function generateCandidates(
       household: concreteOrigin.household,
       residence: concreteOrigin.residence,
       route: origin.route ?? (origin.id === "mystery-arrival" ? "身世谜团" : "本地成长"),
-      rarity: origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "优秀" : "平凡"),
+      rarity: resolvedOriginTier(origin),
       selfKnowledge: origin.selfKnowledge ?? (origin.id === "mystery-arrival" ? "本地人 · 身世未知" : "本地人 · 身世明确"),
       knownBackground: thirdPersonClue(pick(random, origin.knownBackgrounds ?? [origin.id === "mystery-arrival" ? "你知道自己是被收养的，亲生父母和那块碎玉的来历都没人肯说。" : "你知道家里靠什么生活，也认得每天会见到的人。更深的秘密是否存在，还要靠经历确认。"]), name, gender),
       fixedTraits: origin.fixedTraits ?? [],
@@ -1483,6 +1497,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
       category: selected.martialSoul.category,
       description: selected.martialSoul.description,
       rarity: selected.martialSoul.metaRarity,
+      grade: selected.martialSoul.grade ?? martialSoulGrade(selected.martialSoul.name, selected.martialSoul.metaRarity, selected.martialSoul.soulPowerRange[1]),
     },
     innateSoulPower: selected.innateSoulPower,
     soulRank: selected.innateSoulPower,

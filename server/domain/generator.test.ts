@@ -12,6 +12,7 @@ import {
   rerollCharacterShaping,
   selectCandidate,
 } from "./generator.js";
+import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 
 const personality = {
   keywords: ["谨慎", "重情", "好学", "坚韧", "自由"],
@@ -63,6 +64,23 @@ describe("candidate generation", () => {
   it("uses all five visible rarity levels", () => {
     const rarities = new Set(Array.from({ length: 220 }, (_, rerollIndex) => generateCandidates("rarity-palette", rerollIndex, "女")).flat().map((candidate) => candidate.public.rarity));
     expect(rarities).toEqual(new Set(["平凡", "优秀", "稀有", "传奇", "神话"]));
+  });
+
+  it("never gives a character a martial soul below the origin rarity", () => {
+    const candidates = Array.from({ length: 180 }, (_, rerollIndex) => generateCandidates("soul-prestige-match", rerollIndex, "男")).flat();
+    for (const candidate of candidates) {
+      const identityIndex = MARTIAL_SOUL_GRADE_ORDER.indexOf(candidate.public.rarity);
+      const soulIndex = MARTIAL_SOUL_GRADE_ORDER.indexOf(candidate.martialSoul.grade!);
+      expect(soulIndex).toBeGreaterThanOrEqual(0);
+      expect(soulIndex).toBeGreaterThanOrEqual(identityIndex);
+    }
+  });
+
+  it("uses restrained names for ordinary souls and elevated names for mythic souls", () => {
+    expect(martialSoulGrade("蓝银草", undefined, 4)).toBe("平凡");
+    expect(normalizeMartialSoulName("霜戈")).toBe("玄霜破军戈");
+    expect(martialSoulGrade("玄霜破军戈", undefined, 10)).toBe("神话");
+    expect(normalizeMartialSoulName("噬影血藤")).toBe("九幽噬影血藤");
   });
 
   it("changes candidates on reroll while preserving the seed", () => {
