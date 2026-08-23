@@ -1,5 +1,6 @@
 import type {
   DeepSeekSettingsView,
+  CheckpointSummary,
   Difficulty,
   GameView,
   Gender,
@@ -32,6 +33,22 @@ export function getMetaProgression(): Promise<MetaProgressionView> {
 
 export function loadGame(id: string): Promise<GameView> {
   return request(`/api/games/${id}`);
+}
+
+export function deleteGame(id: string): Promise<{ ok: boolean }> {
+  return request(`/api/games/${id}`, { method: "DELETE" });
+}
+
+export function listCheckpoints(id: string): Promise<CheckpointSummary[]> {
+  return request(`/api/games/${id}/checkpoints`);
+}
+
+export function createCheckpoint(id: string): Promise<CheckpointSummary[]> {
+  return request(`/api/games/${id}/checkpoints`, { method: "POST" });
+}
+
+export function restoreCheckpoint(id: string, checkpointId: number): Promise<GameView> {
+  return request(`/api/games/${id}/checkpoints/${checkpointId}/restore`, { method: "POST" });
 }
 
 export function createGame(input: {
@@ -80,6 +97,55 @@ export function submitAction(id: string, input: string): Promise<GameView> {
     method: "POST",
     body: JSON.stringify({ input }),
   });
+}
+
+export type ActionStreamEvent =
+  | { type: "phase"; phase: string; label: string }
+  | { type: "draft"; text: string }
+  | { type: "done"; game: GameView; explanation: string }
+  | { type: "error"; message: string };
+
+export async function streamAction(
+  id: string,
+  input: string,
+  onEvent: (event: ActionStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<GameView> {
+  const response = await fetch(`/api/games/${id}/action/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ input }),
+    signal,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(payload.error ?? "推演请求失败");
+  }
+  if (!response.body) throw new Error("浏览器不支持流式正文");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed: GameView | undefined;
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as ActionStreamEvent;
+      onEvent(event);
+      if (event.type === "error") throw new Error(event.message);
+      if (event.type === "done") completed = event.game;
+    }
+    if (done) break;
+  }
+  if (!completed) throw new Error("推演在提交前中断，存档没有变化");
+  return completed;
+}
+
+export function rewriteLastAction(id: string): Promise<GameView> {
+  return request(`/api/games/${id}/action/rewrite`, { method: "POST" });
 }
 
 export function changeSpeed(id: string, speed: GameView["speed"]): Promise<GameView> {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { GameSpeed, GameView, HuntingView } from "../../shared/game";
+import type { CheckpointSummary, GameSpeed, GameView, HuntingView, MapLevel } from "../../shared/game";
 import { formatSoulCoins } from "../../shared/currency";
 import { worldMapPoint } from "../../shared/world-map";
 import { DouluoWorldMap } from "./DouluoWorldMap";
@@ -7,28 +7,41 @@ import { DouluoWorldMap } from "./DouluoWorldMap";
 interface StoryScreenProps {
   game: GameView;
   busy: boolean;
+  aiConnected: boolean;
+  actionPhase: string;
+  actionDraft: string;
+  lastAction: string;
+  lastExplanation: string;
+  checkpoints: CheckpointSummary[];
   onAwaken: () => Promise<void>;
   onAction: (input: string) => Promise<void>;
+  onCancelAction: () => void;
+  onRetry: () => Promise<void> | void;
+  onRewrite: () => Promise<void> | void;
+  onCreateCheckpoint: () => Promise<void> | void;
+  onRestoreCheckpoint: (checkpointId: number) => Promise<void> | void;
+  onOpenSettings: () => void;
   onSpeed: (speed: GameSpeed) => Promise<void>;
   onEnd: (reason?: string) => Promise<void>;
   onMapPin: (input: { label: string; x: number; y: number }) => Promise<void>;
   onMapPinRemove: (pinId: string) => Promise<void>;
 }
 
-type Panel = "人物" | "武魂" | "背包" | "地图" | "关系" | "任务" | "手记" | "猎魂" | "世界";
-const PANELS: Panel[] = ["人物", "武魂", "背包", "地图", "关系", "任务", "手记", "猎魂", "世界"];
+type Panel = "人物" | "武魂" | "背包" | "地图" | "关系" | "任务" | "情报" | "手记" | "猎魂" | "世界";
+const PANELS: Panel[] = ["人物", "武魂", "背包", "地图", "关系", "任务", "情报", "手记", "猎魂", "世界"];
 
 function panelBadge(game: GameView, panel: Panel): string | undefined {
   if (panel === "人物" && game.character?.injuries.length) return String(game.character.injuries.length);
   if (panel === "关系" && game.relations.length > 2) return String(game.relations.length);
   if (panel === "任务") return String(game.tasks.filter((task) => task.status === "进行中").length || "");
+  if (panel === "情报") return String(Math.min(9, game.intelligence.filter((item) => item.freshness === "新鲜").length) || "");
   if (panel === "手记" && game.storyArchive.openThreads.length) return String(Math.min(9, game.storyArchive.openThreads.length));
   if (panel === "猎魂" && game.hunting && game.hunting.stage !== "完成") return "!";
   if (panel === "世界" && (game.activeEvents.length || game.news.length)) return game.activeEvents.length ? "!" : String(Math.min(9, game.news.length));
   return undefined;
 }
 
-export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd, onMapPin, onMapPinRemove }: StoryScreenProps) {
+export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft, lastAction, lastExplanation, checkpoints, onAwaken, onAction, onCancelAction, onRetry, onRewrite, onCreateCheckpoint, onRestoreCheckpoint, onOpenSettings, onSpeed, onEnd, onMapPin, onMapPinRemove }: StoryScreenProps) {
   const [input, setInput] = useState("");
   const [panel, setPanel] = useState<Panel>("人物");
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -67,16 +80,23 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd, on
               : entry.kind === "system"
                 ? <p key={entry.id} className="system-entry">{entry.text}</p>
                 : <article key={entry.id} className="prose-entry">{entry.text.split("\n\n").map((paragraph, index) => <p key={`${entry.id}-${index}`}>{paragraph}</p>)}</article>)}
+            {busy && actionPhase && <section className="generation-card">
+              <header><i /><strong>{actionPhase}</strong><button type="button" onClick={onCancelAction}>取消</button></header>
+              <ol>{["检查行动是否合法", "计算时间、胜负与后果", "按第三人称续写正文", "核对时间线、知情边界与程序结果", "写入存档"].map((label) => <li key={label} className={label === actionPhase ? "active" : ""}>{label}</li>)}</ol>
+              {actionDraft && <article>{actionDraft}</article>}
+              <small>取消或失败不会推进时间，也不会写入结果。</small>
+            </section>}
             <div ref={narrativeEnd} />
           </div>
 
           {game.status === "awakening" ? <div className="awakening-action"><button className="primary-button" type="button" disabled={busy} onClick={() => void onAwaken()}>{busy ? "觉醒中…" : "觉醒武魂"}</button></div>
             : game.status === "ended" ? <EndingPanel game={game} />
-              : <div className="action-area">
-                  <div className="suggestion-list">{game.suggestions.map((suggestion, index) => <button type="button" key={`${suggestion}-${index}`} disabled={busy} onClick={() => submit(suggestion)}><span>{index + 1}</span>{suggestion}</button>)}</div>
-                  <form onSubmit={(event) => { event.preventDefault(); submit(input); }} className="action-form"><textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder="输入行动或对话……" rows={3} disabled={busy} /><button className="send-button" type="submit" disabled={busy || !input.trim()}>{busy ? "推演中" : "行动"}</button></form>
-                  <div className="action-bottom-row"><span>可自由输入</span>{!confirmEnd ? <button type="button" disabled={busy} onClick={() => setConfirmEnd(true)}>申请结算</button> : <span className="end-confirm"><small>结局类型、目标是否完成与收益均由当前存档数据判断。</small><button type="button" onClick={() => void onEnd()}>交给程序判定</button><button type="button" onClick={() => setConfirmEnd(false)}>取消</button></span>}</div>
-                </div>}
+              : !aiConnected ? <div className="ai-required-card"><strong>连接 AI 后开始正文</strong><p>当前仍可查看角色、地图、资料和模型设置，但正式行动不会在无 AI 时推进。</p><button type="button" onClick={onOpenSettings}>设置模型</button></div>
+                : <div className="action-area">
+                    <div className="suggestion-list">{game.suggestions.map((suggestion, index) => <button type="button" key={`${suggestion}-${index}`} disabled={busy} onClick={() => submit(suggestion)}><span>{index + 1}</span>{suggestion}</button>)}</div>
+                    <form onSubmit={(event) => { event.preventDefault(); submit(input); }} className="action-form"><textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder="输入行动或对话……" rows={3} disabled={busy} /><button className="send-button" type="submit" disabled={busy || !input.trim()}>{busy ? "推演中" : "行动"}</button></form>
+                    <div className="action-bottom-row"><span className="action-tools">{lastAction && !busy && <button type="button" onClick={() => void onRetry()}>重试未提交行动</button>} {!busy && game.narrative.some((entry) => entry.kind === "player") && <button type="button" onClick={() => void onRewrite()}>只重写正文</button>}<button type="button" disabled={busy} onClick={() => void onCreateCheckpoint()}>手动存档</button>{lastExplanation && <details><summary>查看判定</summary><p>{lastExplanation}</p></details>}{checkpoints.length > 0 && <details className="checkpoint-menu"><summary>回溯关键节点</summary><div><small>只保留最近三个节点；回溯会扣本局表现分。</small>{checkpoints.map((checkpoint) => <button type="button" key={checkpoint.id} disabled={busy} onClick={() => { if (window.confirm(`回溯到“${checkpoint.label}”会扣除本局表现分，并减少局外点数。继续吗？`)) void onRestoreCheckpoint(checkpoint.id); }}><strong>{checkpoint.label}</strong><small>行动 {checkpoint.actionIndex} · {new Date(checkpoint.createdAt).toLocaleString("zh-CN")}</small></button>)}</div></details>}</span>{!confirmEnd ? <button type="button" disabled={busy} onClick={() => setConfirmEnd(true)}>申请结算</button> : <span className="end-confirm"><small>结局类型、目标是否完成与收益均由当前存档数据判断。</small><button type="button" onClick={() => void onEnd()}>交给程序判定</button><button type="button" onClick={() => setConfirmEnd(false)}>取消</button></span>}</div>
+                  </div>}
         </section>
 
         <aside className="side-panel">
@@ -88,6 +108,7 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd, on
             {panel === "地图" && <MapPanel game={game} submit={submit} busy={busy} onMapPin={onMapPin} onMapPinRemove={onMapPinRemove} />}
             {panel === "关系" && <RelationPanel game={game} />}
             {panel === "任务" && <TaskPanel game={game} />}
+            {panel === "情报" && <IntelligencePanel game={game} />}
             {panel === "手记" && <ArchivePanel game={game} />}
             {panel === "猎魂" && <HuntPanel game={game} submit={submit} busy={busy} />}
             {panel === "世界" && <WorldPanel game={game} submit={submit} busy={busy} />}
@@ -117,6 +138,8 @@ function CharacterPanel({ game }: { game: GameView }) {
     {character.injuries.length > 0 && <SimpleList title="伤势" values={character.injuries} empty="" />}
     <p className="panel-label">人生目标</p><p className="panel-copy">{game.lifeGoal}</p><small className="goal-verification-note">结算时由魂力、任务、关系、探索与真实历史影响共同验收。</small>
     {game.affiliations.length > 0 && <><p className="panel-label">身份</p><div className="affiliation-list">{game.affiliations.map((item) => <article key={item.id}><strong>{item.name}</strong><span>{item.role} · {item.reputation}</span></article>)}</div></>}
+    {game.reputations.length > 0 && <><p className="panel-label">分地区名声</p><div className="reputation-list">{game.reputations.map((item) => <article key={`${item.scope}-${item.publicName}`}><strong>{item.publicName}</strong><span>{item.scope} · {item.reputation}</span><small>追查热度 {item.heat} · {item.source}</small></article>)}</div></>}
+    {game.professions.length > 0 && <><p className="panel-label">技艺与研究</p><div className="profession-list">{game.professions.map((item) => <article key={item.id}><header><strong>{item.name}</strong><span>{item.level}</span></header><progress max={100} value={item.progress} /><small>实验 {item.experiments} · 失败 {item.failures} · 已掌握 {item.knownMethods.length}</small></article>)}</div></>}
     <div className="trait-cloud">{character.personalityTraits.map((trait) => <span key={trait}>{trait}</span>)}</div>
   </div>;
 }
@@ -135,12 +158,12 @@ function SoulPanel({ game }: { game: GameView }) {
 }
 
 function InventoryPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
-  if (!game.inventory.length) return <LockedPanel text="背包是空的" />;
-  return <div><h3 className="panel-title">随身物品</h3><div className="inventory-grid">{game.inventory.map((value, index) => <article key={`${value}-${index}`}><i>{String(index + 1).padStart(2, "0")}</i><strong>{value}</strong><button type="button" disabled={busy || game.status === "ended"} onClick={() => submit(`使用${value}`)}>使用</button></article>)}</div></div>;
+  return <div><div className={`inventory-load load-${game.inventoryLoad.state}`}><strong>{game.inventoryLoad.used} / {game.inventoryLoad.capacity}</strong><span>随身负重 · {game.inventoryLoad.state}</span></div><h3 className="panel-title">随身物品</h3>{game.inventory.length ? <div className="inventory-grid">{game.inventory.map((value, index) => <article key={`${value}-${index}`}><i>{String(index + 1).padStart(2, "0")}</i><strong>{value}</strong><button type="button" disabled={busy || game.status === "ended"} onClick={() => submit(`使用${value}`)}>使用</button><button type="button" disabled={busy || game.status === "ended"} onClick={() => submit(`把${value}存放在住处`)}>存放</button></article>)}</div> : <LockedPanel text="背包是空的" />}{game.inventoryLoad.storage.length > 0 && <><h3 className="panel-title">住处与仓库</h3><div className="inventory-grid">{game.inventoryLoad.storage.map((value, index) => <article key={`${value}-stored-${index}`}><i>藏</i><strong>{value}</strong><button type="button" disabled={busy} onClick={() => submit(`从住处取回${value}`)}>取回</button></article>)}</div></>}</div>;
 }
 
 function MapPanel({ game, submit, busy, onMapPin, onMapPinRemove }: { game: GameView; submit: (value: string) => void; busy: boolean; onMapPin: (input: { label: string; x: number; y: number }) => Promise<void>; onMapPinRemove: (pinId: string) => Promise<void> }) {
   const [zoom, setZoom] = useState(1);
+  const [level, setLevel] = useState<MapLevel>("大陆");
   const [pinLabel, setPinLabel] = useState("");
   const [pendingPoint, setPendingPoint] = useState<{ x: number; y: number }>();
   const visible = game.map;
@@ -151,7 +174,13 @@ function MapPanel({ game, submit, busy, onMapPin, onMapPinRemove }: { game: Game
     { id: `current-${current.id}`, label: game.character?.name ?? "主角", detail: "当前位置", x: current.x, y: current.y, tone: "current" as const },
     ...visible.filter((item) => item.objective).map((item) => ({ id: `objective-${item.id}`, label: item.name, detail: item.objective, x: item.x, y: item.y, tone: "objective" as const, onClick: item.travelMinutes >= 0 ? () => submit(`前往${item.name}`) : undefined })),
   ];
+  const levelNodes = game.mapHierarchy.nodes.filter((node) => node.level === level);
   return <div className="map-panel-visual">
+    <nav className="map-level-tabs">{(["大陆", "聚居地", "建筑"] as MapLevel[]).map((item) => <button type="button" key={item} className={level === item ? "active" : ""} onClick={() => setLevel(item)}>{item === "大陆" ? game.mapHierarchy.continentName : item === "聚居地" ? game.mapHierarchy.settlementName : game.mapHierarchy.buildingName}</button>)}</nav>
+    {level !== "大陆" ? <div className={`local-map local-map-${level}`}><svg viewBox="0 0 100 100" role="img" aria-label={`${level}地图`}>
+      <path d="M8 86 L92 86 M12 52 L88 52 M50 10 L50 92" className="local-road" />
+      {levelNodes.map((node) => <g key={node.id} transform={`translate(${node.x} ${node.y})`} className={node.current ? "local-node current" : node.objective ? "local-node objective" : "local-node"}><circle r={node.current ? 4.8 : 3.5} /><text y="-6" textAnchor="middle">{node.name}</text><title>{node.description} · {node.source} · 可信度 {node.confidence}%</title></g>)}
+    </svg><div className="local-map-list">{levelNodes.map((node) => <article key={node.id}><header><strong>{node.name}</strong><span>{node.current ? "当前位置" : node.kind}</span></header><p>{node.description}</p><small>{node.source} · 可信度 {node.confidence}%</small></article>)}</div></div> : <>
     <div className="map-tools"><div><button type="button" onClick={() => setZoom((value) => Math.max(1, value - .25))}>−</button><span>{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((value) => Math.min(2.5, value + .25))}>＋</button></div><small>输入名称后点击地图即可标点</small></div>
     <DouluoWorldMap
       zoom={zoom}
@@ -165,22 +194,31 @@ function MapPanel({ game, submit, busy, onMapPin, onMapPinRemove }: { game: Game
     {game.mapPins.length > 0 && <div className="saved-pin-list">{game.mapPins.map((pin) => <article key={pin.id}><span>⌖</span><strong>{pin.label}</strong><small>{pin.x.toFixed(1)}, {pin.y.toFixed(1)}</small><button type="button" disabled={busy} onClick={() => void onMapPinRemove(pin.id)}>删除</button></article>)}</div>}
     <article className="map-current-detail"><strong>{current.name}</strong><p>{current.description}</p><span>{current.region} · 危险 {current.danger}</span></article>
     <div className="map-route-list"><h4>可直接前往</h4>{routes.length ? routes.map((location) => <button type="button" key={location.id} disabled={busy || game.status === "ended"} onClick={() => submit(`前往${location.name}`)}><strong>{location.name}</strong><span>{Math.max(1, Math.ceil(location.travelMinutes / 60))} 小时 · {location.danger}</span></button>) : <p>当前没有确认过的直达路线。</p>}</div>
+    </>}
   </div>;
 }
 
 function RelationPanel({ game }: { game: GameView }) {
-  if (!game.relations.length) return <LockedPanel text="暂无关系" />;
+  if (!game.relations.length && !game.npcRelations.length) return <LockedPanel text="暂无关系" />;
   const shown = game.relations.slice(0, 8);
   return <div className="relation-panel"><div className="relation-graph">
     <svg viewBox="0 0 320 310" aria-hidden="true">{shown.map((relation, index) => { const point = radialPoint(index, shown.length, 116); return <line key={relation.id ?? `${relation.name}-${index}`} className={`edge-${relation.category ?? "其他"}`} x1="160" y1="155" x2={point.x} y2={point.y} strokeWidth={Math.max(1.2, Math.min(4, (relation.strength ?? 12) / 22))} />; })}</svg>
     <div className="relation-center"><small>主角</small><strong>{game.character?.name}</strong></div>
     {shown.map((relation, index) => { const point = radialPoint(index, shown.length, 116); return <article key={relation.id ?? `${relation.name}-${index}`} className={`relation-node relation-${relation.category ?? "其他"}`} style={{ left: `${point.x / 3.2}%`, top: `${point.y / 3.1}%` }} title={relation.impression}><small>{relation.relation}</small><strong>{relation.name}</strong><span>{relation.faction ?? relation.impression}</span></article>; })}
-  </div><div className="relation-legend"><span>亲属</span><span>师友</span><span>势力</span><span>敌对</span></div>{game.relations.length > shown.length && <p className="panel-copy">另有 {game.relations.length - shown.length} 段次要关系，关系增强后会进入主图。</p>}</div>;
+  </div><div className="relation-legend"><span>亲属</span><span>师友</span><span>势力</span><span>敌对</span></div>{game.relations.length > shown.length && <p className="panel-copy">另有 {game.relations.length - shown.length} 段次要关系，关系增强后会进入主图。</p>}
+  <h3 className="panel-title">关系明细</h3><div className="player-relation-ledger">{shown.map((relation) => <article key={`detail-${relation.id ?? relation.name}`}><header><strong>{relation.name}</strong><span>{relation.relation}</span></header><p>{relation.impression}</p><small>亲近 {relation.dimensions?.closeness ?? relation.strength ?? 0} · 信任 {relation.dimensions?.trust ?? relation.strength ?? 0} · 敬重 {relation.dimensions?.respect ?? 0} · 戒备 {relation.dimensions?.vigilance ?? 0} · 仇恨 {relation.dimensions?.hostility ?? 0}</small>{relation.history?.at(-1) && <em>{relation.history.at(-1)!.date}：{relation.history.at(-1)!.reason}</em>}</article>)}</div>
+  {game.npcRelations.length > 0 && <><h3 className="panel-title">人物之间</h3><div className="npc-relation-ledger">{game.npcRelations.map((relation) => <article key={relation.id}><header><strong>{relation.leftName} — {relation.rightName}</strong><span>{relation.kind}</span></header><p>{relation.reason}</p><small>{relation.date} · 信任 {relation.dimensions.trust} · 戒备 {relation.dimensions.vigilance} · 利益 {relation.dimensions.sharedInterest}</small></article>)}</div></>}
+  </div>;
 }
 
 function TaskPanel({ game }: { game: GameView }) {
   if (!game.tasks.length) return <LockedPanel text="暂无记录" />;
   return <div className="task-timeline">{game.tasks.map((task, index) => { const destination = task.destinationId ? game.map.find((location) => location.id === task.destinationId)?.name : undefined; return <article key={task.id ?? `${task.title}-${index}`} className={`task-${task.status ?? "进行中"}`}><i>{task.status === "完成" ? "✓" : task.status === "失败" ? "×" : index + 1}</i><div><span>{task.kind} · {task.status ?? "进行中"}</span><strong>{task.title}</strong><p>{task.detail}</p>{destination && <small>目的地 · {destination}</small>}{task.deadline && <small>{task.deadline}</small>}</div></article>; })}</div>;
+}
+
+function IntelligencePanel({ game }: { game: GameView }) {
+  if (!game.intelligence.length) return <LockedPanel text="还没有通过亲历、调查或可靠消息获得情报" />;
+  return <div className="intel-panel"><div className="intel-legend"><span>确定</span><span>推测</span><span>传闻</span><span>矛盾</span></div>{game.intelligence.map((intel) => <article key={intel.id} className={`intel-${intel.status}`}><header><small>{intel.subjectType} · {intel.status}</small><strong>{intel.title}</strong><b>{intel.confidence}%</b></header><p>{intel.detail}</p><footer><span>{intel.source}</span><span>{intel.acquiredAt} · {intel.freshness}</span></footer></article>)}</div>;
 }
 
 function ArchivePanel({ game }: { game: GameView }) {
@@ -213,7 +251,7 @@ function HuntPanel({ game, submit, busy }: { game: GameView; submit: (value: str
 }
 
 function WorldPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
-  return <div className="world-panel"><h3 className="panel-title">原作因果</h3>{game.canonInfluences.length ? <div className="causal-chain">{game.canonInfluences.map((cause, index) => <article key={cause.id}><i>{index + 1}</i><div><strong>{cause.action}</strong><span>{cause.affects} · {cause.strength}</span><small>{cause.date}</small></div></article>)}</div> : <article className="canon-stable"><strong>原作轨迹稳定</strong><p>主角还没有接触关键人物、势力或事件，原作节点不会自行改变。</p></article>}{game.activeEvents.length > 0 && <><h3 className="panel-title">眼前事件</h3><div className="world-event-list">{game.activeEvents.map((event) => <article key={event.id}><header><span>{event.kind} · {event.remaining}</span><strong>{event.title}</strong></header><p>{event.detail}</p><small>{event.location}</small><div><button type="button" disabled={busy} onClick={() => submit(`调查${event.title}`)}>调查</button><button type="button" disabled={busy} onClick={() => submit(`帮助处理${event.title}`)}>介入</button></div></article>)}</div></>}<h3 className="panel-title">近日消息</h3>{game.news.length ? <div className="news-list">{game.news.map((item) => <article key={item.id}><span>{item.date}</span><strong>{item.title}</strong><p>{item.detail}</p></article>)}</div> : <p className="panel-copy">暂时没有传到角色耳中的大事。</p>}<h3 className="panel-title">已知人物</h3>{game.knownFigures.length ? <div className="figure-list">{game.knownFigures.map((figure) => <article key={figure.id}><header><strong>{figure.name}</strong><span>{figure.knownPower}</span></header><p>{figure.title ?? figure.faction ?? "身份不详"}</p><small>{figure.location} · {figure.status}</small></article>)}</div> : <p className="panel-copy">角色还没有接触到重要人物。</p>}</div>;
+  return <div className="world-panel"><h3 className="panel-title">原作因果</h3>{game.canonInfluences.length ? <div className="causal-chain">{game.canonInfluences.map((cause, index) => <article key={cause.id}><i>{index + 1}</i><div><strong>{cause.action}</strong><span>{cause.affects} · {cause.strength}</span><small>{cause.date}</small></div></article>)}</div> : <article className="canon-stable"><strong>原作轨迹稳定</strong><p>主角还没有接触关键人物、势力或事件，原作节点不会自行改变。</p></article>}{game.managedFactions.length > 0 && <><h3 className="panel-title">掌管势力</h3><div className="managed-faction-list">{game.managedFactions.map((faction) => <article key={faction.id}><header><strong>{faction.name}</strong><span>{faction.role}</span></header><p>{faction.members} 人 · 资源 {faction.resources} · {faction.territory.join("、")}</p><small>{faction.departments.join("、")}；待处理：{faction.internalIssues.join("、") || "暂无"}</small></article>)}</div></>}{game.activeEvents.length > 0 && <><h3 className="panel-title">眼前事件</h3><div className="world-event-list">{game.activeEvents.map((event) => <article key={event.id}><header><span>{event.kind} · {event.remaining}</span><strong>{event.title}</strong></header><p>{event.detail}</p><small>{event.location}</small><div><button type="button" disabled={busy} onClick={() => submit(`调查${event.title}`)}>调查</button><button type="button" disabled={busy} onClick={() => submit(`帮助处理${event.title}`)}>介入</button><button type="button" disabled={busy} onClick={() => submit(`拒绝${event.title}`)}>拒绝</button></div></article>)}</div></>}<h3 className="panel-title">近日消息</h3>{game.news.length ? <div className="news-list">{game.news.map((item) => <article key={item.id}><span>{item.date}</span><strong>{item.title}</strong><p>{item.detail}</p></article>)}</div> : <p className="panel-copy">暂时没有传到角色耳中的大事。</p>}<h3 className="panel-title">已知人物</h3>{game.knownFigures.length ? <div className="figure-list">{game.knownFigures.map((figure) => <article key={figure.id}><header><strong>{figure.name}</strong><span>{figure.knownPower}</span></header><p>{figure.title ?? figure.faction ?? "身份不详"}</p><small>{figure.location} · {figure.status} · {figure.source} {figure.confidence}%</small></article>)}</div> : <p className="panel-copy">角色还没有接触到重要人物。</p>}</div>;
 }
 
 function EndingPanel({ game }: { game: GameView }) {

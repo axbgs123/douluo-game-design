@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { GameView, KnownFigureView, MapLocationView, WorldEventView, WorldNewsView } from "../../shared/game.js";
+import type { GameView, IntelligenceView, KnownFigureView, MapHierarchyView, MapLocationView, NpcRelationEvidenceView, WorldEventView, WorldNewsView } from "../../shared/game.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationById } from "../data/world.js";
 import type { HiddenWorldState, StoredGame, WorldNpcState } from "./model.js";
 import { toThirdPersonNarrative } from "./narrative.js";
@@ -86,6 +86,7 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
       knownToPlayer: born && canonicalLocationAtYear(definition.id, startYear) === startLocationId && definition.importance <= 3,
       lastSimulatedYear: startYear,
       memoryOfPlayer: [],
+      autonomyLog: [],
     };
     return [definition.id, state];
   }));
@@ -100,7 +101,9 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
     dynamicEvents: [],
     lastAutonomyOrdinal: ordinal(startYear, 1),
     resurrectionCount: 0,
+    resurrectionRecords: [],
     discoveredLocations: [startLocationId],
+    intelligenceRecords: [],
     flags: {},
     trainingPoints: 0,
     healthPoints: 100,
@@ -191,6 +194,7 @@ export function buildKnownFigures(game: StoredGame): KnownFigureView[] {
   return Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer).map((npc) => {
     const definition = characterById(npc.id);
     const faction = FACTIONS.find((item) => npc.factionIds.includes(item.id));
+    const intel = [...game.world.intelligenceRecords].reverse().find((item) => item.subjectType === "人物" && item.subjectId === npc.id);
     return {
       id: npc.id,
       name: npc.name,
@@ -199,8 +203,77 @@ export function buildKnownFigures(game: StoredGame): KnownFigureView[] {
       knownPower: knownPower(npc),
       location: locationById(npc.locationId)?.name ?? "不明",
       status: npc.alive ? npc.currentGoal : "已死亡",
+      source: intel?.source ?? "亲历",
+      confidence: intel?.confidence ?? (npc.locationId === game.view.locationId ? 100 : 65),
     };
   });
+}
+
+export function recordIntelligence(game: StoredGame, input: Omit<HiddenWorldState["intelligenceRecords"][number], "id" | "year" | "day">): void {
+  const time = game.view.worldTime;
+  const existing = game.world.intelligenceRecords.find((item) => item.subjectType === input.subjectType && item.subjectId === input.subjectId && item.detail === input.detail && item.source === input.source);
+  if (existing) {
+    existing.confidence = Math.max(existing.confidence, input.confidence);
+    existing.year = time?.year ?? existing.year;
+    existing.day = time?.day ?? existing.day;
+    existing.status = input.status;
+  } else {
+    game.world.intelligenceRecords.push({ id: `intel-${game.actionIndex}-${game.world.intelligenceRecords.length}`, ...input, year: time?.year ?? 0, day: time?.day ?? 1 });
+  }
+  game.world.intelligenceRecords = game.world.intelligenceRecords.slice(-300);
+  game.view.intelligence = buildIntelligenceView(game);
+}
+
+export function buildIntelligenceView(game: StoredGame): IntelligenceView[] {
+  const now = ordinal(game.view.worldTime?.year ?? 0, game.view.worldTime?.day ?? 1);
+  return game.world.intelligenceRecords.slice(-80).reverse().map((record) => {
+    const age = now - ordinal(record.year, record.day);
+    return {
+      id: record.id,
+      subjectType: record.subjectType,
+      subjectId: record.subjectId,
+      title: record.title,
+      detail: record.detail,
+      source: record.source,
+      confidence: record.confidence,
+      acquiredAt: `原作 ${record.year >= 0 ? "+" : ""}${record.year} 年 · 第 ${record.day} 日`,
+      freshness: age <= 7 ? "新鲜" : age <= 90 ? "尚可" : "过期",
+      status: record.status,
+    };
+  });
+}
+
+export function buildMapHierarchy(game: StoredGame): MapHierarchyView {
+  const selected = game.hiddenCandidates.find((candidate) => candidate.public.id === game.view.selectedCandidateId)?.public;
+  const atHome = game.view.locationId === selected?.locationId;
+  const settlementName = atHome
+    ? selected?.residence?.settlement ?? selected?.location ?? game.view.location ?? "当前位置"
+    : game.view.location ?? selected?.residence?.settlement ?? "当前位置";
+  const buildingName = atHome ? selected?.residence?.building ?? `${settlementName}住处` : `${settlementName}临时落脚处`;
+  const currentLocation = game.view.locationId ?? selected?.locationId ?? "notting-city";
+  const authorityFact = selected?.originFacts.find((fact) => fact.label === "归属")?.value;
+  const authorityName = authorityFact && /宗|殿|府|院|会|队|城|村|镇|行|家族/.test(authorityFact) ? authorityFact : `${settlementName}户籍与治安处`;
+  const confidenceFor = (id: string) => [...game.world.intelligenceRecords].reverse().find((item) => item.subjectType === "地点" && item.subjectId === id);
+  const continentNodes = game.view.map.filter((item) => item.discovered || item.current || item.objective).map((item) => {
+    const intel = confidenceFor(item.id);
+    return { id: item.id, name: item.name, level: "大陆" as const, kind: "地点", description: item.description, x: item.x, y: item.y, current: item.current, objective: item.objective, confidence: item.current ? 100 : intel?.confidence ?? 60, source: item.current ? "亲历" : intel?.source ?? "地图与传闻" };
+  });
+  const localNodes = [
+    { id: `${currentLocation}:gate`, name: "聚居地入口", kind: "出入口", description: "通向外部道路，旅行从这里计算。", x: 12, y: 52 },
+    { id: `${currentLocation}:home`, name: buildingName, kind: "住处", description: selected?.residence?.security ?? "当前可以休息和存放普通物品的地方。", x: 32, y: 34 },
+    { id: `${currentLocation}:authority`, name: authorityName, kind: "机构", description: "处理户籍、治安与本地事务。", x: 67, y: 30 },
+    { id: `${currentLocation}:market`, name: `${settlementName}集市`, kind: "交易", description: "日常补给、零工与传闻集中的区域。", x: 62, y: 70 },
+    { id: `${currentLocation}:awakening`, name: `${settlementName}觉醒点`, kind: "武魂", description: "当地儿童进行武魂觉醒或复测的地点。", x: 84, y: 49 },
+  ].map((node) => ({ ...node, level: "聚居地" as const, parentId: currentLocation, current: node.id.endsWith(":home"), confidence: node.id.endsWith(":home") ? 100 : 82, source: node.id.endsWith(":home") ? "日常生活" : "本地常识" }));
+  const room = selected?.residence?.room ?? "临时卧室";
+  const buildingNodes = [
+    { id: `${currentLocation}:building:entrance`, name: "入口", kind: "出入口", description: "连接住处与外部道路。", x: 50, y: 88 },
+    { id: `${currentLocation}:building:main`, name: "堂屋", kind: "公共空间", description: "家人或同住者日常见面、吃饭和商议事情的地方。", x: 50, y: 55 },
+    { id: `${currentLocation}:building:room`, name: room, kind: "主角房间", description: "主角当前睡眠、收纳私人物品的位置。", x: 24, y: 28 },
+    { id: `${currentLocation}:building:store`, name: "储物间", kind: "储藏", description: "普通物资与家庭工具所在处，贵重物品未必放在这里。", x: 77, y: 28 },
+    { id: `${currentLocation}:building:yard`, name: /宗|府|殿|堡/.test(buildingName) ? "练功小院" : "后院", kind: "训练", description: "可以进行不扰民的基础练习。", x: 78, y: 66 },
+  ].map((node) => ({ ...node, level: "建筑" as const, parentId: `${currentLocation}:home`, current: node.name === room, confidence: 100, source: "日常生活" }));
+  return { continentName: "斗罗大陆", settlementName, buildingName, nodes: [...continentNodes, ...localNodes, ...buildingNodes] };
 }
 
 export function buildActiveEvents(game: StoredGame): WorldEventView[] {
@@ -241,23 +314,50 @@ function relationKind(bond: number): "亲近" | "合作" | "竞争" | "敌对" |
   return "陌生";
 }
 
-function updateNpcRelation(game: StoredGame, leftId: string, rightId: string, delta: number, year: number): void {
+function buildNpcRelationViews(game: StoredGame): NpcRelationEvidenceView[] {
+  return game.world.npcRelations.flatMap((relation) => {
+    const left = game.world.npcs[relation.leftId];
+    const right = game.world.npcs[relation.rightId];
+    const latest = relation.history.at(-1);
+    if (!left?.knownToPlayer || !right?.knownToPlayer || !latest) return [];
+    return [{
+      id: `${relation.leftId}-${relation.rightId}`,
+      leftName: left.name,
+      rightName: right.name,
+      kind: relation.kind,
+      dimensions: relation.dimensions,
+      reason: latest.reason,
+      date: `原作 ${latest.year >= 0 ? "+" : ""}${latest.year} 年 · 第 ${latest.day} 日`,
+    }];
+  }).slice(-30).reverse();
+}
+
+function updateNpcRelation(game: StoredGame, leftId: string, rightId: string, delta: number, year: number, day: number, reason: string): void {
   if (leftId === rightId) return;
   const [left, right] = [leftId, rightId].sort();
   let relation = game.world.npcRelations.find((item) => item.leftId === left && item.rightId === right);
   if (!relation) {
-    relation = { leftId: left, rightId: right, bond: 0, kind: "陌生", lastChangedYear: year };
+    relation = { leftId: left, rightId: right, bond: 0, kind: "陌生", lastChangedYear: year, dimensions: { affinity: 0, trust: 0, respect: 0, sharedInterest: 0, vigilance: 0, hostility: 0 }, history: [] };
     game.world.npcRelations.push(relation);
   }
   const before = relation.kind;
   relation.bond = Math.max(-100, Math.min(100, relation.bond + delta));
   relation.kind = relationKind(relation.bond);
   relation.lastChangedYear = year;
+  relation.dimensions.affinity = Math.max(-100, Math.min(100, relation.dimensions.affinity + delta));
+  relation.dimensions.trust = Math.max(-100, Math.min(100, relation.dimensions.trust + Math.round(delta * .7)));
+  relation.dimensions.sharedInterest = Math.max(-100, Math.min(100, relation.dimensions.sharedInterest + Math.round(delta * .9)));
+  relation.dimensions.respect = Math.max(-100, Math.min(100, relation.dimensions.respect + Math.max(-2, Math.round(delta * .35))));
+  relation.dimensions.vigilance = Math.max(0, Math.min(100, relation.dimensions.vigilance + (delta < 0 ? Math.abs(delta) : -1)));
+  relation.dimensions.hostility = Math.max(0, Math.min(100, relation.dimensions.hostility + (delta < 0 ? Math.abs(delta) : -2)));
+  relation.history.push({ year, day, delta, reason });
+  relation.history = relation.history.slice(-20);
   if (before !== relation.kind && relation.kind !== "陌生") {
     const leftNpc = game.world.npcs[left];
     const rightNpc = game.world.npcs[right];
-    if (leftNpc?.knownToPlayer && rightNpc?.knownToPlayer) addNews(game, `npc-relation-${left}-${right}-${year}-${relation.kind}`, `${leftNpc.name}与${rightNpc.name}`, `两人的关系最近变成了${relation.kind}。具体原因还没有可靠说法。`);
+    if (leftNpc?.knownToPlayer && rightNpc?.knownToPlayer) addNews(game, `npc-relation-${left}-${right}-${year}-${day}-${relation.kind}`, `${leftNpc.name}与${rightNpc.name}`, `两人的关系最近变成了${relation.kind}：${reason}`);
   }
+  game.view.npcRelations = buildNpcRelationViews(game);
 }
 
 function createDynamicEvent(game: StoredGame, cycle: number, random: () => number): string | undefined {
@@ -308,16 +408,53 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
       }
     }
     const random = createRandom(`${game.view.seed}:autonomy:${cycle}`);
-    const living = Object.values(game.world.npcs).filter((npc) => npc.alive && ((characterById(npc.id)?.importance ?? 3) <= 3 || npcHasPlayerInfluence(game, npc.id)));
+    const living = Object.values(game.world.npcs).filter((npc) => npc.alive);
     if (living.length < 2) continue;
     const actor = pick(random, living);
     const definition = characterById(actor.id);
     const current = locationById(actor.locationId);
-    if (current?.connections.length && (definition?.importance ?? 3) < 5 && random() < 0.32) actor.locationId = pick(random, current.connections).id;
-    if (definition?.goals.length && random() < 0.4) actor.currentGoal = pick(random, definition.goals);
-    const other = pick(random, living.filter((npc) => npc.id !== actor.id));
+    const influenced = npcHasPlayerInfluence(game, actor.id);
+    if (current?.connections.length && ((definition?.importance ?? 3) <= 3 || influenced) && random() < 0.32) {
+      const destination = pick(random, current.connections).id;
+      actor.autonomyLog.push({ year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1, action: `前往${locationById(destination)?.name ?? destination}`, reason: influenced ? "玩家造成的局势变化影响了原定安排" : `为了推进“${actor.currentGoal}”` });
+      actor.locationId = destination;
+    }
+    if (definition?.goals.length && random() < 0.4) {
+      const nextGoal = pick(random, definition.goals);
+      if (nextGoal !== actor.currentGoal) actor.autonomyLog.push({ year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1, action: `转向目标：${nextGoal}`, reason: influenced ? "玩家行动改变了可用条件" : "遵循其原有身份与长期动机" });
+      actor.currentGoal = nextGoal;
+    }
+    actor.autonomyLog = actor.autonomyLog.slice(-30);
+    const playerRelation = game.view.relations.find((item) => item.id === actor.id);
+    if (actor.knownToPlayer && playerRelation && random() < 0.11 && !game.world.dynamicEvents.some((event) => event.status === "可介入" && event.participantIds.includes(actor.id))) {
+      const attitude = actor.dispositionToPlayer + (playerRelation.dimensions?.trust ?? playerRelation.strength ?? 0);
+      const title = attitude >= 35 ? `${actor.name}主动送来的请求` : attitude <= -10 ? `${actor.name}发出的警告` : `${actor.name}提出的试探`;
+      const detail = attitude >= 35
+        ? `${actor.name}为了“${actor.currentGoal}”主动联系主角，提出一项需要明确答复的协助。`
+        : attitude <= -10
+          ? `${actor.name}掌握了与主角有关的部分消息，要求主角停止继续触及其当前目标。`
+          : `${actor.name}没有直接说明目的，只提出一次交易或见面，意在判断主角是否值得合作。`;
+      const createdOrdinal = cycle * 30;
+      const createdYear = Math.floor((createdOrdinal - 1) / DAYS_PER_YEAR);
+      const createdDay = createdOrdinal - createdYear * DAYS_PER_YEAR;
+      const id = `initiative-${actor.id}-${cycle}`;
+      game.world.dynamicEvents.push({ id, title, kind: "人物", locationId: actor.locationId, participantIds: [actor.id], detail, stakes: Math.max(2, Math.min(5, definition?.importance ?? 2)), status: "可介入", createdYear, createdDay, expiresOrdinal: createdOrdinal + 45 });
+      game.view.tasks.push({ id, title, kind: "线索", detail: `${detail}玩家可以接受、追问或拒绝。`, status: "进行中", destinationId: actor.locationId });
+      addNews(game, id, title, detail, { year: createdYear, day: createdDay });
+    }
+    const candidates = living.filter((npc) => npc.id !== actor.id && (npc.locationId === actor.locationId || actor.factionIds.some((id) => npc.factionIds.includes(id)) || npcHasPlayerInfluence(game, npc.id)));
+    if (!candidates.length) continue;
+    const other = pick(random, candidates);
     const sharedFaction = actor.factionIds.some((id) => other.factionIds.includes(id));
-    updateNpcRelation(game, actor.id, other.id, sharedFaction ? integer(random, 2, 8) : integer(random, -7, 5), game.view.worldTime?.year ?? 0);
+    const sameLocation = actor.locationId === other.locationId;
+    const delta = sharedFaction ? integer(random, 2, 8) : sameLocation ? integer(random, -5, 5) : integer(random, -3, 3);
+    const factionName = FACTIONS.find((faction) => actor.factionIds.includes(faction.id) && other.factionIds.includes(faction.id))?.name;
+    const reason = sharedFaction
+      ? `两人在${factionName ?? "同一势力"}的事务中${delta >= 0 ? "目标一致并有过配合" : "发生了利益分歧"}`
+      : sameLocation
+        ? `两人在${locationById(actor.locationId)?.name ?? "同一地点"}推进各自目标时${delta >= 0 ? "互相提供了帮助" : "产生了冲突"}`
+        : "玩家造成的因果链让两人的利益发生交集";
+    updateNpcRelation(game, actor.id, other.id, delta, game.view.worldTime?.year ?? 0, game.view.worldTime?.day ?? 1, reason);
     const createdEvent = createDynamicEvent(game, cycle, random);
     if (createdEvent) messages.push(`新事件 · ${createdEvent}`);
   }
@@ -350,7 +487,8 @@ function simulateCanonEvents(game: StoredGame, previousYear: number, currentYear
       || (Boolean(event.locationId) && cause.locationId === event.locationId && cause.strength >= 4)
     ));
     const causalStrength = linkedCauses.reduce((sum, cause) => sum + cause.strength, 0);
-    const resistance = event.inertia * 8;
+    const difficultyResistance = { 爽: .8, 简单: .9, 标准: 1, 困难: 1.15, 地狱: 1.3 }[game.view.difficulty];
+    const resistance = event.inertia * 8 * difficultyResistance;
     if (causalStrength >= resistance) {
       game.world.suppressedCanonEvents.push(event.id);
       const latestCause = linkedCauses.at(-1);
@@ -388,24 +526,14 @@ function simulateNpcYears(game: StoredGame, year: number): void {
       npc.locationId = canonicalLocationAtYear(npc.id, year);
       npc.currentGoal = definition.goals[0] ?? "继续当前生活";
     }
-    let revivedThisYear = false;
-    if (!npc.alive && definition.importance >= 4 && year > npc.lastSimulatedYear && npcHasPlayerInfluence(game, npc.id)) {
-      const random = createRandom(`${game.view.seed}:npc-revival:${npc.id}:${year}`);
-      const supportingFaction = FACTIONS.find((faction) => npc.factionIds.includes(faction.id));
-      if (supportingFaction && random() < 0.08 + definition.importance * 0.025) {
-        npc.alive = true;
-        npc.locationId = supportingFaction.headquartersId;
-        npc.powerTier = "复生后虚弱";
-        npc.currentGoal = "偿还复生代价并处理死亡留下的局面";
-        revivedThisYear = true;
-        if (npc.knownToPlayer) addNews(game, `npc-revival-${npc.id}-${year}`, `${npc.name}重新出现`, `${supportingFaction.name}付出代价保住了他的性命，具体手段没有公开。`);
-        game.world.deviation += definition.importance * 4;
-      }
-    }
     if (!npc.alive) { npc.lastSimulatedYear = year; continue; }
+    if (year > npc.lastSimulatedYear && npc.memoryOfPlayer.length > 6) {
+      const memoryRandom = createRandom(`${game.view.seed}:npc-memory:${npc.id}:${year}`);
+      npc.memoryOfPlayer = npc.memoryOfPlayer.filter((memory, index) => /救命|死亡|背叛|承诺|师徒|亲属|袭击|秘密|复生/.test(memory) || index >= npc.memoryOfPlayer.length - 4 || memoryRandom() > .38).slice(-12);
+    }
     const power = powerAtYear(npc.id, year);
-    npc.soulRank = revivedThisYear && power.soulRank !== undefined ? Math.max(1, power.soulRank - 10) : power.soulRank;
-    npc.powerTier = revivedThisYear ? "复生后虚弱" : power.tier;
+    npc.soulRank = power.soulRank;
+    npc.powerTier = power.tier;
     npc.age = definition.birthYear === undefined ? npc.age : Math.max(0, year - definition.birthYear);
     npc.lastSimulatedYear = year;
   }
@@ -433,6 +561,9 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
   const messages = [...simulateNpcAutonomy(game, previousOrdinal, currentOrdinal), ...simulateCanonEvents(game, previousYear, time.year)];
   game.view.map = buildMapView(game);
   game.view.knownFigures = buildKnownFigures(game);
+  game.view.npcRelations = buildNpcRelationViews(game);
+  game.view.intelligence = buildIntelligenceView(game);
+  game.view.mapHierarchy = buildMapHierarchy(game);
   game.view.activeEvents = buildActiveEvents(game);
   return messages;
 }
@@ -450,6 +581,16 @@ export function ensureGameState(game: StoredGame): StoredGame {
   const candidate = game.view.candidates[0];
   const startYear = game.view.worldTime?.year ?? candidate?.birthYearOffset ?? 0;
   const locationId = game.view.locationId ?? inferLocationId(game.view.location ?? candidate?.location ?? "诺丁城");
+  for (const publicCandidate of game.view.candidates ?? []) {
+    const oldDwelling = publicCandidate.dwelling ?? `${publicCandidate.location ?? "原居地"} · 户籍所记住处`;
+    const oldRelations = publicCandidate.startingRelations ?? [];
+    publicCandidate.household ??= { structure: "旧档案家庭", summary: publicCandidate.originFacts?.find((fact) => fact.label === "家庭")?.value ?? "家庭信息需要在后续相处中补全。", members: oldRelations.filter((item) => item.category === "亲属").map((item) => ({ name: item.name, role: item.relation, note: item.impression })) };
+    publicCandidate.residence ??= { region: publicCandidate.location ?? "原居地", settlement: publicCandidate.location ?? "原居地", district: `${publicCandidate.location ?? "原居地"}户籍辖区`, building: oldDwelling.split(" · ").at(-1) ?? "旧居", room: "日常卧房", security: "依靠当地治安与原有监护关系", nearby: [publicCandidate.location ?? "原居地"] };
+  }
+  for (const hidden of game.hiddenCandidates ?? []) {
+    const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
+    if (matched) hidden.public = matched;
+  }
   legacy.schemaVersion = 7;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -457,8 +598,22 @@ export function ensureGameState(game: StoredGame): StoredGame {
   legacy.world.dynamicEvents ??= [];
   legacy.world.lastAutonomyOrdinal ??= ordinal(startYear, game.view.worldTime?.day ?? 1);
   legacy.world.resurrectionCount ??= 0;
+  legacy.world.resurrectionRecords ??= [];
+  legacy.world.intelligenceRecords ??= [];
   legacy.world.actionLedger ??= [];
-  for (const npc of Object.values(legacy.world.npcs)) npc.memoryOfPlayer ??= [];
+  game.view.npcRelations ??= [];
+  game.view.reputations ??= [];
+  game.view.inventoryLoad ??= { used: game.view.inventory?.length ?? 0, capacity: 18, state: "轻便", storage: [] };
+  game.view.professions ??= [];
+  game.view.managedFactions ??= [];
+  game.view.economy ??= { cash: game.view.character?.coins ?? 0, bankBalance: 0, debt: 0, salary: 0, bounty: 0, blackMarketAccess: false };
+  game.view.intelligence ??= buildIntelligenceView(game);
+  game.view.mapHierarchy ??= { continentName: "斗罗大陆", settlementName: game.view.location ?? "当前位置", buildingName: "当前住处", nodes: [] };
+  for (const relation of legacy.world.npcRelations) {
+    relation.dimensions ??= { affinity: relation.bond, trust: Math.round(relation.bond * .7), respect: 0, sharedInterest: Math.round(relation.bond * .8), vigilance: relation.bond < 0 ? Math.abs(relation.bond) : 0, hostility: relation.bond < 0 ? Math.abs(relation.bond) : 0 };
+    relation.history ??= [{ year: relation.lastChangedYear, day: 1, delta: relation.bond, reason: "旧存档关系记录，具体经过未能完整保留" }];
+  }
+  for (const npc of Object.values(legacy.world.npcs)) { npc.memoryOfPlayer ??= []; npc.autonomyLog ??= []; }
   game.storyMemory ??= {
     summary: game.view.narrative.slice(-6).map((entry) => entry.text).join(" ").slice(0, 1000),
     openThreads: game.view.tasks.filter((task) => task.status !== "完成").map((task) => task.title).slice(0, 8),
@@ -553,6 +708,8 @@ export function ensureGameState(game: StoredGame): StoredGame {
     for (const relation of game.view.relations) {
       relation.strength ??= /亲属|父亲|母亲/.test(relation.relation) ? 75 : /师徒/.test(relation.relation) ? 45 : 12;
       relation.category ??= /亲属|父亲|母亲/.test(relation.relation) ? "亲属" : /势力|学院/.test(relation.relation) ? "势力" : /敌|仇/.test(relation.relation) ? "敌对" : "师友";
+      relation.dimensions ??= { closeness: relation.category === "敌对" ? -relation.strength : relation.strength, trust: Math.round(relation.strength * .8), respect: Math.round(relation.strength * .45), sharedInterest: 0, vigilance: relation.category === "敌对" ? relation.strength : 5, hostility: relation.category === "敌对" ? relation.strength : 0, favorDebt: 0, identityKnowledge: Math.min(100, relation.strength + 10) };
+      relation.history ??= [{ date: "旧存档", reason: "旧存档只保留了综合关系，详细原因从本次载入后开始记录", changes: "迁移关系" }];
       const surname = relation.name.slice(0, 1);
       if (relation.relation === "母亲" && /(?:守义|青禾|岳山|德昌|远林|成业|茂生|长顺)$/.test(relation.name)) relation.name = `${surname}兰芝`;
       if (relation.relation === "父亲" && /(?:兰芝|素琴|秋娘|静娴|春桃|桂香|月娥|秀禾)$/.test(relation.name)) relation.name = `${surname}守义`;
@@ -566,7 +723,9 @@ export function ensureGameState(game: StoredGame): StoredGame {
     }
   }
   game.view.map = buildMapView(game);
+  game.view.mapHierarchy = buildMapHierarchy(game);
   game.view.knownFigures = buildKnownFigures(game);
+  game.view.intelligence = buildIntelligenceView(game);
   game.view.activeEvents = buildActiveEvents(game);
   refreshStoryArchive(game);
   return game;

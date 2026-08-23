@@ -5,9 +5,10 @@ import { getDeepSeekSettings, saveDeepSeekSettings } from "../api";
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
+  onSaved?: (view: DeepSeekSettingsView) => void;
 }
 
-export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
+export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
   const [view, setView] = useState<DeepSeekSettingsView | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com");
@@ -35,7 +36,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         event.preventDefault();
         if (!apiKey.trim()) return;
         void saveDeepSeekSettings({ apiKey, baseUrl, model })
-          .then((settings) => { setView(settings); setApiKey(""); setMessage("已保存在本机。"); })
+          .then((settings) => { setView(settings); setApiKey(""); setMessage("已保存在本机，可以开始正式推演。"); onSaved?.(settings); })
           .catch((error: Error) => setMessage(error.message));
       }}>
         <label>API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={view?.hasKey ? "已配置；输入新值可覆盖" : "sk-…"} /></label>

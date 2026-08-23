@@ -51,6 +51,7 @@ export interface WorldNpcState {
   knownToPlayer: boolean;
   lastSimulatedYear: number;
   memoryOfPlayer: string[];
+  autonomyLog: Array<{ year: number; day: number; action: string; reason: string }>;
 }
 
 export interface NpcRelationState {
@@ -59,6 +60,15 @@ export interface NpcRelationState {
   bond: number;
   kind: "亲近" | "合作" | "竞争" | "敌对" | "陌生";
   lastChangedYear: number;
+  dimensions: {
+    affinity: number;
+    trust: number;
+    respect: number;
+    sharedInterest: number;
+    vigilance: number;
+    hostility: number;
+  };
+  history: Array<{ year: number; day: number; delta: number; reason: string }>;
 }
 
 export interface CanonCausalFootprint {
@@ -108,7 +118,27 @@ export interface HiddenWorldState {
   dynamicEvents: DynamicWorldEvent[];
   lastAutonomyOrdinal: number;
   resurrectionCount: number;
+  resurrectionRecords: Array<{
+    targetId: "player" | string;
+    source: string;
+    conditions: string[];
+    costs: string[];
+    year: number;
+    day: number;
+  }>;
   discoveredLocations: string[];
+  intelligenceRecords: Array<{
+    id: string;
+    subjectType: "人物" | "地点" | "势力" | "事件" | "物品";
+    subjectId: string;
+    title: string;
+    detail: string;
+    source: string;
+    confidence: number;
+    year: number;
+    day: number;
+    status: "确定" | "推测" | "传闻" | "矛盾";
+  }>;
   flags: Record<string, boolean | number | string>;
   trainingPoints: number;
   healthPoints: number;
@@ -139,6 +169,13 @@ export interface StoredGame {
   actionIndex: number;
   world: HiddenWorldState;
   storyMemory: StoryMemory;
+  lastCommittedAction?: {
+    playerInput: string;
+    ruleAction: string;
+    resolution: ActionResolution;
+    narrativeEntryId: string;
+    committedAt: string;
+  };
   legacy: {
     upgrades: Record<string, number>;
     equippedHeirloom?: string;

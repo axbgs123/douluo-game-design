@@ -26,12 +26,16 @@ import {
   updateMetaPreferences,
   claimEquippedMartialSoul,
   drawMetaMartialSoul,
+  deleteGame,
+  listCheckpoints,
+  restoreCheckpoint,
+  saveCheckpoint,
   equipCodexMartialSoul,
   spendLegacyPoints,
   toggleCodexMartialSoul,
 } from "./db.js";
 import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithDeepSeek } from "./services/deepseek.js";
-import { settingsView, writeDeepSeekSettings } from "./services/settings.js";
+import { readDeepSeekSettings, settingsView, writeDeepSeekSettings } from "./services/settings.js";
 import { settleRun } from "./domain/endings.js";
 import { guardActionByStoryRules } from "./domain/story-rules.js";
 
@@ -130,10 +134,35 @@ app.get("/api/games/:id", (request, response) => {
 });
 
 app.post("/api/games", (request, response) => {
+  if (listSaves().length >= 3) return response.status(409).json({ error: "三个存档位都已使用。请先在书架删除一个存档，再开始新人生。" });
   const input = createGameSchema.parse(request.body);
   const game = createGame(input, getMetaProgression());
   saveGame(game, "game.created", { difficulty: input.difficulty });
   response.status(201).json(publicView(game));
+});
+
+app.delete("/api/games/:id", (request, response) => {
+  if (!deleteGame(request.params.id)) return response.status(404).json({ error: "没有找到这个存档" });
+  return response.json({ ok: true });
+});
+
+app.get("/api/games/:id/checkpoints", (request, response) => {
+  if (!loadGame(request.params.id)) return response.status(404).json({ error: "没有找到这个存档" });
+  return response.json(listCheckpoints(request.params.id));
+});
+
+app.post("/api/games/:id/checkpoints", (request, response) => {
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  if (game.view.status !== "playing") return response.status(409).json({ error: "进入正式剧情后才能保存手动节点" });
+  saveCheckpoint(game, `手动存档 · 第 ${game.view.chapter.number} 章 · 行动 ${game.actionIndex}`);
+  return response.status(201).json(listCheckpoints(game.view.id));
+});
+
+app.post("/api/games/:id/checkpoints/:checkpointId/restore", (request, response) => {
+  const restored = restoreCheckpoint(request.params.id, Number(request.params.checkpointId));
+  if (!restored) return response.status(404).json({ error: "没有找到这个关键节点" });
+  return response.json(publicView(restored));
 });
 
 app.post("/api/games/:id/reroll", (request, response) => {
@@ -212,8 +241,39 @@ app.post("/api/games/:id/awaken", (request, response) => {
     name: character.martialSoul.name,
     innateSoulPower: character.innateSoulPower,
   });
+  saveCheckpoint(game, `关键节点 · ${character.martialSoul.name}觉醒`);
   return response.json(publicView(game));
 });
+
+function requireAi(response: express.Response): boolean {
+  if (readDeepSeekSettings().apiKey) return true;
+  response.status(409).json({ error: "尚未连接 AI。可以继续创建角色、查看资料和设置模型，但不能正式推演剧情。" });
+  return false;
+}
+
+function settleAndRecord(game: ReturnType<typeof loadGame> extends infer T ? Exclude<T, undefined> : never): void {
+  if (game.view.runProgress.ending && !game.view.runProgress.settlement) {
+    const settlement = settleRun(game, game.view.runProgress.ending);
+    recordRunSettlement(game, settlement);
+  }
+}
+
+async function narrateWithAuditRetries(
+  game: Exclude<ReturnType<typeof loadGame>, undefined>,
+  playerInput: string,
+  resolution: Parameters<typeof narrateWithDeepSeek>[2],
+  signal?: AbortSignal,
+) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try { return await narrateWithDeepSeek(game, playerInput, resolution, signal); }
+    catch (error) {
+      if (signal?.aborted) throw error;
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("AI 连续三次未通过设定审校");
+}
 
 app.post("/api/games/:id/action", async (request, response) => {
   const input = actionSchema.parse(request.body);
@@ -222,42 +282,121 @@ app.post("/api/games/:id/action", async (request, response) => {
   if (game.view.status !== "playing") {
     return response.status(409).json({ error: "当前阶段还不能自由行动" });
   }
+  if (!requireAi(response)) return;
 
+  const working = structuredClone(game);
   let ruleAction = input.input;
-  const blockedBeforeInterpretation = guardActionByStoryRules(game, input.input);
+  const blockedBeforeInterpretation = guardActionByStoryRules(working, input.input);
   if (!blockedBeforeInterpretation) {
-    try { ruleAction = await interpretActionWithDeepSeek(game, input.input) ?? input.input; }
-    catch (error) { console.warn(error instanceof Error ? error.message : error); }
+    ruleAction = await interpretActionWithDeepSeek(working, input.input) ?? input.input;
   }
-  const resolution = resolveAction(game, ruleAction);
-  let generated = null;
+  const resolution = resolveAction(working, ruleAction);
+  let generated;
   if (!/规则阻止|无法完成/.test(resolution.intent)) {
-    try {
-      generated = await narrateWithDeepSeek(game, input.input, resolution);
-    } catch (error) {
-      console.warn(error instanceof Error ? error.message : error);
-    }
+    generated = await narrateWithAuditRetries(working, input.input, resolution);
   }
+  if (!generated && !/规则阻止|无法完成/.test(resolution.intent)) throw new Error("AI 没有返回可提交的正文，本次行动未推进");
+  const beforeNarrative = new Set(working.view.narrative.map((entry) => entry.id));
   applyActionResult(
-    game,
+    working,
     input.input,
     resolution,
     generated?.narrative ?? resolution.fallbackNarrative,
     generated?.suggestions.length === 3 ? generated.suggestions : resolution.suggestions,
   );
-  if (generated) applyNarrativeMemory(game, generated);
-  if (game.view.runProgress.ending && !game.view.runProgress.settlement) {
-    const settlement = settleRun(game, game.view.runProgress.ending);
-    recordRunSettlement(game, settlement);
-  }
-  saveGame(game, "action.resolved", {
+  if (generated) applyNarrativeMemory(working, generated);
+  const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
+  if (narrativeEntry) working.lastCommittedAction = { playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString() };
+  settleAndRecord(working);
+  saveCheckpoint(game, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`);
+  saveGame(working, "action.resolved", {
     input: input.input,
     ruleAction,
     minutes: resolution.minutes,
-    usedAiNarrator: Boolean(generated),
+    usedAiNarrator: true,
     appliedRuleIds: resolution.appliedRuleIds,
   });
-  return response.json(publicView(game));
+  return response.json(publicView(working));
+});
+
+app.post("/api/games/:id/action/stream", async (request, response) => {
+  const input = actionSchema.parse(request.body);
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  if (game.view.status !== "playing") return response.status(409).json({ error: "当前阶段还不能自由行动" });
+  if (!readDeepSeekSettings().apiKey) return response.status(409).json({ error: "尚未连接 AI。可以继续创建角色、查看资料和设置模型，但不能正式推演剧情。" });
+
+  response.status(200);
+  response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  response.setHeader("Cache-Control", "no-cache, no-transform");
+  response.setHeader("X-Accel-Buffering", "no");
+  response.flushHeaders();
+  const controller = new AbortController();
+  let cancelled = false;
+  response.on("close", () => { if (!response.writableEnded) { cancelled = true; controller.abort(); } });
+  const send = (event: Record<string, unknown>) => { if (!cancelled && !response.writableEnded) response.write(`${JSON.stringify(event)}\n`); };
+  const phase = (id: string, label: string) => send({ type: "phase", phase: id, label });
+
+  try {
+    const working = structuredClone(game);
+    phase("checking", "检查行动是否合法");
+    let ruleAction = input.input;
+    const blocked = guardActionByStoryRules(working, input.input);
+    if (!blocked) ruleAction = await interpretActionWithDeepSeek(working, input.input, controller.signal) ?? input.input;
+    if (cancelled) return;
+
+    phase("calculating", "计算时间、胜负与后果");
+    const resolution = resolveAction(working, ruleAction);
+    if (cancelled) return;
+
+    phase("writing", "按第三人称续写正文");
+    const generated = /规则阻止|无法完成/.test(resolution.intent)
+      ? { narrative: resolution.fallbackNarrative, suggestions: resolution.suggestions }
+      : await narrateWithAuditRetries(working, input.input, resolution, controller.signal);
+    if (!generated) throw new Error("AI 没有返回可提交的正文");
+    if (cancelled) return;
+
+    phase("auditing", "核对时间线、知情边界与程序结果");
+    for (const paragraph of generated.narrative.split(/(?<=。|！|？)\s*|\n+/).filter(Boolean)) {
+      send({ type: "draft", text: paragraph });
+    }
+    if (cancelled) return;
+
+    phase("committing", "写入存档");
+    const beforeNarrative = new Set(working.view.narrative.map((entry) => entry.id));
+    applyActionResult(working, input.input, resolution, generated.narrative, generated.suggestions.length === 3 ? generated.suggestions : resolution.suggestions);
+    if ("memory" in generated) applyNarrativeMemory(working, generated);
+    const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
+    if (narrativeEntry) working.lastCommittedAction = { playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString() };
+    settleAndRecord(working);
+    if (cancelled) return;
+    saveCheckpoint(game, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`);
+    saveGame(working, "action.resolved", { input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds });
+    send({ type: "done", game: publicView(working), explanation: resolution.ruleSummary });
+    response.end();
+  } catch (error) {
+    if (cancelled || controller.signal.aborted) return;
+    send({ type: "error", message: error instanceof Error ? error.message : "AI 推演失败，本次行动未推进" });
+    response.end();
+  }
+});
+
+app.post("/api/games/:id/action/rewrite", async (request, response) => {
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  if (!requireAi(response)) return;
+  const previous = game.lastCommittedAction;
+  if (!previous) return response.status(409).json({ error: "没有可以重写的上一段正文" });
+  const working = structuredClone(game);
+  const generated = await narrateWithAuditRetries(working, previous.playerInput, previous.resolution);
+  if (!generated) throw new Error("AI 没有返回可用正文，原存档未修改");
+  const narrativeEntry = working.view.narrative.find((entry) => entry.id === previous.narrativeEntryId);
+  if (!narrativeEntry) return response.status(409).json({ error: "上一段正文已不在当前存档中" });
+  narrativeEntry.text = generated.narrative;
+  working.view.suggestions = generated.suggestions.length === 3 ? generated.suggestions : previous.resolution.suggestions;
+  working.view.updatedAt = new Date().toISOString();
+  saveGame(working, "action.prose_rewritten", { actionIndex: working.actionIndex, ruleAction: previous.ruleAction });
+  return response.json(publicView(working));
 });
 
 app.post("/api/games/:id/speed", (request, response) => {

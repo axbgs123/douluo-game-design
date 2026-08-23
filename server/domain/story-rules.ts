@@ -45,6 +45,16 @@ function impossible(game: StoredGame, reason: string, suggestions: string[], rul
 export function guardActionByStoryRules(game: StoredGame, action: string): ActionResolution | undefined {
   const year = game.view.worldTime?.year ?? 0;
   const name = game.view.character?.name ?? "角色";
+  const age = game.view.character?.age ?? 6;
+  if (age < 18 && /性行为|发生关系|圆房|成人关系|露骨|强迫.*亲密/.test(action)) {
+    return impossible(game, `${name}目前仍是未成年人。童年阶段只处理友情、依赖、朦胧情感与正常成长，不进行成人化情节。`, ["与对方正常交谈", "确认彼此边界", "把注意力放回当前生活"], [621, 631, 691]);
+  }
+  if (age < 16 && /结婚|成婚|求婚/.test(action)) {
+    return impossible(game, `${name}的年龄、法律身份和社会权限不足以完成婚姻决定。`, ["表达珍视但不作成人承诺", "与家人或导师交谈", "等年龄与关系成熟后再决定"], [621, 631, 691]);
+  }
+  if (/^(?:先)?(?:试探一下(?:他|她|对方)?|处理一下|想办法|采取行动|随便做点准备)[。！]?$/u.test(action) && (game.view.combat || game.world.dynamicEvents.some((event) => event.status === "可介入"))) {
+    return impossible(game, "这句话在当前情境下可能代表多种后果差异很大的做法，程序不能替玩家选择风险和底线。", ["保持距离，用言语试探", "先调查对方掌握的情报", "明确说明自己的目标与退路"], [681, 691, 921]);
+  }
   if (FUTURE_TECH.test(action)) {
     const researchOnly = /调查|研究|设想|查资料|寻找遗迹/.test(action);
     if (!researchOnly) return impossible(game,
@@ -159,7 +169,7 @@ export function auditNarrative(game: StoredGame, text: string): string[] {
   if (/首先|其次|最后|值得注意的是|这意味着|本质上|总而言之|综上所述|不是.{0,18}而是/.test(text)) issues.push("正文含有模板化表达");
   if (violatesCanonChronology(text, game.view.worldTime?.year ?? 0)) issues.push("正文违反当前时代或原作时间线");
   if ((text.match(/！/g)?.length ?? 0) >= 5) issues.push("正文依赖连续感叹号制造强度");
-  if (text.length > 2400) issues.push("单次正文过长");
+  if (text.length > 4800) issues.push("单次正文过长");
   return issues;
 }
 

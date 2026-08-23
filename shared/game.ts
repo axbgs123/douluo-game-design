@@ -39,6 +39,20 @@ export interface CandidatePublic {
   fixedTraits: string[];
   originAdvantage: string;
   originBurden: string;
+  household: {
+    structure: string;
+    summary: string;
+    members: Array<{ name: string; role: string; note: string }>;
+  };
+  residence: {
+    region: string;
+    settlement: string;
+    district: string;
+    building: string;
+    room: string;
+    security: string;
+    nearby: string[];
+  };
 }
 
 export interface ScenarioQuestionView {
@@ -139,6 +153,71 @@ export interface RelationView {
   lastSeen?: string;
   strength?: number;
   category?: "亲属" | "师友" | "同伴" | "势力" | "敌对" | "其他";
+  dimensions?: { closeness: number; trust: number; respect: number; sharedInterest: number; vigilance: number; hostility: number; favorDebt: number; identityKnowledge: number };
+  history?: Array<{ date: string; reason: string; changes: string }>;
+}
+
+export interface ReputationNetworkView {
+  scope: string;
+  publicName: string;
+  reputation: string;
+  heat: number;
+  source: string;
+}
+
+export interface ProfessionView {
+  id: string;
+  name: string;
+  level: string;
+  progress: number;
+  experiments: number;
+  failures: number;
+  knownMethods: string[];
+}
+
+export interface ManagedFactionView {
+  id: string;
+  name: string;
+  role: string;
+  members: number;
+  resources: number;
+  territory: string[];
+  departments: string[];
+  internalIssues: string[];
+}
+
+export interface EconomyView {
+  cash: number;
+  bankBalance: number;
+  debt: number;
+  salary: number;
+  business?: string;
+  bounty: number;
+  blackMarketAccess: boolean;
+}
+
+export interface InventoryLoadView {
+  used: number;
+  capacity: number;
+  state: "轻便" | "适中" | "沉重" | "超载";
+  storage: string[];
+}
+
+export interface NpcRelationEvidenceView {
+  id: string;
+  leftName: string;
+  rightName: string;
+  kind: "亲近" | "合作" | "竞争" | "敌对" | "陌生";
+  dimensions: {
+    affinity: number;
+    trust: number;
+    respect: number;
+    sharedInterest: number;
+    vigilance: number;
+    hostility: number;
+  };
+  reason: string;
+  date: string;
 }
 
 export interface TaskView {
@@ -179,6 +258,42 @@ export interface MapPinView {
   x: number;
   y: number;
   createdAt: string;
+}
+
+export type MapLevel = "大陆" | "聚居地" | "建筑";
+export interface MapNodeView {
+  id: string;
+  name: string;
+  level: MapLevel;
+  parentId?: string;
+  kind: string;
+  description: string;
+  x: number;
+  y: number;
+  current: boolean;
+  objective?: "任务" | "猎魂" | "事件";
+  confidence: number;
+  source: string;
+}
+
+export interface MapHierarchyView {
+  continentName: string;
+  settlementName: string;
+  buildingName: string;
+  nodes: MapNodeView[];
+}
+
+export interface IntelligenceView {
+  id: string;
+  subjectType: "人物" | "地点" | "势力" | "事件" | "物品";
+  subjectId: string;
+  title: string;
+  detail: string;
+  source: string;
+  confidence: number;
+  acquiredAt: string;
+  freshness: "新鲜" | "尚可" | "过期";
+  status: "确定" | "推测" | "传闻" | "矛盾";
 }
 
 export interface WorldNewsView { id: string; title: string; detail: string; date: string }
@@ -259,6 +374,8 @@ export interface KnownFigureView {
   knownPower: string;
   location: string;
   status: string;
+  source?: string;
+  confidence?: number;
 }
 
 export interface RunSettlementView {
@@ -302,17 +419,25 @@ export interface GameView {
   suggestions: string[];
   worldTime?: WorldTimeView;
   relations: RelationView[];
+  npcRelations: NpcRelationEvidenceView[];
+  reputations: ReputationNetworkView[];
   tasks: TaskView[];
   inventory: string[];
+  inventoryLoad: InventoryLoadView;
+  professions: ProfessionView[];
+  managedFactions: ManagedFactionView[];
+  economy: EconomyView;
   location?: string;
   locationId?: string;
   map: MapLocationView[];
+  mapHierarchy: MapHierarchyView;
   mapPins: MapPinView[];
   news: WorldNewsView[];
   activeEvents: WorldEventView[];
   canonInfluences: CanonInfluenceView[];
   storyArchive: StoryArchiveView;
   knownFigures: KnownFigureView[];
+  intelligence: IntelligenceView[];
   affiliations: AffiliationView[];
   chapter: StoryChapterView;
   chapterObjective?: ChapterObjectiveView;
@@ -344,6 +469,13 @@ export interface SaveSummary {
   soulRank?: number;
   difficulty?: Difficulty;
   updatedAt: string;
+}
+
+export interface CheckpointSummary {
+  id: number;
+  label: string;
+  actionIndex: number;
+  createdAt: string;
 }
 
 export interface DeepSeekSettingsView { hasKey: boolean; baseUrl: string; model: string }

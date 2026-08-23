@@ -106,10 +106,15 @@ describe("完整游玩规则", () => {
     const game = awakened("migration");
     delete (game as unknown as { schemaVersion?: number }).schemaVersion;
     delete (game.view as Partial<typeof game.view>).map;
+    delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).dwelling;
+    delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).startingRelations;
+    delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).household;
+    delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
     const migrated = ensureGameState(game);
     expect(migrated.schemaVersion).toBe(7);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
+    expect(migrated.view.candidates[0].residence.building).toBeTruthy();
     expect(migrated.world.npcs["tang-san"]).toBeDefined();
   });
 
@@ -252,5 +257,89 @@ describe("第一部世界资料", () => {
     applyActionResult(game, "冥想修炼", resolution, resolution.fallbackNarrative, resolution.suggestions);
     expect(game.view.storyArchive.recentConsequences[0].action).toBe("冥想修炼");
     expect(game.view.storyArchive.continuity.some((item) => item.label === "原作")).toBe(true);
+  });
+
+  it("家庭、住所与三级地图都有可游玩的具体结构", () => {
+    const structures = new Set<string>();
+    for (let index = 0; index < 80; index += 1) {
+      const game = createGame({ gender: "男", difficulty: "标准", seed: `household-${index}` });
+      for (const candidate of game.view.candidates) {
+        structures.add(candidate.household.structure);
+        expect(candidate.residence.room.length).toBeGreaterThan(1);
+        expect(candidate.dwelling.split(" · ").length).toBeGreaterThanOrEqual(3);
+      }
+    }
+    expect(structures.size).toBeGreaterThanOrEqual(10);
+    const game = awakened("map-levels");
+    expect(new Set(game.view.mapHierarchy.nodes.map((node) => node.level))).toEqual(new Set(["大陆", "聚居地", "建筑"]));
+  });
+
+  it("情报记录来源、可信度与时效，而不是直接泄露全知信息", () => {
+    const game = awakened("intel-ledger");
+    resolveAction(game, "调查当前位置的治安和路线");
+    expect(game.view.intelligence.length).toBeGreaterThan(0);
+    expect(game.view.intelligence[0].source.length).toBeGreaterThan(0);
+    expect(game.view.intelligence[0].confidence).toBeLessThanOrEqual(100);
+    expect(["确定", "推测", "传闻", "矛盾"]).toContain(game.view.intelligence[0].status);
+  });
+
+  it("死亡的重要NPC不会在年度模拟中随机复活", () => {
+    const game = awakened("no-random-revival");
+    const npc = game.world.npcs["tang-san"];
+    npc.alive = false;
+    npc.knownToPlayer = true;
+    recordCanonInfluence(game, { source: "测试", description: "影响唐三", affectedNpcIds: ["tang-san"], strength: 80 });
+    advanceWorldTime(game, 3 * 360 * 1440);
+    expect(npc.alive).toBe(false);
+    expect(game.view.news.some((item) => item.id.includes("revival"))).toBe(false);
+  });
+
+  it("玩家关系以多维数值和明确原因变化", () => {
+    const game = awakened("relation-evidence");
+    game.world.npcs["tang-san"].locationId = game.view.locationId!;
+    resolveAction(game, "询问唐三最近在做什么");
+    resolveAction(game, "继续与唐三交谈修炼安排");
+    const relation = game.view.relations.find((item) => item.id === "tang-san")!;
+    expect(relation.dimensions?.trust).toBeGreaterThan(0);
+    expect(relation.history?.at(-1)?.reason).toContain("交谈");
+  });
+
+  it("生活职业需要材料并保存实验失败记录", () => {
+    const game = awakened("profession");
+    resolveAction(game, "尝试炼制药剂");
+    const profession = game.view.professions.find((item) => item.name === "炼药")!;
+    expect(profession.experiments).toBe(1);
+    game.view.inventory.push("普通止血草");
+    resolveAction(game, "继续实验炼制药剂");
+    expect(profession.experiments).toBe(2);
+    expect(profession.progress).toBeGreaterThan(0);
+  });
+
+  it("经济系统记录存款、债务和悬赏的自然报酬", () => {
+    const game = awakened("economy");
+    game.view.character!.coins = 50;
+    resolveAction(game, "存钱20金魂币");
+    expect(game.view.economy.bankBalance).toBe(20);
+    resolveAction(game, "借钱");
+    expect(game.view.economy.debt).toBeGreaterThan(0);
+    resolveAction(game, "接受当地公开悬赏");
+    expect(game.view.tasks.some((task) => task.kind === "悬赏")).toBe(true);
+  });
+
+  it("随身物品超载会阻止长途旅行，但住处仓储不计负重", () => {
+    const game = awakened("inventory-load");
+    game.view.inventory.push(...Array.from({ length: 10 }, (_, index) => `沉重矿石${index}`));
+    resolveAction(game, "观察周围");
+    expect(game.view.inventoryLoad.state).toBe("超载");
+    const target = game.view.map.find((location) => location.travelMinutes > 0)!;
+    expect(resolveAction(game, `前往${target.name}`).intent).toBe("无法完成");
+    resolveAction(game, "把沉重矿石0存放在住处");
+    expect(game.view.inventoryLoad.storage).toContain("沉重矿石0");
+  });
+
+  it("未成年角色不会进入成人化关系情节", () => {
+    const game = awakened("child-guard");
+    expect(resolveAction(game, "与某人成婚").intent).toBe("规则阻止");
+    expect(resolveAction(game, "与同龄人成为朋友").intent).not.toBe("规则阻止");
   });
 });

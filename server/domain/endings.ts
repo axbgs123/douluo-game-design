@@ -46,7 +46,8 @@ export function settleRun(game: StoredGame, reason?: string): RunSettlementView 
   const survival = character?.condition === "死亡" ? 4 : character?.condition === "濒死" ? 8 : character?.condition === "重伤" ? 12 : 18;
   const exploration = Math.min(15, metrics.discoveries * 2 + game.world.discoveredLocations.length);
   const impact = Math.min(15, Math.round(metrics.historicalImpact / 3) + Math.min(6, metrics.relationshipsBuilt));
-  const baseScore = Math.min(100, growth + goal + survival + exploration + impact);
+  const reloadPenalty = Number(game.world.flags.performancePenalty ?? 0);
+  const baseScore = Math.max(0, Math.min(100, growth + goal + survival + exploration + impact) - reloadPenalty);
   const multiplier = MULTIPLIERS[game.view.difficulty];
   const qualified = game.actionIndex >= 8 || character?.condition === "死亡" || verifiedGoal || (character?.soulRank ?? 0) >= 99 || (game.view.worldTime?.year ?? 0) >= 50;
   const legacyPoints = qualified ? Math.max(1, Math.round(baseScore * multiplier)) : 0;
@@ -57,6 +58,7 @@ export function settleRun(game: StoredGame, reason?: string): RunSettlementView 
     `发现地点 ${game.world.discoveredLocations.length} 处`,
     `建立关系 ${metrics.relationshipsBuilt} 段`,
   ];
+  if (reloadPenalty > 0) highlights.push(`回溯存档扣除表现分 ${reloadPenalty}`);
   if (!qualified) highlights.unshift("行动不足 8 次，本次视为中止，不计通关与传承收益");
   const settlement: RunSettlementView = { ending, baseScore, multiplier, legacyPoints, highlights, qualified };
   game.view.status = "ended";

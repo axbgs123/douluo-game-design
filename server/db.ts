@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes } from "node:crypto";
-import type { MartialSoulCodexEntryView, MetaProgressionView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
+import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
 import type { MartialSoulTemplate } from "./domain/model.js";
 import { META_MARTIAL_SOULS, metaSoulById } from "./data/meta-martial-souls.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "./data/world.js";
@@ -37,6 +37,19 @@ database.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_events_game_sequence
   ON events(game_id, sequence);
+
+  CREATE TABLE IF NOT EXISTS game_checkpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    action_index INTEGER NOT NULL,
+    state_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_checkpoints_game_created
+  ON game_checkpoints(game_id, id DESC);
 
   CREATE TABLE IF NOT EXISTS meta_profile (
     id TEXT PRIMARY KEY,
@@ -144,6 +157,7 @@ const insertEventStatement = database.prepare(`
   INSERT INTO events (game_id, sequence, event_type, payload_json, created_at)
   VALUES (?, ?, ?, ?, ?)
 `);
+const deleteGameStatement = database.prepare("DELETE FROM games WHERE id = ?");
 
 export function saveGame(game: StoredGame, eventType: string, payload: unknown = {}): void {
   const serialized = JSON.stringify(game);
@@ -191,6 +205,33 @@ export function listSaves(): SaveSummary[] {
       updatedAt: game.view.updatedAt,
     };
   });
+}
+
+export function deleteGame(id: string): boolean {
+  return Number(deleteGameStatement.run(id).changes) > 0;
+}
+
+export function saveCheckpoint(game: StoredGame, label: string): void {
+  database.prepare("INSERT INTO game_checkpoints (game_id, label, action_index, state_json, created_at) VALUES (?, ?, ?, ?, ?)").run(game.view.id, label.slice(0, 80), game.actionIndex, JSON.stringify(game), new Date().toISOString());
+  database.prepare("DELETE FROM game_checkpoints WHERE game_id = ? AND id NOT IN (SELECT id FROM game_checkpoints WHERE game_id = ? ORDER BY id DESC LIMIT 3)").run(game.view.id, game.view.id);
+}
+
+export function listCheckpoints(gameId: string): CheckpointSummary[] {
+  return (database.prepare("SELECT id, label, action_index, created_at FROM game_checkpoints WHERE game_id = ? ORDER BY id DESC LIMIT 3").all(gameId) as Array<{ id: number; label: string; action_index: number; created_at: string }>).map((row) => ({ id: row.id, label: row.label, actionIndex: row.action_index, createdAt: row.created_at }));
+}
+
+export function restoreCheckpoint(gameId: string, checkpointId: number): StoredGame | undefined {
+  const row = database.prepare("SELECT state_json FROM game_checkpoints WHERE id = ? AND game_id = ?").get(checkpointId, gameId) as { state_json: string } | undefined;
+  if (!row) return undefined;
+  const current = loadGame(gameId);
+  const restored = ensureGameState(JSON.parse(row.state_json) as StoredGame);
+  const reloads = Number(current?.world.flags.reloadCount ?? 0) + 1;
+  restored.world.flags.reloadCount = reloads;
+  restored.world.flags.performancePenalty = reloads * 5;
+  restored.view.updatedAt = new Date().toISOString();
+  restored.view.narrative.push({ id: `rewind-${checkpointId}-${reloads}`, kind: "system", text: `回溯关键节点 · 本局表现分扣除 ${reloads * 5}，通关获得的局外点数会相应减少`, createdAt: new Date().toISOString() });
+  saveGame(restored, "checkpoint.restored", { checkpointId, reloads, performancePenalty: reloads * 5 });
+  return restored;
 }
 
 export function getMetaProgression(): MetaProgressionView {

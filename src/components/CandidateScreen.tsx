@@ -65,6 +65,8 @@ export function CandidateScreen({
             <section className="identity-knowledge"><small>{candidate.selfKnowledge}</small><p>{candidate.knownBackground}</p></section>
             {candidate.fixedTraits.length > 0 && <div className="fixed-trait-line"><span>身份烙印</span>{candidate.fixedTraits.map((trait) => <b key={trait}>{trait}</b>)}</div>}
             <div className="location-line"><span>住处</span>{candidate.dwelling}</div>
+            <section className="household-card"><header><span>家庭结构</span><strong>{candidate.household.structure}</strong></header><p>{candidate.household.summary}</p><div>{candidate.household.members.map((member) => <article key={`${member.name}-${member.role}`}><b>{member.name}</b><span>{member.role}</span><small>{member.note}</small></article>)}</div></section>
+            <section className="residence-card"><header><span>住处层级</span><strong>{candidate.residence.building}</strong></header><ol><li>{candidate.residence.region}</li><li>{candidate.residence.district}</li><li>{candidate.residence.building}</li><li>{candidate.residence.room}</li></ol><small>{candidate.residence.security}</small><div className="mini-floor-plan"><i>入口</i><i>堂屋</i><i className="current-room">{candidate.residence.room}</i><i>储物</i></div></section>
             <div className="omens">
               <h3>先天征兆</h3>
               {candidate.omens.map((omen) => <p key={omen}>{omen}</p>)}

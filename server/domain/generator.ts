@@ -16,7 +16,7 @@ import type {
   StoredGame,
 } from "./model.js";
 import { createRandom, integer, pick, weightedPick } from "./random.js";
-import { buildActiveEvents, buildKnownFigures, buildMapView, createHiddenWorld, inferLocationId, revealNpc } from "./world.js";
+import { buildActiveEvents, buildIntelligenceView, buildKnownFigures, buildMapHierarchy, buildMapView, createHiddenWorld, inferLocationId, recordIntelligence, revealNpc } from "./world.js";
 import { refreshStoryArchive } from "./story-rules.js";
 import { worldMapPoint } from "../../shared/world-map.js";
 import { EXPANDED_ORIGINS } from "../data/expanded-origins.js";
@@ -62,6 +62,9 @@ const FAMILY_CLIMATES = [
 ] as const;
 
 function dwellingOptions(origin: OriginTemplate, location: string): string[] {
+  if (/少宗主|继承人|宗主独子|嫡系/.test(origin.name)) return ["主峰继承人院东厢", "宗主院落第二进独室", "内门议事堂后的少主院", "护山阵内侧的继承人居所", "藏经阁与主峰之间的独院", "宗门核心区的临崖静室"];
+  if (/亲传|核心弟子|圣子|圣女/.test(origin.name)) return ["内门弟子院甲字房", "授业长老院外侧弟子房", "核心演武场北侧静室", "藏书楼后的亲传小院", "主殿东侧弟子厢房", "拟态修炼区旁的独院"];
+  if (/长老|斗罗|供奉/.test(origin.name)) return ["长老府东侧子弟院", "供奉殿家属区独院", "封号斗罗府邸第二进", "长老演武场后的暖阁", "内城警戒区家属院", "长老私宅藏书室旁卧房"];
   if (/商队|乡道/.test(location)) return ["头车后的篷车", "装药材的二号车厢", "车队东侧折篷", "护卫火堆旁的小帐", "驮兽栏后的旧篷车", "领队车外侧的窄铺位"];
   if (/城堡|府邸|王府|公爵府|山门|剑谷|宗/.test(`${location}${origin.name}`)) return ["东院临竹厢房", "演武场北侧独院", "藏书楼后的青瓦小院", "内门膳堂西侧偏院", "主院第二进暖阁", "护山石阶下的旧执事院"];
   if (/城|学院|街|码头|酒馆|分殿|黑市/.test(location)) return ["东市石桥旁二层木屋", "分殿后巷第三间院子", "南门水井边的灰瓦屋", "旧货栈二楼靠街房", "学院后墙外的窄院", "码头仓房后的木板屋"];
@@ -680,7 +683,7 @@ function specificOrigin(
   origin: OriginTemplate,
   initialLocation: string,
   characterName: string,
-): Pick<CandidatePublic, "originName" | "originSummary" | "originFacts" | "startingRelations" | "location" | "dwelling" | "birthProfileId"> {
+): Pick<CandidatePublic, "originName" | "originSummary" | "originFacts" | "startingRelations" | "location" | "dwelling" | "birthProfileId" | "household" | "residence"> {
   const familySurname = characterName.slice(0, 1);
   const guardian = `${familySurname}${pick(random, FATHER_GIVEN_NAMES)}`;
   const secondGuardian = `${pick(random, SURNAMES)}${pick(random, MOTHER_GIVEN_NAMES)}`;
@@ -814,7 +817,38 @@ function specificOrigin(
 
   const dwellings = dwellingOptions(origin, location);
   const dwellingIndex = integer(random, 0, dwellings.length - 1);
-  const dwelling = `${location} · ${dwellings[dwellingIndex]}`;
+  const dwelling = `${location} · ${authority}管辖区 · ${dwellings[dwellingIndex]}`;
+  const specialStartingRelations = specialRelations[origin.id];
+  const householdVariants = ["双亲家庭", "单亲父亲", "单亲母亲", "孤儿", "祖辈抚养", "收养家庭", "宗门共同抚养", "师徒监护", "商队集体抚养", "兄姐抚养", "寄居亲族", "家臣监护"] as const;
+  let householdStructure: typeof householdVariants[number] = pick(random, householdVariants);
+  if (/孤儿|遗孤|无籍/.test(`${origin.name}${origin.summary}`)) householdStructure = "孤儿";
+  else if (/收养|养子|养女/.test(`${origin.name}${origin.summary}`)) householdStructure = "收养家庭";
+  else if (/商队/.test(`${origin.name}${location}`)) householdStructure = "商队集体抚养";
+  else if (/亲传|弟子/.test(origin.name)) householdStructure = "师徒监护";
+  else if (/少宗主|核心|嫡系|皇室|公爵|长老|斗罗|继承/.test(origin.name)) householdStructure = random() < .72 ? "双亲家庭" : "家臣监护";
+  const sibling = `${familySurname}${pick(random, GIVEN_NAMES)}${pick(random, GIVEN_NAMES)}`;
+  const grandparent = `${familySurname}${pick(random, FATHER_GIVEN_NAMES)}`;
+  const genericHouseholds: Record<typeof householdVariants[number], { summary: string; members: CandidatePublic["household"]["members"]; relations: CandidatePublic["startingRelations"] }> = {
+    "双亲家庭": { summary: `${guardian}与${secondGuardian}共同抚养，家中决定通常要经过两人商量。`, members: [{ name: guardian, role: "父亲", note: "负责家庭主要生计" }, { name: secondGuardian, role: "母亲", note: "掌管日常开支与照料" }], relations: [{ name: guardian, relation: "父亲", impression: "盼着孩子觉醒，又怕结果招来麻烦", strength: 78, category: "亲属" }, { name: secondGuardian, relation: "母亲", impression: "提前收好了路上要用的干粮和旧衣", strength: 82, category: "亲属" }] },
+    "单亲父亲": { summary: `${guardian}独自抚养孩子，另一位亲生家长的去向有明确记录或仍待调查。`, members: [{ name: guardian, role: "父亲", note: "一人承担生计与监护" }], relations: [{ name: guardian, relation: "父亲", impression: "不善表达，但把觉醒需要的费用提前留了出来", strength: 86, category: "亲属" }] },
+    "单亲母亲": { summary: `${secondGuardian}独自抚养孩子，家中没有默认存在但从未出场的父亲。`, members: [{ name: secondGuardian, role: "母亲", note: "一人承担生计与监护" }], relations: [{ name: secondGuardian, relation: "母亲", impression: "对外很强硬，回家后才会谈担忧", strength: 87, category: "亲属" }] },
+    "孤儿": { summary: `孩子没有可确认的在世父母，由${authority}登记并提供最低限度照看。`, members: [{ name: `${location}公养舍`, role: "集体监护", note: "负责食宿，不等同于亲属关系" }], relations: [{ name: `${location}公养舍管事`, relation: "监护人", impression: "按名册照看所有孩子，不会无条件偏爱任何一人", strength: 42, category: "其他" }] },
+    "祖辈抚养": { summary: `${grandparent}负责抚养，父母可能亡故、失踪、服役或长期在外。`, members: [{ name: grandparent, role: "祖父或外祖父", note: "年纪已大，仍维持家庭" }], relations: [{ name: grandparent, relation: "祖辈监护人", impression: "把许多旧事压在心里，只希望孩子先平安长大", strength: 89, category: "亲属" }] },
+    "收养家庭": { summary: `${guardian}在户籍或宗门名册上是养父，收养原因有记录，不强行补写亲生父母。`, members: [{ name: guardian, role: "养父", note: "拥有正式监护关系" }], relations: [{ name: guardian, relation: "养父", impression: "愿意保护孩子，也保留着关于来历的一部分秘密", strength: 84, category: "亲属" }] },
+    "宗门共同抚养": { summary: `孩子由${authority}统一安排食宿、教习与轮值监护，亲缘不是主要纽带。`, members: [{ name: `${authority}教养院`, role: "宗门监护", note: "由数名教习轮值照看" }], relations: [{ name: `${authority}教养执事`, relation: "宗门监护人", impression: "会依据纪律、天赋和贡献调整资源", strength: 48, category: "势力" }] },
+    "师徒监护": { summary: `${guardian}既是监护人也是启蒙老师，生活与修炼规矩无法完全分开。`, members: [{ name: guardian, role: "师父与监护人", note: "负责生活和启蒙训练" }], relations: [{ name: guardian, relation: "师父与监护人", impression: "护短但不纵容，最看重是否肯吃苦", strength: 76, category: "师友" }] },
+    "商队集体抚养": { summary: `孩子随商队长大，由领队、账房和护卫轮流照看，没有固定不变的家庭日程。`, members: [{ name: "永顺商队", role: "集体监护", note: "多名成年人共同承担照看" }], relations: [{ name: "永顺商队老账房", relation: "长辈", impression: "会留饭，也会把弄坏的货物记到账上", strength: 66, category: "其他" }] },
+    "兄姐抚养": { summary: `${sibling}是主要监护人，为维持生活已经提前承担成年人的工作。`, members: [{ name: sibling, role: "兄姐", note: "实际承担监护和生计" }], relations: [{ name: sibling, relation: "兄姐与监护人", impression: "嘴上嫌麻烦，遇事却总会先挡在前面", strength: 88, category: "亲属" }] },
+    "寄居亲族": { summary: `孩子寄住在${guardian}一家，吃住有保障，但资源分配会先考虑亲生子女。`, members: [{ name: guardian, role: "叔伯或舅父", note: "提供住所并代行监护" }], relations: [{ name: guardian, relation: "寄居亲族", impression: "愿意尽责任，但会清楚计算家里的承受能力", strength: 58, category: "亲属" }] },
+    "家臣监护": { summary: `父母或身份核心人物并不负责日常生活，由${guardian}这名家臣长期监护。`, members: [{ name: guardian, role: "家臣监护人", note: "忠诚首先指向家族或势力" }], relations: [{ name: guardian, relation: "家臣监护人", impression: "照顾细致，但遇到家族命令时会优先服从上级", strength: 62, category: "势力" }] },
+  };
+  const genericHousehold = genericHouseholds[householdStructure];
+  const startingRelations = specialStartingRelations ?? [...genericHousehold.relations, { name: officer, relation: "武魂殿巡查执事", impression: "只按名册与觉醒结果办事", faction: "武魂殿", strength: 8, category: "势力" }];
+  const householdMembers = specialStartingRelations
+    ? specialStartingRelations.filter((item) => item.category === "亲属" || /监护|养父|养母|父亲|母亲/.test(item.relation)).map((item) => ({ name: item.name, role: item.relation, note: item.impression }))
+    : genericHousehold.members;
+  const district = /宗|殿|府|堡|山门|剑谷/.test(`${authority}${location}`) ? `${authority}核心或附属居住区` : `${location}户籍辖区`;
+  const room = /独院|暖阁|静室|卧房/.test(dwellings[dwellingIndex]) ? dwellings[dwellingIndex] : `${dwellings[dwellingIndex]}内侧卧房`;
   return {
     location,
     dwelling,
@@ -822,18 +856,24 @@ function specificOrigin(
     originName,
     originSummary: `${livelihood}${obligation}`,
     originFacts: [
-      { label: "家庭", value: `${specialFamilies[origin.id] ?? `${guardian}与${secondGuardian}`}；${FAMILY_CLIMATES[familyClimateIndex]}` },
+      { label: "家庭", value: `${specialFamilies[origin.id] ?? `${householdStructure}：${genericHousehold.summary}`}；${FAMILY_CLIMATES[familyClimateIndex]}` },
       { label: "归属", value: authority },
       { label: "生计", value: livelihood },
       { label: "眼前事", value: obligation },
       { label: "开局优势", value: origin.advantage ?? "身份没有额外保障，成长主要依靠自己的选择与积累。" },
       { label: "身份代价", value: origin.burden ?? "资源有限，但暂时也没有高层势力把他当作棋子。" },
     ],
-    startingRelations: specialRelations[origin.id] ?? [
-      { name: guardian, relation: "父亲", impression: "盼着孩子觉醒，又怕结果招来麻烦", strength: 78, category: "亲属" },
-      { name: secondGuardian, relation: "母亲", impression: "提前收好了路上要用的干粮和旧衣", strength: 82, category: "亲属" },
-      { name: officer, relation: "武魂殿巡查执事", impression: "只按名册与觉醒结果办事", faction: "武魂殿", strength: 8, category: "势力" },
-    ],
+    startingRelations,
+    household: { structure: specialStartingRelations ? (/养父|养母/.test(specialStartingRelations.map((item) => item.relation).join("")) ? "收养家庭" : /监护/.test(specialStartingRelations.map((item) => item.relation).join("")) ? "家臣监护" : "身份专属家庭") : householdStructure, summary: specialFamilies[origin.id] ?? genericHousehold.summary, members: householdMembers },
+    residence: {
+      region: location,
+      settlement: location,
+      district,
+      building: dwellings[dwellingIndex],
+      room,
+      security: /长老|斗罗|宗主|核心|嫡系|皇室|公爵/.test(origin.name) ? "有固定守卫、身份核验与势力内部巡查" : /宗|殿|府|堡/.test(authority) ? "受所属势力外围巡查保护" : "依靠门闩、邻里与当地治安",
+      nearby: [authority, `${location}觉醒点`, /城|宗|殿|府/.test(location) ? `${location}集市` : `${location}水井或公共空地`],
+    },
   };
 }
 
@@ -898,6 +938,8 @@ export function generateCandidates(
       originSummary: concreteOrigin.originSummary,
       originFacts: concreteOrigin.originFacts,
       startingRelations: concreteOrigin.startingRelations,
+      household: concreteOrigin.household,
+      residence: concreteOrigin.residence,
       route: origin.route ?? (origin.id === "mystery-arrival" ? "身世谜团" : "本地成长"),
       rarity: origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "优秀" : "平凡"),
       selfKnowledge: origin.selfKnowledge ?? (origin.id === "mystery-arrival" ? "本地人 · 身世未知" : "本地人 · 身世明确"),
@@ -1259,9 +1301,16 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       narrative: [createEntry("system", "这一轮有三个人。先看出身和征兆，武魂要等选定后才会揭晓。")],
       suggestions: [],
       relations: [],
+      npcRelations: [],
+      reputations: [],
       tasks: [],
       inventory: [],
+      inventoryLoad: { used: 0, capacity: 18, state: "轻便", storage: [] },
+      professions: [],
+      managedFactions: [],
+      economy: { cash: 0, bankBalance: 0, debt: 0, salary: 0, bounty: 0, blackMarketAccess: false },
       map: [],
+      mapHierarchy: { continentName: "斗罗大陆", settlementName: "尚未选定", buildingName: "尚未选定", nodes: [] },
       mapPins: [],
       news: [],
       activeEvents: [],
@@ -1274,6 +1323,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
         continuity: [],
       },
       knownFigures: [],
+      intelligence: [],
       affiliations: [],
       chapter: { number: 1, title: "觉醒之日", summary: "六岁的主角正等着武魂觉醒。" },
       runProgress: {
@@ -1289,6 +1339,8 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
     },
   };
   game.view.map = buildMapView(game);
+  game.view.mapHierarchy = buildMapHierarchy(game);
+  game.view.intelligence = buildIntelligenceView(game);
   game.view.knownFigures = buildKnownFigures(game);
   game.view.activeEvents = buildActiveEvents(game);
   refreshStoryArchive(game);
@@ -1340,6 +1392,8 @@ export function selectCandidate(game: StoredGame, candidateId: string, customNam
   game.world = createHiddenWorld(candidate.public.birthYearOffset ?? 0, game.view.locationId);
   game.view.worldTime = { era: candidate.public.eraRelation, year: candidate.public.birthYearOffset ?? 0, day: 1, time: "08:00", season: "春" };
   game.view.map = buildMapView(game);
+  recordIntelligence(game, { subjectType: "地点", subjectId: candidate.public.locationId, title: candidate.public.location, detail: `${candidate.public.residence.district}；住处为${candidate.public.residence.building}，主角日常使用${candidate.public.residence.room}。`, source: "六年日常生活", confidence: 100, status: "确定" });
+  game.view.mapHierarchy = buildMapHierarchy(game);
   game.view.candidates = game.hiddenCandidates.map((item) => item.public);
   game.view.shaping = buildShaping(game);
   game.view.narrative = [createEntry("system", `${candidate.public.name}已经选定。接下来再决定${candidate.public.gender === "女" ? "她" : "他"}会成为什么样的人。`)];
@@ -1497,9 +1551,15 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     for (const npc of nearby) revealNpc(game, npc.id);
     if (nearby.length) game.view.narrative.push(createEntry("system", `旧世见闻 · 认出了${nearby.map((npc) => npc.name).join("、")}`));
   }
-  game.view.relations = selected.public.startingRelations.map((relation, index) => index === 2
-    ? { ...relation, impression: selected.innateSoulPower >= 7 ? "已经记住这次少见的觉醒结果" : relation.impression }
-    : relation);
+  game.view.relations = selected.public.startingRelations.map((relation, index) => {
+    const strength = relation.strength ?? 10;
+    return {
+      ...relation,
+      impression: index === 2 && selected.innateSoulPower >= 7 ? "已经记住这次少见的觉醒结果" : relation.impression,
+      dimensions: { closeness: relation.category === "敌对" ? -strength : strength, trust: Math.round(strength * .8), respect: Math.round(strength * .45), sharedInterest: 0, vigilance: relation.category === "敌对" ? strength : 5, hostility: relation.category === "敌对" ? strength : 0, favorDebt: 0, identityKnowledge: Math.min(100, strength + 10) },
+      history: [{ date: "出生至觉醒日", reason: "共同生活、监护或身份归属形成的初始关系", changes: "初始关系" }],
+    };
+  });
   game.view.tasks = selected.innateSoulPower > 0
     ? [
         { id: "life-goal", title: game.view.lifeGoal, kind: "计划", detail: "这是角色准备花上一生去完成的事。", status: "进行中" },
@@ -1536,6 +1596,8 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     : ["追问是否存在重新检测的方法", "观察武魂本身还有没有异常", "先接受结果，回去查找其他道路"];
   game.view.updatedAt = new Date().toISOString();
   game.view.runProgress.highestSoulRank = character.soulRank;
+  game.view.economy.cash = character.coins;
+  game.view.reputations = [{ scope: selected.public.location, publicName: character.name, reputation: character.reputation, heat: 0, source: "户籍、家庭与觉醒记录" }];
   refreshStoryArchive(game);
   return character;
 }
