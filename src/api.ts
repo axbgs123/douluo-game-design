@@ -52,6 +52,7 @@ export function restoreCheckpoint(id: string, checkpointId: number): Promise<Gam
 }
 
 export function createGame(input: {
+  era?: 1 | 2 | 3 | 4;
   gender: Gender;
   difficulty: Difficulty;
   personality?: PersonalitySetup;

@@ -49,6 +49,7 @@ const port = Number(process.env.PORT ?? 8787);
 app.use(express.json({ limit: "256kb" }));
 
 const createGameSchema = z.object({
+  era: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).default(1),
   gender: z.enum(["男", "女"]),
   difficulty: z.enum(DIFFICULTIES),
   personality: z.object({

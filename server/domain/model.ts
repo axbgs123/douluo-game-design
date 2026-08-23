@@ -215,6 +215,7 @@ export interface ActionResolution {
 }
 
 export interface CreateGameInput {
+  era?: 1 | 2 | 3 | 4;
   gender: "男" | "女";
   difficulty: GameView["difficulty"];
   personality?: PersonalitySetup;

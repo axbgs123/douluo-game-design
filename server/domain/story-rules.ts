@@ -20,14 +20,18 @@ const ACTION_SECTION_ROUTES: Array<[RegExp, number[]]> = [
   [/介入|事件|承诺|履行|帮助|阻止/, [59, 68, 70, 81, 86, 87, 88, 89, 93, 95]],
 ];
 
-const FUTURE_TECH = /斗铠|机甲|星舰|宇宙飞船|传灵塔|升灵台|定装魂导炮|魂导汽车/;
+const FUTURE_TECH_BY_ERA: Record<1 | 2 | 3 | 4, RegExp | undefined> = {
+  1: /斗铠|机甲|星舰|宇宙飞船|传灵塔|升灵台|定装魂导炮|魂导汽车/,
+  2: /斗铠|星舰|宇宙飞船|传灵塔|升灵台/,
+  3: /星舰|宇宙飞船|天龙星|天马星/,
+  4: undefined,
+};
 const EXTERNAL_POWER = /查克拉|魔力|灵力|仙力|斗气|念能力|恶魔果实|斩魄刀|修仙功法|御剑术/;
 
 function worldDate(game: StoredGame): string {
   const time = game.view.worldTime;
   if (!time) return "时间未定";
-  const year = time.year === 0 ? "唐三觉醒同年" : time.year < 0 ? `唐三觉醒前${Math.abs(time.year)}年` : `唐三觉醒后${time.year}年`;
-  return `${year} · 第${time.day}日 ${time.time}`;
+  return `${time.era} · 第${time.day}日 ${time.time}`;
 }
 
 function impossible(game: StoredGame, reason: string, suggestions: string[], ruleIds: number[]): ActionResolution {
@@ -50,6 +54,10 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
   if (futureFaction) {
     return impossible(game, `${futureFaction.name}在当前年代尚未成立，角色也没有能够接触该组织的当世线索。`, ["核对当前年代", "调查现存的相近势力", "把注意力放回当前组织"], [451, 461, 931, 935]);
   }
+  const expiredFaction = FACTIONS.find((faction) => faction.activeUntilYear !== undefined && year > faction.activeUntilYear && action.includes(faction.name));
+  if (expiredFaction) {
+    return impossible(game, `${expiredFaction.name}已经不再以这个组织形态存在，角色只能调查遗址、史料或后继势力。`, ["调查该势力的历史", "寻找当前时代的后继组织", "核对当地公开势力"], [451, 461, 931, 935]);
+  }
   if (age < 18 && /性行为|发生关系|圆房|成人关系|露骨|强迫.*亲密/.test(action)) {
     return impossible(game, `${name}目前仍是未成年人。童年阶段只处理友情、依赖、朦胧情感与正常成长，不进行成人化情节。`, ["与对方正常交谈", "确认彼此边界", "把注意力放回当前生活"], [621, 631, 691]);
   }
@@ -59,7 +67,8 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
   if (/^(?:先)?(?:试探一下(?:他|她|对方)?|处理一下|想办法|采取行动|随便做点准备)[。！]?$/u.test(action) && (game.view.combat || game.world.dynamicEvents.some((event) => event.status === "可介入"))) {
     return impossible(game, "这句话在当前情境下可能代表多种后果差异很大的做法，程序不能替玩家选择风险和底线。", ["保持距离，用言语试探", "先调查对方掌握的情报", "明确说明自己的目标与退路"], [681, 691, 921]);
   }
-  if (FUTURE_TECH.test(action)) {
+  const futureTech = FUTURE_TECH_BY_ERA[game.view.era ?? 1];
+  if (futureTech?.test(action)) {
     const researchOnly = /调查|研究|设想|查资料|寻找遗迹/.test(action);
     if (!researchOnly) return impossible(game,
       `这些成熟技术尚未出现在当前时代。${name}可以追查早期魂导遗物或提出设想，不能直接制造、购买或使用成品。`,
@@ -68,7 +77,7 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
     );
   }
 
-  if (/魂灵/.test(action) && !/调查|研究|设想|残魂|契约/.test(action)) {
+  if ((game.view.era ?? 1) === 1 && /魂灵/.test(action) && !/调查|研究|设想|残魂|契约/.test(action)) {
     return impossible(game,
       "魂灵体系在这个时代尚未诞生。若要尝试，必须先找到灵魂、契约和承载方面的证据。",
       ["调查魂兽残魂", "研究魂环中的精神残留", "寻找懂灵魂的导师"],
@@ -135,8 +144,9 @@ export function selectNarrativeRules(game: StoredGame, action: string, resolutio
   const sections = new Set(BASE_SECTIONS);
   for (const [pattern, routed] of ACTION_SECTION_ROUTES) if (pattern.test(`${action} ${resolution.intent}`)) for (const section of routed) sections.add(section);
   const year = game.view.worldTime?.year ?? 0;
-  const all = rulesForEra(1).filter((rule) => {
-    if (/海神阁|联邦议会|星际联邦|圣灵教/.test(rule.text)) return false;
+  const era = game.view.era ?? 1;
+  const all = rulesForEra(era).filter((rule) => {
+    if (era === 1 && /海神阁|联邦议会|星际联邦|圣灵教/.test(rule.text)) return false;
     if ([44, 45, 46, 47, 48, 49, 76].includes(rule.section) && !/(魂灵|魂导|斗铠|机甲|锻造|星舰|传灵塔|升灵台|遗迹)/.test(action)) return false;
     if (rule.section === 73 && year < 12 && !/唐门|暗器|玄天功/.test(action)) return false;
     return true;

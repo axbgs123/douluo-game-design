@@ -136,6 +136,7 @@ export async function narrateWithDeepSeek(
   const pacing = narrativePacing(game, playerInput, resolution);
   const sceneKnowledge = buildSceneKnowledgePack(game, playerInput);
   const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
+  const eraTitle = ({ 1: "《斗罗大陆》第一部", 2: "《绝世唐门》", 3: "《龙王传说》", 4: "《终极斗罗》" } as const)[game.view.era ?? 1];
 
   const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
@@ -152,7 +153,7 @@ export async function narrateWithDeepSeek(
         {
           role: "system",
           content: [
-            "你是《斗罗大陆》第一部背景的第三人称限知互动小说叙事器。正文始终贴着玩家角色的感受与判断，用角色姓名和他或她来写；只有人物对白可以使用第一人称。",
+            `你是${eraTitle}时代背景的第三人称限知互动小说叙事器。正文始终贴着玩家角色的感受与判断，用角色姓名和他或她来写；只有人物对白可以使用第一人称。`,
             "可以描写已经由性格、行为证据和当前处境形成的情绪或想法；面对重大选择只能写犹豫与倾向，不能替玩家新增爱情、仇恨、欲望、道德立场或直接作出决定。",
             "程序已经决定了行动结果；你只能描写这个结果，不能改变胜负、时间、伤势、物品、魂力、关系、猎魂阶段或世界事件。",
             "保持中文小说感、人物动机连续和世界内视角，不泄露角色不知道的隐藏设定。",
@@ -165,7 +166,7 @@ export async function narrateWithDeepSeek(
             "不要为了文艺感把普通行动写成命运、时代、道路或宏大回响。每次只抓一两个有效细节，不要堆满五感。",
             "战斗时写清站位、试探、失误和代价；交谈时保留对方的私心与信息边界；赶路和修炼可以简写，但要留下具体变化。",
             "建议必须是角色眼下做得到的动作。若程序给出了建议，优先沿用其含义。",
-            "activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗一适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。",
+            `activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗${game.view.era === 1 ? "一" : game.view.era === 2 ? "二" : game.view.era === 3 ? "三" : "四"}适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。`,
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
             novelEngine.prompt,

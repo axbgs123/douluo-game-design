@@ -8,6 +8,7 @@ import type {
   PersonalitySetup,
   LifeGoalDifficulty,
   CandidateRarity,
+  GameEra,
 } from "../../shared/game.js";
 import type {
   CreateGameInput,
@@ -424,6 +425,40 @@ const ORIGINS: OriginTemplate[] = [
   ...buildSystemCoreOrigins(Math.max(0, 1000 - BASE_ORIGINS.length)),
 ];
 
+export const ERA_BASE_YEARS: Record<GameEra, number> = { 1: 0, 2: 10000, 3: 20000, 4: 30000 };
+const ERA_PROTAGONISTS: Record<GameEra, string> = { 1: "唐三", 2: "霍雨浩", 3: "唐舞麟", 4: "蓝轩宇" };
+
+function laterOrigin(id: string, name: string, summary: string, location: string, tier: CandidateRarity, categories: string[], route: string, authority: string, advantage: string, burden: string): OriginTemplate {
+  return { id, name, summary, details: [burden, `${authority}保留着这户人家的正式记录。`, `六岁觉醒结果会直接改变${route}的可行性。`], locations: [location], preferredCategories: categories, weight: tier === "平凡" ? 18 : tier === "优秀" ? 12 : tier === "稀有" ? 7 : 3, tier, route, selfKnowledge: "本地人 · 身份记录明确", fixedTraits: tier === "平凡" ? ["务实"] : ["受过教育", "谨慎"], roleTags: [route, authority], authority, advantage, burden, startingCoins: tier === "平凡" ? 20 : tier === "优秀" ? 80 : tier === "稀有" ? 220 : 500, startingItems: [`${authority}签发的身份牌`], startingReputation: `${authority}登记在册`, pressure: tier === "传奇" ? 4 : tier === "稀有" ? 3 : 2 };
+}
+
+const LATER_ERA_ORIGINS: Record<2 | 3 | 4, OriginTemplate[]> = {
+  2: [
+    laterOrigin("d2-shrek-craft-child", "史莱克城工匠家庭", "家里替学院外城修理普通魂导灯与训练器材。", "史莱克城外城工匠区", "平凡", ["器武魂", "本体武魂"], "史莱克城生活", "史莱克城工匠行会", "熟悉学院外城与基础魂导工具", "家里背着一批维修材料的欠款"),
+    laterOrigin("d2-tang-sect-descendant", "衰落唐门旁支后代", "祖辈留下几页暗器图，却没人能证明旁支身份。", "史莱克城唐门旧院附近", "稀有", ["器武魂", "植物"], "唐门复兴", "唐门旧籍保管人", "认识少量暗器零件与唐门旧规", "身份未经当代唐门核心承认"),
+    laterOrigin("d2-radiant-engineer", "明都魂导师家庭", "父母在民用魂导工坊工作，家中按图纸和保密等级说话。", "明都平民魂导工坊区", "优秀", ["器武魂", "精神"], "魂导师", "日月帝国工坊署", "从小接触合法的低阶魂导回路", "工坊成果和个人去向受契约约束"),
+    laterOrigin("d2-body-sect-omen", "本体武魂异象儿童", "身体某处在魂力检测时出现异常共鸣，引来陌生人的反复询问。", "天魂城南部居民区", "传奇", ["本体武魂"], "本体宗线索", "天魂帝国地方魂师署", "本体武魂可能发生二次觉醒", "本体宗与地方势力都可能争夺培养权"),
+    laterOrigin("d2-star-luo-military", "星罗军户魂师家庭", "家中服役记录完整，孩子的培养名额与军功绑定。", "星罗城军户区", "优秀", ["兽武魂", "器武魂"], "帝国军旅", "星罗帝国军务署", "拥有纪律、基础体能和军方推荐渠道", "成年后需履行军役或偿还培养费"),
+    laterOrigin("d2-wandering-healer", "天魂乡镇游医之子", "跟着药箱与驮车辗转小镇，见过普通人承担不起治疗费的样子。", "天魂城外药商驿站", "平凡", ["植物", "本体武魂"], "医疗与游历", "地方药师公会", "识别常用药材并熟悉乡镇路线", "没有稳定学院名额与长期住处"),
+  ],
+  3: [
+    laterOrigin("d3-east-sea-worker", "东海城普通职工家庭", "父母靠港区与工厂的固定薪水维持生活。", "东海城旧城区", "平凡", ["器武魂", "本体武魂"], "联邦市民", "东海城居民署", "熟悉城市公共交通和基础魂导设备", "优质魂灵与学院费用远超家庭结余"),
+    laterOrigin("d3-spirit-pagoda-staff", "传灵塔基层职员子女", "家里负责登记与维护，不接触核心研究。", "传灵塔总部职员区", "优秀", ["精神", "兽武魂"], "传灵师", "传灵塔基层人事处", "了解正规魂灵申请流程", "每一次便利都会留下内部审计记录"),
+    laterOrigin("d3-tang-sect-branch", "两万年唐门外门家庭", "家族为唐门经营一处普通联络点。", "史莱克城唐门外务街", "稀有", ["器武魂", "植物"], "现代唐门", "唐门外务堂", "能接触唐门基础训练与合规魂导装备", "必须承担情报纪律与宗门任务"),
+    laterOrigin("d3-federal-military", "联邦军官家庭", "家庭生活随调令迁移，档案比邻里关系更稳定。", "联邦明都军属区", "优秀", ["兽武魂", "器武魂"], "联邦军旅", "联邦军务系统", "体能训练、纪律和升学推荐渠道稳定", "个人选择会受到军籍与家庭声誉约束"),
+    laterOrigin("d3-shrek-lineage", "史莱克旧校友后代", "长辈留下的不是入学保证，只是一套严格到近乎苛刻的训练记录。", "史莱克城外院家属区", "传奇", ["兽武魂", "器武魂", "精神"], "史莱克考生", "史莱克校友会", "拥有可靠训练方法与校友引荐", "失败会直接击碎家族长期维持的期待"),
+    laterOrigin("d3-overseas-exchange", "海外星罗侨居家庭", "家中保留海外星罗户籍，也在联邦长期生活。", "海外星罗城侨民区", "稀有", ["兽武魂", "器武魂"], "跨大陆身份", "海外星罗领事署", "熟悉两套制度并掌握跨海亲缘", "双方都会怀疑其真正立场"),
+  ],
+  4: [
+    laterOrigin("d4-fleet-family", "联邦舰队军属子女", "家庭住址与父母航次一起变化，团聚要按舰队日历计算。", "联邦母舰港军属区", "优秀", ["器武魂", "精神"], "星际舰队", "联邦舰队军务处", "熟悉基础舰船纪律与太空安全", "家人常年执行高风险远航任务"),
+    laterOrigin("d4-space-technician", "星际维修技师家庭", "家里修的是运输艇和生命维持设备，不是传奇战舰。", "联邦母舰港维修区", "平凡", ["器武魂", "本体武魂"], "星际工程", "母舰港技师协会", "掌握基础机械与舱外安全常识", "一场设备事故留下尚未结清的赔偿"),
+    laterOrigin("d4-shrek-space", "史莱克星际预备家庭", "长辈以严格训练换来一次预备测试资格。", "史莱克城星际教育区", "稀有", ["精神", "兽武魂", "器武魂"], "史莱克星际考核", "史莱克星际教育署", "拥有模拟舱训练与规范课程", "资格只保留一次且淘汰后不退还资源"),
+    laterOrigin("d4-senluo-research", "森罗星生态研究员子女", "从小被教导所有采样都要留下坐标与许可。", "森罗星科研居住区", "优秀", ["植物", "兽武魂"], "魂兽生态", "森罗星生态管理局", "熟悉保护区规则与基础野外观测", "接近魂兽核心区需要严格许可"),
+    laterOrigin("d4-ancient-blood", "古魂兽样本异常关联者", "一次常规体检显示出无法归入现有数据库的血脉波动。", "联邦母舰港研究家属区", "传奇", ["兽武魂", "精神"], "血脉谜团", "联邦古魂兽研究所", "异常血脉带来极高成长可能", "身份与样本数据都受到持续监控"),
+    laterOrigin("d4-colony-child", "联邦殖民星普通家庭", "家里经营小型补给站，所有物资都要等航班。", "精灵星联邦定居点", "平凡", ["植物", "器武魂"], "星际殖民", "联邦殖民事务署", "适应陌生生态与长期物资计划", "补给延误会立刻影响全家生计"),
+  ],
+};
+
 export const BIRTH_PROFILE_COUNT = ORIGINS.length * FAMILY_CLIMATES.length * 6;
 export const CORE_ORIGIN_COUNT = ORIGINS.length;
 export const CORE_ORIGIN_UNIQUE_NAME_COUNT = new Set(ORIGINS.map((origin) => origin.name)).size;
@@ -636,7 +671,7 @@ const ORIGIN_PREFERENCE_IDS: Record<string, string[]> = {
   特殊: ["mystery-arrival", "fallen-clan", "sect-village", "hidden-sect-heir", "cultivator-reincarnation", "modern-transmigrator", "underworld-heir", "evil-soul-remnant"],
 };
 
-function originPool(preferences?: WeightPreferences): OriginTemplate[] {
+function originPool(preferences?: WeightPreferences, era: GameEra = 1): OriginTemplate[] {
   const preferredIds = ORIGIN_PREFERENCE_IDS[preferences?.origin ?? "均衡"] ?? [];
   const preference = preferences?.origin ?? "均衡";
   const matchesGeneratedPreference = (origin: OriginTemplate): boolean => {
@@ -651,14 +686,15 @@ function originPool(preferences?: WeightPreferences): OriginTemplate[] {
     if (preference === "特殊") return /异脉|禁物|旧案|血脉|遗迹|残魂|实验|诅咒/.test(text);
     return false;
   };
-  return ORIGINS.map((origin) => ({ ...origin, weight: origin.weight * (preferredIds.includes(origin.id) || matchesGeneratedPreference(origin) ? 2.4 : 1) }));
+  const pool = era === 1 ? ORIGINS : LATER_ERA_ORIGINS[era];
+  return pool.map((origin) => ({ ...origin, weight: origin.weight * (preferredIds.includes(origin.id) || matchesGeneratedPreference(origin) ? 2.4 : 1) }));
 }
 
 function resolvedOriginTier(origin: OriginTemplate): CandidateRarity {
   return origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "优秀" : "平凡");
 }
 
-function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences, excludedIds: string[] = []): MartialSoulTemplate {
+function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences, excludedIds: string[] = [], era: GameEra = 1): MartialSoulTemplate {
   const preferredCategory = preferences?.martialSoul;
   const originSoulIds: Record<string, string[]> = {
     "seven-treasure-core": ["seven-treasure-pagoda", "clear-mirror", "star-book"],
@@ -675,7 +711,8 @@ function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: 
   const identityTier = resolvedOriginTier(origin);
   const identityIndex = MARTIAL_SOUL_GRADE_ORDER.indexOf(identityTier);
   const forcedSource = forced ? MARTIAL_SOULS.filter((soul) => forced.includes(soul.id) && !excludedIds.includes(soul.id)) : [];
-  const baseSource = (forcedSource.length ? forcedSource : MARTIAL_SOULS.filter((soul) => !excludedIds.includes(soul.id)));
+  const eraCompatible = (soul: MartialSoulTemplate) => soul.sourceEra === undefined || soul.sourceEra === "原创" || soul.sourceEra === "局外" || (typeof soul.sourceEra === "number" && soul.sourceEra <= era);
+  const baseSource = forcedSource.length ? forcedSource.filter(eraCompatible) : MARTIAL_SOULS.filter((soul) => !excludedIds.includes(soul.id) && eraCompatible(soul));
   const compatibleSource = baseSource.filter((soul) => MARTIAL_SOUL_GRADE_ORDER.indexOf(soul.grade ?? "平凡") >= identityIndex);
   const source = compatibleSource.length ? compatibleSource : baseSource;
   const identityText = `${origin.id} ${origin.name} ${origin.summary} ${origin.route ?? ""} ${(origin.roleTags ?? []).join(" ")} ${origin.locations.join(" ")}`;
@@ -711,17 +748,19 @@ function martialSoulCount(random: () => number, origin: OriginTemplate): 1 | 2 |
   return martialSoulMultiplicity(roll, tier, false);
 }
 
-function chooseMartialSouls(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences): MartialSoulTemplate[] {
+function chooseMartialSouls(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences, era: GameEra = 1): MartialSoulTemplate[] {
   const count = martialSoulCount(random, origin);
   const selected: MartialSoulTemplate[] = [];
-  for (let index = 0; index < count; index += 1) selected.push(chooseSoul(random, origin, preferences, selected.map((soul) => soul.id)));
+  for (let index = 0; index < count; index += 1) selected.push(chooseSoul(random, origin, preferences, selected.map((soul) => soul.id), era));
   return selected;
 }
 
-function eraRelation(offset: number): string {
-  if (offset === 0) return "与唐三同年参加武魂觉醒";
-  if (offset < 0) return `比唐三觉醒早约 ${Math.abs(offset)} 年`;
-  return `比唐三觉醒晚约 ${offset} 年`;
+function eraRelation(year: number, era: GameEra): string {
+  const offset = year - ERA_BASE_YEARS[era];
+  const protagonist = ERA_PROTAGONISTS[era];
+  if (offset === 0) return `与${protagonist}同一基准年参加武魂觉醒`;
+  if (offset < 0) return `比${protagonist}的基准年早约 ${Math.abs(offset)} 年`;
+  return `比${protagonist}的基准年晚约 ${offset} 年`;
 }
 
 function generateName(random: () => number): string {
@@ -943,10 +982,11 @@ export function generateCandidates(
   gender: "男" | "女",
   preferences?: WeightPreferences,
   giftBonus = 0,
+  era: GameEra = 1,
 ): HiddenCandidate[] {
   const random = createRandom(`${seed}:candidates:${rerollIndex}`);
   const usedOrigins = new Set<string>();
-  const origins = originPool(preferences);
+  const origins = originPool(preferences, era);
 
   return Array.from({ length: 3 }, (_, index) => {
     const slotOrigins = index === 1
@@ -960,9 +1000,9 @@ export function generateCandidates(
     }
     usedOrigins.add(origin.id);
 
-    const martialSouls = chooseMartialSouls(random, origin, preferences);
+    const martialSouls = chooseMartialSouls(random, origin, preferences, era);
     const soul = martialSouls[0];
-    const offset = integer(random, -5, 5);
+    const offset = ERA_BASE_YEARS[era] + integer(random, -5, 5);
     const talentFloor = origin.tier === "神话" ? 8 : origin.tier === "传奇" ? 7 : origin.tier === "稀有" ? 5 : 0;
     const innateSoulPower = Math.min(10, Math.max(talentFloor, integer(random, soul.soulPowerRange[0], soul.soulPowerRange[1]) + (origin.innateBonus ?? 0)));
     let name = generateName(random);
@@ -987,7 +1027,7 @@ export function generateCandidates(
       id: `${rerollIndex}-${index}-${Math.floor(random() * 1_000_000).toString(36)}`,
       name,
       gender,
-      eraRelation: eraRelation(offset),
+      eraRelation: eraRelation(offset, era),
       birthYearOffset: offset,
       location: concreteOrigin.location,
       locationId,
@@ -1082,6 +1122,13 @@ const GENERAL_LIFE_GOALS = [
   "让曾经轻视自己的人公开承认判断错误，但不依靠长辈替自己出手",
   "找到能够延长亲人寿命或修复武魂缺陷的方法，并完成一次真实验证",
 ];
+
+const ERA_LIFE_GOALS: Record<GameEra, string[]> = {
+  1: GENERAL_LIFE_GOALS,
+  2: ["进入史莱克学院并成为能够独立执行监察任务的内院学员", "掌握一套可复现的魂导器制作路线并完成五级魂导师认证", "帮助衰落的唐门建立稳定的暗器与魂导器收入", "提出一种不依赖猎杀的魂兽力量承载实验并完成三次验证", "带领队伍进入全大陆高级魂师学院斗魂大赛前四名", "在日月帝国与原属斗罗大陆势力之间建立一条可靠情报线"],
+  3: ["进入史莱克学院并完成一字斗铠的独立设计与制造", "成为传灵师并揭开一次非法魂灵交易链", "带领固定团队通过史莱克内院考核", "加入血神军团并在深渊防线获得正式功勋", "建立一支能够同时运用武魂、魂灵、机甲与斗铠的战斗小队", "在联邦与海外星罗交流中完成一次不依赖武力的重大任务"],
+  4: ["考入史莱克学院星际实验班并成为可靠的战舰指挥者", "带领团队取得一艘合法执行探索任务的小型战舰", "完成森罗星与精灵星的两次跨星球生态调查", "建立一套武魂、魂灵、机甲与星战指挥协同训练法", "进入联邦舰队并完成一次无人员损失的高风险救援", "调查自身血脉异常，同时阻止研究数据被任何势力独占"],
+};
 
 const ORIGIN_GOALS: Record<string, string[]> = {
   "seven-treasure-core": [
@@ -1219,7 +1266,9 @@ function goalWeight(candidate: HiddenCandidate, goal: string, tailored: Set<stri
 function lifeGoalOptions(candidate: HiddenCandidate, seed: string, rerollIndex: number): string[] {
   const random = createRandom(`${seed}:goals:${candidate.public.id}:${rerollIndex}`);
   const tailored = new Set(ORIGIN_GOALS[candidate.originId] ?? []);
-  const remaining = [...new Set([...tailored, ...GENERAL_LIFE_GOALS])];
+  const year = candidate.public.birthYearOffset ?? 0;
+  const era: GameEra = year >= 25000 ? 4 : year >= 15000 ? 3 : year >= 5000 ? 2 : 1;
+  const remaining = [...new Set([...tailored, ...ERA_LIFE_GOALS[era]])];
   const selected: string[] = [];
   while (selected.length < 3 && remaining.length) {
     const choice = weightedPick(random, remaining.map((goal) => ({ goal, weight: goalWeight(candidate, goal, tailored) })));
@@ -1335,7 +1384,9 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const now = new Date().toISOString();
   const initialPersonality = input.personality ?? { keywords: [], answers: {} };
   const profile = derivePersonality(initialPersonality);
-  const hiddenCandidates = generateCandidates(seed, 0, input.gender, meta?.weightPreferences, (meta?.purchasedUpgrades["命运余量"] ?? 0) * 0.01);
+  const era = input.era ?? 1;
+  const eraName = ({ 1: "斗罗大陆", 2: "绝世唐门", 3: "龙王传说", 4: "终极斗罗" } as const)[era];
+  const hiddenCandidates = generateCandidates(seed, 0, input.gender, meta?.weightPreferences, (meta?.purchasedUpgrades["命运余量"] ?? 0) * 0.01, era);
   const enabledCodexSouls = meta?.martialSoulCodex.filter((entry) => entry.enabled && entry.completedRuns > 0) ?? [];
   const codexRandom = createRandom(`${seed}:enabled-codex-souls`);
   for (const candidate of hiddenCandidates) {
@@ -1383,6 +1434,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
     view: {
       id,
       seed,
+      era,
       status: "candidate_selection",
       difficulty: input.difficulty,
       speed: "标准",
@@ -1392,9 +1444,9 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       rerollIndex: 0,
       candidateRerollsUsed: 0,
       candidatePaidRerolls: 0,
-      birthProfileCount: BIRTH_PROFILE_COUNT,
+      birthProfileCount: era === 1 ? BIRTH_PROFILE_COUNT : LATER_ERA_ORIGINS[era].length * FAMILY_CLIMATES.length * 6,
       candidates: hiddenCandidates.map((candidate) => candidate.public),
-      narrative: [createEntry("system", "这一轮有三个人。先看出身和征兆，武魂要等选定后才会揭晓。")],
+      narrative: [createEntry("system", `这一轮从${eraName}时代抽出三个人。先看出身和征兆，武魂要等选定后才会揭晓。`)],
       suggestions: [],
       relations: [],
       npcRelations: [],
@@ -1451,6 +1503,7 @@ export function rerollCandidates(game: StoredGame, preferences?: WeightPreferenc
     game.view.candidates[0]?.gender ?? "男",
     preferences,
     (game.legacy.upgrades["命运余量"] ?? 0) * 0.01,
+    game.view.era ?? 1,
   );
   const locks = new Set(lockedSlots.filter((slot) => slot >= 0 && slot < 3));
   game.hiddenCandidates = fresh.map((candidate, index) => locks.has(index) ? game.hiddenCandidates[index] ?? candidate : candidate);

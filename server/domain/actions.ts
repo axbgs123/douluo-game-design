@@ -922,6 +922,8 @@ function academyResolution(game: StoredGame): ActionResolution {
   const academyNameByLocation: Record<string, string> = {
     "shrek-village": "史莱克学院", "suotuo-city": "索托初级魂师学院", "star-luo-city": "星罗城初级魂师学院",
     "heaven-dou-city": "天斗城初级魂师学院", "spirit-city": "武魂城初级魂师学院", "notting-academy": "诺丁初级魂师学院", "notting-city": "诺丁初级魂师学院",
+    "shrek-city": "史莱克学院", "radiant-city": "日月皇家魂导师学院", "heavenly-soul-city": "天魂皇家学院", "dou-ling-city": "斗灵皇家学院",
+    "east-sea-city": "东海学院", "mingdu-federal": "明都联邦学院", "mother-ship-port": "联邦星际学院",
   };
   const academyName = academyNameByLocation[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}初级魂师学堂`;
   if (game.view.affiliations.some((item) => item.name === academyName)) return impossible(`我已经是${academyName}的学员。`, ["参加课程", "寻找导师", "认识同学"]);
@@ -939,12 +941,33 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
     "notting-city": "诺丁城魂师互助会", "suotuo-city": "索托城猎魂人行会", "heaven-dou-city": "天斗城自由魂师公所",
     "star-luo-city": "星罗城北区魂师武馆", "spirit-city": "武魂城登记魂师团", "soul-hunting-forest": "猎魂森林向导队",
   };
-  const choices = [
+  const eraChoices = {
+    1: [
     { pattern: /武魂殿/, id: "spirit-hall", name: "武魂殿", rank: 1 }, { pattern: /七宝/, id: "seven-treasure", name: "七宝琉璃宗", rank: 20 },
     { pattern: /蓝电/, id: "blue-lightning", name: "蓝电霸王龙宗", rank: 20 }, { pattern: /昊天/, id: "clear-sky", name: "昊天宗", rank: 40 },
-    { pattern: /史莱克/, id: "shrek", name: "史莱克学院", rank: 20 }, { pattern: /宗门|势力|组织|行会|武馆/, id: `local-${game.view.locationId}`, name: localOrganizations[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}自由魂师互助队`, rank: 10 },
-  ];
+    { pattern: /史莱克/, id: "shrek", name: "史莱克学院", rank: 20 },
+    ],
+    2: [
+      { pattern: /唐门/, id: "peerless-tang-sect", name: "绝世唐门", rank: 10 }, { pattern: /史莱克|内院/, id: "shrek-inner-court", name: "史莱克学院内院", rank: 30 },
+      { pattern: /日月|魂导师/, id: "sun-moon-royal-academy", name: "日月皇家魂导师学院", rank: 10 }, { pattern: /本体宗/, id: "body-sect", name: "本体宗", rank: 30 },
+    ],
+    3: [
+      { pattern: /唐门/, id: "d3-tang-sect", name: "两万年唐门", rank: 20 }, { pattern: /传灵塔/, id: "spirit-pagoda", name: "传灵塔", rank: 10 },
+      { pattern: /战神殿/, id: "war-god-temple", name: "战神殿", rank: 40 }, { pattern: /史莱克/, id: "shrek-inner-court", name: "史莱克学院内院", rank: 30 },
+    ],
+    4: [
+      { pattern: /舰队|联邦/, id: "d4-federal-fleet", name: "斗罗联邦舰队", rank: 20 }, { pattern: /史莱克/, id: "shrek-space-command", name: "史莱克星际体系", rank: 20 },
+      { pattern: /传灵塔/, id: "spirit-pagoda", name: "传灵塔", rank: 10 }, { pattern: /森罗星|魂兽自治/, id: "senluo-planet", name: "森罗星魂兽自治体系", rank: 20 },
+    ],
+  } as const;
+  const localChoice = { pattern: /宗门|势力|组织|行会|武馆/, id: `local-${game.view.locationId}`, name: localOrganizations[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}自由魂师互助队`, rank: 10 };
+  const choices = [...eraChoices[game.view.era ?? 1], localChoice];
   const target = choices.find((item) => item.pattern.test(action)) ?? choices.at(-1)!;
+  const faction = FACTIONS.find((item) => item.id === target.id);
+  const year = game.view.worldTime?.year ?? 0;
+  if (faction && ((faction.activeFromYear !== undefined && year < faction.activeFromYear) || (faction.activeUntilYear !== undefined && year > faction.activeUntilYear))) {
+    return impossible(`${target.name}在当前时代并不存在。`, ["调查当前时代的公开势力", "寻找当地组织", "查看地图与传闻"]);
+  }
   if (game.view.affiliations.some((item) => item.id === target.id)) return impossible(`我已经加入${target.name}。`, ["申请内部任务", "拜访组织成员", "提升组织声望"]);
   if (character.soulRank < target.rank) return impossible(`${target.name}的公开门槛约为 ${target.rank} 级，我当前的实力还不够。`, ["继续修炼", "寻找举荐人", "先完成外围委托"]);
   game.view.affiliations.push({ id: target.id, name: target.name, role: "外围成员", reputation: "生疏", joinedAt: `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日` });

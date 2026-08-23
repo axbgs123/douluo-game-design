@@ -7,6 +7,7 @@ export type MartialSoulRarity = "白色" | "蓝色" | "紫色" | "金色" | "红
 export type LifeGoalDifficulty = "普通" | "困难" | "极难";
 export type GameStatus = "candidate_selection" | "character_shaping" | "awakening" | "life_goal_selection" | "playing" | "ended";
 export type GameSpeed = "标准" | "高速";
+export type GameEra = 1 | 2 | 3 | 4;
 export type ConditionLabel = "良好" | "疲惫" | "轻伤" | "重伤" | "濒死" | "死亡";
 export type HuntingStage = "需求" | "调查" | "准备" | "旅行" | "追踪" | "战斗" | "吸收" | "后果" | "完成";
 
@@ -431,6 +432,7 @@ export interface RunProgressView {
 export interface GameView {
   id: string;
   seed: string;
+  era: GameEra;
   status: GameStatus;
   difficulty: Difficulty;
   speed: GameSpeed;

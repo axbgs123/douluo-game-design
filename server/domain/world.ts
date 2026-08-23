@@ -12,8 +12,10 @@ import { fixedTraitEffect } from "./traits.js";
 const DAYS_PER_YEAR = 360;
 
 function eraAtYear(year: number): string {
-  if (year === 0) return "唐三觉醒同年";
-  return year < 0 ? `比唐三觉醒早约 ${Math.abs(year)} 年` : `比唐三觉醒晚约 ${year} 年`;
+  const [base, protagonist] = year >= 25000 ? [30000, "蓝轩宇"] : year >= 15000 ? [20000, "唐舞麟"] : year >= 5000 ? [10000, "霍雨浩"] : [0, "唐三"];
+  const offset = year - base;
+  if (offset === 0) return `${protagonist}基准年`;
+  return offset < 0 ? `比${protagonist}基准年早约 ${Math.abs(offset)} 年` : `比${protagonist}基准年晚约 ${offset} 年`;
 }
 
 const DYNAMIC_EVENT_TEMPLATES = [
@@ -30,6 +32,17 @@ const DYNAMIC_EVENT_TEMPLATES = [
 function ordinal(year: number, day: number): number { return year * DAYS_PER_YEAR + day; }
 
 export function inferLocationId(location: string): string {
+  if (/联邦母舰港|母舰港/.test(location)) return "mother-ship-port";
+  if (/森罗星/.test(location)) return "senluo-planet";
+  if (/精灵星/.test(location)) return "elf-planet";
+  if (/海外星罗/.test(location)) return "d3-star-luo-capital";
+  if (/传灵塔总部/.test(location)) return "spirit-pagoda-hq";
+  if (/联邦明都/.test(location)) return "mingdu-federal";
+  if (/东海城/.test(location)) return "east-sea-city";
+  if (/史莱克城/.test(location)) return "shrek-city";
+  if (/明都/.test(location)) return "radiant-city";
+  if (/天魂/.test(location)) return "heavenly-soul-city";
+  if (/斗灵/.test(location)) return "dou-ling-city";
   if (/极北.*核心|冰天雪女|冰碧帝皇蝎/.test(location)) return "extreme-north-core";
   if (/极北|北境冰原/.test(location)) return "extreme-north-edge";
   if (/圣魂村/.test(location)) return "holy-soul-village";
@@ -228,8 +241,21 @@ export function buildMapView(game: StoredGame): MapLocationView[] {
   const activeTaskText = game.view.tasks.filter((task) => task.status === "进行中").map((task) => `${task.title}${task.detail}`).join(" ");
   const selectedHome = game.hiddenCandidates.find((candidate) => candidate.public.id === game.view.selectedCandidateId)?.public;
   const year = game.view.worldTime?.year ?? 0;
+  const era = game.view.era ?? 1;
+  const persistentByEra: Record<1 | 2 | 3 | 4, Set<string>> = {
+    1: new Set(),
+    2: new Set(["star-luo-city", "extreme-north-edge", "extreme-north-core"]),
+    3: new Set(["shrek-city", "extreme-north-edge", "extreme-north-core"]),
+    4: new Set(["shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
+  };
   return LOCATIONS.filter((location) => {
     if (location.availableFromYear !== undefined && year < location.availableFromYear) return false;
+    if (era > 1 && location.id !== currentId) {
+      const lowerBound = era === 2 ? 9_000 : era === 3 ? 19_800 : 29_800;
+      const upperBound = era === 2 ? 19_800 : era === 3 ? 29_800 : Number.POSITIVE_INFINITY;
+      const introducedInEra = location.availableFromYear !== undefined && location.availableFromYear >= lowerBound && location.availableFromYear < upperBound;
+      if (!introducedInEra && !persistentByEra[era].has(location.id)) return false;
+    }
     const point = worldMapPoint(location.id);
     return (!point.hidden && !location.hidden) || visibleIds.has(location.id);
   }).map((location) => {
@@ -690,6 +716,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   const migrateNarrative = (legacy.schemaVersion ?? 1) < 4;
   const candidate = game.view.candidates[0];
   const startYear = game.view.worldTime?.year ?? candidate?.birthYearOffset ?? 0;
+  game.view.era ??= startYear >= 25000 ? 4 : startYear >= 15000 ? 3 : startYear >= 5000 ? 2 : 1;
   const locationId = game.view.locationId ?? inferLocationId(game.view.location ?? candidate?.location ?? "诺丁城");
   for (const publicCandidate of game.view.candidates ?? []) {
     const oldDwelling = publicCandidate.dwelling ?? `${publicCandidate.location ?? "原居地"} · 户籍所记住处`;

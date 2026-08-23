@@ -99,6 +99,29 @@ export const EXPANDED_LOCATIONS: LocationDefinition[] = [
   location("sky-horse-star", "天马星", "龙马星系", "高", "天马族核心星球。", 30000),
 ];
 
+const ERA_CONNECTIONS: Record<string, Array<{ id: string; minutes: number }>> = {
+  "radiant-city": [{ id: "evil-forest", minutes: 1440 }, { id: "jing-yang-mountains", minutes: 2160 }, { id: "star-luo-city", minutes: 7200 }],
+  "heavenly-soul-city": [{ id: "shrek-city", minutes: 2880 }, { id: "dou-ling-city", minutes: 4320 }],
+  "dou-ling-city": [{ id: "shrek-city", minutes: 3240 }, { id: "heavenly-soul-city", minutes: 4320 }],
+  "shrek-city": [{ id: "heavenly-soul-city", minutes: 2880 }, { id: "dou-ling-city", minutes: 3240 }, { id: "star-luo-city", minutes: 4320 }, { id: "east-sea-city", minutes: 3600 }, { id: "mingdu-federal", minutes: 4320 }, { id: "spirit-pagoda-hq", minutes: 720 }, { id: "star-dou-reserve", minutes: 1080 }, { id: "mother-ship-port", minutes: 2400 }],
+  "evil-forest": [{ id: "radiant-city", minutes: 1440 }],
+  "jing-yang-mountains": [{ id: "radiant-city", minutes: 2160 }],
+  "star-dou-reserve": [{ id: "shrek-city", minutes: 1080 }, { id: "spirit-pagoda-hq", minutes: 1440 }],
+  "mingdu-federal": [{ id: "shrek-city", minutes: 4320 }, { id: "spirit-pagoda-hq", minutes: 2880 }, { id: "east-sea-city", minutes: 5760 }],
+  "spirit-pagoda-hq": [{ id: "shrek-city", minutes: 720 }, { id: "star-dou-reserve", minutes: 1440 }, { id: "mingdu-federal", minutes: 2880 }],
+  "east-sea-city": [{ id: "shrek-city", minutes: 3600 }, { id: "mingdu-federal", minutes: 5760 }],
+  "blood-god-camp": [{ id: "abyss-passage", minutes: 180 }],
+  "abyss-passage": [{ id: "blood-god-camp", minutes: 180 }],
+  "d3-star-luo-capital": [{ id: "shrek-city", minutes: 14400 }, { id: "d3-dou-spirit-capital", minutes: 7200 }],
+  "d3-dou-spirit-capital": [{ id: "d3-star-luo-capital", minutes: 7200 }, { id: "shrek-city", minutes: 14400 }],
+  "mother-ship-port": [{ id: "shrek-city", minutes: 2400 }, { id: "senluo-planet", minutes: 10080 }, { id: "elf-planet", minutes: 12960 }],
+  "senluo-planet": [{ id: "mother-ship-port", minutes: 10080 }, { id: "elf-planet", minutes: 7200 }],
+  "elf-planet": [{ id: "mother-ship-port", minutes: 12960 }, { id: "senluo-planet", minutes: 7200 }],
+  "dragon-horse-star": [{ id: "sky-horse-star", minutes: 4320 }],
+  "sky-horse-star": [{ id: "dragon-horse-star", minutes: 4320 }],
+};
+for (const location of EXPANDED_LOCATIONS) location.connections = ERA_CONNECTIONS[location.id] ?? location.connections;
+
 type CharacterRow = [string, string, string[], 1 | 2 | 3 | 4 | 5, number | null, string[], string[], string, string[], string, number, string, number?];
 const HIDDEN_CHARACTER_IDS = new Set(["golden-crocodile", "qian-jun", "jiang-mo", "silver-dragon-sleeping"]);
 const character = ([id, name, aliases, importance, birthYear, martialSouls, factionIds, initialLocationId, personality, goal, snapshotYear, tier, deathYear]: CharacterRow): CanonCharacterDefinition => ({ id, name, aliases, importance, birthYear: birthYear ?? undefined, deathYear, martialSouls, factionIds, initialLocationId, personality, goals: [goal], powerSnapshots: [{ year: snapshotYear, tier, note: `${name}在对应时代的公开实力与身份记录` }], hidden: HIDDEN_CHARACTER_IDS.has(id) });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CheckpointSummary, DeepSeekSettingsView, Difficulty, GameView, Gender, SaveSummary } from "../shared/game";
+import type { CheckpointSummary, DeepSeekSettingsView, GameView, SaveSummary } from "../shared/game";
 import {
   awakenCharacter,
   addMapPin,
@@ -163,7 +163,7 @@ export default function App() {
           <div className="save-row">{saves.slice(0, 3).map((save, index) => saveCard(save, index))}</div>
         </section>}
         {saves.length > 3 && <details className="legacy-save-manager" open><summary>管理旧版遗留存档 <b>{saves.length - 3}</b></summary><p>旧版本没有限制存档数量。这些存档不会消失，但需要删至三个以内才能开始新人生。</p><div className="save-row">{saves.slice(3).map((save, index) => saveCard(save, index, true))}</div></details>}
-        {saves.length < 3 ? <SetupScreen busy={busy} onCreate={(input: { gender: Gender; difficulty: Difficulty; seed?: string }) => run(() => createGame(input))} /> : <section className="save-limit"><strong>三个存档位都已使用</strong><p>删除一个旧存档后才能开始新人生。每个存档都会在行动提交和关键节点后自动保存。</p></section>}
+        {saves.length < 3 ? <SetupScreen busy={busy} onCreate={(input) => run(() => createGame(input))} /> : <section className="save-limit"><strong>三个存档位都已使用</strong><p>删除一个旧存档后才能开始新人生。每个存档都会在行动提交和关键节点后自动保存。</p></section>}
       </>}
 
       {game?.status === "candidate_selection" && <CandidateScreen

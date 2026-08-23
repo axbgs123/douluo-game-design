@@ -32,8 +32,13 @@ function endingName(game: StoredGame): string {
   if (game.view.character?.condition === "死亡" || game.view.runProgress.ending?.includes("死亡")) return game.view.runProgress.ending ?? "死亡";
   if ((game.view.character?.soulRank ?? 0) >= 99) return "走到百级门前";
   if (goalIsVerified(game)) return `完成目标 · ${game.view.lifeGoal}`;
-  if ((game.view.worldTime?.year ?? 0) >= 50) return "时间线结束";
+  if (eraYearsElapsed(game) >= 50) return "时间线结束";
   return "未成之局";
+}
+
+function eraYearsElapsed(game: StoredGame): number {
+  const eraBaseYear = ((game.view.era ?? 1) - 1) * 10_000;
+  return (game.view.worldTime?.year ?? eraBaseYear) - eraBaseYear;
 }
 
 export function settleRun(game: StoredGame, reason?: string): RunSettlementView {
@@ -50,7 +55,7 @@ export function settleRun(game: StoredGame, reason?: string): RunSettlementView 
   const reloadPenalty = Number(game.world.flags.performancePenalty ?? 0);
   const baseScore = Math.max(0, Math.min(100, growth + goal + survival + exploration + impact) - reloadPenalty);
   const multiplier = MULTIPLIERS[game.view.difficulty];
-  const qualified = game.actionIndex >= 8 || character?.condition === "死亡" || verifiedGoal || (character?.soulRank ?? 0) >= 99 || (game.view.worldTime?.year ?? 0) >= 50;
+  const qualified = game.actionIndex >= 8 || character?.condition === "死亡" || verifiedGoal || (character?.soulRank ?? 0) >= 99 || eraYearsElapsed(game) >= 50;
   const legacyPoints = qualified ? Math.max(1, Math.round(baseScore * multiplier)) : 0;
   const ending = endingName(game);
   const highlights = [

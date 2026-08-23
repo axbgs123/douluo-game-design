@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { DIFFICULTIES, type Difficulty, type Gender } from "../../shared/game";
+import { DIFFICULTIES, type Difficulty, type GameEra, type Gender } from "../../shared/game";
 
 interface SetupScreenProps {
   busy: boolean;
   onCreate: (input: {
+    era: GameEra;
     gender: Gender;
     difficulty: Difficulty;
     seed?: string;
@@ -19,6 +20,7 @@ const DIFFICULTY_COPY: Record<Difficulty, string> = {
 };
 
 export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
+  const [era, setEra] = useState<GameEra>(1);
   const [gender, setGender] = useState<Gender>("男");
   const [difficulty, setDifficulty] = useState<Difficulty>("标准");
   const [seed, setSeed] = useState("");
@@ -26,8 +28,8 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
   return (
     <main className="setup-page">
       <section className="intro-panel">
-        <p className="eyebrow">第一部</p>
-        <h1>武魂觉醒</h1>
+        <p className="eyebrow">斗罗同人世界 · 第 {era} 部时代</p>
+        <h1>{era === 1 ? "武魂觉醒" : era === 2 ? "绝世唐门" : era === 3 ? "龙王传说" : "终极斗罗"}</h1>
         <p className="intro-copy">这里只决定性别和难度。身份抽出来以后，再按那个人的家庭、秘密和处境决定性格。</p>
       </section>
 
@@ -37,12 +39,23 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
           event.preventDefault();
           if (busy) return;
           void onCreate({
+            era,
             gender,
             difficulty,
             seed: seed.trim() || undefined,
           });
         }}
       >
+        <section className="form-section compact-section">
+          <div className="section-heading"><h2>时代</h2></div>
+          <div className="choice-row">
+            {([1, 2, 3, 4] as const).map((value) => (
+              <button key={value} type="button" className={era === value ? "choice active" : "choice"} onClick={() => setEra(value)}>
+                斗{value === 1 ? "一" : value === 2 ? "二" : value === 3 ? "三" : "四"}
+              </button>
+            ))}
+          </div>
+        </section>
         <section className="form-section compact-section">
           <div className="section-heading">
             <h2>性别</h2>
