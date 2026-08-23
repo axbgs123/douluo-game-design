@@ -16,4 +16,3 @@ export function toThirdPersonNarrative(text: string, name: string, gender: Gende
   const parts = text.split(/([“「『][\s\S]*?[”」』])/g);
   return parts.map((part, index) => index % 2 === 1 ? part : convertOutsideDialogue(part, name, gender)).join("");
 }
-
