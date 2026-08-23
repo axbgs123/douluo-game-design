@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Difficulty, GameView, Gender, SaveSummary } from "../shared/game";
 import {
   awakenCharacter,
+  addMapPin,
   changeSpeed,
   completeCharacterShaping,
   createGame,
@@ -10,6 +11,7 @@ import {
   loadGame,
   rerollCandidates,
   rerollCharacterShaping,
+  removeMapPin,
   selectCandidate,
   submitAction,
 } from "./api";
@@ -74,6 +76,7 @@ export default function App() {
 
       {game?.status === "candidate_selection" && <CandidateScreen
         candidates={game.candidates}
+        birthProfileCount={game.birthProfileCount}
         rerollIndex={game.rerollIndex}
         busy={busy}
         onReroll={() => run(() => rerollCandidates(game.id))}
@@ -95,6 +98,8 @@ export default function App() {
         onAction={(input) => run(() => submitAction(game.id, input))}
         onSpeed={(speed) => run(() => changeSpeed(game.id, speed))}
         onEnd={(reason) => run(() => endRun(game.id, reason))}
+        onMapPin={(input) => run(() => addMapPin(game.id, input))}
+        onMapPinRemove={(pinId) => run(() => removeMapPin(game.id, pinId))}
       />}
     </div>
     <MetaProgressionPanel open={metaOpen} onClose={() => setMetaOpen(false)} />

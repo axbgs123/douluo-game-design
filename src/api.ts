@@ -63,6 +63,14 @@ export function selectCandidate(id: string, candidateId: string, customName?: st
   });
 }
 
+export function addMapPin(id: string, input: { label: string; x: number; y: number }): Promise<GameView> {
+  return request(`/api/games/${id}/map/pins`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function removeMapPin(id: string, pinId: string): Promise<GameView> {
+  return request(`/api/games/${id}/map/pins/${pinId}`, { method: "DELETE" });
+}
+
 export function awakenCharacter(id: string): Promise<GameView> {
   return request(`/api/games/${id}/awaken`, { method: "POST" });
 }

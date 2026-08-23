@@ -99,8 +99,9 @@ describe("完整游玩规则", () => {
     delete (game as unknown as { schemaVersion?: number }).schemaVersion;
     delete (game.view as Partial<typeof game.view>).map;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(6);
+    expect(migrated.schemaVersion).toBe(7);
     expect(migrated.view.map.length).toBeGreaterThan(0);
+    expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.world.npcs["tang-san"]).toBeDefined();
   });
 

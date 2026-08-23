@@ -17,6 +17,7 @@ import type {
 import { createRandom, integer, pick, weightedPick } from "./random.js";
 import { buildActiveEvents, buildKnownFigures, buildMapView, createHiddenWorld, inferLocationId, revealNpc } from "./world.js";
 import { refreshStoryArchive } from "./story-rules.js";
+import { worldMapPoint } from "../../shared/world-map.js";
 
 interface OriginTemplate {
   id: string;
@@ -39,6 +40,22 @@ const GIVEN_NAMES = ["川", "宁", "昭", "砚", "澜", "遥", "清", "越", "�
 const FATHER_GIVEN_NAMES = ["守义", "青禾", "岳山", "德昌", "远林", "成业", "茂生", "长顺"];
 const MOTHER_GIVEN_NAMES = ["兰芝", "素琴", "秋娘", "静娴", "春桃", "桂香", "月娥", "秀禾"];
 const OFFICER_NAMES = ["素云涛", "韩守成", "顾岩", "赵闻", "林策", "程肃"];
+const FAMILY_CLIMATES = [
+  "家里规矩重，长辈很少当面夸人",
+  "家里护短，遇到外人时总会先站在自家孩子这边",
+  "家里精打细算，每一笔修炼花销都记在册上",
+  "家里看重名声，觉醒结果会直接影响往来婚契与人情",
+  "家里愿意冒险，只要回报足够就肯押上积蓄",
+  "家里人各有打算，饭桌上的亲近不妨碍暗中竞争",
+] as const;
+
+function dwellingOptions(origin: OriginTemplate, location: string): string[] {
+  if (/商队|乡道/.test(location)) return ["头车后的篷车", "装药材的二号车厢", "车队东侧折篷", "护卫火堆旁的小帐", "驮兽栏后的旧篷车", "领队车外侧的窄铺位"];
+  if (/城堡|府邸|王府|公爵府|山门|剑谷|宗/.test(`${location}${origin.name}`)) return ["东院临竹厢房", "演武场北侧独院", "藏书楼后的青瓦小院", "内门膳堂西侧偏院", "主院第二进暖阁", "护山石阶下的旧执事院"];
+  if (/城|学院|街|码头|酒馆|分殿|黑市/.test(location)) return ["东市石桥旁二层木屋", "分殿后巷第三间院子", "南门水井边的灰瓦屋", "旧货栈二楼靠街房", "学院后墙外的窄院", "码头仓房后的木板屋"];
+  if (/山|森林|药谷|猎户|采石/.test(`${location}${origin.name}`)) return ["山口第一座石屋", "药圃北边的竹篱小院", "旧猎棚旁的木屋", "溪水拐弯处的双间草房", "背风坡下的半石院", "林场仓棚后的矮屋"];
+  return ["村东老槐树下的土院", "水井南侧第三间草房", "晒谷场后的两间瓦屋", "河堤边的木门小院", "村口石桥旁的旧屋", "里正家西侧的窄院"];
+}
 
 const ORIGINS: OriginTemplate[] = [
   {
@@ -217,7 +234,7 @@ const ORIGINS: OriginTemplate[] = [
     locations: ["武魂城长老殿东侧府邸"],
     preferredCategories: ["器武魂", "兽武魂", "本体武魂"],
     weight: 2,
-    tier: "传奇",
+    tier: "神话",
     route: "武魂殿权贵",
     selfKnowledge: "本地人 · 身世明确",
     knownBackgrounds: ["他清楚父亲的封号和自己能调动的资源，也知道长老之子的身份会招来监视、拉拢与暗杀。"],
@@ -232,7 +249,7 @@ const ORIGINS: OriginTemplate[] = [
     locations: ["太玄剑宗封山剑谷"],
     preferredCategories: ["器武魂", "本体武魂"],
     weight: 2,
-    tier: "传奇",
+    tier: "神话",
     route: "隐世宗门少主",
     selfKnowledge: "本地人 · 知道宗门真相",
     knownBackgrounds: ["他知道自己是少宗主，也知道宗门所谓无敌只限山门阵势。走出剑谷后，长老不会替他扫平敌人。"],
@@ -375,6 +392,8 @@ const ORIGINS: OriginTemplate[] = [
     roleTags: ["强者后代", "隐居", "天才"],
   },
 ];
+
+export const BIRTH_PROFILE_COUNT = ORIGINS.length * FAMILY_CLIMATES.length * 6;
 
 const MARTIAL_SOULS: MartialSoulTemplate[] = [
   {
@@ -621,7 +640,7 @@ function specificOrigin(
   origin: OriginTemplate,
   initialLocation: string,
   characterName: string,
-): Pick<CandidatePublic, "originName" | "originSummary" | "originFacts" | "startingRelations" | "location"> {
+): Pick<CandidatePublic, "originName" | "originSummary" | "originFacts" | "startingRelations" | "location" | "dwelling" | "birthProfileId"> {
   const familySurname = characterName.slice(0, 1);
   const guardian = `${familySurname}${pick(random, FATHER_GIVEN_NAMES)}`;
   const secondGuardian = `${pick(random, SURNAMES)}${pick(random, MOTHER_GIVEN_NAMES)}`;
@@ -632,6 +651,7 @@ function specificOrigin(
   let authority = `${location}里正 ${pick(random, SURNAMES)}伯安`;
   let livelihood = origin.summary;
   let obligation = detail;
+  const familyClimateIndex = integer(random, 0, FAMILY_CLIMATES.length - 1);
 
   if (origin.id === "sect-village") {
     const variant = pick(random, [
@@ -752,12 +772,17 @@ function specificOrigin(
     "hidden-master-ward": "养父岳山老人；山下药师林秋娘常来照看",
   };
 
+  const dwellings = dwellingOptions(origin, location);
+  const dwellingIndex = integer(random, 0, dwellings.length - 1);
+  const dwelling = `${location} · ${dwellings[dwellingIndex]}`;
   return {
     location,
+    dwelling,
+    birthProfileId: `${origin.id}-${familyClimateIndex + 1}-${dwellingIndex + 1}`,
     originName,
     originSummary: `${livelihood}${obligation}`,
     originFacts: [
-      { label: "家庭", value: specialFamilies[origin.id] ?? `${guardian}与${secondGuardian}` },
+      { label: "家庭", value: `${specialFamilies[origin.id] ?? `${guardian}与${secondGuardian}`}；${FAMILY_CLIMATES[familyClimateIndex]}` },
       { label: "归属", value: authority },
       { label: "生计", value: livelihood },
       { label: "眼前事", value: obligation },
@@ -783,9 +808,9 @@ export function generateCandidates(
 
   return Array.from({ length: 3 }, (_, index) => {
     const slotOrigins = index === 1
-      ? origins.filter((item) => (item.tier ?? "寻常") !== "寻常")
+      ? origins.filter((item) => (item.tier ?? (["minor-noble", "fallen-clan", "sect-village"].includes(item.id) ? "优秀" : "平凡")) !== "平凡")
       : index === 2
-        ? origins.filter((item) => ["稀有", "传奇"].includes(item.tier ?? "寻常"))
+        ? origins.filter((item) => ["稀有", "传奇", "神话"].includes(item.tier ?? "平凡"))
         : origins;
     let origin = weightedPick(random, slotOrigins);
     for (let attempt = 0; usedOrigins.has(origin.id) && attempt < 8; attempt += 1) {
@@ -795,7 +820,7 @@ export function generateCandidates(
 
     const soul = chooseSoul(random, origin, preferences);
     const offset = integer(random, -20, 20);
-    const talentFloor = origin.tier === "传奇" ? 7 : origin.tier === "稀有" ? 5 : 0;
+    const talentFloor = origin.tier === "神话" ? 8 : origin.tier === "传奇" ? 7 : origin.tier === "稀有" ? 5 : 0;
     const innateSoulPower = Math.max(talentFloor, integer(random, soul.soulPowerRange[0], soul.soulPowerRange[1]));
     let name = generateName(random);
     const lineageSurnames: Record<string, string[]> = {
@@ -811,6 +836,10 @@ export function generateCandidates(
     const lineage = lineageSurnames[origin.id];
     if (lineage) name = `${pick(random, lineage)}${name.slice(1)}`;
     const concreteOrigin = specificOrigin(random, origin, pick(random, origin.locations), name);
+    const locationId = inferLocationId(concreteOrigin.location);
+    const mapPoint = worldMapPoint(locationId);
+    const houseAngle = random() * Math.PI * 2;
+    const houseRadius = 1.2 + random() * 1.6;
     const candidate: CandidatePublic = {
       id: `${rerollIndex}-${index}-${Math.floor(random() * 1_000_000).toString(36)}`,
       name,
@@ -818,12 +847,17 @@ export function generateCandidates(
       eraRelation: eraRelation(offset),
       birthYearOffset: offset,
       location: concreteOrigin.location,
+      locationId,
+      dwelling: concreteOrigin.dwelling,
+      mapX: Math.max(3, Math.min(97, mapPoint.x + Math.cos(houseAngle) * houseRadius)),
+      mapY: Math.max(4, Math.min(94, mapPoint.y + Math.sin(houseAngle) * houseRadius)),
+      birthProfileId: concreteOrigin.birthProfileId,
       originName: concreteOrigin.originName,
       originSummary: concreteOrigin.originSummary,
       originFacts: concreteOrigin.originFacts,
       startingRelations: concreteOrigin.startingRelations,
       route: origin.route ?? (origin.id === "mystery-arrival" ? "身世谜团" : "本地成长"),
-      rarity: origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "少见" : "寻常"),
+      rarity: origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "优秀" : "平凡"),
       selfKnowledge: origin.selfKnowledge ?? (origin.id === "mystery-arrival" ? "本地人 · 身世未知" : "本地人 · 身世明确"),
       knownBackground: thirdPersonClue(pick(random, origin.knownBackgrounds ?? [origin.id === "mystery-arrival" ? "你知道自己是被收养的，亲生父母和那块碎玉的来历都没人肯说。" : "你知道家里靠什么生活，也认得每天会见到的人。更深的秘密是否存在，还要靠经历确认。"]), name, gender),
       fixedTraits: origin.fixedTraits ?? [],
@@ -1086,7 +1120,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 6,
+    schemaVersion: 7,
     hiddenCandidates,
     personalityProfile: profile,
     actionIndex: 0,
@@ -1111,6 +1145,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       personalitySummary: profile.summary,
       lifeGoal: input.lifeGoal?.trim() || "尚未决定",
       rerollIndex: 0,
+      birthProfileCount: BIRTH_PROFILE_COUNT,
       candidates: hiddenCandidates.map((candidate) => candidate.public),
       narrative: [createEntry("system", "这一轮有三个人。先看出身和征兆，武魂要等选定后才会揭晓。")],
       suggestions: [],
@@ -1118,6 +1153,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       tasks: [],
       inventory: [],
       map: [],
+      mapPins: [],
       news: [],
       activeEvents: [],
       canonInfluences: [],
@@ -1181,8 +1217,8 @@ export function selectCandidate(game: StoredGame, candidateId: string, customNam
 
   game.view.selectedCandidateId = candidateId;
   game.view.status = "character_shaping";
-  game.view.location = candidate.public.location;
-  game.view.locationId = inferLocationId(candidate.public.location);
+  game.view.location = candidate.public.dwelling;
+  game.view.locationId = candidate.public.locationId;
   game.world = createHiddenWorld(candidate.public.birthYearOffset ?? 0, game.view.locationId);
   game.view.worldTime = { era: candidate.public.eraRelation, year: candidate.public.birthYearOffset ?? 0, day: 1, time: "08:00", season: "春" };
   game.view.map = buildMapView(game);

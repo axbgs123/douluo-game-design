@@ -6,6 +6,7 @@ import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
 import { ensureGameState } from "./domain/world.js";
+import { BIRTH_PROFILE_COUNT } from "./domain/generator.js";
 
 const databasePath = resolve(process.cwd(), ".data", "douluo.db");
 mkdirSync(dirname(databasePath), { recursive: true });
@@ -263,6 +264,7 @@ function tableCount(table: string): number {
 
 export function getWorldCatalogStats(): WorldCatalogStatsView {
   return {
+    birthProfiles: BIRTH_PROFILE_COUNT,
     characters: tableCount("canon_characters"),
     powerSnapshots: tableCount("canon_power_snapshots"),
     factions: tableCount("canon_factions"),

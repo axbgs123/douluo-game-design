@@ -5,6 +5,7 @@ import type { HiddenWorldState, StoredGame, WorldNpcState } from "./model.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { refreshStoryArchive } from "./story-rules.js";
 import { createRandom, integer, pick } from "./random.js";
+import { worldMapPoint } from "../../shared/world-map.js";
 
 const DAYS_PER_YEAR = 360;
 
@@ -149,16 +150,35 @@ export function buildMapView(game: StoredGame): MapLocationView[] {
   const current = locationById(currentId);
   const customCurrentName = Boolean(game.view.location && current && game.view.location !== current.name);
   const visibleIds = new Set([currentId, ...game.world.discoveredLocations, ...(current?.connections.map((connection) => connection.id) ?? [])]);
-  return LOCATIONS.filter((location) => visibleIds.has(location.id)).map((location) => ({
-    id: location.id,
-    name: location.id === currentId && game.view.location ? game.view.location : location.name,
-    region: location.region,
-    description: location.id === currentId && customCurrentName ? "角色当前生活的聚居地，交通路线按附近主城计算。" : location.description,
-    danger: location.danger,
-    travelMinutes: location.id === currentId ? 0 : current?.connections.find((connection) => connection.id === location.id)?.minutes ?? -1,
-    discovered: game.world.discoveredLocations.includes(location.id),
-    current: location.id === currentId,
-  }));
+  const activeTaskText = game.view.tasks.filter((task) => task.status === "进行中").map((task) => `${task.title}${task.detail}`).join(" ");
+  const selectedHome = game.hiddenCandidates.find((candidate) => candidate.public.id === game.view.selectedCandidateId)?.public;
+  return LOCATIONS.filter((location) => {
+    const point = worldMapPoint(location.id);
+    return !point.hidden || visibleIds.has(location.id);
+  }).map((location) => {
+    const point = worldMapPoint(location.id);
+    const isAtSelectedHome = location.id === currentId && selectedHome?.dwelling === game.view.location;
+    const objective = game.view.hunting?.locationId === location.id && game.view.hunting.stage !== "完成"
+      ? "猎魂" as const
+      : game.world.dynamicEvents.some((event) => event.status === "可介入" && event.locationId === location.id)
+        ? "事件" as const
+        : game.view.tasks.some((task) => task.status === "进行中" && task.destinationId === location.id) || activeTaskText.includes(location.name)
+          ? "任务" as const
+          : undefined;
+    return {
+      id: location.id,
+      name: location.id === currentId && game.view.location ? game.view.location : location.name,
+      region: location.region,
+      description: location.id === currentId && customCurrentName ? "角色当前生活的聚居地，交通路线按附近主城计算。" : location.description,
+      danger: location.danger,
+      travelMinutes: location.id === currentId ? 0 : current?.connections.find((connection) => connection.id === location.id)?.minutes ?? -1,
+      discovered: game.world.discoveredLocations.includes(location.id),
+      current: location.id === currentId,
+      x: isAtSelectedHome ? (selectedHome?.mapX ?? point.x) : point.x,
+      y: isAtSelectedHome ? (selectedHome?.mapY ?? point.y) : point.y,
+      objective,
+    };
+  });
 }
 
 function knownPower(npc: WorldNpcState): string {
@@ -266,7 +286,7 @@ function createDynamicEvent(game: StoredGame, cycle: number, random: () => numbe
   });
   if (locationId === game.view.locationId || participant?.knownToPlayer) {
     addNews(game, id, template.title, template.detail, { year: createdYear, day: createdDay });
-    if (!game.view.tasks.some((task) => task.id === id)) game.view.tasks.push({ id, title: template.title, kind: "线索", detail: template.detail, status: "进行中" });
+    if (!game.view.tasks.some((task) => task.id === id)) game.view.tasks.push({ id, title: template.title, kind: "线索", detail: template.detail, status: "进行中", destinationId: locationId });
     return template.title;
   }
   return undefined;
@@ -428,7 +448,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   const candidate = game.view.candidates[0];
   const startYear = game.view.worldTime?.year ?? candidate?.birthYearOffset ?? 0;
   const locationId = game.view.locationId ?? inferLocationId(game.view.location ?? candidate?.location ?? "诺丁城");
-  legacy.schemaVersion = 6;
+  legacy.schemaVersion = 7;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
   legacy.world.canonCausalFootprints ??= [];
@@ -446,10 +466,18 @@ export function ensureGameState(game: StoredGame): StoredGame {
   const allCandidates = [...game.hiddenCandidates.map((item) => item.public), ...game.view.candidates];
   for (const item of allCandidates) {
     item.route ??= "本地成长";
-    item.rarity ??= /身世不明|亲传|嫡系|少宗主|封号/.test(item.originName) ? "稀有" : "寻常";
+    if ((item.rarity as string) === "寻常") item.rarity = "平凡";
+    if ((item.rarity as string) === "少见") item.rarity = "优秀";
+    item.rarity ??= /身世不明|亲传|嫡系|少宗主|封号/.test(item.originName) ? "稀有" : "平凡";
     item.selfKnowledge ??= /身世不明|无籍收养/.test(item.originName) ? "本地人 · 身世未知" : "本地人 · 身世明确";
     item.knownBackground ??= /身世不明|无籍收养/.test(item.originName) ? "只知道自己由养父母抚养，真正来历仍未查明。" : "知道自己的家庭、住处和日常关系。";
     item.fixedTraits ??= [];
+    item.locationId ??= inferLocationId(item.location);
+    const point = worldMapPoint(item.locationId);
+    item.dwelling ??= `${item.location} · 户籍所记住处`;
+    item.mapX ??= point.x;
+    item.mapY ??= point.y;
+    item.birthProfileId ??= `legacy-${item.id}`;
     item.originFacts ??= [
       { label: "家庭", value: `${item.originName}的一户具体人家，旧存档尚未记录姓名` },
       { label: "归属", value: item.location },
@@ -466,8 +494,10 @@ export function ensureGameState(game: StoredGame): StoredGame {
     hidden.roleTags ??= ["本地人"];
   }
   game.view.lifeGoal ??= "成为自己认可的强者";
+  game.view.birthProfileCount ??= 1044;
   game.view.locationId ??= locationId;
   game.view.map ??= [];
+  game.view.mapPins ??= [];
   game.view.news ??= [];
   game.view.knownFigures ??= [];
   game.view.activeEvents ??= [];

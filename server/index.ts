@@ -1,6 +1,7 @@
 import express from "express";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { DIFFICULTIES } from "../shared/game.js";
 import { applyActionResult, resolveAction } from "./domain/actions.js";
@@ -54,6 +55,7 @@ const shapingSchema = z.object({
 });
 const actionSchema = z.object({ input: z.string().trim().min(1).max(1200) });
 const speedSchema = z.object({ speed: z.enum(["标准", "高速"]) });
+const mapPinSchema = z.object({ label: z.string().trim().min(1).max(24), x: z.number().min(0).max(100), y: z.number().min(0).max(100) });
 const endSchema = z.object({ reason: z.string().trim().max(200).optional() });
 const metaPreferencesSchema = z.object({
   origin: z.string().trim().min(1).max(40),
@@ -128,6 +130,24 @@ app.post("/api/games/:id/select", (request, response) => {
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
   selectCandidate(game, input.candidateId, input.customName);
   saveGame(game, "candidate.selected", { candidateId: input.candidateId, customName: input.customName });
+  return response.json(publicView(game));
+});
+
+app.post("/api/games/:id/map/pins", (request, response) => {
+  const input = mapPinSchema.parse(request.body);
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  game.view.mapPins.push({ id: randomUUID(), ...input, createdAt: new Date().toISOString() });
+  game.view.mapPins = game.view.mapPins.slice(-30);
+  saveGame(game, "map.pin_added", input);
+  return response.json(publicView(game));
+});
+
+app.delete("/api/games/:id/map/pins/:pinId", (request, response) => {
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  game.view.mapPins = game.view.mapPins.filter((pin) => pin.id !== request.params.pinId);
+  saveGame(game, "map.pin_removed", { pinId: request.params.pinId });
   return response.json(publicView(game));
 });
 

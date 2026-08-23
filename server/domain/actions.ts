@@ -6,6 +6,7 @@ import { createRandom, integer, pick } from "./random.js";
 import { advanceWorldTime, buildKnownFigures, buildMapView, inferLocationId, recordCanonInfluence, revealNpc } from "./world.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSuggestions, selectNarrativeRules } from "./story-rules.js";
+import { formatSoulCoins } from "../../shared/currency.js";
 
 interface DifficultyRules {
   training: number;
@@ -303,6 +304,8 @@ function selectRecommendedBeast(game: StoredGame, action: string): boolean {
   hunting.targetName = beast.name;
   hunting.targetYears = Math.max(beast.ageRange[0], Math.min(beast.ageRange[1], Math.round(limit * (0.72 + random() * 0.38))));
   hunting.locationId = beast.habitats[0];
+  const huntTask = game.view.tasks.find((task) => task.id === `ring-${hunting.ringIndex}`);
+  if (huntTask) huntTask.destinationId = hunting.locationId;
   hunting.stage = "准备";
   hunting.trailProgress = "目标已确定";
   return true;
@@ -887,8 +890,8 @@ function workResolution(game: StoredGame): ActionResolution {
   return {
     intent: "工作",
     minutes: speedMinutes(game, 360, 1440),
-    ruleSummary: `完成临时工作，获得 ${earned} 枚铜魂币，疲劳增加。`,
-    fallbackNarrative: `活不难，就是一遍遍搬东西。收工时掌心磨红了一块，管事把 ${earned} 枚铜魂币倒进我手里，当面数清。`,
+    ruleSummary: `完成临时工作，获得 ${formatSoulCoins(earned)}，疲劳增加。`,
+    fallbackNarrative: `活不难，就是一遍遍搬东西。收工时掌心磨红了一块，管事把${formatSoulCoins(earned)}倒进我手里，当面数清。`,
     suggestions: ["购买补给", "回去休息", "继续工作"],
   };
 }
@@ -897,14 +900,14 @@ function buyResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
   const item = /药/.test(action) ? "止血散" : /食|干粮/.test(action) ? "两日干粮" : /绳/.test(action) ? "猎魂绳" : "基础补给包";
   const cost = item === "基础补给包" ? 10 : 5;
-  if (character.coins < cost) return impossible(`购买${item}需要 ${cost} 枚铜魂币，当前只有 ${character.coins} 枚。`, ["找临时工作", "换便宜的东西", "离开商店"]);
+  if (character.coins < cost) return impossible(`购买${item}需要${formatSoulCoins(cost)}，当前只有${formatSoulCoins(character.coins)}。`, ["找临时工作", "换便宜的东西", "离开商店"]);
   character.coins -= cost;
   game.view.inventory.push(item);
   return {
     intent: "购买",
     minutes: 20,
-    ruleSummary: `花费 ${cost} 枚铜魂币，获得 ${item}。`,
-    fallbackNarrative: `我把钱在柜台上排开。老板数完，收走 ${cost} 枚，把${item}推了过来。我拆开看过一遍才塞进包里。`,
+    ruleSummary: `花费${formatSoulCoins(cost)}，获得${item}。`,
+    fallbackNarrative: `我把魂币在柜台上排开。老板数完，收走${formatSoulCoins(cost)}，把${item}推了过来。我拆开看过一遍才塞进包里。`,
     suggestions: ["继续采购", "整理背包", "离开商店"],
   };
 }

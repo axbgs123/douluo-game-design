@@ -2,6 +2,7 @@ export const DIFFICULTIES = ["爽", "简单", "标准", "困难", "地狱"] as c
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
 export type Gender = "男" | "女";
+export type CandidateRarity = "平凡" | "优秀" | "稀有" | "传奇" | "神话";
 export type GameStatus = "candidate_selection" | "character_shaping" | "awakening" | "playing" | "ended";
 export type GameSpeed = "标准" | "高速";
 export type ConditionLabel = "良好" | "疲惫" | "轻伤" | "重伤" | "濒死" | "死亡";
@@ -19,13 +20,18 @@ export interface CandidatePublic {
   eraRelation: string;
   birthYearOffset?: number;
   location: string;
+  locationId: string;
+  dwelling: string;
+  mapX: number;
+  mapY: number;
+  birthProfileId: string;
   originName: string;
   originSummary: string;
   originFacts: Array<{ label: string; value: string }>;
   startingRelations: RelationView[];
   omens: string[];
   route: string;
-  rarity: "寻常" | "少见" | "稀有" | "传奇";
+  rarity: CandidateRarity;
   selfKnowledge: string;
   knownBackground: string;
   fixedTraits: string[];
@@ -128,6 +134,7 @@ export interface TaskView {
   detail: string;
   status?: "进行中" | "完成" | "失败";
   deadline?: string;
+  destinationId?: string;
 }
 
 export interface WorldTimeView {
@@ -147,6 +154,17 @@ export interface MapLocationView {
   travelMinutes: number;
   discovered: boolean;
   current: boolean;
+  x: number;
+  y: number;
+  objective?: "任务" | "猎魂" | "事件";
+}
+
+export interface MapPinView {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  createdAt: string;
 }
 
 export interface WorldNewsView { id: string; title: string; detail: string; date: string }
@@ -258,6 +276,7 @@ export interface GameView {
   personalitySummary: string[];
   lifeGoal: string;
   rerollIndex: number;
+  birthProfileCount: number;
   candidates: CandidatePublic[];
   selectedCandidateId?: string;
   shaping?: CharacterShapingView;
@@ -271,6 +290,7 @@ export interface GameView {
   location?: string;
   locationId?: string;
   map: MapLocationView[];
+  mapPins: MapPinView[];
   news: WorldNewsView[];
   activeEvents: WorldEventView[];
   canonInfluences: CanonInfluenceView[];
@@ -315,6 +335,7 @@ export interface MetaProgressionView {
 }
 
 export interface WorldCatalogStatsView {
+  birthProfiles: number;
   characters: number;
   powerSnapshots: number;
   factions: number;

@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GameSpeed, GameView, HuntingView } from "../../shared/game";
+import { formatSoulCoins } from "../../shared/currency";
+import { worldMapPoint } from "../../shared/world-map";
+import { DouluoWorldMap } from "./DouluoWorldMap";
 
 interface StoryScreenProps {
   game: GameView;
@@ -8,6 +11,8 @@ interface StoryScreenProps {
   onAction: (input: string) => Promise<void>;
   onSpeed: (speed: GameSpeed) => Promise<void>;
   onEnd: (reason?: string) => Promise<void>;
+  onMapPin: (input: { label: string; x: number; y: number }) => Promise<void>;
+  onMapPinRemove: (pinId: string) => Promise<void>;
 }
 
 type Panel = "人物" | "武魂" | "背包" | "地图" | "关系" | "任务" | "手记" | "猎魂" | "世界";
@@ -23,7 +28,7 @@ function panelBadge(game: GameView, panel: Panel): string | undefined {
   return undefined;
 }
 
-export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd }: StoryScreenProps) {
+export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd, onMapPin, onMapPinRemove }: StoryScreenProps) {
   const [input, setInput] = useState("");
   const [panel, setPanel] = useState<Panel>("人物");
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -79,7 +84,7 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd }: 
             {panel === "人物" && <CharacterPanel game={game} />}
             {panel === "武魂" && <SoulPanel game={game} />}
             {panel === "背包" && <InventoryPanel game={game} submit={submit} busy={busy} />}
-            {panel === "地图" && <MapPanel game={game} submit={submit} busy={busy} />}
+            {panel === "地图" && <MapPanel game={game} submit={submit} busy={busy} onMapPin={onMapPin} onMapPinRemove={onMapPinRemove} />}
             {panel === "关系" && <RelationPanel game={game} />}
             {panel === "任务" && <TaskPanel game={game} />}
             {panel === "手记" && <ArchivePanel game={game} />}
@@ -106,7 +111,7 @@ function CharacterPanel({ game }: { game: GameView }) {
     <dl className="stat-list">
       <div><dt>魂力</dt><dd>{character.soulRank} 级 · {character.cultivationProgress}</dd></div><div><dt>状态</dt><dd>{character.condition} · {character.fatigue}</dd></div>
       <div><dt>体魄</dt><dd>{character.abilityDescriptors.physique}</dd></div><div><dt>精神</dt><dd>{character.abilityDescriptors.spirit}</dd></div><div><dt>感知</dt><dd>{character.abilityDescriptors.perception}</dd></div>
-      <div><dt>钱</dt><dd>{character.coins} 枚</dd></div><div><dt>名望</dt><dd>{character.reputation}</dd></div>
+      <div><dt>魂币</dt><dd>{formatSoulCoins(character.coins)}</dd></div><div><dt>名望</dt><dd>{character.reputation}</dd></div>
     </dl>
     {character.injuries.length > 0 && <SimpleList title="伤势" values={character.injuries} empty="" />}
     <p className="panel-label">人生目标</p><p className="panel-copy">{game.lifeGoal}</p>
@@ -133,16 +138,33 @@ function InventoryPanel({ game, submit, busy }: { game: GameView; submit: (value
   return <div><h3 className="panel-title">随身物品</h3><div className="inventory-grid">{game.inventory.map((value, index) => <article key={`${value}-${index}`}><i>{String(index + 1).padStart(2, "0")}</i><strong>{value}</strong><button type="button" disabled={busy || game.status === "ended"} onClick={() => submit(`使用${value}`)}>使用</button></article>)}</div></div>;
 }
 
-function MapPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
+function MapPanel({ game, submit, busy, onMapPin, onMapPinRemove }: { game: GameView; submit: (value: string) => void; busy: boolean; onMapPin: (input: { label: string; x: number; y: number }) => Promise<void>; onMapPinRemove: (pinId: string) => Promise<void> }) {
+  const [zoom, setZoom] = useState(1);
+  const [pinLabel, setPinLabel] = useState("");
+  const [pendingPoint, setPendingPoint] = useState<{ x: number; y: number }>();
   const visible = game.map;
   if (!visible.length) return <LockedPanel text="还没有地图信息" />;
   const current = visible.find((item) => item.current) ?? visible[0];
-  const routes = visible.filter((item) => item.id !== current.id).slice(0, 6);
-  return <div className="map-panel-visual"><div className="route-map" style={{ "--route-count": Math.max(1, routes.length) } as CSSProperties}>
-    <svg viewBox="0 0 320 300" aria-hidden="true">{routes.map((location, index) => { const point = radialPoint(index, routes.length, 118); return <line key={location.id} x1="160" y1="150" x2={point.x} y2={point.y} />; })}</svg>
-    <div className="route-node current" style={{ left: "50%", top: "50%" }}><small>当前</small><strong>{current.name}</strong></div>
-    {routes.map((location, index) => { const point = radialPoint(index, routes.length, 118); return <button key={location.id} type="button" className={`route-node danger-${location.danger}`} style={{ left: `${point.x / 3.2}%`, top: `${point.y / 3}%` }} disabled={busy || game.status === "ended" || location.travelMinutes < 0} onClick={() => submit(`前往${location.name}`)}><small>{location.travelMinutes > 0 ? `${Math.ceil(location.travelMinutes / 60)}小时` : location.region}</small><strong>{location.name}</strong><span>{location.danger}</span></button>; })}
-  </div><article className="map-current-detail"><strong>{current.name}</strong><p>{current.description}</p><span>{current.region} · 危险 {current.danger}</span></article></div>;
+  const routes = visible.filter((item) => item.id !== current.id && item.travelMinutes >= 0);
+  const markers = [
+    { id: `current-${current.id}`, label: game.character?.name ?? "主角", detail: "当前位置", x: current.x, y: current.y, tone: "current" as const },
+    ...visible.filter((item) => item.objective).map((item) => ({ id: `objective-${item.id}`, label: item.name, detail: item.objective, x: item.x, y: item.y, tone: "objective" as const, onClick: item.travelMinutes >= 0 ? () => submit(`前往${item.name}`) : undefined })),
+  ];
+  return <div className="map-panel-visual">
+    <div className="map-tools"><div><button type="button" onClick={() => setZoom((value) => Math.max(1, value - .25))}>−</button><span>{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((value) => Math.min(2.5, value + .25))}>＋</button></div><small>输入名称后点击地图即可标点</small></div>
+    <DouluoWorldMap
+      zoom={zoom}
+      landmarks={visible.map((location) => ({ ...worldMapPoint(location.id), name: location.name, muted: !location.discovered && !location.current }))}
+      markers={markers}
+      pins={game.mapPins}
+      onCanvasClick={!busy ? (x, y) => setPendingPoint({ x, y }) : undefined}
+      onPinRemove={busy ? undefined : (pinId) => void onMapPinRemove(pinId)}
+    />
+    <div className="map-pin-form"><input value={pinLabel} maxLength={24} onChange={(event) => setPinLabel(event.target.value)} placeholder="标点名称，如：可疑洞口" /><button type="button" disabled={busy || !pinLabel.trim()} onClick={() => { const point = pendingPoint ?? { x: current.x, y: current.y }; void onMapPin({ label: pinLabel.trim(), ...point }); setPinLabel(""); setPendingPoint(undefined); }}>保存标点</button><span>{pendingPoint ? `已选地图坐标 ${pendingPoint.x.toFixed(1)}, ${pendingPoint.y.toFixed(1)}` : game.mapPins.length ? "点地图选位置；点击已有标点可删除" : "点地图选位置；未选择时标在当前位置"}</span></div>
+    {game.mapPins.length > 0 && <div className="saved-pin-list">{game.mapPins.map((pin) => <article key={pin.id}><span>⌖</span><strong>{pin.label}</strong><small>{pin.x.toFixed(1)}, {pin.y.toFixed(1)}</small><button type="button" disabled={busy} onClick={() => void onMapPinRemove(pin.id)}>删除</button></article>)}</div>}
+    <article className="map-current-detail"><strong>{current.name}</strong><p>{current.description}</p><span>{current.region} · 危险 {current.danger}</span></article>
+    <div className="map-route-list"><h4>可直接前往</h4>{routes.length ? routes.map((location) => <button type="button" key={location.id} disabled={busy || game.status === "ended"} onClick={() => submit(`前往${location.name}`)}><strong>{location.name}</strong><span>{Math.max(1, Math.ceil(location.travelMinutes / 60))} 小时 · {location.danger}</span></button>) : <p>当前没有确认过的直达路线。</p>}</div>
+  </div>;
 }
 
 function RelationPanel({ game }: { game: GameView }) {
@@ -157,7 +179,7 @@ function RelationPanel({ game }: { game: GameView }) {
 
 function TaskPanel({ game }: { game: GameView }) {
   if (!game.tasks.length) return <LockedPanel text="暂无记录" />;
-  return <div className="task-timeline">{game.tasks.map((task, index) => <article key={task.id ?? `${task.title}-${index}`} className={`task-${task.status ?? "进行中"}`}><i>{task.status === "完成" ? "✓" : task.status === "失败" ? "×" : index + 1}</i><div><span>{task.kind} · {task.status ?? "进行中"}</span><strong>{task.title}</strong><p>{task.detail}</p>{task.deadline && <small>{task.deadline}</small>}</div></article>)}</div>;
+  return <div className="task-timeline">{game.tasks.map((task, index) => { const destination = task.destinationId ? game.map.find((location) => location.id === task.destinationId)?.name : undefined; return <article key={task.id ?? `${task.title}-${index}`} className={`task-${task.status ?? "进行中"}`}><i>{task.status === "完成" ? "✓" : task.status === "失败" ? "×" : index + 1}</i><div><span>{task.kind} · {task.status ?? "进行中"}</span><strong>{task.title}</strong><p>{task.detail}</p>{destination && <small>目的地 · {destination}</small>}{task.deadline && <small>{task.deadline}</small>}</div></article>; })}</div>;
 }
 
 function ArchivePanel({ game }: { game: GameView }) {

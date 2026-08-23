@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BIRTH_PROFILE_COUNT,
   awakenCharacter,
   createGame,
   finalizeCharacterShaping,
@@ -39,10 +40,22 @@ describe("candidate generation", () => {
 
   it("guarantees a rare route and tells informed characters what they know", () => {
     const candidates = generateCandidates("rare-opening", 0, "女");
-    const rare = candidates.filter((candidate) => ["稀有", "传奇"].includes(candidate.public.rarity));
+    const rare = candidates.filter((candidate) => ["稀有", "传奇", "神话"].includes(candidate.public.rarity));
     expect(rare.length).toBeGreaterThan(0);
     expect(rare.every((candidate) => candidate.innateSoulPower >= 5)).toBe(true);
     expect(candidates.every((candidate) => candidate.public.selfKnowledge.length > 0 && candidate.public.knownBackground.length > 20)).toBe(true);
+  });
+
+  it("contains at least one thousand concrete birth profiles with exact homes", () => {
+    expect(BIRTH_PROFILE_COUNT).toBeGreaterThanOrEqual(1000);
+    const candidates = Array.from({ length: 30 }, (_, rerollIndex) => generateCandidates("birth-map", rerollIndex, "男")).flat();
+    expect(candidates.every((candidate) => candidate.public.birthProfileId && candidate.public.dwelling.includes(" · "))).toBe(true);
+    expect(candidates.every((candidate) => candidate.public.mapX >= 0 && candidate.public.mapX <= 100 && candidate.public.mapY >= 0 && candidate.public.mapY <= 100)).toBe(true);
+  });
+
+  it("uses all five visible rarity levels", () => {
+    const rarities = new Set(Array.from({ length: 220 }, (_, rerollIndex) => generateCandidates("rarity-palette", rerollIndex, "女")).flat().map((candidate) => candidate.public.rarity));
+    expect(rarities).toEqual(new Set(["平凡", "优秀", "稀有", "传奇", "神话"]));
   });
 
   it("changes candidates on reroll while preserving the seed", () => {
