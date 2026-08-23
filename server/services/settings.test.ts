@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,6 +28,14 @@ describe("模型设置", () => {
   it("can explicitly remove a saved API key", () => {
     settings.writeDeepSeekSettings({ clearApiKey: true, baseUrl: "https://api.deepseek.com", model: "deepseek-test", novelEngineEnabled: true });
     expect(settings.settingsView().hasKey).toBe(false);
+  });
+
+  it("repairs restrictive permissions whenever the key file is written", () => {
+    const path = join(testDirectory, "deepseek.json");
+    chmodSync(path, 0o644);
+    settings.writeDeepSeekSettings({ apiKey: "replacement-key", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", novelEngineEnabled: true });
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(settings.settingsView()).not.toHaveProperty("apiKey");
   });
 
   it("allows an isolated deployment to override all connection fields with environment variables", () => {

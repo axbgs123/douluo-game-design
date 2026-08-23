@@ -85,7 +85,10 @@ const metaSoulEquipSchema = z.object({ id: z.string().trim().min(1).optional() }
 const metaSoulToggleSchema = z.object({ id: z.string().trim().min(1), enabled: z.boolean() });
 const settingsSchema = z.object({
   apiKey: z.string().trim().optional(),
-  baseUrl: z.string().url(),
+  baseUrl: z.string().url().refine((value) => {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+  }, "模型地址必须是没有内嵌账号或密码的 HTTP(S) 地址"),
   model: z.string().trim().min(1),
   novelEngineEnabled: z.boolean().default(true),
   clearApiKey: z.boolean().optional(),

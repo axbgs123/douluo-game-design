@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { DeepSeekSettingsView } from "../../shared/game.js";
 
@@ -54,5 +54,6 @@ export function writeDeepSeekSettings(input: Omit<DeepSeekSettingsFile, "apiKey"
   mkdirSync(dirname(settingsPath), { recursive: true });
   const { clearApiKey, ...settings } = input;
   writeFileSync(settingsPath, JSON.stringify({ ...settings, apiKey: clearApiKey ? "" : input.apiKey?.trim() || current.apiKey }, null, 2), { encoding: "utf8", mode: 0o600 });
+  chmodSync(settingsPath, 0o600);
   return settingsView();
 }
