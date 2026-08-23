@@ -36,11 +36,18 @@ const TIMED_FACTION_MEMBERSHIPS = [
   { characterId: "gu-yue-na", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
   { characterId: "xie-xie", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
   { characterId: "xu-xiaoyan", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
+  { characterId: "ye-xinglan", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
+  { characterId: "yuanen-yehui", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
+  { characterId: "yue-zhengyu", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
+  { characterId: "xu-lizhi", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
   { characterId: "lan-xuanyu", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
   { characterId: "lan-xuanyu", factionId: "d4-federal-fleet", eventId: "d4-fleet-entry" },
   { characterId: "bai-xiuxiu", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
   { characterId: "qian-lei", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
   { characterId: "liu-feng", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
+  { characterId: "lan-mengqin", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
+  { characterId: "yuanen-huihui", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
+  { characterId: "tang-yuge", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
 ] as const;
 
 function canonicalFactionIdsAtDate(characterId: string, year: number, day: number): string[] {

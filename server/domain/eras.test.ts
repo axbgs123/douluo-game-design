@@ -67,7 +67,10 @@ describe("multi-era foundations", () => {
     expect(era3.npcs["lan-xuanyu"].alive).toBe(false);
     expect(era3.npcs["tang-wulin"].locationId).toBe("aolai-city-d3");
     expect(era3.npcs["tang-wulin"].factionIds).not.toContain("d3-shrek-seven");
-    expect(createHiddenWorld(20_004, "shrek-city").npcs["tang-wulin"].factionIds).toContain("d3-shrek-seven");
+    const shrekAgeWulin = createHiddenWorld(20_007, "shrek-city").npcs["tang-wulin"];
+    expect(shrekAgeWulin.age).toBe(13);
+    expect(shrekAgeWulin.locationId).toBe("shrek-city");
+    expect(shrekAgeWulin.factionIds).toContain("d3-shrek-seven");
 
     const era4 = createHiddenWorld(30_000, "mother-ship-port");
     expect(era4.npcs["tang-wulin"].alive).toBe(false);
@@ -77,7 +80,12 @@ describe("multi-era foundations", () => {
     expect(era4.npcs["lan-xiao"].locationId).toBe("tianluo-planet");
     expect(era4.npcs["na-na-teacher"].locationId).toBe("tiandou-planet");
     expect(era4.npcs["lan-xuanyu"].factionIds).not.toContain("d4-federal-fleet");
-    expect(createHiddenWorld(30_007, "mother-ship-port").npcs["lan-xuanyu"].factionIds).toContain("d4-federal-fleet");
+    const shrekAgeXuanyu = createHiddenWorld(30_005, "shrek-city").npcs["lan-xuanyu"];
+    expect(shrekAgeXuanyu.age).toBe(11);
+    expect(shrekAgeXuanyu.factionIds).toContain("shrek-space-command");
+    const fleetAgeXuanyu = createHiddenWorld(30_012, "mother-ship-port").npcs["lan-xuanyu"];
+    expect(fleetAgeXuanyu.age).toBe(18);
+    expect(fleetAgeXuanyu.factionIds).toContain("d4-federal-fleet");
   });
 
   it("unlocks future faction memberships only when their joining event occurs", () => {
