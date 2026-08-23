@@ -263,6 +263,8 @@ describe("multi-era foundations", () => {
     expect(resolveAction(game, "申请配发学院项目舰").intent).toBe("取得星舰");
     expect(game.view.starship?.shipName).toBeTruthy();
     expect(game.view.tasks.some((task) => task.id?.startsWith("starship-project-") && task.status === "进行中")).toBe(true);
+    expect(resolveAction(game, "驾驶星舰前往天龙星").intent).toBe("无法完成");
+    expect(game.view.locationId).not.toBe("dragon-horse-star");
     expect(resolveAction(game, "驾驶星舰前往森罗星").intent).toBe("星际航行");
     expect(game.view.locationId).toBe("senluo-planet");
     expect(game.view.starship?.fuel).toBeLessThan(100);

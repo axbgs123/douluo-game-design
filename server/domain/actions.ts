@@ -1593,7 +1593,10 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
     if (!starship.shipName) return impossible("没有完成登记、补给与船员配置的星舰。", ["取得小型探索舰", "组建基础船员组", "申请舰队航次"]);
     const destination = ["mother-ship-port", "tianluo-planet", "tiandou-planet", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star"].map((id) => locationById(id)!).find((location) => action.includes(location.name));
     if (!destination) return impossible("没有识别出航线终点。", ["前往森罗星", "前往精灵星", "返回联邦母舰港"]);
-    const fuelCost = /天龙星|天马星/.test(destination.name) ? 45 : 18;
+    const hostileRoute = /天龙星|天马星/.test(destination.name);
+    if (hostileRoute && starship.shipClass !== "护卫舰") return impossible(`${destination.name}位于龙马星系敌对控制区，小型探索舰不能脱离舰队、穿越封锁并自行靠港。`, ["申请加入联邦舰队任务", "取得护卫舰级任务平台", "先调查龙马星系军事情报"]);
+    if (hostileRoute && (starship.license !== "一级指挥" || !game.view.affiliations.some((item) => /舰队|军/.test(`${item.name}${item.role}`)))) return impossible("进入龙马星系战区需要一级指挥资格与现役舰队任务授权。", ["完成高级指挥考核", "取得舰队正式岗位", "申请编队护航任务"]);
+    const fuelCost = hostileRoute ? 45 : 18;
     const supplyCost = Math.max(8, starship.crew.length * 3);
     if ((starship.fuel ?? 0) < fuelCost || (starship.supplies ?? 0) < supplyCost || (starship.hull ?? 0) < 55) return impossible("燃料、生活物资或舰体状态不足以覆盖航线与返航余量。", ["补给并维修星舰", "缩短航线", "申请舰队护航"]);
     starship.fuel = (starship.fuel ?? 0) - fuelCost;
@@ -1607,7 +1610,8 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
     game.view.map = buildMapView(game);
     game.view.mapHierarchy = buildMapHierarchy(game);
     game.world.metrics.discoveries += 1;
-    return { intent: "星际航行", minutes: speedMinutes(game, 2_880, 10_080), ruleSummary: `${starship.shipName}抵达${destination.name}；消耗燃料 ${fuelCost}%、物资 ${supplyCost}%${hazard ? `，途中故障使舰体降至 ${starship.hull}%` : "，航行未发生需要维修的事故"}。`, fallbackNarrative: hazard ? `航程中段，舰体警报突然从尾部一路亮到轮机舱。船员没有等我喊口号，各自按演练封舱、切断故障回路。抵达${destination.name}时没有少人，但外壳留下了必须进坞处理的伤。` : `离港以后，星图上的距离很久都没有明显缩短。驾驶、导航和轮机按班次交接，真正抵达${destination.name}时，最先被检查的是剩余燃料和返航余量，而不是窗外景色。`, suggestions: ["检查舰体与船员", "开展当地调查", "规划返航补给"], systemMessages: [`抵达 · ${destination.name}`] };
+    const travelMinutes = hostileRoute ? speedMinutes(game, 30_240, 60_480) : speedMinutes(game, 10_080, 20_160);
+    return { intent: "星际航行", minutes: travelMinutes, ruleSummary: `${starship.shipName}抵达${destination.name}；航程约 ${Math.round(travelMinutes / 1_440)} 天，消耗燃料 ${fuelCost}%、物资 ${supplyCost}%${hazard ? `，途中故障使舰体降至 ${starship.hull}%` : "，航行未发生需要维修的事故"}。`, fallbackNarrative: hazard ? `航程中段，舰体警报突然从尾部一路亮到轮机舱。船员没有等我喊口号，各自按演练封舱、切断故障回路。抵达${destination.name}时没有少人，但外壳留下了必须进坞处理的伤。` : `离港以后，星图上的距离很久都没有明显缩短。驾驶、导航和轮机按班次交接，真正抵达${destination.name}时，最先被检查的是剩余燃料和返航余量，而不是窗外景色。`, suggestions: ["检查舰体与船员", "开展当地调查", "规划返航补给"], systemMessages: [`抵达 · ${destination.name}`] };
   }
   if (/调查|扫描|探索任务|采样/.test(action)) {
     if (!starship.shipName || !/森罗星|精灵星|天龙星|天马星/.test(game.view.location ?? "")) return impossible("需要驾驶已登记星舰抵达目标星球后才能执行星际调查。", ["规划星际航线", "组建船员组", "取得探索舰"]);
