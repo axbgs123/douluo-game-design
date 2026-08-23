@@ -1,4 +1,5 @@
 export type ImportanceTier = 1 | 2 | 3 | 4 | 5;
+import { EXPANDED_CHARACTERS, EXPANDED_EVENTS, EXPANDED_FACTIONS, EXPANDED_LOCATIONS, EXPANDED_SOUL_BEASTS } from "./expanded-world-catalog.js";
 
 export interface PowerSnapshotDefinition {
   year: number;
@@ -13,6 +14,7 @@ export interface CanonCharacterDefinition {
   aliases: string[];
   importance: ImportanceTier;
   birthYear?: number;
+  deathYear?: number;
   martialSouls: string[];
   factionIds: string[];
   initialLocationId: string;
@@ -28,6 +30,9 @@ export interface FactionDefinition {
   headquartersId: string;
   inertia: ImportanceTier;
   description: string;
+  activeFromYear?: number;
+  activeUntilYear?: number;
+  hidden?: boolean;
 }
 
 export interface LocationDefinition {
@@ -37,6 +42,8 @@ export interface LocationDefinition {
   danger: "安全" | "低" | "中" | "高" | "禁区";
   description: string;
   connections: Array<{ id: string; minutes: number }>;
+  availableFromYear?: number;
+  hidden?: boolean;
 }
 
 export interface CanonEventDefinition {
@@ -274,6 +281,17 @@ export const SOUL_BEASTS: SoulBeastDefinition[] = [
   { id: "ice-heaven-snow-woman", name: "冰天雪女", habitats: ["extreme-north-core"], attributes: ["极致之冰", "雪", "领域"], ageRange: [600000, 700000], danger: 5, possibleSkills: ["帝寒天", "雪舞耀阳", "大寒无雪"], description: "得天独厚的冰雪精灵，极北之地的主宰。" },
   { id: "ice-jade-emperor-scorpion", name: "冰碧帝皇蝎", habitats: ["extreme-north-core"], attributes: ["极致之冰", "蝎", "帝皇"], ageRange: [300000, 400000], danger: 5, possibleSkills: ["冰帝之螯", "永冻之域"], description: "冰碧蝎族群中的帝皇血脉，防御和极寒同样强大。" },
 ];
+
+function appendUnique<T>(target: T[], additions: T[], key: (item: T) => string): void {
+  const existing = new Set(target.map(key));
+  for (const item of additions) if (!existing.has(key(item))) { target.push(item); existing.add(key(item)); }
+}
+
+appendUnique(FACTIONS, EXPANDED_FACTIONS, (item) => item.id);
+appendUnique(LOCATIONS, EXPANDED_LOCATIONS, (item) => item.id);
+appendUnique(CANON_CHARACTERS, EXPANDED_CHARACTERS, (item) => item.id);
+appendUnique(CANON_EVENTS, EXPANDED_EVENTS, (item) => item.id);
+appendUnique(SOUL_BEASTS, EXPANDED_SOUL_BEASTS, (item) => item.id);
 
 export function locationById(id: string): LocationDefinition | undefined {
   return LOCATIONS.find((location) => location.id === id);

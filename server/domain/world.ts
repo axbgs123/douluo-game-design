@@ -106,16 +106,17 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
   const npcs = Object.fromEntries(CANON_CHARACTERS.map((definition) => {
     const power = powerAtYear(definition.id, startYear);
     const born = definition.birthYear === undefined || startYear >= definition.birthYear;
+    const aliveAtStart = born && (definition.deathYear === undefined || startYear < definition.deathYear);
     const state: WorldNpcState = {
       id: definition.id,
       name: definition.name,
-      alive: born,
+      alive: aliveAtStart,
       age: definition.birthYear === undefined ? undefined : Math.max(0, startYear - definition.birthYear),
       soulRank: power.soulRank,
       powerTier: power.tier,
       locationId: canonicalLocationAtYear(definition.id, startYear),
       factionIds: definition.factionIds,
-      currentGoal: born ? (definition.goals[0] ?? "继续当前生活") : "尚未出生",
+      currentGoal: !born ? "尚未出生" : aliveAtStart ? (definition.goals[0] ?? "继续当前生活") : "已死亡",
       dispositionToPlayer: 0,
       knownToPlayer: false,
       lastSimulatedYear: startYear,
@@ -190,9 +191,11 @@ export function buildMapView(game: StoredGame): MapLocationView[] {
   const visibleIds = new Set([currentId, ...game.world.discoveredLocations, ...(current?.connections.map((connection) => connection.id) ?? [])]);
   const activeTaskText = game.view.tasks.filter((task) => task.status === "进行中").map((task) => `${task.title}${task.detail}`).join(" ");
   const selectedHome = game.hiddenCandidates.find((candidate) => candidate.public.id === game.view.selectedCandidateId)?.public;
+  const year = game.view.worldTime?.year ?? 0;
   return LOCATIONS.filter((location) => {
+    if (location.availableFromYear !== undefined && year < location.availableFromYear) return false;
     const point = worldMapPoint(location.id);
-    return !point.hidden || visibleIds.has(location.id);
+    return (!point.hidden && !location.hidden) || visibleIds.has(location.id);
   }).map((location) => {
     const point = worldMapPoint(location.id);
     const isAtSelectedHome = location.id === currentId && selectedHome?.dwelling === game.view.location;
@@ -562,6 +565,12 @@ function simulateNpcYears(game: StoredGame, year: number): void {
       npc.age = 0;
       npc.currentGoal = "尚未出生";
       npc.knownToPlayer = false;
+      npc.lastSimulatedYear = year;
+      continue;
+    }
+    if (definition.deathYear !== undefined && year >= definition.deathYear) {
+      npc.alive = false;
+      npc.currentGoal = "已死亡";
       npc.lastSimulatedYear = year;
       continue;
     }

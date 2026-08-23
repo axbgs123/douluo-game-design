@@ -47,10 +47,13 @@ describe("完整游玩规则", () => {
 
   it("可从十级瓶颈进入调查、选目标和准备阶段", () => {
     const game = awakened("hunting");
+    game.view.locationId = "notting-city";
+    game.view.location = "诺丁城";
     game.view.character!.soulRank = 10;
     resolveAction(game, "开始调查魂兽");
     expect(game.view.hunting?.stage).toBe("调查");
     expect(game.view.hunting?.recommendations).toHaveLength(3);
+    for (const recommendation of game.view.hunting!.recommendations) expect(SOUL_BEASTS.find((beast) => beast.name === recommendation.name)?.habitats).toContain("soul-hunting-forest");
     const target = game.view.hunting!.recommendations[0].name;
     resolveAction(game, `选择${target}作为魂环目标`);
     expect(game.view.hunting?.stage).toBe("准备");
@@ -276,11 +279,35 @@ describe("完整游玩规则", () => {
 
 describe("第一部世界资料", () => {
   it("包含人物、势力、地点、事件和魂兽", () => {
-    expect(CANON_CHARACTERS.length).toBeGreaterThanOrEqual(50);
-    expect(FACTIONS.length).toBeGreaterThanOrEqual(20);
-    expect(LOCATIONS.length).toBeGreaterThanOrEqual(30);
-    expect(CANON_EVENTS.length).toBeGreaterThanOrEqual(20);
-    expect(SOUL_BEASTS.length).toBeGreaterThanOrEqual(50);
+    expect(CANON_CHARACTERS.length).toBeGreaterThanOrEqual(150);
+    expect(FACTIONS.length).toBeGreaterThanOrEqual(60);
+    expect(LOCATIONS.length).toBeGreaterThanOrEqual(60);
+    expect(CANON_EVENTS.length).toBeGreaterThanOrEqual(100);
+    expect(SOUL_BEASTS.length).toBeGreaterThanOrEqual(200);
+  });
+
+  it("keeps expanded catalog references complete and unique", () => {
+    const unique = <T extends { id: string }>(items: T[]) => new Set(items.map((item) => item.id)).size === items.length;
+    expect(unique(CANON_CHARACTERS)).toBe(true);
+    expect(unique(FACTIONS)).toBe(true);
+    expect(unique(LOCATIONS)).toBe(true);
+    expect(unique(CANON_EVENTS)).toBe(true);
+    expect(unique(SOUL_BEASTS)).toBe(true);
+    const characterIds = new Set(CANON_CHARACTERS.map((item) => item.id));
+    const locationIds = new Set(LOCATIONS.map((item) => item.id));
+    expect(CANON_EVENTS.flatMap((event) => event.participantIds).every((id) => characterIds.has(id))).toBe(true);
+    expect(CANON_EVENTS.every((event) => !event.locationId || locationIds.has(event.locationId))).toBe(true);
+    expect(SOUL_BEASTS.flatMap((beast) => beast.habitats).every((id) => locationIds.has(id))).toBe(true);
+  });
+
+  it("does not activate later-era people, factions or locations in a first-era save", () => {
+    const game = awakened("era-activation-boundaries");
+    expect(game.world.npcs["huo-yuhao"].alive).toBe(false);
+    expect(game.world.npcs["tang-wulin"].alive).toBe(false);
+    expect(game.world.npcs["lan-xuanyu"].alive).toBe(false);
+    expect(game.world.npcs["qian-xunji"].alive).toBe(false);
+    expect(game.view.map.some((location) => location.id === "radiant-city" || location.id === "dragon-horse-star")).toBe(false);
+    expect(resolveAction(game, "前往传灵塔申请魂灵").intent).toBe("规则阻止");
   });
 
   it("载入四个时代的完整同人规则库", () => {

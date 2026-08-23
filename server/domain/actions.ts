@@ -325,8 +325,19 @@ function generateRecommendations(game: StoredGame): void {
   const limit = RING_LIMITS[Math.min(ringIndex, RING_LIMITS.length - 1)] ?? 423;
   const random = actionRandom(game);
   const category = character.martialSoul.category;
+  const currentId = game.view.hunting?.locationId ?? game.view.locationId ?? "notting-city";
+  const regionalHabitats: Record<string, string[]> = {
+    "holy-soul-village": ["soul-hunting-forest"], "notting-city": ["soul-hunting-forest"], "notting-academy": ["soul-hunting-forest"],
+    "suotuo-city": ["star-dou-edge"], "shrek-village": ["star-dou-edge"], "heaven-dou-city": ["sunset-forest"], "heaven-royal-academy": ["sunset-forest"],
+    "seven-treasure-fort": ["sunset-forest"], "blue-lightning-mountain": ["blue-lightning-mountain", "star-dou-edge"], "star-luo-city": ["star-dou-edge"],
+    "skywater-academy": ["extreme-north-edge"], "extreme-north-edge": ["extreme-north-edge"], "extreme-north-core": ["extreme-north-core"],
+    "vast-sea-city": ["vast-sea-city", "purple-pearl-island"], "purple-pearl-island": ["purple-pearl-island"], "sea-god-island": ["sea-god-island"], "whale-sea": ["whale-sea"],
+    "radiant-city": ["jing-yang-mountains"], "evil-forest": ["evil-forest"], "shrek-city": ["star-dou-reserve"], "blood-god-camp": ["abyss-passage"],
+    "senluo-planet": ["senluo-planet"], "elf-planet": ["elf-planet"], "dragon-horse-star": ["dragon-horse-star"], "sky-horse-star": ["sky-horse-star"],
+  };
+  const habitatIds = new Set([currentId, ...(regionalHabitats[currentId] ?? [])]);
   const candidates = SOUL_BEASTS
-    .filter((beast) => beast.ageRange[0] <= limit * 1.8)
+    .filter((beast) => beast.ageRange[0] <= limit * 1.8 && beast.habitats.some((habitat) => habitatIds.has(habitat)))
     .map((beast) => ({ beast, fit: beast.attributes.some((attribute) => category.includes(attribute) || character.martialSoul.description.includes(attribute)) ? 2 : 1, roll: random() }))
     .sort((left, right) => right.fit - left.fit || right.roll - left.roll)
     .slice(0, 3);

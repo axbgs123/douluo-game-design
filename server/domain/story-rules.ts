@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { StoryArchiveView, StoryConsequenceView } from "../../shared/game.js";
-import { CANON_CHARACTERS } from "../data/world.js";
+import { CANON_CHARACTERS, FACTIONS } from "../data/world.js";
 import { rulesForEra, type FanfictionRule } from "../data/fanfiction-rules.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 
@@ -46,6 +46,10 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
   const year = game.view.worldTime?.year ?? 0;
   const name = game.view.character?.name ?? "角色";
   const age = game.view.character?.age ?? 6;
+  const futureFaction = FACTIONS.find((faction) => faction.activeFromYear !== undefined && year < faction.activeFromYear && action.includes(faction.name));
+  if (futureFaction) {
+    return impossible(game, `${futureFaction.name}在当前年代尚未成立，角色也没有能够接触该组织的当世线索。`, ["核对当前年代", "调查现存的相近势力", "把注意力放回当前组织"], [451, 461, 931, 935]);
+  }
   if (age < 18 && /性行为|发生关系|圆房|成人关系|露骨|强迫.*亲密/.test(action)) {
     return impossible(game, `${name}目前仍是未成年人。童年阶段只处理友情、依赖、朦胧情感与正常成长，不进行成人化情节。`, ["与对方正常交谈", "确认彼此边界", "把注意力放回当前生活"], [621, 631, 691]);
   }
