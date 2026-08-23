@@ -653,6 +653,17 @@ export interface InheritedInstitutionView {
   evidence: string[];
 }
 
+export interface MediaOutletReputationView {
+  name: string;
+  stance: string;
+  trustScore: number;
+  publications: number;
+  corrections: number;
+  linkedReports: number;
+  status: "待观察" | "信誉稳定" | "受到质疑" | "高度可信";
+  evidence: string[];
+}
+
 export interface GameView {
   id: string;
   seed: string;
@@ -694,6 +705,7 @@ export interface GameView {
   mapHierarchy: MapHierarchyView;
   mapPins: MapPinView[];
   news: WorldNewsView[];
+  mediaOutlets: MediaOutletReputationView[];
   activeEvents: WorldEventView[];
   canonInfluences: CanonInfluenceView[];
   storyArchive: StoryArchiveView;

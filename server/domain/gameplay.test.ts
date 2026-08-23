@@ -389,7 +389,7 @@ describe("完整游玩规则", () => {
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(15);
+    expect(migrated.schemaVersion).toBe(16);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -750,10 +750,12 @@ describe("第一部世界资料", () => {
     expect(game.view.news.some((item) => item.id === `${rumor.id}-media`)).toBe(false);
     advanceWorldTime(game, 14 * 1_440);
     expect(rumor.mediaStatus).toBe("已刊发");
-    expect(game.view.news.find((item) => item.id === `${rumor.id}-media`)?.detail).toMatch(/机构立场：地方治安与可核验风险；选稿依据：.+；来源：现场目击；交叉核验：跨关系网交叉核验（6项）；可信度 \d+%；覆盖：/);
+    expect(game.view.news.find((item) => item.id === `${rumor.id}-media`)?.detail).toMatch(/机构立场：地方治安与可核验风险；机构信誉：62（信誉稳定）；选稿依据：.+；来源：现场目击；交叉核验：跨关系网交叉核验（6项）；可信度 \d+%；覆盖：/);
+    expect(game.view.mediaOutlets.find((item) => item.name === "城市告示处")).toMatchObject({ trustScore: 62, publications: 1, corrections: 0, status: "信誉稳定" });
     expect(rumor.mediaVersions).toHaveLength(0);
     advanceWorldTime(game, 3 * 1_440);
     expect(rumor.mediaVersions?.[0]).toMatchObject({ outlet: "行旅商讯抄报", stance: "商路影响与交易风险", verificationStatus: "关联转载核验" });
+    expect(game.view.mediaOutlets.find((item) => item.name === "行旅商讯抄报")).toMatchObject({ trustScore: 61, publications: 1, linkedReports: 1 });
     expect(game.view.news.find((item) => item.id === `${rumor.id}-secondary`)?.detail).toContain("本版本没有新增未公开事实");
   });
 
@@ -817,6 +819,8 @@ describe("第一部世界资料", () => {
     expect(rumor.correctionEvidence).toHaveLength(1);
     expect(rumor.verificationStatus).toBe("更正证据已核验");
     expect(rumor.mediaVersions?.[0]).toMatchObject({ verificationStatus: "更正证据已核验" });
+    expect(game.view.mediaOutlets.find((item) => item.name === "城市告示处")).toMatchObject({ trustScore: 54, corrections: 1, status: "待观察" });
+    expect(game.view.mediaOutlets.find((item) => item.name === "行旅商讯抄报")).toMatchObject({ trustScore: 57, corrections: 1, linkedReports: 1, status: "待观察" });
     expect(game.view.news.some((item) => item.id === `${rumor.id}-correction`)).toBe(true);
     expect(game.view.news.some((item) => item.id === rumor.id)).toBe(true);
   });

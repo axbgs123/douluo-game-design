@@ -3,7 +3,7 @@ import type { CompanionRole, ConditionLabel, HuntingStage, InstitutionAssignment
 import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, factionActiveAtYear, locationById, soulBeastById } from "../data/world.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
-import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, canDiscoverNpc, inferLocationId, queueSocialRumor, recordCanonInfluence, recordIntelligence, rememberNpcInteraction, revealNpc } from "./world.js";
+import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, canDiscoverNpc, inferLocationId, queueSocialRumor, recordCanonInfluence, recordIntelligence, recordMediaOutletReputation, rememberNpcInteraction, revealNpc } from "./world.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSuggestions, selectNarrativeRules } from "./story-rules.js";
 import { formatSoulCoins } from "../../shared/currency.js";
@@ -1260,16 +1260,19 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     rumor.corroborationCount = (rumor.corroborationCount ?? 0) + rumor.correctionEvidence.length;
     rumor.verificationStatus = "更正证据已核验";
     rumor.confidence = Math.max(10, (rumor.confidence ?? 50) - 35);
+    recordMediaOutletReputation(game, { name: rumor.mediaOutlet ?? rumor.mediaChannel ?? "未名媒体", stance: rumor.editorialStance ?? "公共信息记录", trustDelta: -8, correction: true, evidence: `${rumor.id}：后续${rumor.correctionEvidence.length}条证据触发更正` });
     for (const version of rumor.mediaVersions ?? []) {
       version.verificationStatus = "更正证据已核验";
       version.confidence = Math.max(10, version.confidence - 35);
+      recordMediaOutletReputation(game, { name: version.outlet, stance: version.stance, trustDelta: -4, correction: true, evidence: `${rumor.id}：关联原报道的更正同步` });
     }
     for (const reputation of game.view.reputations.filter((item) => item.publicName === publicName)) {
       reputation.heat = Math.max(0, reputation.heat - 15);
       reputation.reputation = "负面说法已被证据质疑";
       reputation.source = `${rumor.mediaChannel ?? "本地渠道"}更正与${rumor.correctionEvidence.length}条调查证据`;
     }
-    game.view.news.unshift({ id: `${rumor.id}-correction`, title: `${rumor.mediaOutlet ?? rumor.mediaChannel ?? "本地公报"} · 更正说明`, detail: `关于${publicName}的旧消息已附加更正：${rumor.correctionEvidence.join("；")}。核验状态：${rumor.verificationStatus}；累计${rumor.corroborationCount}项来源。更正降低原消息可信度，但不会抹除已经发生的传播。`, date: relationshipDate(game) });
+    const outletTrust = game.view.mediaOutlets.find((item) => item.name === (rumor.mediaOutlet ?? rumor.mediaChannel));
+    game.view.news.unshift({ id: `${rumor.id}-correction`, title: `${rumor.mediaOutlet ?? rumor.mediaChannel ?? "本地公报"} · 更正说明`, detail: `关于${publicName}的旧消息已附加更正：${rumor.correctionEvidence.join("；")}。核验状态：${rumor.verificationStatus}；累计${rumor.corroborationCount}项来源；机构信誉调整为${outletTrust?.trustScore ?? 52}（${outletTrust?.status ?? "待观察"}）。更正降低原消息可信度，但不会抹除已经发生的传播。`, date: relationshipDate(game) });
     game.view.news = game.view.news.slice(0, 30);
     return { intent: "证据化媒体更正", minutes: 180, ruleSummary: `以${rumor.correctionEvidence.length}条后续调查证据发布更正；既有传播记录保留。`, fallbackNarrative: `更正没有把旧纸页烧掉。新公告把调查日期和凭据列在原消息旁边，读者能看见前后两份记录，再决定相信哪一边。`, suggestions: ["查看更正公告", "继续补充独立证据", "观察外地口碑变化"], systemMessages: [`媒体更正 · ${publicName} · 有据可查`] };
   }

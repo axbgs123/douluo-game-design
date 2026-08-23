@@ -503,6 +503,22 @@ function secondaryMediaProfile(era: 1 | 2 | 3 | 4): { outlet: string; stance: st
   return { outlet: "星域民生观察频道", stance: "公共服务影响与跨星区问责" };
 }
 
+export function recordMediaOutletReputation(game: StoredGame, input: { name: string; stance: string; trustDelta: number; publication?: boolean; correction?: boolean; linkedReport?: boolean; evidence: string }): void {
+  let outlet = game.view.mediaOutlets.find((item) => item.name === input.name);
+  if (!outlet) {
+    outlet = { name: input.name, stance: input.stance, trustScore: 60, publications: 0, corrections: 0, linkedReports: 0, status: "待观察", evidence: [] };
+    game.view.mediaOutlets.push(outlet);
+  }
+  outlet.stance = input.stance;
+  outlet.trustScore = Math.max(0, Math.min(100, outlet.trustScore + input.trustDelta));
+  if (input.publication) outlet.publications += 1;
+  if (input.correction) outlet.corrections += 1;
+  if (input.linkedReport) outlet.linkedReports += 1;
+  outlet.status = outlet.trustScore >= 78 && outlet.publications >= 3 ? "高度可信" : outlet.trustScore >= 58 ? "信誉稳定" : outlet.trustScore < 45 ? "受到质疑" : "待观察";
+  outlet.evidence.push(input.evidence);
+  outlet.evidence = outlet.evidence.slice(-20);
+}
+
 export function queueSocialRumor(game: StoredGame, input: string, intent: string, result: string): void {
   if (/无法完成|规则阻止/.test(intent)) return;
   const publicRegistry = /交付机构事务|交付悬赏|交付运输合同|机构晋升|军衔晋升/.test(intent);
@@ -569,7 +585,9 @@ function propagateSocialRumors(game: StoredGame, currentOrdinal: number): string
     const origin = locationById(rumor.locationId)?.name ?? "来源地不明";
     const factionNames = rumor.factionIds.map((id) => FACTIONS.find((faction) => faction.id === id)?.name).filter(Boolean);
     const coverage = factionNames.length ? `${factionNames.join("、")}关系网` : game.view.era === 1 ? `${origin}周边商路` : "公开信息覆盖区";
-    addNews(game, `${rumor.id}-media`, `${rumor.mediaOutlet ?? rumor.mediaChannel} · ${rumor.publicName}`, `${rumor.summary}。机构立场：${rumor.editorialStance ?? "公共信息记录"}；选稿依据：${rumor.editorialDecision ?? "依据现有来源刊发"}；来源：${rumor.sourceKind ?? "来源未标明"}；交叉核验：${rumor.verificationStatus ?? "状态未标明"}（${rumor.corroborationCount ?? 1}项）；可信度 ${rumor.confidence ?? 50}%；覆盖：${coverage}。刊发不等于事实已最终核验。`);
+    recordMediaOutletReputation(game, { name: rumor.mediaOutlet ?? rumor.mediaChannel ?? "未名媒体", stance: rumor.editorialStance ?? "公共信息记录", trustDelta: rumor.verificationStatus === "双记录核验" || rumor.verificationStatus === "跨关系网交叉核验" ? 2 : 0, publication: true, evidence: `${rumor.id}：${rumor.verificationStatus ?? "待复核"}首发` });
+    const outletTrust = game.view.mediaOutlets.find((item) => item.name === (rumor.mediaOutlet ?? rumor.mediaChannel));
+    addNews(game, `${rumor.id}-media`, `${rumor.mediaOutlet ?? rumor.mediaChannel} · ${rumor.publicName}`, `${rumor.summary}。机构立场：${rumor.editorialStance ?? "公共信息记录"}；机构信誉：${outletTrust?.trustScore ?? 60}（${outletTrust?.status ?? "待观察"}）；选稿依据：${rumor.editorialDecision ?? "依据现有来源刊发"}；来源：${rumor.sourceKind ?? "来源未标明"}；交叉核验：${rumor.verificationStatus ?? "状态未标明"}（${rumor.corroborationCount ?? 1}项）；可信度 ${rumor.confidence ?? 50}%；覆盖：${coverage}。刊发不等于事实已最终核验。`);
     const recipients = Object.values(game.world.npcs).filter((npc) => npc.alive && !rumor.witnessNpcIds.includes(npc.id) && (rumor.factionIds.length === 0 ? npc.knownToPlayer : npc.factionIds.some((id) => rumor.factionIds.includes(id)))).slice(0, 20);
     for (const npc of recipients) {
       const text = `从${rumor.mediaOutlet ?? rumor.mediaChannel}获知（${rumor.verificationStatus ?? "待复核"}、可信度${rumor.confidence ?? 50}%）：${rumor.summary}`;
@@ -588,7 +606,9 @@ function propagateSocialRumors(game: StoredGame, currentOrdinal: number): string
     const version = { id: `${rumor.id}-secondary`, outlet: secondary.outlet, stance: secondary.stance, framing, confidence: Math.max(10, (rumor.confidence ?? 50) - 8), verificationStatus: "关联转载核验" as const, publishedOrdinal: currentOrdinal };
     rumor.mediaVersions ??= [];
     rumor.mediaVersions.push(version);
-    addNews(game, version.id, `${version.outlet} · 关联报道`, `关联原报道：${rumor.mediaOutlet ?? rumor.mediaChannel}。${rumor.summary}。机构立场：${version.stance}；编辑框架：${version.framing}；核验：${version.verificationStatus}；可信度 ${version.confidence}%。本版本没有新增未公开事实。`);
+    recordMediaOutletReputation(game, { name: version.outlet, stance: version.stance, trustDelta: 1, publication: true, linkedReport: true, evidence: `${rumor.id}：明确关联${rumor.mediaOutlet ?? rumor.mediaChannel}并保留来源边界` });
+    const outletTrust = game.view.mediaOutlets.find((item) => item.name === version.outlet);
+    addNews(game, version.id, `${version.outlet} · 关联报道`, `关联原报道：${rumor.mediaOutlet ?? rumor.mediaChannel}。${rumor.summary}。机构立场：${version.stance}；机构信誉：${outletTrust?.trustScore ?? 60}（${outletTrust?.status ?? "待观察"}）；编辑框架：${version.framing}；核验：${version.verificationStatus}；可信度 ${version.confidence}%。本版本没有新增未公开事实。`);
     messages.push(`媒体转载 · ${version.outlet} · ${rumor.publicName}`);
   }
   return messages;
@@ -916,7 +936,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 15;
+  legacy.schemaVersion = 16;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -953,6 +973,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     task.progressEvidence ??= [];
   }
   game.view.reputations ??= [];
+  game.view.mediaOutlets ??= [];
   for (const affiliation of game.view.affiliations ?? []) {
     affiliation.contribution ??= 0;
     affiliation.completedAssignments ??= 0;

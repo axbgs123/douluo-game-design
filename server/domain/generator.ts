@@ -1415,7 +1415,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 15,
+    schemaVersion: 16,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1463,6 +1463,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       mapHierarchy: { continentName: "斗罗大陆", settlementName: "尚未选定", buildingName: "尚未选定", nodes: [] },
       mapPins: [],
       news: [],
+      mediaOutlets: [],
       activeEvents: [],
       canonInfluences: [],
       storyArchive: {
