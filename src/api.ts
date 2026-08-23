@@ -6,6 +6,7 @@ import type {
   MetaProgressionView,
   PersonalitySetup,
   SaveSummary,
+  WorldCatalogStatsView,
 } from "../shared/game";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -37,6 +38,7 @@ export function createGame(input: {
   gender: Gender;
   difficulty: Difficulty;
   personality: PersonalitySetup;
+  lifeGoal?: string;
   seed?: string;
 }): Promise<GameView> {
   return request("/api/games", { method: "POST", body: JSON.stringify(input) });
@@ -62,6 +64,22 @@ export function submitAction(id: string, input: string): Promise<GameView> {
     method: "POST",
     body: JSON.stringify({ input }),
   });
+}
+
+export function changeSpeed(id: string, speed: GameView["speed"]): Promise<GameView> {
+  return request(`/api/games/${id}/speed`, { method: "POST", body: JSON.stringify({ speed }) });
+}
+
+export function endRun(id: string, reason?: string): Promise<GameView> {
+  return request(`/api/games/${id}/end`, { method: "POST", body: JSON.stringify({ reason }) });
+}
+
+export function saveMetaPreferences(input: MetaProgressionView["weightPreferences"]): Promise<MetaProgressionView> {
+  return request("/api/meta/preferences", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function getWorldCatalogStats(): Promise<WorldCatalogStatsView> {
+  return request("/api/world/catalog/stats");
 }
 
 export function getDeepSeekSettings(): Promise<DeepSeekSettingsView> {

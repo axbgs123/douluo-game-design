@@ -1,8 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { MetaProgressionView, SaveSummary } from "../shared/game.js";
+import type { MetaProgressionView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "./data/world.js";
 import type { StoredGame } from "./domain/model.js";
+import { ensureGameState } from "./domain/world.js";
 
 const databasePath = resolve(process.cwd(), ".data", "douluo.db");
 mkdirSync(dirname(databasePath), { recursive: true });
@@ -36,7 +38,55 @@ database.exec(`
     state_json TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS canon_characters (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    importance INTEGER NOT NULL,
+    data_json TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS canon_power_snapshots (
+    character_id TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    soul_rank INTEGER,
+    tier TEXT NOT NULL,
+    note TEXT NOT NULL,
+    PRIMARY KEY (character_id, year),
+    FOREIGN KEY (character_id) REFERENCES canon_characters(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS canon_factions (id TEXT PRIMARY KEY, name TEXT NOT NULL, data_json TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS canon_locations (id TEXT PRIMARY KEY, name TEXT NOT NULL, data_json TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS canon_events (id TEXT PRIMARY KEY, year INTEGER NOT NULL, title TEXT NOT NULL, data_json TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS canon_soul_beasts (id TEXT PRIMARY KEY, name TEXT NOT NULL, data_json TEXT NOT NULL);
 `);
+
+function seedCanonCatalog(): void {
+  const characterStatement = database.prepare("INSERT OR REPLACE INTO canon_characters (id, name, importance, data_json) VALUES (?, ?, ?, ?)");
+  const snapshotStatement = database.prepare("INSERT OR REPLACE INTO canon_power_snapshots (character_id, year, soul_rank, tier, note) VALUES (?, ?, ?, ?, ?)");
+  const factionStatement = database.prepare("INSERT OR REPLACE INTO canon_factions (id, name, data_json) VALUES (?, ?, ?)");
+  const locationStatement = database.prepare("INSERT OR REPLACE INTO canon_locations (id, name, data_json) VALUES (?, ?, ?)");
+  const eventStatement = database.prepare("INSERT OR REPLACE INTO canon_events (id, year, title, data_json) VALUES (?, ?, ?, ?)");
+  const beastStatement = database.prepare("INSERT OR REPLACE INTO canon_soul_beasts (id, name, data_json) VALUES (?, ?, ?)");
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    for (const character of CANON_CHARACTERS) {
+      characterStatement.run(character.id, character.name, character.importance, JSON.stringify(character));
+      for (const snapshot of character.powerSnapshots) snapshotStatement.run(character.id, snapshot.year, snapshot.soulRank ?? null, snapshot.tier, snapshot.note);
+    }
+    for (const faction of FACTIONS) factionStatement.run(faction.id, faction.name, JSON.stringify(faction));
+    for (const location of LOCATIONS) locationStatement.run(location.id, location.name, JSON.stringify(location));
+    for (const event of CANON_EVENTS) eventStatement.run(event.id, event.year, event.title, JSON.stringify(event));
+    for (const beast of SOUL_BEASTS) beastStatement.run(beast.id, beast.name, JSON.stringify(beast));
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+seedCanonCatalog();
 
 const defaultMetaProgression: MetaProgressionView = {
   legacyPoints: 0,
@@ -44,8 +94,11 @@ const defaultMetaProgression: MetaProgressionView = {
   discoveredMartialSouls: 0,
   discoveredOrigins: 0,
   unlockedOrigins: ["斗罗本地基础出身"],
+  unlockedMartialSouls: [],
   unlockedTraits: [],
   unlockedHeirlooms: [],
+  codexEntries: [],
+  weightPreferences: { origin: "均衡", martialSoul: "均衡", gift: "均衡" },
   difficultyBudgets: { 爽: 120, 简单: 80, 标准: 50, 困难: 25, 地狱: 10 },
   difficultyMultipliers: { 爽: 0.5, 简单: 0.75, 标准: 1, 困难: 1.5, 地狱: 2.25 },
 };
@@ -98,13 +151,13 @@ export function saveGame(game: StoredGame, eventType: string, payload: unknown =
 
 export function loadGame(id: string): StoredGame | undefined {
   const row = loadGameStatement.get(id) as { state_json: string } | undefined;
-  return row ? JSON.parse(row.state_json) as StoredGame : undefined;
+  return row ? ensureGameState(JSON.parse(row.state_json) as StoredGame) : undefined;
 }
 
 export function listSaves(): SaveSummary[] {
   const rows = listGamesStatement.all() as Array<{ state_json: string }>;
   return rows.map(({ state_json }) => {
-    const game = JSON.parse(state_json) as StoredGame;
+    const game = ensureGameState(JSON.parse(state_json) as StoredGame);
     return {
       id: game.view.id,
       characterName: game.view.character?.name
@@ -112,6 +165,8 @@ export function listSaves(): SaveSummary[] {
         ?? "未选择角色",
       status: game.view.status,
       location: game.view.location ?? "命运选择",
+      soulRank: game.view.character?.soulRank,
+      difficulty: game.view.difficulty,
       updatedAt: game.view.updatedAt,
     };
   });
@@ -119,5 +174,60 @@ export function listSaves(): SaveSummary[] {
 
 export function getMetaProgression(): MetaProgressionView {
   const row = database.prepare("SELECT state_json FROM meta_profile WHERE id = 'local'").get() as { state_json: string };
-  return { ...defaultMetaProgression, ...JSON.parse(row.state_json) as MetaProgressionView };
+  const stored = JSON.parse(row.state_json) as Partial<MetaProgressionView>;
+  return {
+    ...defaultMetaProgression,
+    ...stored,
+    weightPreferences: { ...defaultMetaProgression.weightPreferences, ...stored.weightPreferences },
+  };
+}
+
+export function saveMetaProgression(meta: MetaProgressionView): MetaProgressionView {
+  database.prepare(`
+    INSERT INTO meta_profile (id, state_json, updated_at) VALUES ('local', ?, ?)
+    ON CONFLICT(id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at
+  `).run(JSON.stringify(meta), new Date().toISOString());
+  return meta;
+}
+
+export function updateMetaPreferences(input: MetaProgressionView["weightPreferences"]): MetaProgressionView {
+  const meta = getMetaProgression();
+  meta.weightPreferences = input;
+  return saveMetaProgression(meta);
+}
+
+export function recordRunSettlement(game: StoredGame, settlement: RunSettlementView): MetaProgressionView {
+  const meta = getMetaProgression();
+  meta.completedRuns += 1;
+  meta.legacyPoints += settlement.legacyPoints;
+  const character = game.view.character;
+  if (character) {
+    if (!meta.unlockedMartialSouls.includes(character.martialSoul.name)) meta.unlockedMartialSouls.push(character.martialSoul.name);
+    if (!meta.unlockedOrigins.includes(character.originName)) meta.unlockedOrigins.push(character.originName);
+    meta.discoveredMartialSouls = meta.unlockedMartialSouls.length;
+    meta.discoveredOrigins = Math.max(meta.discoveredOrigins, meta.unlockedOrigins.length - 1);
+    for (const ring of character.soulRings) {
+      const entry = `${ring.beastName} · ${ring.years}年`;
+      if (!meta.codexEntries.includes(entry)) meta.codexEntries.push(entry);
+    }
+  }
+  if (game.world.metrics.completedHunts >= 1 && !meta.unlockedHeirlooms.includes("旧猎魂笔记")) meta.unlockedHeirlooms.push("旧猎魂笔记");
+  if (game.world.metrics.historicalImpact >= 20 && !meta.unlockedTraits.includes("时代见证者")) meta.unlockedTraits.push("时代见证者");
+  return saveMetaProgression(meta);
+}
+
+function tableCount(table: string): number {
+  const row = database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
+  return row.count;
+}
+
+export function getWorldCatalogStats(): WorldCatalogStatsView {
+  return {
+    characters: tableCount("canon_characters"),
+    powerSnapshots: tableCount("canon_power_snapshots"),
+    factions: tableCount("canon_factions"),
+    locations: tableCount("canon_locations"),
+    events: tableCount("canon_events"),
+    soulBeasts: tableCount("canon_soul_beasts"),
+  };
 }

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   CandidatePublic,
   CharacterPublic,
+  MetaProgressionView,
   NarrativeEntry,
   PersonalitySetup,
 } from "../../shared/game.js";
@@ -13,6 +14,7 @@ import type {
   StoredGame,
 } from "./model.js";
 import { createRandom, integer, pick, weightedPick } from "./random.js";
+import { buildKnownFigures, buildMapView, createHiddenWorld, inferLocationId } from "./world.js";
 
 interface OriginTemplate {
   id: string;
@@ -333,10 +335,27 @@ export function derivePersonality(setup: PersonalitySetup): PersonalityProfile {
   return { scores, summary: [...new Set([...setup.keywords.slice(0, 2), ...ranked])].slice(0, 4) };
 }
 
-function chooseSoul(random: () => number, origin: OriginTemplate): MartialSoulTemplate {
+type WeightPreferences = MetaProgressionView["weightPreferences"];
+
+const ORIGIN_PREFERENCE_IDS: Record<string, string[]> = {
+  平民: ["village-farmer", "smith-family", "herbalist", "hunter-family", "fisher-family", "stone-quarry"],
+  魂师家庭: ["fallen-clan", "temple-clerk", "academy-servant", "minor-noble", "sect-village"],
+  漂泊: ["merchant-caravan", "refugee-family", "travelling-healer", "border-guard", "tavern-family"],
+  特殊: ["mystery-arrival", "fallen-clan", "sect-village"],
+};
+
+function originPool(preferences?: WeightPreferences): OriginTemplate[] {
+  const preferredIds = ORIGIN_PREFERENCE_IDS[preferences?.origin ?? "均衡"] ?? [];
+  return ORIGINS.map((origin) => ({ ...origin, weight: origin.weight * (preferredIds.includes(origin.id) ? 2.4 : 1) }));
+}
+
+function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences): MartialSoulTemplate {
+  const preferredCategory = preferences?.martialSoul;
   const choices = MARTIAL_SOULS.map((soul) => ({
     ...soul,
-    weight: soul.rarity * (origin.preferredCategories.includes(soul.category) ? 1.8 : 0.65),
+    weight: soul.rarity
+      * (origin.preferredCategories.includes(soul.category) ? 1.8 : 0.65)
+      * (preferredCategory && preferredCategory !== "均衡" && soul.category === preferredCategory ? 2.25 : 1),
   }));
   return weightedPick(random, choices);
 }
@@ -356,18 +375,20 @@ export function generateCandidates(
   seed: string,
   rerollIndex: number,
   gender: "男" | "女",
+  preferences?: WeightPreferences,
 ): HiddenCandidate[] {
   const random = createRandom(`${seed}:candidates:${rerollIndex}`);
   const usedOrigins = new Set<string>();
+  const origins = originPool(preferences);
 
   return Array.from({ length: 3 }, (_, index) => {
-    let origin = weightedPick(random, ORIGINS);
+    let origin = weightedPick(random, origins);
     for (let attempt = 0; usedOrigins.has(origin.id) && attempt < 8; attempt += 1) {
-      origin = weightedPick(random, ORIGINS);
+      origin = weightedPick(random, origins);
     }
     usedOrigins.add(origin.id);
 
-    const soul = chooseSoul(random, origin);
+    const soul = chooseSoul(random, origin, preferences);
     const offset = integer(random, -20, 20);
     const innateSoulPower = integer(random, soul.soulPowerRange[0], soul.soulPowerRange[1]);
     const name = generateName(random);
@@ -376,6 +397,7 @@ export function generateCandidates(
       name,
       gender,
       eraRelation: eraRelation(offset),
+      birthYearOffset: offset,
       location: pick(random, origin.locations),
       originName: origin.name,
       originSummary: `${origin.summary}${pick(random, origin.details)}`,
@@ -388,8 +410,13 @@ export function generateCandidates(
     };
 
     const giftRoll = random();
-    const hiddenGift = origin.id === "mystery-arrival" || giftRoll < 0.025
-      ? pick(random, ["残缺丹道传承", "至尊骨雏形", "无名剑典残页", "未激活的因果印记"])
+    const giftPreference = preferences?.gift ?? "均衡";
+    const giftChance = giftPreference === "朴素" ? 0.008 : giftPreference === "奇遇" ? 0.055 : giftPreference === "异界体系" ? 0.04 : 0.025;
+    const giftPool = giftPreference === "异界体系"
+      ? ["残缺丹道传承", "无名剑典残页", "未激活的因果印记", "受压制的修行法门"]
+      : ["残缺丹道传承", "至尊骨雏形", "无名剑典残页", "未激活的因果印记"];
+    const hiddenGift = origin.id === "mystery-arrival" || giftRoll < giftChance
+      ? pick(random, giftPool)
       : undefined;
 
     return {
@@ -404,17 +431,21 @@ export function generateCandidates(
   });
 }
 
-export function createGame(input: CreateGameInput): StoredGame {
+export function createGame(input: CreateGameInput, preferences?: WeightPreferences): StoredGame {
   const id = randomUUID();
   const seed = input.seed?.trim() || randomUUID();
   const now = new Date().toISOString();
   const profile = derivePersonality(input.personality);
-  const hiddenCandidates = generateCandidates(seed, 0, input.gender);
+  const hiddenCandidates = generateCandidates(seed, 0, input.gender, preferences);
 
-  return {
+  const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
+  const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
+  const game: StoredGame = {
+    schemaVersion: 2,
     hiddenCandidates,
     personalityProfile: profile,
     actionIndex: 0,
+    world,
     view: {
       id,
       seed,
@@ -423,6 +454,7 @@ export function createGame(input: CreateGameInput): StoredGame {
       speed: "标准",
       personality: input.personality,
       personalitySummary: profile.summary,
+      lifeGoal: input.lifeGoal?.trim() || "成为自己认可的强者",
       rerollIndex: 0,
       candidates: hiddenCandidates.map((candidate) => candidate.public),
       narrative: [createEntry("system", "这一轮有三个人。先看出身和征兆，武魂要等选定后才会揭晓。")],
@@ -430,18 +462,33 @@ export function createGame(input: CreateGameInput): StoredGame {
       relations: [],
       tasks: [],
       inventory: [],
+      map: [],
+      news: [],
+      knownFigures: [],
+      runProgress: {
+        lifeGoal: input.lifeGoal?.trim() || "成为自己认可的强者",
+        highestSoulRank: 0,
+        discoveries: 0,
+        relationshipsBuilt: 0,
+        historicalImpact: 0,
+        completedHunts: 0,
+      },
       createdAt: now,
       updatedAt: now,
     },
   };
+  game.view.map = buildMapView(game);
+  game.view.knownFigures = buildKnownFigures(game);
+  return game;
 }
 
-export function rerollCandidates(game: StoredGame): void {
+export function rerollCandidates(game: StoredGame, preferences?: WeightPreferences): void {
   const nextIndex = game.view.rerollIndex + 1;
   game.hiddenCandidates = generateCandidates(
     game.view.seed,
     nextIndex,
     game.view.candidates[0]?.gender ?? "男",
+    preferences,
   );
   game.view.rerollIndex = nextIndex;
   game.view.candidates = game.hiddenCandidates.map((candidate) => candidate.public);
@@ -456,7 +503,10 @@ export function selectCandidate(game: StoredGame, candidateId: string): void {
   game.view.selectedCandidateId = candidateId;
   game.view.status = "awakening";
   game.view.location = candidate.public.location;
-  game.view.worldTime = { era: candidate.public.eraRelation, day: 1, time: "08:00" };
+  game.view.locationId = inferLocationId(candidate.public.location);
+  game.world = createHiddenWorld(candidate.public.birthYearOffset ?? 0, game.view.locationId);
+  game.view.worldTime = { era: candidate.public.eraRelation, year: candidate.public.birthYearOffset ?? 0, day: 1, time: "08:00", season: "春" };
+  game.view.map = buildMapView(game);
   game.view.narrative = [createEntry("narration", buildAwakeningPrelude(candidate, game.personalityProfile))];
   game.view.suggestions = ["观察主持觉醒的魂师", "回想家人对今日的态度", "安静等待自己的名字被叫到"];
   game.view.updatedAt = new Date().toISOString();
@@ -482,6 +532,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
 
   const character: CharacterPublic = {
     ...selected.public,
+    age: 6,
     martialSoul: {
       name: selected.martialSoul.name,
       category: selected.martialSoul.category,
@@ -489,6 +540,13 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     },
     innateSoulPower: selected.innateSoulPower,
     soulRank: selected.innateSoulPower,
+    cultivationProgress: selected.innateSoulPower >= 10 ? "等待第一魂环" : "刚刚起步",
+    condition: "良好",
+    fatigue: "轻松",
+    coins: 12,
+    reputation: "默默无闻",
+    injuries: [],
+    soulRings: [],
     abilityDescriptors: {
       physique: selected.physique,
       spirit: selected.spirit,
@@ -505,13 +563,17 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     { name: "觉醒魂师", relation: "初识", impression: selected.innateSoulPower >= 7 ? "明显重视" : "公事公办" },
   ];
   game.view.tasks = selected.innateSoulPower > 0
-    ? [{ title: "决定魂师之路", kind: "计划", detail: "了解武魂方向，并寻找适合自己的成长道路。" }]
+    ? [
+        { id: "life-goal", title: game.view.lifeGoal, kind: "计划", detail: "这是我为自己定下的人生目标。", status: "进行中" },
+        { id: "first-ring", title: "获得第一魂环", kind: "修炼需求", detail: "魂力达到十级后，完成一次完整猎魂。", status: "进行中" },
+      ]
     : [{ title: "理解觉醒结果", kind: "线索", detail: "没有显现先天魂力并不等于所有道路都已断绝。" }];
   game.view.narrative.push(createEntry("narration", buildAwakeningResult(selected)));
   game.view.suggestions = selected.innateSoulPower > 0
     ? ["询问我的先天魂力意味着什么", "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
     : ["追问是否存在重新检测的方法", "观察武魂本身还有没有异常", "先接受结果，回去查找其他道路"];
   game.view.updatedAt = new Date().toISOString();
+  game.view.runProgress.highestSoulRank = character.soulRank;
   return character;
 }
 

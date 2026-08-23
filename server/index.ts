@@ -11,9 +11,18 @@ import {
   rerollCandidates,
   selectCandidate,
 } from "./domain/generator.js";
-import { getMetaProgression, listSaves, loadGame, saveGame } from "./db.js";
+import {
+  getMetaProgression,
+  getWorldCatalogStats,
+  listSaves,
+  loadGame,
+  recordRunSettlement,
+  saveGame,
+  updateMetaPreferences,
+} from "./db.js";
 import { narrateWithDeepSeek } from "./services/deepseek.js";
 import { settingsView, writeDeepSeekSettings } from "./services/settings.js";
+import { settleRun } from "./domain/endings.js";
 
 const app = express();
 const port = Number(process.env.PORT ?? 8787);
@@ -27,11 +36,19 @@ const createGameSchema = z.object({
     keywords: z.array(z.string().trim().min(1).max(12)).min(3).max(8),
     answers: z.record(z.string(), z.string()),
   }),
+  lifeGoal: z.string().trim().max(120).optional(),
   seed: z.string().trim().max(120).optional(),
 });
 
 const candidateSchema = z.object({ candidateId: z.string().min(1) });
 const actionSchema = z.object({ input: z.string().trim().min(1).max(1200) });
+const speedSchema = z.object({ speed: z.enum(["标准", "高速"]) });
+const endSchema = z.object({ reason: z.string().trim().max(200).optional() });
+const metaPreferencesSchema = z.object({
+  origin: z.string().trim().min(1).max(40),
+  martialSoul: z.string().trim().min(1).max(40),
+  gift: z.string().trim().min(1).max(40),
+});
 const settingsSchema = z.object({
   apiKey: z.string().trim().min(1),
   baseUrl: z.string().url(),
@@ -50,6 +67,14 @@ app.get("/api/meta", (_request, response) => {
   response.json(getMetaProgression());
 });
 
+app.post("/api/meta/preferences", (request, response) => {
+  response.json(updateMetaPreferences(metaPreferencesSchema.parse(request.body)));
+});
+
+app.get("/api/world/catalog/stats", (_request, response) => {
+  response.json(getWorldCatalogStats());
+});
+
 app.get("/api/games/:id", (request, response) => {
   const game = loadGame(request.params.id);
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
@@ -58,7 +83,7 @@ app.get("/api/games/:id", (request, response) => {
 
 app.post("/api/games", (request, response) => {
   const input = createGameSchema.parse(request.body);
-  const game = createGame(input);
+  const game = createGame(input, getMetaProgression().weightPreferences);
   saveGame(game, "game.created", { difficulty: input.difficulty });
   response.status(201).json(publicView(game));
 });
@@ -69,7 +94,7 @@ app.post("/api/games/:id/reroll", (request, response) => {
   if (game.view.status !== "candidate_selection") {
     return response.status(409).json({ error: "角色已经选定，不能重新抽取" });
   }
-  rerollCandidates(game);
+  rerollCandidates(game, getMetaProgression().weightPreferences);
   saveGame(game, "candidates.rerolled", { rerollIndex: game.view.rerollIndex });
   return response.json(publicView(game));
 });
@@ -119,11 +144,40 @@ app.post("/api/games/:id/action", async (request, response) => {
     generated?.narrative ?? resolution.fallbackNarrative,
     generated?.suggestions.length === 3 ? generated.suggestions : resolution.suggestions,
   );
+  if (game.view.runProgress.ending && !game.view.runProgress.settlement) {
+    const settlement = settleRun(game, game.view.runProgress.ending);
+    recordRunSettlement(game, settlement);
+  }
   saveGame(game, "action.resolved", {
     input: input.input,
     minutes: resolution.minutes,
     usedAiNarrator: Boolean(generated),
   });
+  return response.json(publicView(game));
+});
+
+app.post("/api/games/:id/speed", (request, response) => {
+  const input = speedSchema.parse(request.body);
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  if (game.view.status === "ended") return response.status(409).json({ error: "本局已经结束" });
+  game.view.speed = input.speed;
+  game.view.updatedAt = new Date().toISOString();
+  saveGame(game, "speed.changed", input);
+  return response.json(publicView(game));
+});
+
+app.post("/api/games/:id/end", (request, response) => {
+  const input = endSchema.parse(request.body);
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  if (game.view.status === "candidate_selection" || game.view.status === "awakening") {
+    return response.status(409).json({ error: "角色人生尚未正式开始" });
+  }
+  const wasSettled = Boolean(game.view.runProgress.settlement);
+  const settlement = settleRun(game, input.reason);
+  if (!wasSettled) recordRunSettlement(game, settlement);
+  saveGame(game, "run.settled", settlement);
   return response.json(publicView(game));
 });
 

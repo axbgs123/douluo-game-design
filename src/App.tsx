@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import type { Difficulty, GameView, Gender, PersonalitySetup, SaveSummary } from "../shared/game";
 import {
   awakenCharacter,
+  changeSpeed,
   createGame,
+  endRun,
   listGames,
   loadGame,
   rerollCandidates,
@@ -60,7 +62,7 @@ export default function App() {
             <strong>{save.characterName}</strong><span>{save.location}</span><small>{new Date(save.updatedAt).toLocaleString("zh-CN")}</small>
           </button>)}</div>
         </section>}
-        <SetupScreen busy={busy} onCreate={(input: { gender: Gender; difficulty: Difficulty; personality: PersonalitySetup; seed?: string }) => run(() => createGame(input))} />
+        <SetupScreen busy={busy} onCreate={(input: { gender: Gender; difficulty: Difficulty; personality: PersonalitySetup; lifeGoal?: string; seed?: string }) => run(() => createGame(input))} />
       </>}
 
       {game?.status === "candidate_selection" && <CandidateScreen
@@ -72,11 +74,13 @@ export default function App() {
         onSelect={(candidateId) => run(() => selectCandidate(game.id, candidateId))}
       />}
 
-      {game && (game.status === "awakening" || game.status === "playing") && <StoryScreen
+      {game && (game.status === "awakening" || game.status === "playing" || game.status === "ended") && <StoryScreen
         game={game}
         busy={busy}
         onAwaken={() => run(() => awakenCharacter(game.id))}
         onAction={(input) => run(() => submitAction(game.id, input))}
+        onSpeed={(speed) => run(() => changeSpeed(game.id, speed))}
+        onEnd={(reason) => run(() => endRun(game.id, reason))}
       />}
     </div>
     <MetaProgressionPanel open={metaOpen} onClose={() => setMetaOpen(false)} />

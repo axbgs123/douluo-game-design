@@ -8,6 +8,7 @@ interface SetupScreenProps {
     gender: Gender;
     difficulty: Difficulty;
     personality: PersonalitySetup;
+    lifeGoal?: string;
     seed?: string;
   }) => Promise<void>;
 }
@@ -24,6 +25,7 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
   const [gender, setGender] = useState<Gender>("男");
   const [difficulty, setDifficulty] = useState<Difficulty>("标准");
   const [keywordText, setKeywordText] = useState("谨慎，重情，好学，坚韧，自由");
+  const [lifeGoal, setLifeGoal] = useState("成为自己认可的强者");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [seed, setSeed] = useState("");
 
@@ -51,6 +53,7 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
             gender,
             difficulty,
             personality: { keywords, answers },
+            lifeGoal: lifeGoal.trim() || undefined,
             seed: seed.trim() || undefined,
           });
         }}
@@ -79,6 +82,11 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
               </button>
             ))}
           </div>
+        </section>
+
+        <section className="form-section">
+          <div className="section-heading"><h2>人生目标</h2></div>
+          <input className="text-field" value={lifeGoal} onChange={(event) => setLifeGoal(event.target.value)} maxLength={120} placeholder="成为强者、守护家人、建立宗门……" />
         </section>
 
         <section className="form-section">
