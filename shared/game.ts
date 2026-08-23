@@ -167,6 +167,15 @@ export interface StarshipProgressView {
   crewDrills?: number;
   crewCoordination?: number;
   crewEvidence?: Array<{ date: string; drill: string; roles: string[]; result: string }>;
+  fleetOnboarding?: {
+    status: "未述职" | "培训中" | "待分配" | "已分配";
+    reportedAt?: string;
+    trainingDays: number;
+    trainingEvidence: Array<{ date: string; module: "航线与指挥" | "损管与动力" | "作战与登陆" | "军纪与保密"; result: string }>;
+    assignedDepartment?: "舰队参谋部" | "龙王级护卫舰作战部";
+    assignedPost?: string;
+    assignmentEvidence?: string[];
+  };
 }
 
 export interface MartialSoulView {

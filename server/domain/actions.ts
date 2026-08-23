@@ -2246,6 +2246,51 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
   starship.crewEvidence ??= [];
   const licenses = ["无", "见习指挥", "三级指挥", "二级指挥", "一级指挥"] as const;
 
+  if (/参谋部.*述职|述职.*参谋部|入舰述职/.test(action)) {
+    const fleet = game.view.affiliations.find((item) => item.militaryRank && /舰队|军/.test(item.name));
+    if (!fleet || character.age < 18) return impossible("舰队参谋部只受理已满十八岁且拥有现役军籍的人员述职；学院身份、荣誉称号或模拟资格不能替代军籍。", ["加入联邦舰队", "等待达到现役年龄", "继续学院训练"]);
+    const onboarding = starship.fleetOnboarding ??= { status: "未述职", trainingDays: 0, trainingEvidence: [], assignmentEvidence: [] };
+    if (onboarding.status !== "未述职") return impossible(`参谋部述职已经登记，当前阶段为${onboarding.status}。`, ["参加入舰培训", "查看培训证据", "等待岗位分配"]);
+    onboarding.status = "培训中";
+    onboarding.reportedAt = relationshipDate(game);
+    onboarding.assignmentEvidence = [`${fleet.name}${fleet.militaryRank}军籍已核验`, `参谋部述职登记于${onboarding.reportedAt}`];
+    return { intent: "舰队参谋部述职", minutes: 180, ruleSummary: `完成舰队参谋部军籍、资格与履历核验；进入一个月入舰培训，尚未分配部门或岗位。`, fallbackNarrative: "参谋部没有因为军衔先安排座位。军籍、真实航时、训练记录和既往任务被逐页核过，最后只发下一张培训表；具体去哪个部门，要等一个月后再看成绩。", suggestions: ["参加航线与指挥培训", "参加损管与动力培训", "参加作战与登陆培训"], systemMessages: ["舰队入职 · 已述职 · 培训中"] };
+  }
+
+  if (/入舰培训|舰队培训|参谋培训|作战部培训|航线与指挥培训|损管与动力培训|作战与登陆培训|军纪与保密培训/.test(action)) {
+    const onboarding = starship.fleetOnboarding;
+    if (!onboarding || onboarding.status === "未述职") return impossible("尚未在舰队参谋部完成述职，培训成绩不能写入正式入舰档案。", ["向舰队参谋部述职", "核验现役军籍", "继续学院课程"]);
+    if (onboarding.status === "已分配") return impossible("一个月入舰培训已经结业并完成岗位分配，应按当前部门职责行动。", ["查看岗位职责", "领取部门事务", "申请后续轮训"]);
+    const module = /损管|动力|轮机/.test(action) ? "损管与动力" : /作战|登陆|战术/.test(action) ? "作战与登陆" : /军纪|保密|纪律/.test(action) ? "军纪与保密" : "航线与指挥";
+    onboarding.trainingDays += 7;
+    onboarding.trainingEvidence.push({ date: relationshipDate(game), module, result: "完成七日受监督训练与书面考核；模拟成绩未计为真实航时" });
+    onboarding.trainingEvidence = onboarding.trainingEvidence.slice(-12);
+    const modules = new Set(onboarding.trainingEvidence.map((item) => item.module));
+    if (onboarding.trainingDays >= 30 && modules.size >= 3) onboarding.status = "待分配";
+    game.world.fatiguePoints += 9;
+    return { intent: "舰队入舰培训", minutes: 7 * 1_440, ruleSummary: `完成${module}七日培训；累计${onboarding.trainingDays}/30天，已覆盖${modules.size}/3类必要模块${onboarding.status === "待分配" ? "，达到岗位评估条件" : ""}。`, fallbackNarrative: "训练表按天签字，漏掉的警报、错误口令和迟到交接都留在原页。七天结束时只有本模块合格，不会把模拟课时改写成真实航时。", suggestions: onboarding.status === "待分配" ? ["申请参谋部岗位评估", "申请作战部岗位评估", "复核一个月培训档案"] : ["继续不同模块入舰培训", "检查培训覆盖", "休息恢复"] };
+  }
+
+  if (/岗位评估|岗位分配|分配.*(?:参谋部|作战部)|申请.*(?:参谋部|作战部)岗位/.test(action)) {
+    const onboarding = starship.fleetOnboarding;
+    if (!onboarding || onboarding.status !== "待分配") return impossible("岗位分配必须在参谋部述职并完成至少三十天、三类模块的入舰培训后进行。", ["向舰队参谋部述职", "完成一个月入舰培训", "查看培训档案"]);
+    const wantsStaff = /参谋部/.test(action);
+    const modules = new Set(onboarding.trainingEvidence.map((item) => item.module));
+    if (wantsStaff) {
+      if (!/优秀|顶尖/.test(character.abilityDescriptors.perception) || starship.simulatorSessions < 6 || !modules.has("航线与指挥") || !modules.has("军纪与保密")) return impossible("参谋部见习岗位要求高精神感知、至少六次指挥模拟，以及航线和保密模块合格；军衔本身不能替代岗位能力。", ["继续指挥模拟", "完成军纪与保密培训", "申请作战部评估"]);
+      onboarding.assignedDepartment = "舰队参谋部";
+      onboarding.assignedPost = "航线与情报见习参谋";
+    } else {
+      if (!modules.has("作战与登陆") || !modules.has("损管与动力") || game.world.metrics.battlesWon < 1) return impossible("护卫舰作战部见习岗位要求作战与登陆、损管与动力模块合格，并有至少一次可核验实战经历。", ["完成作战与登陆培训", "完成损管与动力培训", "积累可核验实战记录"]);
+      onboarding.assignedDepartment = "龙王级护卫舰作战部";
+      onboarding.assignedPost = "登陆作战见习队员";
+    }
+    onboarding.status = "已分配";
+    onboarding.assignmentEvidence ??= [];
+    onboarding.assignmentEvidence.push(`一个月培训${onboarding.trainingDays}天、${modules.size}类模块通过`, `${onboarding.assignedDepartment}依据能力与履历分配${onboarding.assignedPost}`);
+    return { intent: "舰队岗位分配", minutes: 240, ruleSummary: `参谋部依据${onboarding.trainingDays}天培训、${modules.size}类模块与实际履历，将岗位分配至${onboarding.assignedDepartment}·${onboarding.assignedPost}。`, fallbackNarrative: "岗位表不是我自己填的。参谋把训练页、模拟记录和实战履历并排核过，划掉不符合的部门，最后才在一处空缺上盖章。", suggestions: ["查看岗位职责", "领取部门事务", "参加岗位轮值"], systemMessages: [`舰队岗位 · ${onboarding.assignedDepartment} · ${onboarding.assignedPost}`] };
+  }
+
   if (/带教航次|实习航次|随舰训练|真实飞行/.test(action)) {
     if (licenses.indexOf(starship.license) < 1) return impossible("真实随舰训练至少需要见习指挥资格，兴趣课和娱乐模拟不能登记为飞行时长。", ["参加见习指挥考核", "继续基础模拟训练", "申请星际学院课程"]);
     const institution = game.view.affiliations.find((item) => /舰队|星际|史莱克|联邦|学院/.test(item.name));
@@ -2534,7 +2579,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/魂灵/.test(action)) resolution = soulSpiritResolution(game, action);
   else if (/斗铠/.test(action) && !/购买|买|采购/.test(action) && !(game.view.combat && /攻击|防御|格挡|闪避|逃跑|弱点/.test(action))) resolution = battleArmorResolution(game, action);
   else if (/机甲/.test(action) && (!game.view.combat || !/攻击|防御|格挡|闪避|逃跑|弱点/.test(action) || !game.view.mecha?.model)) resolution = mechaResolution(game, action);
-  else if (/星舰|舰桥|随舰|航次|真实飞行|船员|舰员|星际航行|探索舰|项目舰|星球探索|星球调查|指挥考核|指挥资格/.test(action)) resolution = starshipResolution(game, action);
+  else if (/星舰|舰桥|随舰|航次|真实飞行|船员|舰员|星际航行|探索舰|项目舰|星球探索|星球调查|指挥考核|指挥资格|参谋部|入舰培训|舰队培训|岗位评估|岗位分配|作战部培训|航线与指挥培训|损管与动力培训|作战与登陆培训|军纪与保密培训/.test(action)) resolution = starshipResolution(game, action);
   else if (/前往|去往|出发去|旅行到/.test(action) && /船票|客运|航班|民航|搭乘/.test(action)) resolution = travelResolution(game, action);
   else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
   else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);

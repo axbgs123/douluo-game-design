@@ -152,7 +152,28 @@ function EraPanel({ game, submit, busy }: { game: GameView; submit: (value: stri
       <article className="special-system-card"><header><span>机甲资质 · {game.mecha?.license ?? "无"}</span><strong>{game.mecha?.model ?? "尚无自有机甲"}</strong></header><p>模拟训练 {game.mecha?.simulatorProgress ?? 0}% · {game.mecha?.simulatorSessions ?? 0} 次 · 实操通过 {game.mecha?.practicalPasses ?? 0} 次</p><div className="button-row"><EraActionButton busy={busy} onClick={() => submit("进行机甲模拟训练")}>机甲模拟</EraActionButton><EraActionButton busy={busy || game.mecha?.license === "黑级"} onClick={() => submit(`参加${nextMechaLicense}机甲驾驶考核`)}>资质考核</EraActionButton></div></article>
     </>}
 
-    {era === 4 && <article className="special-system-card"><header><span>星舰资格 · {game.starship?.license ?? "无"}</span><strong>{game.starship?.shipName ?? "尚无登记星舰"}</strong></header><p>指挥训练 {game.starship?.simulatorProgress ?? 0}% · 真实飞行 {game.starship?.loggedFlightHours ?? 0} 小时 · 船员 {game.starship?.crew.length ?? 0} · 舰桥协同 {game.starship?.crewCoordination ?? 0}% · 完成任务 {game.starship?.missionsCompleted ?? 0}</p>{game.starship?.shipName && <small>{game.starship.shipClass} · 舰体 {game.starship.hull}% · 燃料 {game.starship.fuel}% · 物资 {game.starship.supplies}%</small>}<div className="button-row">{passengerDestination && <EraActionButton busy={busy} onClick={() => submit(`购买船票并搭乘客运航班前往${passengerDestination.name}`)}>客运前往{passengerDestination.name}</EraActionButton>}<EraActionButton busy={busy} onClick={() => submit("进行星舰指挥模拟训练")}>舰桥模拟</EraActionButton><EraActionButton busy={busy} onClick={() => submit("进行船员舰桥协同与损管演练")}>船员协同</EraActionButton><EraActionButton busy={busy} onClick={() => submit("申请随舰训练航次")}>随舰航次</EraActionButton><EraActionButton busy={busy || game.starship?.license === "一级指挥"} onClick={() => submit(`参加${nextStarshipLicense}考核`)}>指挥考核</EraActionButton><EraActionButton busy={busy} onClick={() => submit("检查可信关系并招募驾驶员船员")}>招募驾驶员</EraActionButton><EraActionButton busy={busy} onClick={() => submit("申请配发学院项目舰")}>申请项目舰</EraActionButton></div></article>}
+    {era === 4 && <article className="special-system-card">
+      <header><span>星舰资格 · {game.starship?.license ?? "无"}</span><strong>{game.starship?.shipName ?? "尚无登记星舰"}</strong></header>
+      <p>指挥训练 {game.starship?.simulatorProgress ?? 0}% · 真实飞行 {game.starship?.loggedFlightHours ?? 0} 小时 · 船员 {game.starship?.crew.length ?? 0} · 舰桥协同 {game.starship?.crewCoordination ?? 0}% · 完成任务 {game.starship?.missionsCompleted ?? 0}</p>
+      {game.starship?.fleetOnboarding && <small>入舰档案 · {game.starship.fleetOnboarding.status} · 培训 {game.starship.fleetOnboarding.trainingDays}/30 天{game.starship.fleetOnboarding.assignedDepartment ? ` · ${game.starship.fleetOnboarding.assignedDepartment} · ${game.starship.fleetOnboarding.assignedPost}` : ""}</small>}
+      {game.starship?.shipName && <small>{game.starship.shipClass} · 舰体 {game.starship.hull}% · 燃料 {game.starship.fuel}% · 物资 {game.starship.supplies}%</small>}
+      <div className="button-row">
+        {passengerDestination && <EraActionButton busy={busy} onClick={() => submit(`购买船票并搭乘客运航班前往${passengerDestination.name}`)}>客运前往{passengerDestination.name}</EraActionButton>}
+        <EraActionButton busy={busy} onClick={() => submit("向舰队参谋部述职")}>参谋部述职</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("参加航线与指挥舰队培训")}>航线培训</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("参加损管与动力培训")}>损管培训</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("参加作战与登陆培训")}>作战培训</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("参加军纪与保密培训")}>军纪培训</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("申请参谋部岗位评估")}>参谋部分岗</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("申请作战部岗位评估")}>作战部分岗</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("进行星舰指挥模拟训练")}>舰桥模拟</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("进行船员舰桥协同与损管演练")}>船员协同</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("申请随舰训练航次")}>随舰航次</EraActionButton>
+        <EraActionButton busy={busy || game.starship?.license === "一级指挥"} onClick={() => submit(`参加${nextStarshipLicense}考核`)}>指挥考核</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("检查可信关系并招募驾驶员船员")}>招募驾驶员</EraActionButton>
+        <EraActionButton busy={busy} onClick={() => submit("申请配发学院项目舰")}>申请项目舰</EraActionButton>
+      </div>
+    </article>}
   </div>;
 }
 

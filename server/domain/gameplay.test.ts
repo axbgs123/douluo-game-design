@@ -214,6 +214,52 @@ describe("完整游玩规则", () => {
     expect(game.view.combat.comboCooldownUntilRound).toBe(5);
   });
 
+  it("斗四现役人员必须先参谋部述职并完成一个月多模块培训，岗位按能力证据分配", () => {
+    const prepare = (seed: string) => {
+      const game = awakened(seed);
+      game.view.era = 4;
+      game.view.character!.age = 18;
+      game.view.character!.abilityDescriptors.perception = "优秀";
+      game.view.affiliations = [{
+        id: "d4-federal-fleet",
+        name: "斗罗联邦舰队",
+        role: "现役士兵",
+        reputation: "生疏",
+        joinedAt: "测试",
+        contribution: 0,
+        completedAssignments: 0,
+        rankEvidence: [],
+        militaryRank: "列兵",
+        militaryMerit: 0,
+        flightHours: 0,
+      }];
+      game.view.starship = { license: "三级指挥", simulatorProgress: 60, simulatorSessions: 6, loggedFlightHours: 0, crew: [], missionsCompleted: 0 };
+      return game;
+    };
+    const trainMonth = (game: ReturnType<typeof prepare>) => {
+      expect(resolveAction(game, "向舰队参谋部述职").intent).toBe("舰队参谋部述职");
+      for (const action of ["参加航线与指挥舰队培训", "参加损管动力舰队培训", "参加作战登陆舰队培训", "参加军纪保密舰队培训", "继续航线舰队培训"]) {
+        expect(resolveAction(game, action).intent).toBe("舰队入舰培训");
+      }
+      expect(game.view.starship!.fleetOnboarding).toMatchObject({ status: "待分配", trainingDays: 35 });
+      expect(new Set(game.view.starship!.fleetOnboarding!.trainingEvidence.map((item) => item.module)).size).toBe(4);
+      expect(game.view.starship!.loggedFlightHours).toBe(0);
+    };
+
+    const operations = prepare("fleet-operations-onboarding");
+    expect(resolveAction(operations, "申请作战部岗位分配").intent).toBe("无法完成");
+    trainMonth(operations);
+    expect(resolveAction(operations, "申请作战部岗位评估").intent).toBe("无法完成");
+    operations.world.metrics.battlesWon = 1;
+    expect(resolveAction(operations, "申请作战部岗位评估").intent).toBe("舰队岗位分配");
+    expect(operations.view.starship!.fleetOnboarding).toMatchObject({ status: "已分配", assignedDepartment: "龙王级护卫舰作战部", assignedPost: "登陆作战见习队员" });
+
+    const staff = prepare("fleet-staff-onboarding");
+    trainMonth(staff);
+    expect(resolveAction(staff, "申请参谋部岗位评估").intent).toBe("舰队岗位分配");
+    expect(staff.view.starship!.fleetOnboarding).toMatchObject({ status: "已分配", assignedDepartment: "舰队参谋部", assignedPost: "航线与情报见习参谋" });
+  });
+
   it("控制魂技有可累积抗性且战斗会保存同行者状态", () => {
     const game = awakened("combat-control-resistance");
     game.view.character!.soulRank = 30;
@@ -389,7 +435,7 @@ describe("完整游玩规则", () => {
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(16);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();

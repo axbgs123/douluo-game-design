@@ -936,7 +936,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 16;
+  legacy.schemaVersion = 17;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -987,6 +987,11 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.professions ??= [];
   game.view.managedFactions ??= [];
   game.view.comboTrainings ??= [];
+  if (game.view.starship?.fleetOnboarding) {
+    game.view.starship.fleetOnboarding.trainingDays ??= 0;
+    game.view.starship.fleetOnboarding.trainingEvidence ??= [];
+    game.view.starship.fleetOnboarding.assignmentEvidence ??= [];
+  }
   game.view.economy ??= { cash: game.view.character?.coins ?? 0, bankBalance: 0, debt: 0, salary: 0, bounty: 0, blackMarketAccess: false, transactions: [], marketReports: [] };
   game.view.economy.transactions ??= [];
   game.view.economy.marketReports ??= [];
