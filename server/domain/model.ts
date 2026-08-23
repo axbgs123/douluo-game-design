@@ -85,6 +85,11 @@ export interface SocialRumorState {
   confidence?: number;
   sourceKind?: "现场目击" | "公开登记";
   mediaChannel?: string;
+  mediaOutlet?: string;
+  editorialStance?: string;
+  editorialDecision?: string;
+  corroborationCount?: number;
+  verificationStatus?: "来源不足" | "同源多证待复核" | "跨关系网交叉核验" | "双记录核验" | "更正证据已核验";
   mediaSpreadsAtOrdinal?: number;
   mediaStatus?: "不刊发" | "待刊发" | "已刊发" | "已更正";
   auditStartedActionIndex?: number;

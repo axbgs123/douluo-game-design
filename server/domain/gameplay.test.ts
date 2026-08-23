@@ -358,7 +358,7 @@ describe("完整游玩规则", () => {
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(12);
+    expect(migrated.schemaVersion).toBe(13);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -701,16 +701,17 @@ describe("第一部世界资料", () => {
 
   it("地方口碑与跨地区媒体分阶段传播，并保留来源和可信度", () => {
     const game = awakened("media-propagation-delay");
-    for (const npc of Object.values(game.world.npcs).slice(0, 3)) {
+    for (const npc of Object.values(game.world.npcs)) npc.locationId = "offscreen-test";
+    for (const [index, npc] of Object.values(game.world.npcs).slice(0, 6).entries()) {
       npc.alive = true;
       npc.currentGoal = "为亲历事件作证";
       npc.locationId = game.view.locationId!;
-      npc.factionIds = ["shrek"];
+      npc.factionIds = [index % 2 ? "spirit-hall" : "shrek"];
     }
     const crime = { intent: "违法行动", minutes: 30, ruleSummary: "行动失败，现场留下可辨认痕迹。", fallbackNarrative: "守卫记录了现场。", suggestions: ["离开"] };
     applyActionResult(game, "在街口公开抢劫", crime, crime.fallbackNarrative, crime.suggestions);
     const rumor = game.world.socialRumors[0];
-    expect(rumor).toMatchObject({ sourceKind: "现场目击", mediaStatus: "待刊发", mediaChannel: "城市告示与商会公报" });
+    expect(rumor).toMatchObject({ sourceKind: "现场目击", mediaStatus: "待刊发", mediaChannel: "城市告示与商会公报", mediaOutlet: "城市告示处", editorialStance: "地方治安与可核验风险", verificationStatus: "跨关系网交叉核验", corroborationCount: 6 });
 
     advanceWorldTime(game, 4 * 1_440);
     expect(rumor.status).toBe("已传播");
@@ -718,11 +719,30 @@ describe("第一部世界资料", () => {
     expect(game.view.news.some((item) => item.id === `${rumor.id}-media`)).toBe(false);
     advanceWorldTime(game, 14 * 1_440);
     expect(rumor.mediaStatus).toBe("已刊发");
-    expect(game.view.news.find((item) => item.id === `${rumor.id}-media`)?.detail).toMatch(/来源：现场目击；可信度 \d+%；覆盖：/);
+    expect(game.view.news.find((item) => item.id === `${rumor.id}-media`)?.detail).toMatch(/机构立场：地方治安与可核验风险；选稿依据：.+；来源：现场目击；交叉核验：跨关系网交叉核验（6项）；可信度 \d+%；覆盖：/);
+  });
+
+  it("媒体会记录拒稿原因，不把单一无组织来源自动扩散到跨地区", () => {
+    const game = awakened("media-editorial-rejection");
+    for (const npc of Object.values(game.world.npcs)) npc.locationId = "offscreen-test";
+    const witness = Object.values(game.world.npcs)[0];
+    witness.alive = true;
+    witness.currentGoal = "记录现场说法";
+    witness.locationId = game.view.locationId!;
+    witness.factionIds = [];
+    const crime = { intent: "违法行动", minutes: 30, ruleSummary: "现场出现争议。", fallbackNarrative: "一名路人留下说法。", suggestions: [] };
+    applyActionResult(game, "在街口公开抢劫", crime, crime.fallbackNarrative, crime.suggestions);
+    const rumor = game.world.socialRumors[0];
+    expect(rumor).toMatchObject({ mediaStatus: "不刊发", verificationStatus: "来源不足", corroborationCount: 1 });
+    expect(rumor.editorialDecision).toContain("暂不跨地区刊发");
+    advanceWorldTime(game, 30 * 1_440);
+    expect(rumor.status).toBe("已传播");
+    expect(game.view.news.some((item) => item.id === `${rumor.id}-media`)).toBe(false);
   });
 
   it("四个时代使用各自可用的公共传播渠道", () => {
     const channels = { 1: "城市告示与商会公报", 2: "报刊与魂导广播", 3: "大陆魂导传媒", 4: "联邦公共信息网" } as const;
+    const outlets = { 1: "商会公报编辑处", 2: "地方魂师报刊编辑部", 3: "联邦事务公报编辑部", 4: "联邦公共信息网" } as const;
     for (const era of [1, 2, 3, 4] as const) {
       const game = createGame({ era, gender: "男", difficulty: "标准", personality, seed: `media-era-${era}` });
       selectCandidate(game, game.view.candidates[0].id);
@@ -730,7 +750,7 @@ describe("第一部世界资料", () => {
       awakenCharacter(game);
       const delivery = { intent: "交付悬赏", minutes: 30, ruleSummary: "公开登记并完成悬赏。", fallbackNarrative: "登记处签发回单。", suggestions: [] };
       applyActionResult(game, "公开交付悬赏", delivery, delivery.fallbackNarrative, delivery.suggestions);
-      expect(game.world.socialRumors[0]).toMatchObject({ mediaChannel: channels[era], sourceKind: "公开登记", confidence: 92, mediaStatus: "待刊发" });
+      expect(game.world.socialRumors[0]).toMatchObject({ mediaChannel: channels[era], mediaOutlet: outlets[era], sourceKind: "公开登记", confidence: 92, mediaStatus: "待刊发", verificationStatus: "双记录核验", corroborationCount: 2 });
     }
   });
 
@@ -754,6 +774,7 @@ describe("第一部世界资料", () => {
     expect(correction.intent).toBe("证据化媒体更正");
     expect(rumor.mediaStatus).toBe("已更正");
     expect(rumor.correctionEvidence).toHaveLength(1);
+    expect(rumor.verificationStatus).toBe("更正证据已核验");
     expect(game.view.news.some((item) => item.id === `${rumor.id}-correction`)).toBe(true);
     expect(game.view.news.some((item) => item.id === rumor.id)).toBe(true);
   });
