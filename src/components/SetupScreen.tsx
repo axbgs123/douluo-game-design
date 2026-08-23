@@ -39,10 +39,10 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
     <main className="setup-page">
       <section className="intro-panel">
         <p className="eyebrow">第一部 · 武魂觉醒</p>
-        <h1>你的故事，不在原著目录里</h1>
+        <h1>先从六岁这年开始</h1>
         <p className="intro-copy">
-          选择的不是职业，而是一段尚未揭晓的命运。世界会记住行动，人物会在视线之外生活，
-          而武魂要等你亲手走进觉醒阵后才会显现。
+          你只定性别和性格。家里做什么、住在哪、武魂好不好，全由本地规则抽取。
+          选中一个孩子后，故事从觉醒室门口接着写。
         </p>
         <div className="principle-strip">
           <span>第一人称小说</span>
@@ -68,7 +68,7 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
         <section className="form-section compact-section">
           <div className="section-heading">
             <span className="section-number">壹</span>
-            <div><h2>留下最少的确定</h2><p>首版种族固定为人类，其他一切交给世界生成。</p></div>
+            <div><h2>先定两件事</h2><p>首版种族固定为人类。这里选择性别。</p></div>
           </div>
           <div className="choice-row">
             {(["男", "女"] as const).map((value) => (
@@ -82,7 +82,7 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
         <section className="form-section">
           <div className="section-heading">
             <span className="section-number">贰</span>
-            <div><h2>选择世界的锋利程度</h2><p>难度不改变因果，只改变信息、资源与失败曲线。</p></div>
+            <div><h2>选难度</h2><p>难度会影响情报、资源、失败代价和局外结算。</p></div>
           </div>
           <div className="difficulty-grid">
             {DIFFICULTIES.map((value) => (
@@ -96,7 +96,7 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
         <section className="form-section">
           <div className="section-heading">
             <span className="section-number">叁</span>
-            <div><h2>写下性格的初稿</h2><p>填写 3–8 个关键词。它们会被实际行为持续修正。</p></div>
+            <div><h2>写几个性格词</h2><p>填写 3–8 个。开局后以实际行动为准，系统会慢慢修正。</p></div>
           </div>
           <input className="text-field" value={keywordText} onChange={(event) => setKeywordText(event.target.value)} placeholder="例如：谨慎，重情，好学，坚韧，自由" />
           <div className="keyword-preview">
@@ -108,7 +108,7 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
         <section className="form-section">
           <div className="section-heading">
             <span className="section-number">肆</span>
-            <div><h2>八个尚未发生的瞬间</h2><p>没有标准答案，只用于形成初始内心倾向。</p></div>
+            <div><h2>回答八道情境题</h2><p>没有标准答案，只用来决定开局时的想法和习惯。</p></div>
           </div>
           <div className="question-list">
             {PERSONALITY_QUESTIONS.map((question, index) => (
@@ -134,7 +134,7 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
         </section>
 
         <details className="seed-details">
-          <summary>固定命运种子（可选）</summary>
+          <summary>固定随机种子（可选）</summary>
           <input className="text-field" value={seed} onChange={(event) => setSeed(event.target.value)} placeholder="留空则自动生成；相同种子可复现随机结果" />
         </details>
 

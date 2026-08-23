@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { SaveSummary } from "../shared/game.js";
+import type { MetaProgressionView, SaveSummary } from "../shared/game.js";
 import type { StoredGame } from "./domain/model.js";
 
 const databasePath = resolve(process.cwd(), ".data", "douluo.db");
@@ -30,7 +30,30 @@ database.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_events_game_sequence
   ON events(game_id, sequence);
+
+  CREATE TABLE IF NOT EXISTS meta_profile (
+    id TEXT PRIMARY KEY,
+    state_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
+
+const defaultMetaProgression: MetaProgressionView = {
+  legacyPoints: 0,
+  completedRuns: 0,
+  discoveredMartialSouls: 0,
+  discoveredOrigins: 0,
+  unlockedOrigins: ["斗罗本地基础出身"],
+  unlockedTraits: [],
+  unlockedHeirlooms: [],
+  difficultyBudgets: { 爽: 120, 简单: 80, 标准: 50, 困难: 25, 地狱: 10 },
+  difficultyMultipliers: { 爽: 0.5, 简单: 0.75, 标准: 1, 困难: 1.5, 地狱: 2.25 },
+};
+
+database.prepare(`
+  INSERT OR IGNORE INTO meta_profile (id, state_json, updated_at)
+  VALUES ('local', ?, ?)
+`).run(JSON.stringify(defaultMetaProgression), new Date().toISOString());
 
 const upsertGameStatement = database.prepare(`
   INSERT INTO games (id, state_json, created_at, updated_at)
@@ -92,4 +115,9 @@ export function listSaves(): SaveSummary[] {
       updatedAt: game.view.updatedAt,
     };
   });
+}
+
+export function getMetaProgression(): MetaProgressionView {
+  const row = database.prepare("SELECT state_json FROM meta_profile WHERE id = 'local'").get() as { state_json: string };
+  return { ...defaultMetaProgression, ...JSON.parse(row.state_json) as MetaProgressionView };
 }

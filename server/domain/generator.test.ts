@@ -44,6 +44,26 @@ describe("candidate generation", () => {
     expect(game.view.candidates).not.toEqual(original);
   });
 
+  it("keeps every awakening within twenty years of Tang San", () => {
+    const candidates = Array.from({ length: 40 }, (_, rerollIndex) =>
+      generateCandidates("timeline-window", rerollIndex, "男"),
+    ).flat();
+
+    for (const candidate of candidates) {
+      const years = candidate.public.eraRelation.match(/(\d+) 年/)?.[1];
+      if (years) expect(Number(years)).toBeLessThanOrEqual(20);
+    }
+  });
+
+  it("builds origins from enough combinations to avoid a tiny repeating pool", () => {
+    const summaries = new Set(
+      Array.from({ length: 20 }, (_, rerollIndex) =>
+        generateCandidates("origin-variety", rerollIndex, "女").map((candidate) => candidate.public.originSummary),
+      ).flat(),
+    );
+    expect(summaries.size).toBeGreaterThanOrEqual(24);
+  });
+
   it("reveals the martial soul only after selection and awakening", () => {
     const game = createGame({ gender: "女", difficulty: "标准", personality, seed: "awakening-seed" });
     const candidateId = game.view.candidates[0].id;

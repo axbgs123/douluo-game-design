@@ -3,6 +3,7 @@ import type {
   Difficulty,
   GameView,
   Gender,
+  MetaProgressionView,
   PersonalitySetup,
   SaveSummary,
 } from "../shared/game";
@@ -22,6 +23,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export function listGames(): Promise<SaveSummary[]> {
   return request("/api/games");
+}
+
+export function getMetaProgression(): Promise<MetaProgressionView> {
+  return request("/api/meta");
 }
 
 export function loadGame(id: string): Promise<GameView> {

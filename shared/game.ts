@@ -97,3 +97,15 @@ export interface DeepSeekSettingsView {
   baseUrl: string;
   model: string;
 }
+
+export interface MetaProgressionView {
+  legacyPoints: number;
+  completedRuns: number;
+  discoveredMartialSouls: number;
+  discoveredOrigins: number;
+  unlockedOrigins: string[];
+  unlockedTraits: string[];
+  unlockedHeirlooms: string[];
+  difficultyBudgets: Record<Difficulty, number>;
+  difficultyMultipliers: Record<Difficulty, number>;
+}

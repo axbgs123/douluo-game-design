@@ -10,6 +10,7 @@ import {
   submitAction,
 } from "./api";
 import { CandidateScreen } from "./components/CandidateScreen";
+import { MetaProgressionPanel } from "./components/MetaProgressionPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SetupScreen } from "./components/SetupScreen";
 import { StoryScreen } from "./components/StoryScreen";
@@ -20,6 +21,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [metaOpen, setMetaOpen] = useState(false);
 
   const refreshSaves = () => listGames().then(setSaves).catch(() => undefined);
   useEffect(() => { void refreshSaves(); }, []);
@@ -44,6 +46,7 @@ export default function App() {
         <button type="button" className="brand" onClick={() => setGame(null)}><i>斗</i><span>未定之书<small>DOULUO TEXT RPG</small></span></button>
         <div className="nav-actions">
           {game && <button type="button" onClick={() => setGame(null)}>返回书架</button>}
+          <button type="button" className="meta-nav-button" onClick={() => setMetaOpen(true)}>局外成长</button>
           <button type="button" onClick={() => setSettingsOpen(true)}>模型设置</button>
         </div>
       </nav>
@@ -76,6 +79,7 @@ export default function App() {
         onAction={(input) => run(() => submitAction(game.id, input))}
       />}
     </div>
+    <MetaProgressionPanel open={metaOpen} onClose={() => setMetaOpen(false)} />
     <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
   </>;
 }

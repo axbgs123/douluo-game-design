@@ -21,8 +21,9 @@ export function CandidateScreen({
     <main className="candidate-page">
       <header className="candidate-header">
         <p className="eyebrow">命运候选 · 第 {rerollIndex + 1} 轮</p>
-        <h1>三段人生，只有征兆</h1>
-        <p>武魂、天赋、金手指与风险仍然隐藏。选择以后，你要亲自走进觉醒阵。</p>
+        <h1>先看家里，再决定跟谁走</h1>
+        <p>这三个人都还没觉醒。你现在能知道的只有出身、住处和一些反常的小事。</p>
+        <p className="random-note">本地规则负责抽取，DeepSeek 只写选定后的剧情。每次新游戏都会换随机种子，相同种子则能复现结果。</p>
         <div className="trait-line">初始性格：{personalitySummary.join(" · ")}</div>
       </header>
 
@@ -48,9 +49,9 @@ export function CandidateScreen({
 
       <div className="candidate-actions">
         <button type="button" className="ghost-button" disabled={busy} onClick={() => void onReroll()}>
-          舍弃三人，重新抽取
+          换三个人
         </button>
-        <p>无限重抽不会提高隐藏强度，只会重写可能性。</p>
+        <p>可以一直换，稀有结果的概率不会偷偷上涨。</p>
       </div>
     </main>
   );

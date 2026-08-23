@@ -11,7 +11,7 @@ import {
   rerollCandidates,
   selectCandidate,
 } from "./domain/generator.js";
-import { listSaves, loadGame, saveGame } from "./db.js";
+import { getMetaProgression, listSaves, loadGame, saveGame } from "./db.js";
 import { narrateWithDeepSeek } from "./services/deepseek.js";
 import { settingsView, writeDeepSeekSettings } from "./services/settings.js";
 
@@ -44,6 +44,10 @@ app.get("/api/health", (_request, response) => {
 
 app.get("/api/games", (_request, response) => {
   response.json(listSaves());
+});
+
+app.get("/api/meta", (_request, response) => {
+  response.json(getMetaProgression());
 });
 
 app.get("/api/games/:id", (request, response) => {
