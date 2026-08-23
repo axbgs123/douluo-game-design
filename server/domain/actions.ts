@@ -892,7 +892,7 @@ function comboTrainingResolution(game: StoredGame, action: string): ActionResolu
   const result = exhausted ? "疲劳导致口令和站位失误，只保留失败复盘" : `完成站位、口令与魂力节奏训练，熟练度+${gain}`;
   training.evidence.push({ date: relationshipDate(game), result });
   training.evidence = training.evidence.slice(-20);
-  for (const relation of relations) recordPlayerRelation(game, relation, `与${names.find((name) => name !== relation.name)}共同训练${combo.name}并记录${exhausted ? "失败复盘" : "岗位配合"}`, exhausted ? { respect: 1 } : { trust: 1, closeness: 1 });
+  for (const relation of relations) recordPlayerRelation(game, relation, `与${names.filter((name) => name !== relation.name).join("、")}共同训练${combo.name}并记录${exhausted ? "失败复盘" : "岗位配合"}`, exhausted ? { respect: 1 } : { trust: 1, closeness: 1 });
   game.world.fatiguePoints += exhausted ? 8 : 16;
   return { intent: exhausted ? "连携训练复盘" : "连携训练", minutes: speedMinutes(game, 180, 720), ruleSummary: `${names.join("与")}完成第${training.sessions}次${combo.name}训练；熟练度${training.mastery}%${training.branch ? `，解锁分支“${training.branch}”` : ""}。${result}。`, fallbackNarrative: exhausted ? "口令喊到了，人却慢了半步。我们没有把这次失败抹掉，而是把错位、迟疑和体力透支逐项记下来，停止继续硬练。" : `两个人先把站位拆开走，再把魂力接续压到同一个节拍。每次提前或延误都重新来过，直到${combo.name}不再只是一句口令。`, suggestions: exhausted ? ["休息恢复", "查看失败复盘", "状态恢复后再训练"] : [`继续训练${combo.name}`, "查看连携档案", "进行实战验证"], systemMessages: [`连携训练 · ${combo.name} · ${training.mastery}%${training.branch ? ` · ${training.branch}` : ""}`] };
 }
