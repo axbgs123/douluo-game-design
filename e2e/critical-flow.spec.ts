@@ -103,6 +103,23 @@ async function seedBattleArmorGame() {
   database.saveGame(game, "e2e.battle-armor-fixture");
 }
 
+async function seedMechaLicenseGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 3, gender: "女", difficulty: "标准", seed: "e2e-mecha-license" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "机甲验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.character!.age = 15;
+  game.view.character!.coins = 50_000;
+  game.view.affiliations.push({ id: "e2e-mecha-school", name: "明都联邦机甲学院", role: "在册学员", reputation: "合格", joinedAt: "验收学籍" });
+  game.view.mecha = { license: "无", simulatorProgress: 66, simulatorSessions: 6, practicalPasses: 0 };
+  database.saveGame(game, "e2e.mecha-license-fixture");
+}
+
 async function seedStarshipCrewGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -379,6 +396,31 @@ test("斗三斗铠必须完成设计、材料门禁与逐件制作", async ({ pa
   }
   await expect(project).toContainText("下一件 左手前臂甲");
   await expect(page.getByText("斗铠 · 1字斗铠 · 右手前臂甲", { exact: true })).toBeVisible();
+});
+
+test("斗三机甲必须逐级取证且成年后才能登记所有权并试驾", async ({ page }) => {
+  await seedMechaLicenseGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "机甲验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  const mecha = page.locator(".special-system-card").filter({ hasText: "机甲资质" });
+  await submitAction(page, "参加黄级机甲驾驶考核");
+  await expect(mecha).toContainText("机甲资质 · 无");
+  await mecha.getByRole("button", { name: "资质考核" }).click();
+  await expect(mecha).toContainText("机甲资质 · 白级");
+  await mecha.getByRole("button", { name: "资质考核" }).click();
+  await expect(mecha).toContainText("机甲资质 · 黄级");
+  await mecha.getByRole("button", { name: "购置机甲" }).click();
+  await expect(mecha).toContainText("尚无自有机甲");
+  await submitAction(page, "等待一年");
+  await mecha.getByRole("button", { name: "购置机甲" }).click();
+  await expect(mecha).toContainText("黄色民用制式机甲");
+  await expect(mecha).toContainText("完好 · 能源 100%");
+  await mecha.getByRole("button", { name: "低速试驾" }).click();
+  await expect(mecha).toContainText("完好 · 能源 90%");
 });
 
 test("斗四星舰必须按岗位招募船员后才能协同并登记真实航时", async ({ page }) => {
