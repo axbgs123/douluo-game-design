@@ -250,7 +250,7 @@ describe("完整游玩规则", () => {
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).household;
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(8);
+    expect(migrated.schemaVersion).toBe(9);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
