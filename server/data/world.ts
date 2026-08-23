@@ -57,6 +57,8 @@ export interface CanonEventDefinition {
   participantIds: string[];
   inertia: ImportanceTier;
   publicSummary: string;
+  /** Controls whether the player receives the event immediately, through contacts, or only by witnessing it. */
+  visibility?: "公开" | "地方" | "秘密";
 }
 
 export interface SoulBeastDefinition {
@@ -203,13 +205,13 @@ export const CANON_EVENTS: CanonEventDefinition[] = [
   { id: "tang-awakening", year: 0, day: 20, title: "唐三与小舞进入诺丁学院", locationId: "notting-academy", participantIds: ["tang-san", "xiao-wu", "yu-xiaogang"], inertia: 5, publicSummary: "诺丁学院迎来两名先天满魂力的新生。" },
   { id: "shrek-enrollment", year: 6, day: 20, title: "史莱克七怪聚首", locationId: "shrek-village", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 5, publicSummary: "数名年轻魂师进入史莱克学院。" },
   { id: "shrek-relocation", year: 7, day: 45, title: "史莱克学院迁入天斗城", locationId: "heaven-dou-city", participantIds: ["flender", "yu-xiaogang", "zhao-wuji", "tang-san"], inertia: 4, publicSummary: "一所来自索托城的小学院在天斗城重新落脚。" },
-  { id: "academy-tournament", year: 8, day: 120, title: "全大陆高级魂师学院精英大赛预选赛开幕", locationId: "heaven-dou-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 5, publicSummary: "天斗赛区预选赛开幕，多所高级魂师学院开始争夺晋级名额。" },
+  { id: "academy-tournament", year: 8, day: 120, title: "全大陆高级魂师学院精英大赛预选赛开幕", locationId: "heaven-dou-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 5, visibility: "公开", publicSummary: "天斗赛区预选赛开幕，多所高级魂师学院开始争夺晋级名额。" },
   { id: "pope-palace-conflict", year: 8, day: 300, title: "教皇殿前的冲突", locationId: "spirit-city", participantIds: ["tang-san", "xiao-wu", "tang-hao", "bibi-dong", "gui-mei", "yue-guan"], inertia: 5, publicSummary: "大赛结束后的冲突使多方关系骤然紧张，公开消息受到严格控制。" },
   { id: "five-year-reunion", year: 13, title: "史莱克五年之约", locationId: "heaven-dou-city", participantIds: ["tang-san", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 4, publicSummary: "昔日史莱克学员约定重聚。" },
   { id: "tang-sect-founded", year: 14, title: "唐门在天斗城立足", locationId: "heaven-dou-city", participantIds: ["tang-san", "tai-tan", "bai-he", "niu-gao", "yang-wudi", "ning-rongrong"], inertia: 4, publicSummary: "一个结合多个单属性家族的新兴魂师势力开始活动。" },
-  { id: "seven-treasure-attack", year: 15, title: "七宝琉璃宗遇袭", locationId: "seven-treasure-fort", participantIds: ["ning-fengzhi", "chen-xin", "bibi-dong"], inertia: 5, publicSummary: "上三宗遭到突然袭击，大陆魂师势力开始重新站队。" },
+  { id: "seven-treasure-attack", year: 15, title: "七宝琉璃宗遇袭", locationId: "seven-treasure-fort", participantIds: ["ning-fengzhi", "chen-xin", "bibi-dong"], inertia: 5, visibility: "公开", publicSummary: "上三宗遭到突然袭击，大陆魂师势力开始重新站队。" },
   { id: "heaven-dou-coup", year: 17, title: "天斗皇室局势突变", locationId: "heaven-dou-city", participantIds: ["qian-renxue", "xue-ye", "xue-xing", "tang-san", "dugu-bo"], inertia: 5, publicSummary: "围绕皇位与太子身份的争夺公开化，天斗城进入戒严。" },
-  { id: "continental-war", year: 18, title: "大陆战争进入决战", locationId: "spirit-city", participantIds: ["tang-san", "bibi-dong", "qian-renxue"], inertia: 5, publicSummary: "帝国与武魂帝国的冲突改写大陆秩序。" },
+  { id: "continental-war", year: 18, title: "大陆战争进入决战", locationId: "spirit-city", participantIds: ["tang-san", "bibi-dong", "qian-renxue"], inertia: 5, visibility: "公开", publicSummary: "帝国与武魂帝国的冲突改写大陆秩序。" },
   { id: "suotuo-spirit-arena", year: 6, day: 60, title: "史莱克学员进入索托大斗魂场", locationId: "suotuo-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 3, publicSummary: "一支年轻魂师队伍在索托大斗魂场连续参赛。" },
   { id: "imperial-team-battle", year: 6, day: 150, title: "史莱克战队与皇斗战队交锋", locationId: "suotuo-city", participantIds: ["tang-san", "qin-ming", "yu-tianheng", "dugu-yan", "ye-lingling"], inertia: 4, publicSummary: "两支天才战队的交锋改变了多名教师和学员的去向。" },
   { id: "ice-fire-herbs", year: 7, day: 120, title: "冰火两仪眼仙草被取用", locationId: "ice-fire-spring", participantIds: ["tang-san", "dugu-bo"], inertia: 5, publicSummary: "落日森林深处的一批珍稀药草改变了数名年轻魂师的根基。" },
@@ -221,7 +223,7 @@ export const CANON_EVENTS: CanonEventDefinition[] = [
   { id: "gengxin-forging", year: 14, title: "唐门接触铁匠协会", locationId: "gengxin-city", participantIds: ["tang-san", "tai-tan", "lou-gao"], inertia: 3, publicSummary: "暗器设计与大陆最高水平的锻造技艺开始接触。" },
   { id: "sea-voyage", year: 15, title: "史莱克众人由瀚海城出海", locationId: "vast-sea-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 4, publicSummary: "一支年轻魂师队伍从瀚海城驶向危险远海。" },
   { id: "sea-god-trials", year: 16, title: "海神岛考核开启", locationId: "sea-god-island", participantIds: ["tang-san", "bo-saixi", "xiao-bai"], inertia: 5, publicSummary: "海神岛为大陆来客开启不同等级的考核。" },
-  { id: "soul-hunt-operation", year: 15, title: "武魂殿猎魂行动", locationId: "seven-treasure-fort", participantIds: ["bibi-dong", "ning-fengzhi", "chen-xin", "gu-rong", "yu-tianheng"], inertia: 5, publicSummary: "针对上三宗的大规模袭击同时展开，宗门格局受到重创。" },
+  { id: "soul-hunt-operation", year: 15, title: "武魂殿猎魂行动", locationId: "seven-treasure-fort", participantIds: ["bibi-dong", "ning-fengzhi", "chen-xin", "gu-rong", "yu-tianheng"], inertia: 5, visibility: "公开", publicSummary: "针对上三宗的大规模袭击同时展开，宗门格局受到重创。" },
 ];
 
 export const SOUL_BEASTS: SoulBeastDefinition[] = [

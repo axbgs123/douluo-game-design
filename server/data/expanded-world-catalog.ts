@@ -226,7 +226,19 @@ const EVENT_DAYS: Record<string, number> = {
   "xiao-wu-identity-exposed": 300,
   "tang-hao-rescue": 301,
 };
-const event = ([id, year, title, locationId, participantIds, inertia, publicSummary]: EventRow): CanonEventDefinition => ({ id, year, day: EVENT_DAYS[id], title, locationId, participantIds, inertia, publicSummary });
+const PUBLIC_EVENT_IDS = new Set([
+  "tournament-finals", "twin-empires-war", "jialing-pass", "d2-soul-tournament", "d2-mingdu-tournament",
+  "d2-sun-moon-war", "d2-shrek-defense", "d2-beast-tide", "d3-student-competition", "d3-shrek-destruction",
+  "d3-tang-sect-strike", "d3-five-gods", "d3-shrek-rebuild", "d3-final-abyss", "d4-federal-selection",
+  "d4-crimson-domain", "d4-final-space-war",
+]);
+const SECRET_EVENT_IDS = new Set([
+  "ayin-sacrifice", "ice-fire-herbs", "seven-devils-herbs", "tang-san-awakens-emperor", "slaughter-city-entry",
+  "d2-snow-empress-embryo", "d2-soul-spirit-born", "d2-undead-demesne", "d3-wulin-awakening",
+  "d3-dragon-valley", "d3-blood-god", "d3-abyss-war", "d3-wulin-guye-sleep", "d4-xuanyu-found",
+  "d4-xuanyu-awakening", "d4-heavenly-dragon-test", "d4-dragon-god-return",
+]);
+const event = ([id, year, title, locationId, participantIds, inertia, publicSummary]: EventRow): CanonEventDefinition => ({ id, year, day: EVENT_DAYS[id], title, locationId, participantIds, inertia, publicSummary, visibility: PUBLIC_EVENT_IDS.has(id) ? "公开" : SECRET_EVENT_IDS.has(id) ? "秘密" : "地方" });
 
 export const EXPANDED_EVENTS: CanonEventDefinition[] = ([
   ["ayin-sacrifice", -6, "阿银献祭与昊天宗旧案", "holy-soul-village", ["tang-hao", "a-yin", "qian-xunji"], 5, "昊天宗与武魂殿的冲突留下长期裂痕。"],

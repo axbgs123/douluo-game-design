@@ -117,7 +117,9 @@ describe("完整游玩规则", () => {
 
   it("跨年会推进年龄但不会提前触发年内原作节点", () => {
     const game = awakened("timeline");
-    game.world = createHiddenWorld(-1, game.view.locationId!);
+    game.view.locationId = "notting-academy";
+    game.view.location = "诺丁初级魂师学院";
+    game.world = createHiddenWorld(-1, "notting-academy");
     game.view.worldTime = { era: "与唐三同年参加武魂觉醒", year: -1, day: 360, time: "23:00", season: "冬" };
     const age = game.view.character!.age;
     const messages = advanceWorldTime(game, 120);
@@ -259,6 +261,29 @@ describe("完整游玩规则", () => {
     expect(CANON_EVENTS.some((event) => redundantIds.includes(event.id))).toBe(false);
     expect(CANON_EVENTS.find((event) => event.id === "academy-tournament")).toMatchObject({ year: 8, day: 120, locationId: "heaven-dou-city" });
     expect(CANON_EVENTS.find((event) => event.id === "tournament-finals")).toMatchObject({ year: 8, day: 260, locationId: "spirit-city" });
+  });
+
+  it("秘密事件照常推进世界但不会变成全图即时新闻", () => {
+    const game = awakened("secret-news");
+    game.world = createHiddenWorld(6, "notting-city");
+    game.view.locationId = "notting-city";
+    game.view.location = "诺丁城";
+    game.view.worldTime = { era: "唐三觉醒后 6 年", year: 6, day: 360, time: "23:00", season: "冬" };
+    const messages = advanceWorldTime(game, 121 * 1440);
+    expect(game.world.firedCanonEvents).toContain("ice-fire-herbs");
+    expect(game.view.news.some((item) => item.id === "ice-fire-herbs")).toBe(false);
+    expect(messages.some((message) => message.includes("冰火两仪眼仙草"))).toBe(false);
+  });
+
+  it("大陆级公开事件仍会通过世界消息传播", () => {
+    const game = awakened("public-news");
+    game.world = createHiddenWorld(7, "notting-city");
+    game.view.locationId = "notting-city";
+    game.view.location = "诺丁城";
+    game.view.worldTime = { era: "唐三觉醒后 7 年", year: 7, day: 360, time: "23:00", season: "冬" };
+    const messages = advanceWorldTime(game, 121 * 1440);
+    expect(game.view.news.some((item) => item.id === "academy-tournament")).toBe(true);
+    expect(messages).toContain("消息 · 全大陆高级魂师学院精英大赛预选赛开幕");
   });
 
   it("a strong linked cause can change the matching canon event", () => {

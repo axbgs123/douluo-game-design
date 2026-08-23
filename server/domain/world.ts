@@ -583,12 +583,19 @@ function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentO
       continue;
     }
     game.world.firedCanonEvents.push(event.id);
-    addNews(game, event.id, event.title, event.publicSummary);
     for (const participantId of event.participantIds) {
       const npc = game.world.npcs[participantId];
       if (npc && event.locationId) npc.locationId = event.locationId;
     }
-    messages.push(`传闻 · ${event.title}`);
+    const atScene = Boolean(event.locationId && event.locationId === game.view.locationId);
+    const knownParticipant = event.participantIds.some((id) => game.world.npcs[id]?.knownToPlayer);
+    const directlyInfluenced = linkedCauses.some((cause) => cause.affectedNpcIds.some((id) => event.participantIds.includes(id)) || cause.locationId === event.locationId);
+    const visibility = event.visibility ?? "地方";
+    const observable = visibility === "公开" || (visibility === "地方" && (atScene || knownParticipant)) || (visibility === "秘密" && atScene && (knownParticipant || directlyInfluenced));
+    if (observable) {
+      addNews(game, event.id, event.title, event.publicSummary);
+      messages.push(`${visibility === "公开" ? "消息" : visibility === "秘密" ? "亲历" : "传闻"} · ${event.title}`);
+    }
   }
   return messages;
 }
