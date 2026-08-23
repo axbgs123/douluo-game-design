@@ -402,6 +402,15 @@ export interface InstitutionAssignmentView {
   stageIndex: number;
   stageStartedActionIndex: number;
   stages: Array<{ title: string; detail: string; evidenceKeywords: string[] }>;
+  reviewer?: {
+    name: string;
+    role: string;
+    stance: string;
+    trust: number;
+    objections: number;
+    meetings: number;
+    evidence: string[];
+  };
 }
 
 export interface LogisticsContractView {

@@ -1122,21 +1122,28 @@ describe("第一部世界资料", () => {
     const receive = commit("向七宝琉璃宗领取机构事务");
     expect(receive.ruleSummary).toContain("分支为情报");
     const task = game.view.tasks.find((item) => item.institutionAssignment)!;
-    expect(task.institutionAssignment).toMatchObject({ specialization: "情报", risk: expect.stringContaining("失败记录"), stageIndex: 0 });
+    expect(task.institutionAssignment).toMatchObject({ specialization: "情报", risk: expect.stringContaining("失败记录"), stageIndex: 0, reviewer: { name: "沈璧", role: "宗产复核执事", trust: 50, objections: 0, meetings: 0 } });
 
     commit("调查情报目标", { intent: "调查情报", minutes: 60, ruleSummary: "调查失败，目标没有得到核实。", fallbackNarrative: "线索在现场断了。", suggestions: ["重新调查"] });
     const rejected = resolveAction(game, "向七宝琉璃宗推进机构事务");
     expect(rejected.intent).toBe("无法完成");
     expect(rejected.ruleSummary).toContain("消耗和失败记录保留");
     expect(task.institutionAssignment!.stageIndex).toBe(0);
+    expect(task.institutionAssignment!.reviewer).toMatchObject({ trust: 48, objections: 1 });
+    const meeting = resolveAction(game, "询问沈璧当前验收异议");
+    expect(meeting.intent).toBe("与机构复核人协商");
+    expect(meeting.ruleSummary).toContain("物资去向和宗门账册");
+    expect(task.institutionAssignment!.reviewer).toMatchObject({ trust: 48, objections: 1, meetings: 1 });
 
     commit("重新调查情报目标并核对委托对象", { intent: "调查情报", minutes: 90, ruleSummary: "调查目标完成，委托对象和知识边界已经核对。", fallbackNarrative: "这次记录能与名册对上。", suggestions: [] });
     expect(resolveAction(game, "向七宝琉璃宗推进机构事务").ruleSummary).toContain("进度 1/4");
+    expect(task.institutionAssignment!.reviewer).toMatchObject({ trust: 50, objections: 1, meetings: 1 });
 
     const support = awakened("sect-explicit-support-assignment");
     support.view.affiliations = [{ id: "clear-sky", name: "昊天宗", role: "外围成员", reputation: "生疏", joinedAt: "测试", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
     const supportTask = resolveAction(support, "向昊天宗领取后勤救护分支机构事务");
     expect(supportTask.ruleSummary).toContain("分支为支援");
+    expect(support.view.tasks.find((item) => item.institutionAssignment)?.institutionAssignment?.reviewer).toMatchObject({ name: "唐峤", role: "封山戒律执事" });
   });
 
   it("连续世代档案需要分步核验且不会把历史权益变成当前资产", () => {

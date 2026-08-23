@@ -1534,6 +1534,26 @@ function institutionAssignmentFor(game: StoredGame, affiliationName: string, req
   ] };
 }
 
+function institutionReviewerFor(affiliation: StoredGame["view"]["affiliations"][number], assignment: Pick<InstitutionAssignmentView, "route" | "specialization">): NonNullable<InstitutionAssignmentView["reviewer"]> {
+  const profiles: Array<[RegExp, string, string, string]> = [
+    [/七宝琉璃/, "沈璧", "宗产复核执事", "任何支援都必须对得上受援者、物资去向和宗门账册"],
+    [/昊天/, "唐峤", "封山戒律执事", "个人功劳不能越过封山戒律与宗族旧案"],
+    [/象甲/, "呼延硕", "内门考功执事", "口头勇武不算功绩，伤损与撤退同样必须入册"],
+    [/唐门/, "叶衡", "机括验收执事", "暗器、魂导与情报成果必须区分图纸来源和实际复现"],
+    [/本体宗/, "程骁", "传承考核执事", "身体代价和二次觉醒风险不能被训练成绩掩盖"],
+    [/日月|魂导/, "明序", "安全审查员", "核心阵法、材料批次和失败实验必须形成完整责任链"],
+    [/传灵塔/, "冷澄", "魂灵来源复核员", "魂灵授权、死亡记录和知情同意必须来自不同档案"],
+    [/战神/, "岳临", "巡防考功官", "训练成绩不能替代现场处置与损失复盘"],
+    [/舰队/, "周砺", "值勤考评参谋", "模拟、真实航时和船员签字必须分账"],
+    [/星际|史莱克/, "林珩", "课程答辩官", "个人高分不能替代团队协同和事故复盘"],
+  ];
+  const matched = profiles.find(([pattern]) => pattern.test(affiliation.name));
+  const fallbackNames = ["顾谨", "苏衡", "陆简", "程砚"];
+  const fallbackName = fallbackNames[[...affiliation.id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % fallbackNames.length];
+  const [name, role, stance] = matched ? matched.slice(1) as [string, string, string] : [fallbackName, `${assignment.specialization ?? "事务"}复核执事`, `只认可领取当前阶段后形成的${assignment.route}行动证据`];
+  return { name, role, stance, trust: 50, objections: 0, meetings: 0, evidence: [`受命复核${assignment.route}`] };
+}
+
 function institutionResolution(game: StoredGame, action: string): ActionResolution {
   const affiliation = game.view.affiliations.find((item) => action.includes(item.name)) ?? game.view.affiliations[0];
   if (!affiliation) return impossible("我还没有任何能够发放正式事务的在册机构身份。", ["加入当地机构", "申请学院", "先完成外围委托"]);
@@ -1541,11 +1561,22 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
   affiliation.completedAssignments ??= 0;
   affiliation.rankEvidence ??= [];
   const active = game.view.tasks.find((task) => task.id?.startsWith(`institution-${affiliation.id}-`) && task.status === "进行中");
+  if (/询问.*(?:异议|验收|复核)|协商.*(?:验收|复核)|查看.*(?:复核人|验收人)/.test(action)) {
+    const chain = active?.institutionAssignment;
+    const reviewer = chain?.reviewer;
+    if (!active || !chain || !reviewer) return impossible(`${affiliation.name}当前没有带具名复核人的在册事务。`, ["领取机构事务", "查看当前任务", "核对所属机构"]);
+    const stage = chain.stages[chain.stageIndex];
+    reviewer.meetings += 1;
+    reviewer.evidence.push(`第${chain.stageIndex + 1}阶段当面说明验收边界：${stage?.title ?? "最终交付"}`);
+    reviewer.evidence = reviewer.evidence.slice(-12);
+    return { intent: "与机构复核人协商", minutes: 45, ruleSummary: `${reviewer.role}${reviewer.name}说明其立场：“${reviewer.stance}”。当前异议${reviewer.objections}次、信任${reviewer.trust}；${stage ? `阶段“${stage.title}”仍需${stage.evidenceKeywords.join("、")}之一的后续成功行动` : "全部阶段已登记，等待最终交付"}。`, fallbackNarrative: `${reviewer.name}没有把异议收回，只把缺的那一栏指给我看。谈话让验收边界更清楚，却没有替代现场行动，也没有凭空多出一枚印章。`, suggestions: stage ? [stage.detail, `完成${stage.title}要求`, `向${affiliation.name}推进机构事务`] : [`向${affiliation.name}交付机构事务`, "复核全部阶段证据", "准备最终答辩"] };
+  }
   if (/领取|申请.*任务|申请.*事务/.test(action) && !/晋升/.test(action)) {
     if (active) return impossible(`${affiliation.name}已有一项未交付事务：${active.title}。`, [`处理${active.title}`, `核对${active.title}的验收条件`, "放弃或说明失败原因"]);
     const assignment = institutionAssignmentFor(game, affiliation.name, action);
-    ensureTask(game, { id: `institution-${affiliation.id}-${game.actionIndex}`, title: assignment.route, kind: "计划", detail: `当前阶段 1/${assignment.stages.length}：${assignment.stages[0].title}；${assignment.stages[0].detail}`, status: "进行中", ownerId: affiliation.id, institutionAssignment: { route: assignment.route, specialization: assignment.specialization, risk: assignment.risk, stageIndex: 0, stageStartedActionIndex: game.actionIndex, stages: assignment.stages } });
-    return { intent: "领取机构事务", minutes: 30, ruleSummary: `从${affiliation.name}领取“${assignment.route}”共 ${assignment.stages.length} 个阶段${assignment.specialization ? `；分支为${assignment.specialization}` : ""}${assignment.risk ? `；失败代价：${assignment.risk}` : ""}。当前为“${assignment.stages[0].title}”，尚未获得贡献或报酬。`, fallbackNarrative: `事务牌不再只有一句结果。每一段都有开始时间、验收关键词和签字人，前一页没盖章，后一页就不能假装已经做完。`, suggestions: [assignment.stages[0].detail, `向${affiliation.name}推进机构事务`, "准备所需资源"] };
+    const reviewer = institutionReviewerFor(affiliation, assignment);
+    ensureTask(game, { id: `institution-${affiliation.id}-${game.actionIndex}`, title: assignment.route, kind: "计划", detail: `当前阶段 1/${assignment.stages.length}：${assignment.stages[0].title}；${assignment.stages[0].detail}`, status: "进行中", ownerId: affiliation.id, institutionAssignment: { route: assignment.route, specialization: assignment.specialization, risk: assignment.risk, stageIndex: 0, stageStartedActionIndex: game.actionIndex, stages: assignment.stages, reviewer } });
+    return { intent: "领取机构事务", minutes: 30, ruleSummary: `从${affiliation.name}领取“${assignment.route}”共 ${assignment.stages.length} 个阶段${assignment.specialization ? `；分支为${assignment.specialization}` : ""}${assignment.risk ? `；失败代价：${assignment.risk}` : ""}。${reviewer.role}${reviewer.name}负责验收，其立场是“${reviewer.stance}”。当前为“${assignment.stages[0].title}”，尚未获得贡献或报酬。`, fallbackNarrative: `事务牌不再只有一句结果。${reviewer.name}把每一段的开始时间、验收关键词和责任签字逐项标出，前一页没盖章，后一页就不能假装已经做完。`, suggestions: [assignment.stages[0].detail, `询问${reviewer.name}的验收异议`, "准备所需资源"] };
   }
   if (/推进|登记.*阶段|提交.*阶段/.test(action) && !/晋升/.test(action)) {
     if (!active?.institutionAssignment) return impossible(`${affiliation.name}没有可以逐阶段推进的在册事务链。`, ["领取机构事务", "查看当前任务", "核对所属机构"]);
@@ -1554,10 +1585,23 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
     if (!stage) return impossible("所有阶段已经登记完成，应进入最终交付而不是重复推进。", [`向${affiliation.name}交付机构事务`, "核对全部阶段证据", "查看报酬条件"]);
     const attempts = game.world.actionLedger.filter((entry) => entry.index > chain.stageStartedActionIndex && stage.evidenceKeywords.some((keyword) => `${entry.action}${entry.intent}${entry.result}`.includes(keyword)));
     const evidence = attempts.filter((entry) => !["领取机构事务", "推进机构事务", "交付机构事务", "一般行动", "无法完成", "规则阻止"].includes(entry.intent) && !/失败|无法完成|缺少/.test(entry.result));
-    if (!evidence.length) return impossible(attempts.length ? `阶段“${stage.title}”已有行动尝试，但结果失败或不满足验收；消耗和失败记录保留，阶段不会推进。` : `阶段“${stage.title}”缺少领取该阶段后的真实行动记录；需要：${stage.evidenceKeywords.join("、")}。`, [stage.detail, "完成要求后再登记阶段", "核对行动收据"]);
+    if (!evidence.length) {
+      if (chain.reviewer) {
+        chain.reviewer.objections += 1;
+        chain.reviewer.trust = Math.max(0, chain.reviewer.trust - 2);
+        chain.reviewer.evidence.push(`驳回第${chain.stageIndex + 1}阶段：${attempts.length ? "行动失败或证据不匹配" : "没有领取阶段后的行动收据"}`);
+        chain.reviewer.evidence = chain.reviewer.evidence.slice(-12);
+      }
+      return impossible(attempts.length ? `阶段“${stage.title}”已有行动尝试，但结果失败或不满足验收；消耗和失败记录保留，阶段不会推进。` : `阶段“${stage.title}”缺少领取该阶段后的真实行动记录；需要：${stage.evidenceKeywords.join("、")}。`, [stage.detail, chain.reviewer ? `询问${chain.reviewer.name}的验收异议` : "完成要求后再登记阶段", "核对行动收据"]);
+    }
     const proof = evidence.at(-1)!;
     active.progressEvidence ??= [];
     active.progressEvidence.push(`${stage.title}：${proof.action}（${proof.intent}）`);
+    if (chain.reviewer) {
+      chain.reviewer.trust = Math.min(100, chain.reviewer.trust + 2);
+      chain.reviewer.evidence.push(`通过第${chain.stageIndex + 1}阶段：${proof.action}`);
+      chain.reviewer.evidence = chain.reviewer.evidence.slice(-12);
+    }
     chain.stageIndex += 1;
     chain.stageStartedActionIndex = game.actionIndex;
     const next = chain.stages[chain.stageIndex];
@@ -1574,6 +1618,10 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
     const evidence = active.institutionAssignment ? active.progressEvidence ?? [] : game.world.actionLedger.filter((entry) => entry.index > (active.createdActionIndex ?? -1) && !["领取机构事务", "交付机构事务", "一般行动", "无法完成", "规则阻止"].includes(entry.intent) && evidencePattern.test(`${entry.action}${entry.intent}${entry.result}`));
     if (!evidence.length) return impossible(`“${active.title}”缺少领取后的可核验行动记录。`, [`实际处理${active.title}`, "收集制作、巡防或训练记录", "核对验收条件"]);
     active.status = "完成";
+    if (active.institutionAssignment?.reviewer) {
+      active.institutionAssignment.reviewer.trust = Math.min(100, active.institutionAssignment.reviewer.trust + 3);
+      active.institutionAssignment.reviewer.evidence.push(`签署${active.title}最终验收`);
+    }
     if (!active.institutionAssignment) active.progressEvidence = evidence.slice(-3).map((entry) => typeof entry === "string" ? entry : `${entry.action}（${entry.result}）`);
     const contribution = Math.min(20, 8 + evidence.length * 2);
     affiliation.contribution += contribution;
@@ -2655,7 +2703,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/完成承诺|履行承诺/.test(action)) resolution = fulfillPromiseResolution(game, action);
   else if (/上课|课程|学院学习|参加实战课/.test(action)) resolution = academyStudyResolution(game);
   else if (/入学|报名.*学院|申请.*学院|成为工读生/.test(action)) resolution = academyResolution(game);
-  else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|推进.*机构事务|登记.*阶段|提交.*阶段|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正/.test(action)) resolution = institutionResolution(game, action);
+  else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|推进.*机构事务|登记.*阶段|提交.*阶段|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正|询问.*(?:异议|验收|复核)|协商.*(?:验收|复核)|查看.*(?:复核人|验收人)/.test(action)) resolution = institutionResolution(game, action);
   else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克|舰队|联邦|传灵塔|战神/.test(action)) resolution = factionResolution(game, action);
   else if (/拜师|拜.*为师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
   else if (/成为朋友|确认朋友|建立友情|长期关系|成为伴侣|确认恋爱|表达.*心意|求婚|婚姻|结婚|成婚|婚礼|组建家庭|家庭住所|共同住所|家庭准备|生育|收养.*孩子|孩子.*加入家庭|孩子出生/.test(action)) resolution = relationshipResolution(game, action);

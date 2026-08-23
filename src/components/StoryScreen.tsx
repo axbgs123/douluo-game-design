@@ -107,7 +107,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
             {panel === "背包" && <InventoryPanel game={game} submit={submit} busy={busy} />}
             {panel === "地图" && <MapPanel game={game} submit={submit} busy={busy} onMapPin={onMapPin} onMapPinRemove={onMapPinRemove} />}
             {panel === "关系" && <RelationPanel game={game} submit={submit} busy={busy} />}
-            {panel === "任务" && <TaskPanel game={game} />}
+            {panel === "任务" && <><InstitutionReviewerPanel game={game} submit={submit} busy={busy} /><TaskPanel game={game} /></>}
             {panel === "情报" && <IntelligencePanel game={game} />}
             {panel === "手记" && <ArchivePanel game={game} />}
             {panel === "猎魂" && <HuntPanel game={game} submit={submit} busy={busy} />}
@@ -274,6 +274,15 @@ function RelationPanel({ game, submit, busy }: { game: GameView; submit: (value:
   {(game.family.partner || game.family.children.length > 0 || game.family.familyPlan) && <><h3 className="panel-title">家庭档案</h3><div className="player-relation-ledger">{game.family.partner && <article><header><strong>{game.family.partner.name}</strong><span>{game.family.partner.status}</span></header><p>{game.family.partner.establishedAt}</p><small>双方同意证据 {game.family.partner.consentEvidence.length} 条</small>{game.family.partner.status === "配偶" && !game.family.familyPlan && <button type="button" disabled={busy} onClick={() => submit(`与${game.family.partner!.name}讨论组建家庭`)}>讨论家庭计划</button>}</article>}{game.family.familyPlan && <article><header><strong>共同家庭计划</strong><span>{game.family.familyPlan.preparedAtOrdinal ? "准备完成" : "准备中"}</span></header><p>{game.family.familyPlan.agreedAt}</p><small>现实证据 {game.family.familyPlan.evidence.length} 条</small>{!game.family.familyPlan.preparedAtOrdinal && <button type="button" disabled={busy} onClick={() => submit("准备共同家庭住所")}>完成准备</button>}</article>}{game.family.children.map((child) => <article key={child.id}><header><strong>{child.name}</strong><span>{child.route}</span></header><p>{child.parentNames.join("、")}</p><small>{child.joinedAt} · 不附带战力继承</small></article>)}</div></>}
   {game.npcRelations.length > 0 && <><h3 className="panel-title">人物之间</h3><div className="npc-relation-ledger">{game.npcRelations.map((relation) => <article key={relation.id}><header><strong>{relation.leftName} — {relation.rightName}</strong><span>{relation.kind}</span></header><p>{relation.reason}</p><small>{relation.date} · 信任 {relation.dimensions.trust} · 戒备 {relation.dimensions.vigilance} · 利益 {relation.dimensions.sharedInterest}</small></article>)}</div></>}
   </div>;
+}
+
+function InstitutionReviewerPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
+  const assignments = game.tasks.filter((task) => task.status === "进行中" && task.institutionAssignment?.reviewer);
+  if (!assignments.length) return null;
+  return <div className="player-relation-ledger">{assignments.map((task) => {
+    const reviewer = task.institutionAssignment!.reviewer!;
+    return <article key={`${task.id}-reviewer`}><header><strong>{reviewer.name}</strong><span>{reviewer.role}</span></header><p>{reviewer.stance}</p><small>信任 {reviewer.trust} · 异议 {reviewer.objections} · 会谈 {reviewer.meetings}</small>{reviewer.evidence.at(-1) && <em>{reviewer.evidence.at(-1)}</em>}<button type="button" disabled={busy} onClick={() => submit(`询问${reviewer.name}当前验收异议`)}>询问异议</button></article>;
+  })}</div>;
 }
 
 function TaskPanel({ game }: { game: GameView }) {
