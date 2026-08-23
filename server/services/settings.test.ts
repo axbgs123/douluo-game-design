@@ -10,6 +10,9 @@ const settings = await import("./settings.js");
 
 afterAll(() => {
   delete process.env.DOULUO_DATA_DIR;
+  delete process.env.DEEPSEEK_API_KEY;
+  delete process.env.DEEPSEEK_BASE_URL;
+  delete process.env.DEEPSEEK_MODEL;
   if (testDirectory.startsWith(testDirectoryPrefix)) rmSync(testDirectory, { recursive: true, force: true });
 });
 
@@ -25,5 +28,19 @@ describe("模型设置", () => {
   it("can explicitly remove a saved API key", () => {
     settings.writeDeepSeekSettings({ clearApiKey: true, baseUrl: "https://api.deepseek.com", model: "deepseek-test", novelEngineEnabled: true });
     expect(settings.settingsView().hasKey).toBe(false);
+  });
+
+  it("allows an isolated deployment to override all connection fields with environment variables", () => {
+    process.env.DEEPSEEK_API_KEY = "environment-key";
+    process.env.DEEPSEEK_BASE_URL = "http://127.0.0.1:18999";
+    process.env.DEEPSEEK_MODEL = "environment-model";
+    expect(settings.readDeepSeekSettings()).toMatchObject({
+      apiKey: "environment-key",
+      baseUrl: "http://127.0.0.1:18999",
+      model: "environment-model",
+    });
+    delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.DEEPSEEK_BASE_URL;
+    delete process.env.DEEPSEEK_MODEL;
   });
 });

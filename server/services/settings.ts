@@ -19,16 +19,23 @@ const defaults = {
 
 export function readDeepSeekSettings(): DeepSeekSettingsFile {
   const environmentKey = process.env.DEEPSEEK_API_KEY?.trim();
+  const environmentBaseUrl = process.env.DEEPSEEK_BASE_URL?.trim();
+  const environmentModel = process.env.DEEPSEEK_MODEL?.trim();
   try {
     const file = JSON.parse(readFileSync(settingsPath, "utf8")) as Partial<DeepSeekSettingsFile>;
     return {
       apiKey: environmentKey || file.apiKey || "",
-      baseUrl: file.baseUrl || defaults.baseUrl,
-      model: file.model || defaults.model,
+      baseUrl: environmentBaseUrl || file.baseUrl || defaults.baseUrl,
+      model: environmentModel || file.model || defaults.model,
       novelEngineEnabled: file.novelEngineEnabled !== false,
     };
   } catch {
-    return { apiKey: environmentKey || "", ...defaults };
+    return {
+      apiKey: environmentKey || "",
+      baseUrl: environmentBaseUrl || defaults.baseUrl,
+      model: environmentModel || defaults.model,
+      novelEngineEnabled: defaults.novelEngineEnabled,
+    };
   }
 }
 

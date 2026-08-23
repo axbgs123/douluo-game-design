@@ -19,3 +19,5 @@ dist-server/
 coverage/
 .playwright-cli/
 output/playwright/
+playwright-report/
+test-results/
