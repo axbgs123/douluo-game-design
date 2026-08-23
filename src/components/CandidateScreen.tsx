@@ -40,6 +40,7 @@ export function CandidateScreen({
       <section className="candidate-map-section">
         <div className="candidate-map-heading"><div><span>出生位置</span><h2>三个人此刻住在哪里</h2></div><div className="rarity-legend"><i className="legend-平凡" />平凡<i className="legend-优秀" />优秀<i className="legend-稀有" />稀有<i className="legend-传奇" />传奇<i className="legend-神话" />神话</div></div>
         <DouluoWorldMap
+          era={era}
           landmarks={worldMapPointsForEra(era).filter((point) => !point.hidden || candidates.some((candidate) => candidate.locationId === point.id))}
           markers={candidates.map((candidate, index) => ({
             id: candidate.id,

@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import type { MapPinView } from "../../shared/game";
+import type { GameEra, MapPinView } from "../../shared/game";
 import { WORLD_MAP_POINTS, type WorldMapPoint } from "../../shared/world-map";
 
 export interface AtlasMarker {
@@ -13,6 +13,7 @@ export interface AtlasMarker {
 }
 
 interface DouluoWorldMapProps {
+  era?: GameEra;
   landmarks?: Array<WorldMapPoint & { muted?: boolean }>;
   markers?: AtlasMarker[];
   pins?: MapPinView[];
@@ -22,6 +23,7 @@ interface DouluoWorldMapProps {
 }
 
 export function DouluoWorldMap({
+  era = 1,
   landmarks = WORLD_MAP_POINTS.filter((point) => !point.hidden),
   markers = [],
   pins = [],
@@ -29,6 +31,13 @@ export function DouluoWorldMap({
   onCanvasClick,
   onPinRemove,
 }: DouluoWorldMapProps) {
+  const regionLabels = {
+    1: ["天斗帝国", "星罗帝国", "西海"],
+    2: ["天魂与斗灵", "星罗帝国", "西海"],
+    3: ["斗罗大陆", "星罗大陆", "远海"],
+    4: ["斗罗联邦", "星际航域", "宇宙"],
+  } as const;
+  const [westernRegion, easternRegion, surroundingRegion] = regionLabels[era];
   const placePin = (event: MouseEvent<SVGSVGElement>) => {
     if (!onCanvasClick || (event.target as Element).closest("[data-map-control]")) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -44,7 +53,7 @@ export function DouluoWorldMap({
       style={{ width: `${zoom * 100}%` }}
       viewBox="0 0 1000 640"
       role="img"
-      aria-label="斗罗大陆第一部交互地图"
+      aria-label={`斗罗大陆第${era}时代交互地图`}
       onClick={placePin}
     >
       <defs>
@@ -64,9 +73,9 @@ export function DouluoWorldMap({
       <g className="map-forest" aria-hidden="true">
         {[[250,238],[278,250],[301,231],[485,374],[520,388],[552,375],[509,420],[566,413],[719,458]].map(([x,y], index) => <path key={index} d={`M${x} ${y} l10 -18 10 18 h-7 l9 15 h-24 l9 -15z`} />)}
       </g>
-      <text className="map-region-title" x="335" y="115">天斗帝国</text>
-      <text className="map-region-title" x="675" y="475">星罗帝国</text>
-      <text className="map-sea-title" x="40" y="410">西海</text>
+      <text className="map-region-title" x="335" y="115">{westernRegion}</text>
+      <text className="map-region-title" x="675" y="475">{easternRegion}</text>
+      <text className="map-sea-title" x="40" y="410">{surroundingRegion}</text>
       {landmarks.map((point) => <g key={point.id} className={`atlas-landmark kind-${point.kind} ${point.muted ? "muted" : ""}`} transform={`translate(${point.x * 10} ${point.y * 6.4})`}>
         <circle r="5" />
         <text y="-10" textAnchor="middle">{point.name}</text>

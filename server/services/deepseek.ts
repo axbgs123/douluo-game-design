@@ -108,9 +108,10 @@ export async function interpretActionWithDeepSeek(game: StoredGame, playerInput:
           "不能决定成功失败，不能增加物品、能力、地点、人物或前提。保留玩家的具体目标、方法、谨慎程度和退路。",
           "玩家一次输入多项行动时，只整理能够连续安全执行的第一个阶段；在战斗、生死、入宗或背叛、魂环魂骨、婚恋、杀死重要人物、暴露秘密、改变原作节点、消耗不可恢复物品、复活成神等重大节点前停下，不替玩家跨过去。",
           "可用动作词包括修炼、休息、前往、询问、调查、购买、使用、工作、等待、攻击、防御、逃跑、猎魂、追踪、吸收、入学、加入势力、拜师、承诺、履行承诺、参悟特殊体系、介入事件。",
+          "遇到后世专属行动时保留关键术语：魂灵调查/评估/签约，魂导器学习/制作/认证，斗铠设计/制作，机甲训练/考核/购买/驾驶，星舰训练/考核/招募船员/取得舰船/补给/航行/星球调查。不要把这些动作改写成普通修炼或普通旅行。",
           "输出 JSON：{\"ruleAction\":\"整理后的一句话\"}。",
         ].join("\n") },
-        { role: "user", content: JSON.stringify({ playerInput, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), currentHunt: game.view.hunting, currentEvents: game.world.dynamicEvents.filter((item) => item.status === "可介入").map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
+        { role: "user", content: JSON.stringify({ playerInput, era: game.view.era ?? 1, worldTime: game.view.worldTime, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), currentHunt: game.view.hunting, currentEvents: game.world.dynamicEvents.filter((item) => item.status === "可介入").map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
       ],
     }),
   });

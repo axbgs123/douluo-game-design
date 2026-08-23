@@ -185,6 +185,7 @@ function MapPanel({ game, submit, busy, onMapPin, onMapPinRemove }: { game: Game
     </svg><div className="local-map-list">{levelNodes.map((node) => <article key={node.id}><header><strong>{node.name}</strong><span>{node.current ? "当前位置" : node.kind}</span></header><p>{node.description}</p><small>{node.source} · 可信度 {node.confidence}%</small></article>)}</div></div> : <>
     <div className="map-tools"><div><button type="button" onClick={() => setZoom((value) => Math.max(1, value - .25))}>−</button><span>{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((value) => Math.min(2.5, value + .25))}>＋</button></div><small>输入名称后点击地图即可标点</small></div>
     <DouluoWorldMap
+      era={game.era}
       zoom={zoom}
       landmarks={visible.map((location) => ({ ...worldMapPoint(location.id), name: location.name, muted: !location.discovered && !location.current }))}
       markers={markers}
