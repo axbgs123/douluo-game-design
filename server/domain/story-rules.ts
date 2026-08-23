@@ -212,7 +212,7 @@ export function auditNarrative(game: StoredGame, text: string): string[] {
   const issues: string[] = [];
   const outside = narrationOutsideDialogue(text);
   if (/(^|[。！？\n])\s*我/.test(outside) || /我的/.test(outside)) issues.push("正文出现第一人称叙述");
-  if (/首先|其次|最后|值得注意的是|这意味着|本质上|总而言之|综上所述|不是.{0,18}而是/.test(text)) issues.push("正文含有模板化表达");
+  if (/(^|[。！？\n])\s*(首先|其次|最后)[，,:：]|值得注意的是|这意味着|本质上|总而言之|综上所述|不是.{0,18}而是/.test(text)) issues.push("正文含有模板化表达");
   if (violatesCanonChronology(text, game.view.worldTime?.year ?? 0)) issues.push("正文违反当前时代或原作时间线");
   for (const npc of Object.values(game.world.npcs)) {
     const escapedName = npc.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
