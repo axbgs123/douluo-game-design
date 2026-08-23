@@ -77,6 +77,16 @@ function applyFactionJoinsForEvent(game: StoredGame, eventId: string): void {
   }
 }
 
+function reconcileTimedFactionMemberships(game: StoredGame, year: number, day: number): void {
+  for (const npc of Object.values(game.world.npcs)) {
+    const canonical = canonicalFactionIdsAtDate(npc.id, year, day);
+    npc.factionIds = canonical.filter((factionId) => {
+      const membership = TIMED_FACTION_MEMBERSHIPS.find((item) => item.characterId === npc.id && item.factionId === factionId);
+      return !membership || !game.world.suppressedCanonEvents.includes(membership.eventId);
+    });
+  }
+}
+
 function eraAtYear(year: number): string {
   const [base, anchor] = year >= 25000 ? [30000, "蓝轩宇觉醒"] : year >= 15000 ? [20000, "唐舞麟觉醒"] : year >= 5000 ? [10000, "霍雨浩离府求学"] : [0, "唐三觉醒"];
   const offset = year - base;
@@ -797,6 +807,8 @@ export function ensureGameState(game: StoredGame): StoredGame {
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
   legacy.world.canonCausalFootprints ??= [];
+  legacy.world.firedCanonEvents ??= [];
+  legacy.world.suppressedCanonEvents ??= [];
   legacy.world.dynamicEvents ??= [];
   legacy.world.lastAutonomyOrdinal ??= ordinal(startYear, game.view.worldTime?.day ?? 1);
   legacy.world.resurrectionCount ??= 0;
@@ -833,6 +845,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     }));
     npc.autonomyLog ??= [];
   }
+  reconcileTimedFactionMemberships(game, startYear, game.view.worldTime?.day ?? 1);
   simulateNpcYears(game, startYear);
   const evidencedNpcIds = new Set([
     ...legacy.world.intelligenceRecords.filter((record) => {
