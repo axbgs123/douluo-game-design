@@ -20,6 +20,7 @@ import { refreshStoryArchive } from "./story-rules.js";
 import { worldMapPoint } from "../../shared/world-map.js";
 import { EXPANDED_ORIGINS } from "../data/expanded-origins.js";
 import { metaSoulById } from "../data/meta-martial-souls.js";
+import { buildSystemCoreOrigins } from "../data/system-core-origins.js";
 
 interface OriginTemplate {
   id: string;
@@ -67,7 +68,7 @@ function dwellingOptions(origin: OriginTemplate, location: string): string[] {
   return ["村东老槐树下的土院", "水井南侧第三间草房", "晒谷场后的两间瓦屋", "河堤边的木门小院", "村口石桥旁的旧屋", "里正家西侧的窄院"];
 }
 
-const ORIGINS: OriginTemplate[] = [
+const BASE_ORIGINS: OriginTemplate[] = [
   {
     id: "village-farmer",
     name: "偏远村庄的农户孩子",
@@ -404,8 +405,21 @@ const ORIGINS: OriginTemplate[] = [
   ...EXPANDED_ORIGINS,
 ];
 
+const ORIGINS: OriginTemplate[] = [
+  ...BASE_ORIGINS.map((origin) => ({
+    ...origin,
+    route: origin.route ?? `身份路线 · ${origin.name}`,
+    advantage: origin.advantage ?? origin.summary,
+    burden: origin.burden ?? origin.details[0],
+    startingItems: origin.startingItems ?? [`${origin.name}的家用信物`],
+  })),
+  ...buildSystemCoreOrigins(Math.max(0, 1000 - BASE_ORIGINS.length)),
+];
+
 export const BIRTH_PROFILE_COUNT = ORIGINS.length * FAMILY_CLIMATES.length * 6;
 export const CORE_ORIGIN_COUNT = ORIGINS.length;
+export const CORE_ORIGIN_UNIQUE_NAME_COUNT = new Set(ORIGINS.map((origin) => origin.name)).size;
+export const CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT = new Set(ORIGINS.map((origin) => [origin.advantage, origin.burden, origin.route, origin.startingCoins, origin.startingItems?.join("、")].join("|"))).size;
 
 const MARTIAL_SOULS: MartialSoulTemplate[] = [
   {
@@ -598,7 +612,20 @@ const ORIGIN_PREFERENCE_IDS: Record<string, string[]> = {
 
 function originPool(preferences?: WeightPreferences): OriginTemplate[] {
   const preferredIds = ORIGIN_PREFERENCE_IDS[preferences?.origin ?? "均衡"] ?? [];
-  return ORIGINS.map((origin) => ({ ...origin, weight: origin.weight * (preferredIds.includes(origin.id) ? 2.4 : 1) }));
+  const preference = preferences?.origin ?? "均衡";
+  const matchesGeneratedPreference = (origin: OriginTemplate): boolean => {
+    const text = `${origin.name} ${(origin.roleTags ?? []).join(" ")} ${origin.route ?? ""}`;
+    if (preference === "平民") return /商会|自由户|属镇|附庸|工匠|医疗|后勤|药商|测绘/.test(text);
+    if (preference === "魂师家庭") return /宗门|魂师|武魂殿|猎魂|训练/.test(text);
+    if (preference === "漂泊") return /瀚海|情报|探索|商路|自由魂师|寻人/.test(text);
+    if (preference === "权贵") return /皇室|七宝|蓝电|星罗|天斗/.test(text);
+    if (preference === "天骄") return ["传奇", "神话"].includes(origin.tier ?? "平凡");
+    if (preference === "反派") return /地下|暗街|禁物|毒|夺位|反派/.test(text);
+    if (preference === "穿越") return /穿越|转生|修仙|异界/.test(text);
+    if (preference === "特殊") return /异脉|禁物|旧案|血脉|遗迹|残魂|实验|诅咒/.test(text);
+    return false;
+  };
+  return ORIGINS.map((origin) => ({ ...origin, weight: origin.weight * (preferredIds.includes(origin.id) || matchesGeneratedPreference(origin) ? 2.4 : 1) }));
 }
 
 function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences): MartialSoulTemplate {

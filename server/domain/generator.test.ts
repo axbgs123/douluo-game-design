@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   BIRTH_PROFILE_COUNT,
   CORE_ORIGIN_COUNT,
+  CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT,
+  CORE_ORIGIN_UNIQUE_NAME_COUNT,
   awakenCharacter,
   createGame,
   finalizeCharacterShaping,
@@ -49,7 +51,10 @@ describe("candidate generation", () => {
 
   it("contains at least one thousand concrete birth profiles with exact homes", () => {
     expect(BIRTH_PROFILE_COUNT).toBeGreaterThanOrEqual(1000);
-    expect(CORE_ORIGIN_COUNT).toBeGreaterThanOrEqual(100);
+    expect(CORE_ORIGIN_COUNT).toBe(1000);
+    expect(CORE_ORIGIN_UNIQUE_NAME_COUNT).toBe(1000);
+    expect(CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT).toBe(1000);
+    expect(BIRTH_PROFILE_COUNT).toBe(36000);
     const candidates = Array.from({ length: 30 }, (_, rerollIndex) => generateCandidates("birth-map", rerollIndex, "男")).flat();
     expect(candidates.every((candidate) => candidate.public.birthProfileId && candidate.public.dwelling.includes(" · "))).toBe(true);
     expect(candidates.every((candidate) => candidate.public.mapX >= 0 && candidate.public.mapX <= 100 && candidate.public.mapY >= 0 && candidate.public.mapY <= 100)).toBe(true);
@@ -118,7 +123,7 @@ describe("candidate generation", () => {
   });
 
   it("names the exact sect and records concrete origin facts", () => {
-    const candidates = Array.from({ length: 80 }, (_, rerollIndex) => generateCandidates("specific-sect", rerollIndex, "男")).flat();
+    const candidates = Array.from({ length: 160 }, (_, rerollIndex) => generateCandidates("specific-sect", rerollIndex, "男", { origin: "权贵", martialSoul: "均衡", gift: "均衡" })).flat();
     const genericTitles = /^(普通村庄农户|铁匠家庭|边境巡守之家|采药人与乡医|没落魂师家族旁支|武魂分殿杂役家庭|商队随行家庭|来历不明的收养子|猎户家庭|河港渔家|初级魂师学院雇工家庭|小贵族旁支|流民新垦家庭|酒馆帮工家庭|采石场石工家庭|游方医者家庭|魂师宗门附属村民)$/;
     for (const candidate of candidates) {
       expect(candidate.public.originName).not.toMatch(genericTitles);
