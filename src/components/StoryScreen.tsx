@@ -60,6 +60,7 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd, on
       <div className="story-layout">
         <section className="story-column">
           <div className="chapter-rule"><span>第 {game.chapter.number} 章</span><i /><span>{game.status === "ended" ? "此生已定" : game.chapter.title}</span></div>
+          {game.status === "playing" && game.chapterObjective && <section className="chapter-objective"><div><span>当前章节目标</span><strong>{game.chapterObjective.title}</strong><p>{game.chapterObjective.stakes}</p></div><ol>{game.chapterObjective.steps.map((step) => <li key={step.id} className={`objective-${step.status}`}><i>{step.status === "完成" ? "✓" : step.status === "进行中" ? "→" : "·"}</i>{step.text}</li>)}</ol></section>}
           <div className="narrative-stream" aria-live="polite">
             {game.narrative.map((entry) => entry.kind === "player"
               ? <blockquote key={entry.id} className="player-entry">{entry.text}</blockquote>
@@ -74,7 +75,7 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd, on
               : <div className="action-area">
                   <div className="suggestion-list">{game.suggestions.map((suggestion, index) => <button type="button" key={`${suggestion}-${index}`} disabled={busy} onClick={() => submit(suggestion)}><span>{index + 1}</span>{suggestion}</button>)}</div>
                   <form onSubmit={(event) => { event.preventDefault(); submit(input); }} className="action-form"><textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder="输入行动或对话……" rows={3} disabled={busy} /><button className="send-button" type="submit" disabled={busy || !input.trim()}>{busy ? "推演中" : "行动"}</button></form>
-                  <div className="action-bottom-row"><span>可自由输入</span>{!confirmEnd ? <button type="button" disabled={busy} onClick={() => setConfirmEnd(true)}>结束此生</button> : <span className="end-confirm">结算为 <button type="button" onClick={() => void onEnd("完成目标")}>目标完成</button><button type="button" onClick={() => void onEnd("时间线结束")}>时代结束</button><button type="button" onClick={() => void onEnd("玩家主动结束了这一生")}>普通结局</button><button type="button" onClick={() => setConfirmEnd(false)}>取消</button></span>}</div>
+                  <div className="action-bottom-row"><span>可自由输入</span>{!confirmEnd ? <button type="button" disabled={busy} onClick={() => setConfirmEnd(true)}>申请结算</button> : <span className="end-confirm"><small>结局类型、目标是否完成与收益均由当前存档数据判断。</small><button type="button" onClick={() => void onEnd()}>交给程序判定</button><button type="button" onClick={() => setConfirmEnd(false)}>取消</button></span>}</div>
                 </div>}
         </section>
 
@@ -114,7 +115,7 @@ function CharacterPanel({ game }: { game: GameView }) {
       <div><dt>魂币</dt><dd>{formatSoulCoins(character.coins)}</dd></div><div><dt>名望</dt><dd>{character.reputation}</dd></div>
     </dl>
     {character.injuries.length > 0 && <SimpleList title="伤势" values={character.injuries} empty="" />}
-    <p className="panel-label">人生目标</p><p className="panel-copy">{game.lifeGoal}</p>
+    <p className="panel-label">人生目标</p><p className="panel-copy">{game.lifeGoal}</p><small className="goal-verification-note">结算时由魂力、任务、关系、探索与真实历史影响共同验收。</small>
     {game.affiliations.length > 0 && <><p className="panel-label">身份</p><div className="affiliation-list">{game.affiliations.map((item) => <article key={item.id}><strong>{item.name}</strong><span>{item.role} · {item.reputation}</span></article>)}</div></>}
     <div className="trait-cloud">{character.personalityTraits.map((trait) => <span key={trait}>{trait}</span>)}</div>
   </div>;
@@ -124,7 +125,7 @@ function SoulPanel({ game }: { game: GameView }) {
   if (!game.character) return <LockedPanel text="尚未觉醒" />;
   const character = game.character;
   return <div className="detail-stack">
-    <div className="identity-block"><small>{character.martialSoul.category}</small><strong>{character.martialSoul.name}</strong></div><p className="panel-copy">{character.martialSoul.description}</p>
+    <div className={`identity-block ${character.martialSoul.rarity ? `soul-panel-${character.martialSoul.rarity}` : ""}`}><small>{character.martialSoul.rarity ? `${character.martialSoul.rarity} · ` : ""}{character.martialSoul.category}</small><strong>{character.martialSoul.name}</strong></div><p className="panel-copy">{character.martialSoul.description}</p>
     <dl className="stat-list"><div><dt>先天魂力</dt><dd>{character.innateSoulPower} 级</dd></div><div><dt>魂环</dt><dd>{character.soulRings.length} 枚</dd></div></dl>
     {character.revealedGift && <article className="gift-card"><span>已发现</span><strong>{character.revealedGift}</strong></article>}
     {character.specialSystem && <article className="special-system-card"><header><span>独立体系</span><strong>{character.specialSystem.name}</strong></header><p>{character.specialSystem.stage} · {character.specialSystem.progress}</p><div className="trait-cloud">{character.specialSystem.abilities.map((ability) => <span key={ability}>{ability}</span>)}</div><small>{character.specialSystem.resourceHint}</small></article>}
@@ -217,7 +218,7 @@ function WorldPanel({ game, submit, busy }: { game: GameView; submit: (value: st
 
 function EndingPanel({ game }: { game: GameView }) {
   const settlement = game.runProgress.settlement;
-  return <section className="ending-panel"><p className="eyebrow">本轮结算</p><h2>{settlement?.ending ?? game.runProgress.ending ?? "故事结束"}</h2>{settlement ? <><div className="ending-score"><strong>{settlement.legacyPoints}</strong><span>传承点</span><small>{settlement.baseScore} × {settlement.multiplier.toFixed(2)}</small></div><ul>{settlement.highlights.map((item) => <li key={item}>{item}</li>)}</ul></> : <p>这一生已经结束，记录已写入存档。</p>}</section>;
+  return <section className="ending-panel"><p className="eyebrow">程序结算</p><h2>{settlement?.ending ?? game.runProgress.ending ?? "故事结束"}</h2>{settlement ? <><div className={`ending-score ${settlement.qualified ? "" : "unqualified"}`}><strong>{settlement.legacyPoints}</strong><span>{settlement.qualified ? "传承点" : "中止收益"}</span><small>{settlement.baseScore} × {settlement.multiplier.toFixed(2)}</small></div><ul>{settlement.highlights.map((item) => <li key={item}>{item}</li>)}</ul></> : <p>这一生已经结束，记录已写入存档。</p>}</section>;
 }
 
 function SimpleList({ title, values, empty }: { title: string; values: string[]; empty: string }) {

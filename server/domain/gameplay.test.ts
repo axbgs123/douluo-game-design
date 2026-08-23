@@ -83,15 +83,23 @@ describe("完整游玩规则", () => {
     expect(game.view.news.some((item) => item.id === "tang-awakening")).toBe(true);
   });
 
-  it("结局会生成得分、难度倍率和传承点", () => {
+  it("过早中止没有收益，真实游玩后才生成传承点", () => {
     const game = awakened("ending");
     game.world.metrics.completedHunts = 2;
     game.world.metrics.discoveries = 3;
-    const settlement = settleRun(game, "完成目标");
-    expect(game.view.status).toBe("ended");
+    const early = settleRun(game, "完成目标");
+    expect(early.legacyPoints).toBe(0);
+    expect(early.qualified).toBe(false);
+    const qualifiedGame = awakened("qualified-ending");
+    qualifiedGame.actionIndex = 8;
+    qualifiedGame.world.metrics.completedHunts = 2;
+    qualifiedGame.world.metrics.discoveries = 3;
+    const settlement = settleRun(qualifiedGame);
+    expect(qualifiedGame.view.status).toBe("ended");
     expect(settlement.legacyPoints).toBeGreaterThan(0);
+    expect(settlement.qualified).toBe(true);
     expect(settlement.highlights).toHaveLength(4);
-    expect(game.view.runProgress.settlement).toEqual(settlement);
+    expect(qualifiedGame.view.runProgress.settlement).toEqual(settlement);
   });
 
   it("旧存档可补齐第二版世界状态", () => {

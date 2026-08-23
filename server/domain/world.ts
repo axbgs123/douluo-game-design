@@ -106,6 +106,7 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
     healthPoints: 100,
     fatiguePoints: 0,
     metrics: { discoveries: 0, relationshipsBuilt: 0, historicalImpact: 0, completedHunts: 0, promisesKept: 0, battlesWon: 0 },
+    actionLedger: [],
   };
 }
 
@@ -261,7 +262,8 @@ function updateNpcRelation(game: StoredGame, leftId: string, rightId: string, de
 
 function createDynamicEvent(game: StoredGame, cycle: number, random: () => number): string | undefined {
   const active = game.world.dynamicEvents.filter((item) => item.status === "可介入");
-  if (active.length >= 4 || random() > 0.58) return undefined;
+  const pressure = Number(game.world.flags.destinyPressure ?? 1);
+  if (active.length >= 4 || random() > Math.max(0.34, 0.62 - pressure * 0.06)) return undefined;
   const template = pick(random, DYNAMIC_EVENT_TEMPLATES);
   if (game.world.dynamicEvents.some((event) => event.title === template.title && event.createdYear * DAYS_PER_YEAR + event.createdDay > cycle * 30 - DAYS_PER_YEAR)) return undefined;
   const npcs = Object.values(game.world.npcs).filter((npc) => npc.alive && ((characterById(npc.id)?.importance ?? 3) <= 3 || npcHasPlayerInfluence(game, npc.id)));
@@ -278,7 +280,7 @@ function createDynamicEvent(game: StoredGame, cycle: number, random: () => numbe
     locationId,
     participantIds: participant ? [participant.id] : [],
     detail: template.detail,
-    stakes: template.stakes,
+    stakes: Math.min(5, template.stakes + (pressure >= 4 && random() < 0.45 ? 1 : 0)),
     status: "可介入",
     createdYear,
     createdDay,
@@ -455,6 +457,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   legacy.world.dynamicEvents ??= [];
   legacy.world.lastAutonomyOrdinal ??= ordinal(startYear, game.view.worldTime?.day ?? 1);
   legacy.world.resurrectionCount ??= 0;
+  legacy.world.actionLedger ??= [];
   for (const npc of Object.values(legacy.world.npcs)) npc.memoryOfPlayer ??= [];
   game.storyMemory ??= {
     summary: game.view.narrative.slice(-6).map((entry) => entry.text).join(" ").slice(0, 1000),
@@ -472,6 +475,8 @@ export function ensureGameState(game: StoredGame): StoredGame {
     item.selfKnowledge ??= /身世不明|无籍收养/.test(item.originName) ? "本地人 · 身世未知" : "本地人 · 身世明确";
     item.knownBackground ??= /身世不明|无籍收养/.test(item.originName) ? "只知道自己由养父母抚养，真正来历仍未查明。" : "知道自己的家庭、住处和日常关系。";
     item.fixedTraits ??= [];
+    item.originAdvantage ??= "行动自由度较高";
+    item.originBurden ??= "资源需要自行积累";
     item.locationId ??= inferLocationId(item.location);
     const point = worldMapPoint(item.locationId);
     item.dwelling ??= `${item.location} · 户籍所记住处`;
@@ -492,9 +497,16 @@ export function ensureGameState(game: StoredGame): StoredGame {
   for (const hidden of game.hiddenCandidates) {
     hidden.originId ??= "legacy-origin";
     hidden.roleTags ??= ["本地人"];
+    hidden.originStart ??= { coins: 12, items: [], reputation: "默默无闻", advantage: hidden.public.originAdvantage, burden: hidden.public.originBurden, pressure: 1 };
   }
   game.view.lifeGoal ??= "成为自己认可的强者";
   game.view.birthProfileCount ??= 1044;
+  game.view.candidateRerollsUsed ??= game.view.rerollIndex ?? 0;
+  game.view.candidatePaidRerolls ??= 0;
+  if (game.view.shaping) {
+    game.view.shaping.goalRerollsUsed ??= game.view.shaping.goalRerollIndex ?? 0;
+    game.view.shaping.goalLocks ??= [false, false, false];
+  }
   game.view.locationId ??= locationId;
   game.view.map ??= [];
   game.view.mapPins ??= [];
@@ -519,6 +531,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     historicalImpact: 0,
     completedHunts: 0,
   };
+  if (game.view.runProgress.settlement && game.view.runProgress.settlement.qualified === undefined) game.view.runProgress.settlement.qualified = true;
   if (game.view.worldTime) {
     game.view.worldTime.year ??= startYear;
     game.view.worldTime.season ??= "春";

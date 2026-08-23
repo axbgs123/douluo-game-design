@@ -5,7 +5,7 @@ interface CharacterShapingScreenProps {
   candidate: CandidatePublic;
   shaping: CharacterShapingView;
   busy: boolean;
-  onReroll: (part: "goals" | "personality") => Promise<void>;
+  onReroll: (part: "goals" | "personality", lockedSlots?: number[]) => Promise<void>;
   onComplete: (input: { keywords: string[]; answers: Record<string, string>; lifeGoal: string }) => Promise<void>;
 }
 
@@ -14,6 +14,7 @@ export function CharacterShapingScreen({ candidate, shaping, busy, onReroll, onC
   const [keywordText, setKeywordText] = useState(shaping.personalityOptions[0]?.keywords.join("，") ?? "");
   const [lifeGoal, setLifeGoal] = useState(shaping.lifeGoalOptions[0] ?? "");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [goalLocks, setGoalLocks] = useState<number[]>(shaping.goalLocks.map((locked, index) => locked ? index : -1).filter((index) => index >= 0));
 
   useEffect(() => {
     const first = shaping.personalityOptions[0];
@@ -47,13 +48,13 @@ export function CharacterShapingScreen({ candidate, shaping, busy, onReroll, onC
     </header>
 
     <section className="shaping-section">
-      <div className="shaping-title"><div><span>01</span><h2>人生目标</h2><p>这些目标带有明确节点。可以重抽，也可以在下方改成自己的版本。</p></div><button type="button" className="reroll-button" disabled={busy} onClick={() => void onReroll("goals")}>换一组目标</button></div>
-      <div className="goal-draw-grid">{shaping.lifeGoalOptions.map((goal) => <button type="button" key={goal} className={lifeGoal === goal ? "active" : ""} onClick={() => setLifeGoal(goal)}>{goal}</button>)}</div>
+      <div className="shaping-title"><div><span>01</span><h2>人生目标</h2><p>三选一，可锁定栏位。每名角色有三次刷新机会。</p></div><button type="button" className="reroll-button" disabled={busy || shaping.goalRerollsUsed >= 3 || goalLocks.length === 3} onClick={() => void onReroll("goals", goalLocks)}>刷新未锁定目标 · {3 - shaping.goalRerollsUsed}/3</button></div>
+      <div className="goal-draw-grid">{shaping.lifeGoalOptions.map((goal, index) => <article key={`${index}-${goal}`} className={goalLocks.includes(index) ? "goal-slot locked" : "goal-slot"}><button type="button" className={lifeGoal === goal ? "active" : ""} onClick={() => setLifeGoal(goal)}>{goal}</button><button type="button" className="goal-lock-button" onClick={() => setGoalLocks((current) => current.includes(index) ? current.filter((slot) => slot !== index) : [...current, index])}>{goalLocks.includes(index) ? "已锁定" : "锁定栏位"}</button></article>)}</div>
       <label className="custom-goal"><span>自定或修改</span><textarea value={lifeGoal} onChange={(event) => setLifeGoal(event.target.value)} maxLength={160} rows={3} /></label>
     </section>
 
     <section className="shaping-section">
-      <div className="shaping-title"><div><span>02</span><h2>性格底色</h2><p>抽取结果可以包含善人、野心家或反派。身份烙印会保留，之后仍会被实际行动改变。</p></div><button type="button" className="reroll-button" disabled={busy} onClick={() => void onReroll("personality")}>重抽性格</button></div>
+      <div className="shaping-title"><div><span>02</span><h2>性格底色</h2><p>抽取结果可以包含善人、野心家或反派。身份烙印会保留，之后仍会被实际行动改变。</p></div><button type="button" className="reroll-button" disabled={busy} onClick={() => void onReroll("personality", [])}>重抽性格</button></div>
       {shaping.fixedTraits.length > 0 && <div className="locked-traits"><small>身份固定</small>{shaping.fixedTraits.map((trait) => <b key={trait}>{trait}</b>)}</div>}
       <div className="personality-draw-grid">{shaping.personalityOptions.map((option) => <button type="button" key={option.id} className={personalityId === option.id ? "active" : ""} onClick={() => choosePersonality(option.id)}><strong>{option.title}</strong><span>{option.keywords.join(" · ")}</span><p>{option.description}</p></button>)}</div>
       <label className="custom-goal"><span>性格关键词，可修改 3 至 8 个</span><input className="text-field" value={keywordText} onChange={(event) => setKeywordText(event.target.value)} /></label>

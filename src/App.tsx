@@ -79,7 +79,9 @@ export default function App() {
         birthProfileCount={game.birthProfileCount}
         rerollIndex={game.rerollIndex}
         busy={busy}
-        onReroll={() => run(() => rerollCandidates(game.id))}
+        candidateRerollsUsed={game.candidateRerollsUsed}
+        candidatePaidRerolls={game.candidatePaidRerolls}
+        onReroll={(lockedSlots) => run(() => rerollCandidates(game.id, lockedSlots))}
         onSelect={(candidateId, customName) => run(() => selectCandidate(game.id, candidateId, customName))}
       />}
 
@@ -87,7 +89,7 @@ export default function App() {
         candidate={game.candidates.find((candidate) => candidate.id === game.selectedCandidateId) ?? game.candidates[0]}
         shaping={game.shaping}
         busy={busy}
-        onReroll={(part) => run(() => rerollCharacterShaping(game.id, part))}
+        onReroll={(part, lockedSlots) => run(() => rerollCharacterShaping(game.id, part, lockedSlots))}
         onComplete={(input) => run(() => completeCharacterShaping(game.id, input))}
       />}
 

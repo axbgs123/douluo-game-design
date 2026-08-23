@@ -3,6 +3,7 @@ export type Difficulty = (typeof DIFFICULTIES)[number];
 
 export type Gender = "男" | "女";
 export type CandidateRarity = "平凡" | "优秀" | "稀有" | "传奇" | "神话";
+export type MartialSoulRarity = "白色" | "蓝色" | "紫色" | "金色" | "红色" | "七彩";
 export type GameStatus = "candidate_selection" | "character_shaping" | "awakening" | "playing" | "ended";
 export type GameSpeed = "标准" | "高速";
 export type ConditionLabel = "良好" | "疲惫" | "轻伤" | "重伤" | "濒死" | "死亡";
@@ -35,6 +36,8 @@ export interface CandidatePublic {
   selfKnowledge: string;
   knownBackground: string;
   fixedTraits: string[];
+  originAdvantage: string;
+  originBurden: string;
 }
 
 export interface ScenarioQuestionView {
@@ -54,9 +57,18 @@ export interface PersonalityDraftView {
 export interface CharacterShapingView {
   goalRerollIndex: number;
   personalityRerollIndex: number;
+  goalRerollsUsed: number;
+  goalLocks: boolean[];
   lifeGoalOptions: string[];
   personalityOptions: PersonalityDraftView[];
   fixedTraits: string[];
+}
+
+export interface ChapterObjectiveView {
+  title: string;
+  stakes: string;
+  destinationId?: string;
+  steps: Array<{ id: string; text: string; status: "未开始" | "进行中" | "完成" }>;
 }
 
 export interface SoulRingView {
@@ -71,7 +83,7 @@ export interface SoulRingView {
 
 export interface CharacterPublic extends CandidatePublic {
   age: number;
-  martialSoul: { name: string; category: string; description: string };
+  martialSoul: { name: string; category: string; description: string; rarity?: MartialSoulRarity };
   innateSoulPower: number;
   soulRank: number;
   cultivationProgress: string;
@@ -253,6 +265,7 @@ export interface RunSettlementView {
   multiplier: number;
   legacyPoints: number;
   highlights: string[];
+  qualified: boolean;
 }
 
 export interface RunProgressView {
@@ -276,6 +289,8 @@ export interface GameView {
   personalitySummary: string[];
   lifeGoal: string;
   rerollIndex: number;
+  candidateRerollsUsed: number;
+  candidatePaidRerolls: number;
   birthProfileCount: number;
   candidates: CandidatePublic[];
   selectedCandidateId?: string;
@@ -298,11 +313,25 @@ export interface GameView {
   knownFigures: KnownFigureView[];
   affiliations: AffiliationView[];
   chapter: StoryChapterView;
+  chapterObjective?: ChapterObjectiveView;
   hunting?: HuntingView;
   combat?: CombatView;
   runProgress: RunProgressView;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MartialSoulCodexEntryView {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  rarity: MartialSoulRarity;
+  charges: number;
+  completedRuns: number;
+  enabled: boolean;
+  initialSoulPowers: number[];
+  growthRoutes: string[];
 }
 
 export interface SaveSummary {
@@ -330,6 +359,10 @@ export interface MetaProgressionView {
   weightPreferences: { origin: string; martialSoul: string; gift: string };
   purchasedUpgrades: Record<string, number>;
   equippedHeirloom?: string;
+  martialSoulCodex: MartialSoulCodexEntryView[];
+  equippedMartialSoulId?: string;
+  martialSoulDrawTickets: number;
+  martialSoulDrawPity: number;
   difficultyBudgets: Record<Difficulty, number>;
   difficultyMultipliers: Record<Difficulty, number>;
 }

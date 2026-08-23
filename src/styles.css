@@ -17,6 +17,71 @@
   --display-font: STKaiti, KaiTi, "Noto Serif SC", "Songti SC", serif;
 }
 
+/* Locked draws, meta martial-soul codex, and chapter direction */
+.candidate-card { position: relative; }
+.candidate-card.candidate-locked { box-shadow: inset 0 0 0 2px rgba(142, 108, 38, .72), 0 18px 55px rgba(71, 54, 26, .12); }
+.slot-lock { position: absolute; right: 1.4rem; top: 1.25rem; z-index: 2; border: 1px solid var(--line, #d8cfbd); background: rgba(255,255,255,.72); color: #74664f; padding: .42rem .75rem; cursor: pointer; }
+.slot-lock.active { background: #886a2c; color: #fff; border-color: #886a2c; }
+.candidate-actions p { margin: .8rem 0 0; color: #746b5d; font-size: .9rem; text-align: center; }
+.goal-draw-grid .goal-slot { display: grid; grid-template-rows: 1fr auto; border: 1px solid #ddd2bd; background: rgba(255,255,255,.34); }
+.goal-draw-grid .goal-slot > button:first-child { border: 0; min-height: 9rem; }
+.goal-draw-grid .goal-slot.locked { box-shadow: inset 0 0 0 2px #a98435; }
+.goal-lock-button { border: 0; border-top: 1px solid #e0d6c4; background: transparent; padding: .6rem; color: #7b6b4d; cursor: pointer; }
+
+.soul-draw-section .meta-section-heading { align-items: center; }
+.soul-draw-button { border: 0; background: linear-gradient(135deg, #7d5d22, #c7a75c); color: white; padding: .85rem 1.2rem; cursor: pointer; white-space: nowrap; }
+.soul-draw-rules { display: flex; flex-wrap: wrap; gap: .55rem; margin: 1rem 0; }
+.soul-draw-rules span { border: 1px solid #ddd2bd; padding: .42rem .7rem; font-size: .78rem; color: #706552; background: rgba(255,255,255,.5); }
+.equipped-soul-line { display: flex; align-items: center; gap: .8rem; padding: .85rem 1rem; background: #f0e5c8; border-left: 3px solid #9b7429; margin-bottom: 1rem; }
+.equipped-soul-line button { margin-left: auto; }
+.martial-soul-codex { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1rem; }
+.codex-soul-card { position: relative; padding: 1rem; border: 1px solid #d8d1c5; background: #fff; overflow: hidden; }
+.codex-soul-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: #d8d8d8; }
+.codex-soul-card header { display: flex; align-items: baseline; gap: .6rem; }
+.codex-soul-card header span { font-size: .75rem; }
+.codex-soul-card header strong { font-size: 1.15rem; }
+.codex-soul-card header small { margin-left: auto; color: #857b6c; }
+.codex-soul-card > p { color: #665f53; line-height: 1.65; min-height: 3.2em; }
+.codex-soul-card dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: .8rem 0; }
+.codex-soul-card dl div { background: rgba(242,239,232,.7); padding: .5rem; }
+.codex-soul-card dt { font-size: .7rem; color: #8d8373; }
+.codex-soul-card dd { margin: .2rem 0 0; font-size: .82rem; }
+.codex-routes { display: grid; gap: .35rem; margin-bottom: .8rem; }
+.codex-routes span { font-size: .76rem; color: #716756; }
+.codex-soul-card footer { display: flex; align-items: center; gap: 1rem; }
+.codex-soul-card footer > button { border: 1px solid currentColor; background: transparent; padding: .55rem .75rem; cursor: pointer; }
+.codex-soul-card footer > button.active { background: #222; color: #fff; }
+.codex-soul-card footer label { font-size: .76rem; color: #716756; }
+.soul-rarity-白色::before { background: #dadada; }
+.soul-rarity-蓝色 { border-color: #73a7da; background: linear-gradient(145deg,#fff,#edf6ff); }
+.soul-rarity-蓝色::before { background: #3f8ed4; }
+.soul-rarity-紫色 { border-color: #a77ad2; background: linear-gradient(145deg,#fff,#f5edff); }
+.soul-rarity-紫色::before { background: #8650b9; }
+.soul-rarity-金色 { border-color: #cda64a; background: linear-gradient(145deg,#fffdf7,#fff3c9); }
+.soul-rarity-金色::before { background: #c6921d; }
+.soul-rarity-红色 { border-color: #b84a43; background: linear-gradient(145deg,#fff9f8,#ffe1de); box-shadow: 0 8px 25px rgba(170,45,36,.12); }
+.soul-rarity-红色::before { background: #b62922; }
+.soul-rarity-七彩 { border-color: transparent; background: linear-gradient(#fff,#fff) padding-box, linear-gradient(120deg,#e75454,#e4a52c,#63a54e,#3f91d0,#7956c8) border-box; box-shadow: 0 8px 28px rgba(94,86,185,.18); }
+.soul-rarity-七彩::before { background: linear-gradient(#e75454,#e4a52c,#63a54e,#3f91d0,#7956c8); }
+.codex-soul-card.new-draw { animation: codexReveal .7s ease both; }
+@keyframes codexReveal { from { transform: translateY(10px) scale(.98); opacity: .2; } to { transform: none; opacity: 1; } }
+
+.chapter-objective { display: grid; grid-template-columns: minmax(220px,.8fr) 1.2fr; gap: 1.25rem; border: 1px solid #d8c9aa; background: linear-gradient(110deg,rgba(247,239,217,.9),rgba(255,255,255,.72)); padding: 1rem 1.2rem; margin: 0 0 1rem; }
+.chapter-objective > div > span { color: #9c762c; font-size: .75rem; letter-spacing: .12em; }
+.chapter-objective strong { display: block; margin-top: .25rem; font-size: 1.02rem; }
+.chapter-objective p { margin: .45rem 0 0; color: #716756; font-size: .82rem; line-height: 1.5; }
+.chapter-objective ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+.chapter-objective li { display: flex; gap: .55rem; color: #887e6e; font-size: .84rem; }
+.chapter-objective li i { width: 1.1rem; font-style: normal; color: #a88745; }
+.chapter-objective .objective-完成 { color: #6d8264; text-decoration: line-through; }
+.chapter-objective .objective-进行中 { color: #3f382d; font-weight: 600; }
+.ending-score.unqualified { filter: grayscale(1); opacity: .72; }
+
+@media (max-width: 900px) {
+  .martial-soul-codex { grid-template-columns: 1fr; }
+  .chapter-objective { grid-template-columns: 1fr; }
+}
+
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background:
   radial-gradient(circle at 18% 0%, rgba(255, 252, 239, 0.95), transparent 34rem),

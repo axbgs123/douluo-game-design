@@ -44,16 +44,16 @@ export function createGame(input: {
   return request("/api/games", { method: "POST", body: JSON.stringify(input) });
 }
 
-export function rerollCharacterShaping(id: string, part: "goals" | "personality"): Promise<GameView> {
-  return request(`/api/games/${id}/shaping/reroll`, { method: "POST", body: JSON.stringify({ part }) });
+export function rerollCharacterShaping(id: string, part: "goals" | "personality", lockedSlots: number[] = []): Promise<GameView> {
+  return request(`/api/games/${id}/shaping/reroll`, { method: "POST", body: JSON.stringify({ part, lockedSlots }) });
 }
 
 export function completeCharacterShaping(id: string, input: { keywords: string[]; answers: Record<string, string>; lifeGoal: string }): Promise<GameView> {
   return request(`/api/games/${id}/shaping/complete`, { method: "POST", body: JSON.stringify(input) });
 }
 
-export function rerollCandidates(id: string): Promise<GameView> {
-  return request(`/api/games/${id}/reroll`, { method: "POST" });
+export function rerollCandidates(id: string, lockedSlots: number[] = []): Promise<GameView> {
+  return request(`/api/games/${id}/reroll`, { method: "POST", body: JSON.stringify({ lockedSlots }) });
 }
 
 export function selectCandidate(id: string, candidateId: string, customName?: string): Promise<GameView> {
@@ -104,6 +104,18 @@ export function equipMetaHeirloom(name?: string): Promise<MetaProgressionView> {
 
 export function getWorldCatalogStats(): Promise<WorldCatalogStatsView> {
   return request("/api/world/catalog/stats");
+}
+
+export function drawMetaMartialSoul(): Promise<{ meta: MetaProgressionView; drawn: MetaProgressionView["martialSoulCodex"][number]; cost: number }> {
+  return request("/api/meta/martial-souls/draw", { method: "POST" });
+}
+
+export function equipMetaMartialSoul(id?: string): Promise<MetaProgressionView> {
+  return request("/api/meta/martial-souls/equip", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export function toggleMetaMartialSoul(id: string, enabled: boolean): Promise<MetaProgressionView> {
+  return request("/api/meta/martial-souls/toggle", { method: "POST", body: JSON.stringify({ id, enabled }) });
 }
 
 export function getDeepSeekSettings(): Promise<DeepSeekSettingsView> {

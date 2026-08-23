@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BIRTH_PROFILE_COUNT,
+  CORE_ORIGIN_COUNT,
   awakenCharacter,
   createGame,
   finalizeCharacterShaping,
@@ -48,6 +49,7 @@ describe("candidate generation", () => {
 
   it("contains at least one thousand concrete birth profiles with exact homes", () => {
     expect(BIRTH_PROFILE_COUNT).toBeGreaterThanOrEqual(1000);
+    expect(CORE_ORIGIN_COUNT).toBeGreaterThanOrEqual(100);
     const candidates = Array.from({ length: 30 }, (_, rerollIndex) => generateCandidates("birth-map", rerollIndex, "男")).flat();
     expect(candidates.every((candidate) => candidate.public.birthProfileId && candidate.public.dwelling.includes(" · "))).toBe(true);
     expect(candidates.every((candidate) => candidate.public.mapX >= 0 && candidate.public.mapX <= 100 && candidate.public.mapY >= 0 && candidate.public.mapY <= 100)).toBe(true);
@@ -67,14 +69,14 @@ describe("candidate generation", () => {
     expect(game.view.candidates).not.toEqual(original);
   });
 
-  it("keeps every awakening within twenty years of Tang San", () => {
+  it("keeps every awakening within five years of Tang San", () => {
     const candidates = Array.from({ length: 40 }, (_, rerollIndex) =>
       generateCandidates("timeline-window", rerollIndex, "男"),
     ).flat();
 
     for (const candidate of candidates) {
       const years = candidate.public.eraRelation.match(/(\d+) 年/)?.[1];
-      if (years) expect(Number(years)).toBeLessThanOrEqual(20);
+      if (years) expect(Number(years)).toBeLessThanOrEqual(5);
     }
   });
 
@@ -120,7 +122,7 @@ describe("candidate generation", () => {
     const genericTitles = /^(普通村庄农户|铁匠家庭|边境巡守之家|采药人与乡医|没落魂师家族旁支|武魂分殿杂役家庭|商队随行家庭|来历不明的收养子|猎户家庭|河港渔家|初级魂师学院雇工家庭|小贵族旁支|流民新垦家庭|酒馆帮工家庭|采石场石工家庭|游方医者家庭|魂师宗门附属村民)$/;
     for (const candidate of candidates) {
       expect(candidate.public.originName).not.toMatch(genericTitles);
-      expect(candidate.public.originFacts.map((fact) => fact.label)).toEqual(["家庭", "归属", "生计", "眼前事"]);
+      expect(candidate.public.originFacts.map((fact) => fact.label)).toEqual(["家庭", "归属", "生计", "眼前事", "开局优势", "身份代价"]);
     }
     const sectOrigins = candidates.filter((candidate) => /七宝琉璃宗|蓝电霸王龙宗/.test(candidate.public.originName));
     expect(sectOrigins.length).toBeGreaterThan(0);
@@ -134,7 +136,7 @@ describe("candidate generation", () => {
   it("draws concrete goals, dark personalities and identity-based questions after selection", () => {
     const game = createGame({ gender: "男", difficulty: "标准", seed: "personality-impact" });
     selectCandidate(game, game.view.candidates[2].id);
-    expect(game.view.shaping?.lifeGoalOptions).toHaveLength(6);
+    expect(game.view.shaping?.lifeGoalOptions).toHaveLength(3);
     expect(game.view.shaping?.lifeGoalOptions.every((goal) => goal.length >= 18)).toBe(true);
     expect(game.view.shaping?.personalityOptions.some((option) => /野心|利己|复仇|危险|投机|谋士/.test(`${option.title}${option.keywords.join("")}`))).toBe(true);
     expect(game.view.shaping?.personalityOptions.every((option) => option.questions.length === 6)).toBe(true);

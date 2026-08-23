@@ -1,7 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { MetaProgressionView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
+import { randomBytes } from "node:crypto";
+import type { MartialSoulCodexEntryView, MetaProgressionView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
+import type { MartialSoulTemplate } from "./domain/model.js";
+import { META_MARTIAL_SOULS, metaSoulById } from "./data/meta-martial-souls.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "./data/world.js";
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
@@ -114,6 +117,9 @@ const defaultMetaProgression: MetaProgressionView = {
   codexEntries: [],
   weightPreferences: { origin: "均衡", martialSoul: "均衡", gift: "均衡" },
   purchasedUpgrades: {},
+  martialSoulCodex: [],
+  martialSoulDrawTickets: 1,
+  martialSoulDrawPity: 0,
   difficultyBudgets: { 爽: 120, 简单: 80, 标准: 50, 困难: 25, 地狱: 10 },
   difficultyMultipliers: { 爽: 0.5, 简单: 0.75, 标准: 1, 困难: 1.5, 地狱: 2.25 },
 };
@@ -195,7 +201,106 @@ export function getMetaProgression(): MetaProgressionView {
     ...stored,
     weightPreferences: { ...defaultMetaProgression.weightPreferences, ...stored.weightPreferences },
     purchasedUpgrades: { ...defaultMetaProgression.purchasedUpgrades, ...stored.purchasedUpgrades },
+    martialSoulCodex: stored.martialSoulCodex ?? [],
   };
+}
+
+function randomUnit(): number {
+  return Number(BigInt.asUintN(53, BigInt(`0x${randomBytes(8).toString("hex")}`))) / 9_007_199_254_740_992;
+}
+
+function weightedMetaSoul(pool: typeof META_MARTIAL_SOULS) {
+  const total = pool.reduce((sum, item) => sum + item.drawWeight, 0);
+  let cursor = randomUnit() * total;
+  for (const item of pool) {
+    cursor -= item.drawWeight;
+    if (cursor <= 0) return item;
+  }
+  return pool.at(-1)!;
+}
+
+export function drawMetaMartialSoul(): { meta: MetaProgressionView; drawn: MartialSoulCodexEntryView; cost: number } {
+  const meta = getMetaProgression();
+  const cost = meta.martialSoulDrawTickets > 0 ? 0 : 20;
+  if (cost && meta.legacyPoints < cost) throw new Error(`传承点不足，武魂召唤需要 ${cost} 点`);
+  if (cost) meta.legacyPoints -= cost;
+  else meta.martialSoulDrawTickets -= 1;
+  const pity = meta.martialSoulDrawPity;
+  const pool = pity >= 39
+    ? META_MARTIAL_SOULS.filter((item) => item.metaRarity === "红色" || item.metaRarity === "七彩")
+    : pity >= 9
+      ? META_MARTIAL_SOULS.filter((item) => ["金色", "红色", "七彩"].includes(item.metaRarity))
+      : META_MARTIAL_SOULS;
+  const definition = weightedMetaSoul(pool);
+  const existing = meta.martialSoulCodex.find((item) => item.id === definition.id);
+  const drawn: MartialSoulCodexEntryView = existing ?? {
+    id: definition.id,
+    name: definition.name,
+    category: definition.category,
+    description: definition.description,
+    rarity: definition.metaRarity,
+    charges: 0,
+    completedRuns: 0,
+    enabled: false,
+    initialSoulPowers: [],
+    growthRoutes: definition.growthRoutes,
+  };
+  drawn.charges += 1;
+  if (!existing) meta.martialSoulCodex.push(drawn);
+  meta.martialSoulDrawPity = ["金色", "红色", "七彩"].includes(definition.metaRarity) ? 0 : pity + 1;
+  meta.discoveredMartialSouls = meta.martialSoulCodex.length;
+  saveMetaProgression(meta);
+  return { meta, drawn, cost };
+}
+
+export function equipCodexMartialSoul(id?: string): MetaProgressionView {
+  const meta = getMetaProgression();
+  if (!id) { meta.equippedMartialSoulId = undefined; return saveMetaProgression(meta); }
+  const entry = meta.martialSoulCodex.find((item) => item.id === id);
+  if (!entry) throw new Error("尚未抽到这个武魂");
+  if (entry.charges < 1 && entry.completedRuns < 1) throw new Error("这个武魂没有可用次数，也尚未通关解锁");
+  meta.equippedMartialSoulId = id;
+  return saveMetaProgression(meta);
+}
+
+export function toggleCodexMartialSoul(id: string, enabled: boolean): MetaProgressionView {
+  const meta = getMetaProgression();
+  const entry = meta.martialSoulCodex.find((item) => item.id === id);
+  if (!entry || entry.completedRuns < 1) throw new Error("使用这个武魂通关后才能设置随机出场");
+  entry.enabled = enabled;
+  return saveMetaProgression(meta);
+}
+
+export function claimEquippedMartialSoul(): MartialSoulTemplate | undefined {
+  const meta = getMetaProgression();
+  const id = meta.equippedMartialSoulId;
+  if (!id) return undefined;
+  const entry = meta.martialSoulCodex.find((item) => item.id === id);
+  if (!entry) { meta.equippedMartialSoulId = undefined; saveMetaProgression(meta); return undefined; }
+  if (entry.completedRuns < 1) {
+    if (entry.charges < 1) throw new Error("这个武魂的单次使用机会已经消耗");
+    entry.charges -= 1;
+  }
+  meta.equippedMartialSoulId = undefined;
+  saveMetaProgression(meta);
+  const definition = metaSoulById(id);
+  return definition ?? {
+    id: entry.id,
+    name: entry.name,
+    category: entry.category,
+    description: entry.description,
+    rarity: 1,
+    soulPowerRange: [Math.min(...entry.initialSoulPowers, 6), Math.max(...entry.initialSoulPowers, 10)] as [number, number],
+    omens: [`${entry.name}曾在梦中显出轮廓`, `魂力对${entry.name}的意象产生共鸣`],
+    metaRarity: entry.rarity,
+  };
+}
+
+export function spendLegacyPoints(amount: number, reason: string): MetaProgressionView {
+  const meta = getMetaProgression();
+  if (meta.legacyPoints < amount) throw new Error(`${reason}需要 ${amount} 传承点，当前只有 ${meta.legacyPoints} 点`);
+  meta.legacyPoints -= amount;
+  return saveMetaProgression(meta);
 }
 
 export function saveMetaProgression(meta: MetaProgressionView): MetaProgressionView {
@@ -239,8 +344,10 @@ export function equipLegacyHeirloom(name?: string): MetaProgressionView {
 
 export function recordRunSettlement(game: StoredGame, settlement: RunSettlementView): MetaProgressionView {
   const meta = getMetaProgression();
+  if (!settlement.qualified) return meta;
   meta.completedRuns += 1;
   meta.legacyPoints += settlement.legacyPoints;
+  meta.martialSoulDrawTickets += 1;
   const character = game.view.character;
   if (character) {
     if (!meta.unlockedMartialSouls.includes(character.martialSoul.name)) meta.unlockedMartialSouls.push(character.martialSoul.name);
@@ -251,6 +358,30 @@ export function recordRunSettlement(game: StoredGame, settlement: RunSettlementV
       const entry = `${ring.beastName} · ${ring.years}年`;
       if (!meta.codexEntries.includes(entry)) meta.codexEntries.push(entry);
     }
+    const knownDefinition = META_MARTIAL_SOULS.find((item) => item.name === character.martialSoul.name);
+    let codex = meta.martialSoulCodex.find((item) => item.name === character.martialSoul.name);
+    if (!codex) {
+      codex = {
+        id: knownDefinition?.id ?? `world-${Buffer.from(character.martialSoul.name).toString("hex")}`,
+        name: character.martialSoul.name,
+        category: character.martialSoul.category,
+        description: character.martialSoul.description,
+        rarity: knownDefinition?.metaRarity ?? (character.innateSoulPower >= 9 ? "金色" : character.innateSoulPower >= 7 ? "紫色" : character.innateSoulPower >= 4 ? "蓝色" : "白色"),
+        charges: 0,
+        completedRuns: 0,
+        enabled: true,
+        initialSoulPowers: [],
+        growthRoutes: knownDefinition?.growthRoutes ?? ["当前实战路线尚未形成"],
+      };
+      meta.martialSoulCodex.push(codex);
+    }
+    codex.completedRuns += 1;
+    if (!codex.initialSoulPowers.includes(character.innateSoulPower)) codex.initialSoulPowers.push(character.innateSoulPower);
+    const route = character.soulRings.length
+      ? character.soulRings.map((ring) => `${ring.skillName}（${ring.years}年）`).join(" → ")
+      : "无魂环通关路线";
+    if (!codex.growthRoutes.includes(route)) codex.growthRoutes.push(route);
+    meta.discoveredMartialSouls = meta.martialSoulCodex.length;
   }
   if (game.world.metrics.completedHunts >= 1 && !meta.unlockedHeirlooms.includes("旧猎魂笔记")) meta.unlockedHeirlooms.push("旧猎魂笔记");
   if (game.world.metrics.historicalImpact >= 20 && !meta.unlockedTraits.includes("时代见证者")) meta.unlockedTraits.push("时代见证者");

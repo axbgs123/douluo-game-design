@@ -18,6 +18,8 @@ import { createRandom, integer, pick, weightedPick } from "./random.js";
 import { buildActiveEvents, buildKnownFigures, buildMapView, createHiddenWorld, inferLocationId, revealNpc } from "./world.js";
 import { refreshStoryArchive } from "./story-rules.js";
 import { worldMapPoint } from "../../shared/world-map.js";
+import { EXPANDED_ORIGINS } from "../data/expanded-origins.js";
+import { metaSoulById } from "../data/meta-martial-souls.js";
 
 interface OriginTemplate {
   id: string;
@@ -33,6 +35,14 @@ interface OriginTemplate {
   knownBackgrounds?: string[];
   fixedTraits?: string[];
   roleTags?: string[];
+  authority?: string;
+  advantage?: string;
+  burden?: string;
+  innateBonus?: number;
+  startingCoins?: number;
+  startingItems?: string[];
+  startingReputation?: string;
+  pressure?: number;
 }
 
 const SURNAMES = ["林", "苏", "顾", "沈", "陆", "叶", "程", "江", "白", "宁", "周", "秦"];
@@ -391,9 +401,11 @@ const ORIGINS: OriginTemplate[] = [
     fixedTraits: ["尊师", "戒备"],
     roleTags: ["强者后代", "隐居", "天才"],
   },
+  ...EXPANDED_ORIGINS,
 ];
 
 export const BIRTH_PROFILE_COUNT = ORIGINS.length * FAMILY_CLIMATES.length * 6;
+export const CORE_ORIGIN_COUNT = ORIGINS.length;
 
 const MARTIAL_SOULS: MartialSoulTemplate[] = [
   {
@@ -691,7 +703,7 @@ function specificOrigin(
       "evil-soul-remnant": "被武魂殿通缉的旧姓家族",
       "hidden-master-ward": "隐居魂斗罗门下",
     };
-    authority = authorityByOrigin[origin.id] ?? authority;
+    authority = origin.authority ?? authorityByOrigin[origin.id] ?? authority;
     const nameByOrigin: Record<string, string> = {
       "village-farmer": `${location}田户家庭`,
       "smith-family": `${location}百炼铁匠铺家庭`,
@@ -786,6 +798,8 @@ function specificOrigin(
       { label: "归属", value: authority },
       { label: "生计", value: livelihood },
       { label: "眼前事", value: obligation },
+      { label: "开局优势", value: origin.advantage ?? "身份没有额外保障，成长主要依靠自己的选择与积累。" },
+      { label: "身份代价", value: origin.burden ?? "资源有限，但暂时也没有高层势力把他当作棋子。" },
     ],
     startingRelations: specialRelations[origin.id] ?? [
       { name: guardian, relation: "父亲", impression: "盼着孩子觉醒，又怕结果招来麻烦", strength: 78, category: "亲属" },
@@ -819,9 +833,9 @@ export function generateCandidates(
     usedOrigins.add(origin.id);
 
     const soul = chooseSoul(random, origin, preferences);
-    const offset = integer(random, -20, 20);
+    const offset = integer(random, -5, 5);
     const talentFloor = origin.tier === "神话" ? 8 : origin.tier === "传奇" ? 7 : origin.tier === "稀有" ? 5 : 0;
-    const innateSoulPower = Math.max(talentFloor, integer(random, soul.soulPowerRange[0], soul.soulPowerRange[1]));
+    const innateSoulPower = Math.min(10, Math.max(talentFloor, integer(random, soul.soulPowerRange[0], soul.soulPowerRange[1]) + (origin.innateBonus ?? 0)));
     let name = generateName(random);
     const lineageSurnames: Record<string, string[]> = {
       "seven-treasure-core": ["宁"],
@@ -861,6 +875,8 @@ export function generateCandidates(
       selfKnowledge: origin.selfKnowledge ?? (origin.id === "mystery-arrival" ? "本地人 · 身世未知" : "本地人 · 身世明确"),
       knownBackground: thirdPersonClue(pick(random, origin.knownBackgrounds ?? [origin.id === "mystery-arrival" ? "你知道自己是被收养的，亲生父母和那块碎玉的来历都没人肯说。" : "你知道家里靠什么生活，也认得每天会见到的人。更深的秘密是否存在，还要靠经历确认。"]), name, gender),
       fixedTraits: origin.fixedTraits ?? [],
+      originAdvantage: origin.advantage ?? "没有身份红利，行动自由度较高。",
+      originBurden: origin.burden ?? "资源普通，关键机会需要亲自争取。",
       omens: [thirdPersonClue(pick(random, soul.omens), name, gender), thirdPersonClue(pick(random, [
         "觉醒日前一夜，你做了一个醒来后便模糊的梦",
         "家中长辈对你的身世似乎隐瞒了一小部分",
@@ -896,6 +912,14 @@ export function generateCandidates(
       physique: pick(random, ["普通", "优秀", "优秀", "顶尖"]),
       spirit: pick(random, ["普通", "优秀", "优秀", "顶尖"]),
       perception: pick(random, ["普通", "优秀", "优秀", "顶尖"]),
+      originStart: {
+        coins: origin.startingCoins ?? (origin.tier === "神话" ? 90 : origin.tier === "传奇" ? 60 : origin.tier === "稀有" ? 36 : origin.tier === "优秀" ? 22 : 12),
+        items: origin.startingItems ?? [],
+        reputation: origin.startingReputation ?? (origin.tier === "神话" ? "受多方关注" : origin.tier === "传奇" ? "小有名声" : "默默无闻"),
+        advantage: origin.advantage ?? "行动自由度较高",
+        burden: origin.burden ?? "资源需要自行积累",
+        pressure: origin.pressure ?? (origin.tier === "神话" ? 5 : origin.tier === "传奇" ? 4 : origin.tier === "稀有" ? 3 : origin.tier === "优秀" ? 2 : 1),
+      },
     };
   });
 }
@@ -1038,8 +1062,8 @@ function dynamicQuestions(candidate: HiddenCandidate, traits: string[], random: 
 
 function lifeGoalOptions(candidate: HiddenCandidate, seed: string, rerollIndex: number): string[] {
   const random = createRandom(`${seed}:goals:${candidate.public.id}:${rerollIndex}`);
-  const tailored = [...(ORIGIN_GOALS[candidate.originId] ?? [])].sort(() => random() - 0.5).slice(0, 2);
-  const universal = [...GENERAL_LIFE_GOALS].sort(() => random() - 0.5).filter((goal) => !tailored.includes(goal)).slice(0, 6 - tailored.length);
+  const tailored = [...(ORIGIN_GOALS[candidate.originId] ?? [])].sort(() => random() - 0.5).slice(0, 1);
+  const universal = [...GENERAL_LIFE_GOALS].sort(() => random() - 0.5).filter((goal) => !tailored.includes(goal)).slice(0, 3 - tailored.length);
   return [...tailored, ...universal].sort(() => random() - 0.5);
 }
 
@@ -1062,24 +1086,32 @@ function personalityOptions(candidate: HiddenCandidate, seed: string, rerollInde
   });
 }
 
-function buildShaping(game: StoredGame, goalRerollIndex = 0, personalityRerollIndex = 0): CharacterShapingView {
+function buildShaping(game: StoredGame, goalRerollIndex = 0, personalityRerollIndex = 0, goalLocks: boolean[] = [false, false, false], previousGoals?: string[]): CharacterShapingView {
   const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId);
   if (!candidate) throw new Error("请先选择角色");
+  const freshGoals = lifeGoalOptions(candidate, game.view.seed, goalRerollIndex);
+  const goals = freshGoals.map((goal, index) => goalLocks[index] && previousGoals?.[index] ? previousGoals[index] : goal);
   return {
     goalRerollIndex,
     personalityRerollIndex,
-    lifeGoalOptions: lifeGoalOptions(candidate, game.view.seed, goalRerollIndex),
+    goalRerollsUsed: goalRerollIndex,
+    goalLocks,
+    lifeGoalOptions: goals,
     personalityOptions: personalityOptions(candidate, game.view.seed, personalityRerollIndex),
     fixedTraits: candidate.public.fixedTraits,
   };
 }
 
-export function rerollCharacterShaping(game: StoredGame, part: "goals" | "personality"): void {
+export function rerollCharacterShaping(game: StoredGame, part: "goals" | "personality", lockedSlots: number[] = []): void {
   const current = game.view.shaping ?? buildShaping(game);
+  if (part === "goals" && current.goalRerollsUsed >= 3) throw new Error("人生目标的三次免费刷新已经用完");
+  const locks = part === "goals" ? [0, 1, 2].map((index) => lockedSlots.includes(index)) : current.goalLocks;
   game.view.shaping = buildShaping(
     game,
     part === "goals" ? current.goalRerollIndex + 1 : current.goalRerollIndex,
     part === "personality" ? current.personalityRerollIndex + 1 : current.personalityRerollIndex,
+    locks,
+    current.lifeGoalOptions,
   );
   game.view.updatedAt = new Date().toISOString();
 }
@@ -1116,6 +1148,24 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialPersonality = input.personality ?? { keywords: [], answers: {} };
   const profile = derivePersonality(initialPersonality);
   const hiddenCandidates = generateCandidates(seed, 0, input.gender, meta?.weightPreferences, (meta?.purchasedUpgrades["命运余量"] ?? 0) * 0.01);
+  const enabledCodexSouls = meta?.martialSoulCodex.filter((entry) => entry.enabled && entry.completedRuns > 0) ?? [];
+  const codexRandom = createRandom(`${seed}:enabled-codex-souls`);
+  for (const candidate of hiddenCandidates) {
+    if (!enabledCodexSouls.length || codexRandom() >= 0.12) continue;
+    const entry = pick(codexRandom, enabledCodexSouls);
+    const definition = metaSoulById(entry.id);
+    candidate.martialSoul = definition ?? {
+      id: entry.id,
+      name: entry.name,
+      category: entry.category,
+      description: entry.description,
+      rarity: 1,
+      soulPowerRange: [Math.min(...entry.initialSoulPowers, 1), Math.max(...entry.initialSoulPowers, 10)] as [number, number],
+      omens: [`${entry.name}曾在梦里留下轮廓`, `魂力对${entry.name}的意象产生共鸣`],
+      metaRarity: entry.rarity,
+    };
+    candidate.innateSoulPower = Math.max(candidate.innateSoulPower, integer(codexRandom, candidate.martialSoul.soulPowerRange[0], candidate.martialSoul.soulPowerRange[1]));
+  }
 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
@@ -1145,6 +1195,8 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       personalitySummary: profile.summary,
       lifeGoal: input.lifeGoal?.trim() || "尚未决定",
       rerollIndex: 0,
+      candidateRerollsUsed: 0,
+      candidatePaidRerolls: 0,
       birthProfileCount: BIRTH_PROFILE_COUNT,
       candidates: hiddenCandidates.map((candidate) => candidate.public),
       narrative: [createEntry("system", "这一轮有三个人。先看出身和征兆，武魂要等选定后才会揭晓。")],
@@ -1186,25 +1238,34 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   return game;
 }
 
-export function rerollCandidates(game: StoredGame, preferences?: WeightPreferences): void {
+export function rerollCandidates(game: StoredGame, preferences?: WeightPreferences, lockedSlots: number[] = []): void {
   const nextIndex = game.view.rerollIndex + 1;
-  game.hiddenCandidates = generateCandidates(
+  const fresh = generateCandidates(
     game.view.seed,
     nextIndex,
     game.view.candidates[0]?.gender ?? "男",
     preferences,
     (game.legacy.upgrades["命运余量"] ?? 0) * 0.01,
   );
+  const locks = new Set(lockedSlots.filter((slot) => slot >= 0 && slot < 3));
+  game.hiddenCandidates = fresh.map((candidate, index) => locks.has(index) ? game.hiddenCandidates[index] ?? candidate : candidate);
   game.view.rerollIndex = nextIndex;
+  game.view.candidateRerollsUsed += 1;
   game.view.candidates = game.hiddenCandidates.map((candidate) => candidate.public);
   game.view.selectedCandidateId = undefined;
   game.view.updatedAt = new Date().toISOString();
   refreshStoryArchive(game);
 }
 
-export function selectCandidate(game: StoredGame, candidateId: string, customName?: string): void {
+export function selectCandidate(game: StoredGame, candidateId: string, customName?: string, forcedSoul?: MartialSoulTemplate): void {
   const candidate = game.hiddenCandidates.find((item) => item.public.id === candidateId);
   if (!candidate) throw new Error("候选角色不存在或已经失效");
+  if (forcedSoul) {
+    candidate.martialSoul = forcedSoul;
+    candidate.innateSoulPower = Math.max(candidate.innateSoulPower, integer(createRandom(`${game.view.seed}:codex-soul:${forcedSoul.id}`), forcedSoul.soulPowerRange[0], forcedSoul.soulPowerRange[1]));
+    candidate.public.omens[0] = thirdPersonClue(forcedSoul.omens[0] ?? `${forcedSoul.name}的轮廓曾在梦里出现`, candidate.public.name, candidate.public.gender);
+    game.legacy.plannedMartialSoulId = forcedSoul.id;
+  }
 
   const chosenName = customName?.trim();
   if (chosenName) {
@@ -1310,14 +1371,15 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
       name: selected.martialSoul.name,
       category: selected.martialSoul.category,
       description: selected.martialSoul.description,
+      rarity: selected.martialSoul.metaRarity,
     },
     innateSoulPower: selected.innateSoulPower,
     soulRank: selected.innateSoulPower,
     cultivationProgress: selected.innateSoulPower >= 10 ? "等待第一魂环" : "刚刚起步",
     condition: "良好",
     fatigue: "轻松",
-    coins: 12,
-    reputation: "默默无闻",
+    coins: selected.originStart?.coins ?? 12,
+    reputation: selected.originStart?.reputation ?? "默默无闻",
     injuries: [],
     soulRings: [],
     abilityDescriptors: {
@@ -1361,8 +1423,11 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     game.view.inventory = [...start.inventory];
     game.view.affiliations = start.affiliation ? [{ ...start.affiliation, reputation: "身份已确认", joinedAt: "出生" }] : [];
   } else {
-    game.view.inventory = ["旧布包", "半日干粮"];
+    game.view.inventory = [...(selected.originStart?.items ?? []), "旧布包", "半日干粮"];
   }
+  game.world.flags.destinyPressure = selected.originStart?.pressure ?? 1;
+  game.world.flags.originAdvantage = selected.originStart?.advantage ?? selected.public.originAdvantage;
+  game.world.flags.originBurden = selected.originStart?.burden ?? selected.public.originBurden;
   if (game.legacy.equippedHeirloom) game.view.inventory.push(game.legacy.equippedHeirloom);
   const foundationLevel = game.legacy.upgrades["稳固根基"] ?? 0;
   if (foundationLevel > 0) {
@@ -1387,6 +1452,23 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   if (selected.originId === "cultivator-reincarnation") game.view.tasks.push({ id: "adapt-cultivation", title: "验证前世修行法", kind: "计划", detail: "先完成一条能安全运转的魂力经脉路线。", status: "进行中" });
   if (selected.originId === "modern-transmigrator") game.view.tasks.push({ id: "verify-timeline", title: "核实剧情时间线", kind: "线索", detail: "先确认当前年份、唐三位置和已经发生的关键节点。", status: "进行中" });
   if (selected.originId === "evil-soul-remnant") game.view.tasks.push({ id: "forbidden-choice", title: "决定是否接触家族禁术", kind: "计划", detail: "戒律、收益和代价都已经知道，是否修炼仍由角色决定。", status: "进行中" });
+  if ((selected.originStart?.pressure ?? 1) >= 3) game.view.tasks.push({ id: "identity-burden", title: "处理身份带来的第一场麻烦", kind: "线索", detail: selected.originStart?.burden ?? selected.public.originBurden, status: "进行中", destinationId: selected.public.locationId });
+  game.view.chapterObjective = {
+    title: selected.innateSoulPower > 0 ? "让觉醒结果真正变成第一步" : "确认无魂力之后仍有哪些路",
+    stakes: selected.originStart?.burden ?? selected.public.originBurden,
+    destinationId: selected.public.locationId,
+    steps: selected.innateSoulPower > 0
+      ? [
+          { id: "understand", text: "向可靠的人弄清武魂与先天魂力意味着什么", status: "进行中" },
+          { id: "summon", text: "完成第一次主动召唤并确认武魂特性", status: "未开始" },
+          { id: "path", text: "确定入学、拜师、宗门或独自修炼中的近期路线", status: "未开始" },
+        ]
+      : [
+          { id: "recheck", text: "确认觉醒阵、水晶球和身体是否存在异常", status: "进行中" },
+          { id: "alternate", text: "查找体魄、知识或特殊体系的替代成长线", status: "未开始" },
+          { id: "commit", text: "选定下一阶段愿意付出代价的道路", status: "未开始" },
+        ],
+  };
   game.storyMemory.openThreads = selected.innateSoulPower > 0
     ? ["家人与出身中尚未说清的细节", "获得第一魂环"]
     : ["家人与出身中尚未说清的细节", "理解觉醒结果"];

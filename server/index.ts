@@ -24,6 +24,11 @@ import {
   purchaseLegacyUpgrade,
   saveGame,
   updateMetaPreferences,
+  claimEquippedMartialSoul,
+  drawMetaMartialSoul,
+  equipCodexMartialSoul,
+  spendLegacyPoints,
+  toggleCodexMartialSoul,
 } from "./db.js";
 import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithDeepSeek } from "./services/deepseek.js";
 import { settingsView, writeDeepSeekSettings } from "./services/settings.js";
@@ -47,7 +52,9 @@ const createGameSchema = z.object({
 });
 
 const candidateSchema = z.object({ candidateId: z.string().min(1), customName: z.string().trim().min(1).max(12).optional() });
-const shapingRerollSchema = z.object({ part: z.enum(["goals", "personality"]) });
+const slotLocksSchema = z.array(z.number().int().min(0).max(2)).max(3).default([]);
+const candidateRerollSchema = z.object({ lockedSlots: slotLocksSchema }).default({ lockedSlots: [] });
+const shapingRerollSchema = z.object({ part: z.enum(["goals", "personality"]), lockedSlots: slotLocksSchema });
 const shapingSchema = z.object({
   keywords: z.array(z.string().trim().min(1).max(12)).min(1).max(8),
   answers: z.record(z.string(), z.string()).refine((answers) => Object.keys(answers).length >= 6, "请完成六道情境题"),
@@ -64,6 +71,8 @@ const metaPreferencesSchema = z.object({
 });
 const metaPurchaseSchema = z.object({ name: z.enum(["命运余量", "稳固根基", "旧世见闻"]) });
 const metaEquipSchema = z.object({ name: z.string().trim().max(60).optional() });
+const metaSoulEquipSchema = z.object({ id: z.string().trim().min(1).optional() });
+const metaSoulToggleSchema = z.object({ id: z.string().trim().min(1), enabled: z.boolean() });
 const settingsSchema = z.object({
   apiKey: z.string().trim().min(1),
   baseUrl: z.string().url(),
@@ -96,6 +105,20 @@ app.post("/api/meta/equip", (request, response) => {
   response.json(equipLegacyHeirloom(input.name));
 });
 
+app.post("/api/meta/martial-souls/draw", (_request, response) => {
+  response.json(drawMetaMartialSoul());
+});
+
+app.post("/api/meta/martial-souls/equip", (request, response) => {
+  const input = metaSoulEquipSchema.parse(request.body);
+  response.json(equipCodexMartialSoul(input.id));
+});
+
+app.post("/api/meta/martial-souls/toggle", (request, response) => {
+  const input = metaSoulToggleSchema.parse(request.body);
+  response.json(toggleCodexMartialSoul(input.id, input.enabled));
+});
+
 app.get("/api/world/catalog/stats", (_request, response) => {
   response.json(getWorldCatalogStats());
 });
@@ -114,13 +137,19 @@ app.post("/api/games", (request, response) => {
 });
 
 app.post("/api/games/:id/reroll", (request, response) => {
+  const input = candidateRerollSchema.parse(request.body ?? {});
   const game = loadGame(request.params.id);
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
   if (game.view.status !== "candidate_selection") {
     return response.status(409).json({ error: "角色已经选定，不能重新抽取" });
   }
-  rerollCandidates(game, getMetaProgression().weightPreferences);
-  saveGame(game, "candidates.rerolled", { rerollIndex: game.view.rerollIndex });
+  if (game.view.candidateRerollsUsed >= 3) {
+    const cost = 8 * (game.view.candidatePaidRerolls + 1);
+    spendLegacyPoints(cost, "继续刷新角色");
+    game.view.candidatePaidRerolls += 1;
+  }
+  rerollCandidates(game, getMetaProgression().weightPreferences, input.lockedSlots);
+  saveGame(game, "candidates.rerolled", { rerollIndex: game.view.rerollIndex, lockedSlots: input.lockedSlots, paid: game.view.candidateRerollsUsed > 3 });
   return response.json(publicView(game));
 });
 
@@ -128,7 +157,9 @@ app.post("/api/games/:id/select", (request, response) => {
   const input = candidateSchema.parse(request.body);
   const game = loadGame(request.params.id);
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
-  selectCandidate(game, input.candidateId, input.customName);
+  if (!game.view.candidates.some((candidate) => candidate.id === input.candidateId)) return response.status(404).json({ error: "候选角色不存在" });
+  const forcedSoul = claimEquippedMartialSoul();
+  selectCandidate(game, input.candidateId, input.customName, forcedSoul);
   saveGame(game, "candidate.selected", { candidateId: input.candidateId, customName: input.customName });
   return response.json(publicView(game));
 });
@@ -156,7 +187,7 @@ app.post("/api/games/:id/shaping/reroll", (request, response) => {
   const game = loadGame(request.params.id);
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
   if (game.view.status !== "character_shaping") return response.status(409).json({ error: "当前不能重新抽取角色塑造方案" });
-  rerollCharacterShaping(game, input.part);
+  rerollCharacterShaping(game, input.part, input.lockedSlots);
   saveGame(game, "character_shaping.rerolled", input);
   return response.json(publicView(game));
 });
@@ -244,7 +275,7 @@ app.post("/api/games/:id/end", (request, response) => {
   const input = endSchema.parse(request.body);
   const game = loadGame(request.params.id);
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
-  if (game.view.status === "candidate_selection" || game.view.status === "awakening") {
+  if (game.view.status !== "playing" && game.view.status !== "ended") {
     return response.status(409).json({ error: "角色人生尚未正式开始" });
   }
   const wasSettled = Boolean(game.view.runProgress.settlement);

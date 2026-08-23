@@ -7,8 +7,10 @@ interface CandidateScreenProps {
   candidates: CandidatePublic[];
   birthProfileCount: number;
   rerollIndex: number;
+  candidateRerollsUsed: number;
+  candidatePaidRerolls: number;
   busy: boolean;
-  onReroll: () => Promise<void>;
+  onReroll: (lockedSlots: number[]) => Promise<void>;
   onSelect: (id: string, customName?: string) => Promise<void>;
 }
 
@@ -16,18 +18,21 @@ export function CandidateScreen({
   candidates,
   birthProfileCount,
   rerollIndex,
+  candidateRerollsUsed,
+  candidatePaidRerolls,
   busy,
   onReroll,
   onSelect,
 }: CandidateScreenProps) {
   const [names, setNames] = useState<Record<string, string>>({});
+  const [lockedSlots, setLockedSlots] = useState<number[]>([]);
   useEffect(() => setNames(Object.fromEntries(candidates.map((candidate) => [candidate.id, candidate.name]))), [candidates]);
   return (
     <main className="candidate-page">
       <header className="candidate-header">
         <p className="eyebrow">第 {rerollIndex + 1} 次抽取</p>
         <h1>选择角色</h1>
-        <p>出生池现有 {birthProfileCount} 份具体档案。每组三张至少有一名稀有、传奇或神话角色，武魂仍留到觉醒时揭晓。</p>
+        <p>出生池现有 {birthProfileCount} 份具体档案，来自 {Math.round(birthProfileCount / 36)} 种核心身份。稀有度代表资源、异常性与故事牵连，不是没有代价的强度；武魂仍留到觉醒时揭晓。</p>
       </header>
 
       <section className="candidate-map-section">
@@ -49,8 +54,9 @@ export function CandidateScreen({
 
       <section className="candidate-grid">
         {candidates.map((candidate, index) => (
-          <article id={`candidate-${candidate.id}`} className={`candidate-card rarity-${candidate.rarity}`} key={candidate.id}>
+          <article id={`candidate-${candidate.id}`} className={`candidate-card rarity-${candidate.rarity} ${lockedSlots.includes(index) ? "candidate-locked" : ""}`} key={candidate.id}>
             <div className="candidate-index">{String(index + 1).padStart(2, "0")}</div>
+            <button type="button" className={`slot-lock ${lockedSlots.includes(index) ? "active" : ""}`} onClick={() => setLockedSlots((current) => current.includes(index) ? current.filter((slot) => slot !== index) : [...current, index])}>{lockedSlots.includes(index) ? "已锁定" : "锁定"}</button>
             <div className="candidate-meta"><span>{candidate.gender}</span><span>{candidate.eraRelation}</span><strong className="rarity-badge">{candidate.rarity} · {candidate.route}</strong></div>
             <label className="candidate-name-field"><span>姓名</span><input value={names[candidate.id] ?? candidate.name} maxLength={12} onChange={(event) => setNames((current) => ({ ...current, [candidate.id]: event.target.value }))} /></label>
             <p className="candidate-origin">{candidate.originName}</p>
@@ -71,9 +77,10 @@ export function CandidateScreen({
       </section>
 
       <div className="candidate-actions">
-        <button type="button" className="ghost-button" disabled={busy} onClick={() => void onReroll()}>
-          重抽
+        <button type="button" className="ghost-button" disabled={busy || lockedSlots.length === 3} onClick={() => void onReroll(lockedSlots)}>
+          {candidateRerollsUsed < 3 ? `刷新未锁定栏位 · 免费 ${3 - candidateRerollsUsed}/3` : `刷新未锁定栏位 · ${8 * (candidatePaidRerolls + 1)} 传承点`}
         </button>
+        <p>锁定的角色不会变化。三次免费刷新用完后，费用会逐次提高。</p>
       </div>
     </main>
   );

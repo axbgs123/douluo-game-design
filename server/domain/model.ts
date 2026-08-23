@@ -8,6 +8,7 @@ export interface MartialSoulTemplate {
   rarity: number;
   soulPowerRange: [number, number];
   omens: string[];
+  metaRarity?: import("../../shared/game.js").MartialSoulRarity;
 }
 
 export interface HiddenCandidate {
@@ -20,6 +21,14 @@ export interface HiddenCandidate {
   physique: string;
   spirit: string;
   perception: string;
+  originStart?: {
+    coins: number;
+    items: string[];
+    reputation: string;
+    advantage: string;
+    burden: string;
+    pressure: number;
+  };
 }
 
 export interface PersonalityProfile {
@@ -112,6 +121,14 @@ export interface HiddenWorldState {
     promisesKept: number;
     battlesWon: number;
   };
+  actionLedger: Array<{
+    index: number;
+    action: string;
+    intent: string;
+    result: string;
+    year: number;
+    day: number;
+  }>;
 }
 
 export interface StoredGame {
@@ -125,6 +142,7 @@ export interface StoredGame {
   legacy: {
     upgrades: Record<string, number>;
     equippedHeirloom?: string;
+    plannedMartialSoulId?: string;
   };
 }
 

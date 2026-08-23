@@ -1029,6 +1029,28 @@ export function applyActionResult(
   for (const message of result.systemMessages ?? []) game.view.narrative.push(entry("system", message));
   game.view.suggestions = sanitizeNarrativeSuggestions(game, suggestions, result.suggestions);
   game.actionIndex += 1;
+  game.world.actionLedger.push({ index: game.actionIndex, action: input.slice(0, 180), intent: result.intent, result: result.ruleSummary.slice(0, 220), year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1 });
+  game.world.actionLedger = game.world.actionLedger.slice(-400);
+  const objective = game.view.chapterObjective;
+  if (objective && !/无法完成|规则阻止/.test(result.intent)) {
+    const current = objective.steps.find((step) => step.status === "进行中") ?? objective.steps.find((step) => step.status === "未开始");
+    const matches = current && ((current.id === "understand" && /问|询问|打听|请教|了解/.test(input)) || (current.id === "summon" && /召唤|武魂|尝试|测试/.test(input)) || (current.id === "path" && /入学|拜师|加入|宗门|修炼|计划/.test(input)) || (current.id === "recheck" && /检查|重测|调查|阵法|水晶/.test(input)) || (current.id === "alternate" && /锻炼|学习|研究|特殊|功法|体魄/.test(input)) || (current.id === "commit" && /决定|选择|加入|拜师|开始/.test(input)) || (current.id === "train-plan" && /修炼|冥想|训练/.test(input)) || (current.id === "support" && /拜师|同伴|请教|资料/.test(input)) || (current.id === "first-milestone" && /猎魂|魂环|魂兽/.test(input)));
+    if (matches && current) {
+      current.status = "完成";
+      const next = objective.steps.find((step) => step.status === "未开始");
+      if (next) next.status = "进行中";
+      else game.view.chapterObjective = {
+        title: game.view.character && game.view.character.soulRank >= 10 ? "准备完整的第一次猎魂" : "把成长路线推进到第一个瓶颈",
+        stakes: "调查、准备和关系会决定这一步是机缘还是伤势。",
+        steps: [{ id: "train-plan", text: "确定稳定可重复的修炼方式", status: "进行中" }, { id: "support", text: "找到导师、同伴或可靠资料", status: "未开始" }, { id: "first-milestone", text: "抵达十级并开始调查第一魂环", status: "未开始" }],
+      };
+    }
+  }
+  if (!/无法完成|规则阻止/.test(result.intent) && /帮助|阻止|攻击|杀|救|告诉|交谈|承诺|夺取|保护/.test(input)) {
+    const npcIds = CANON_CHARACTERS.filter((npc) => input.includes(npc.name) || npc.aliases.some((alias) => input.includes(alias))).map((npc) => npc.id);
+    const factionIds = FACTIONS.filter((faction) => input.includes(faction.name)).map((faction) => faction.id);
+    if (npcIds.length || factionIds.length) recordCanonInfluence(game, { source: "玩家实际行动", description: input.slice(0, 100), affectedNpcIds: npcIds, affectedFactionIds: factionIds, strength: /杀|救下|摧毁|夺取/.test(input) ? 10 : /加入|拜师|保护|阻止/.test(input) ? 5 : 2 });
+  }
   recordStoryConsequence(game, input, result);
   game.view.updatedAt = new Date().toISOString();
 }
