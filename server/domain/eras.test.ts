@@ -4,6 +4,7 @@ import { awakenCharacter, createGame, ERA_BASE_YEARS, finalizeCharacterShaping, 
 import { settleRun } from "./endings.js";
 import { guardActionByStoryRules, selectNarrativeRules } from "./story-rules.js";
 import { resolveAction } from "./actions.js";
+import { createHiddenWorld } from "./world.js";
 
 function playingGame(era: GameEra, seed: string) {
   const game = createGame({ gender: "男", difficulty: "标准", seed, era });
@@ -74,6 +75,7 @@ describe("multi-era foundations", () => {
 
   it("makes a later-era soul spirit require selection, assessment and payment", () => {
     const game = playingGame(2, "soul-spirit-contract");
+    game.view.worldTime = { year: 10_012, day: 1, time: "08:00", season: "春", era: "绝世唐门时代" };
     game.view.character!.soulRank = 10;
     game.view.character!.coins = 1_000;
     game.view.character!.abilityDescriptors.spirit = "顶尖";
@@ -95,6 +97,17 @@ describe("multi-era foundations", () => {
     expect(game.view.character!.soulSpirits).toHaveLength(1);
     expect(game.view.character!.soulRank).toBe(11);
     expect(game.view.soulSpiritContract).toBeUndefined();
+  });
+
+  it("keeps soul spirits unavailable before their canon invention", () => {
+    const game = playingGame(2, "pre-spirit-era");
+    game.view.worldTime = { year: 10_000, day: 1, time: "08:00", season: "春", era: "霍雨浩基准年" };
+    game.view.character!.soulRank = 10;
+    expect(resolveAction(game, "申请正规魂灵").intent).toBe("无法完成");
+    expect(resolveAction(game, "研究魂兽残魂与魂灵设想").intent).toBe("魂灵前置研究");
+    expect(game.view.soulSpiritContract).toBeUndefined();
+    expect(createHiddenWorld(10_000, "shrek-city").npcs["snow-empress-human"].alive).toBe(false);
+    expect(createHiddenWorld(10_005, "shrek-city").npcs["snow-empress-human"].alive).toBe(true);
   });
 
   it("makes soul-tool crafting consume two material classes and supports certification", () => {

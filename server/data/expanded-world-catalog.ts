@@ -42,6 +42,7 @@ export const EXPANDED_FACTIONS: FactionDefinition[] = [
   faction("soul-engineer-legion", "日月皇家魂导师团", "帝国军团", "radiant-city", "装备先进魂导器的精锐军团。", 9900),
   faction("shrek-monitoring", "史莱克监察团", "学院监察组织", "shrek-city", "处理邪魂师与大陆级威胁。", 9900, true),
   faction("peerless-tang-sect", "绝世唐门", "复兴宗门", "shrek-city", "霍雨浩时代逐步复兴的唐门。", 10000),
+  faction("first-spirit-pagoda", "传灵塔", "魂灵试验与契约组织", "shrek-city", "由史莱克、原属斗罗大陆三国与星斗魂兽共同参与建立的第一代传灵塔。", 10012),
 
   faction("douluo-federation", "斗罗联邦", "联邦政体", "mingdu-federal", "两万年后的大陆政治主体。", 19800),
   faction("spirit-pagoda", "传灵塔", "魂灵与魂兽组织", "spirit-pagoda-hq", "负责魂灵技术、魂师服务与魂兽资源。", 19800),
@@ -176,7 +177,7 @@ export const EXPANDED_CHARACTERS: CanonCharacterDefinition[] = ([
   ["ling-luochen", "凌落宸", [], 3, 9983, ["冰"], ["shrek-inner-court"], "shrek-city", ["清冷", "负责", "重视团队"], "成为顶级控制魂师", 10000, "魂王"],
   ["dai-yaoheng", "戴钥衡", [], 4, 9980, ["白虎"], ["shrek-inner-court", "star-luo"], "shrek-city", ["稳重", "骄傲", "负责"], "守护史莱克与家族", 10000, "魂帝"],
   ["wang-qiuer", "王秋儿", ["帝皇瑞兽化形"], 5, null, ["黄金龙"], [], "star-dou-core", ["骄傲", "直接", "好奇人类"], "理解人类情感与族群命运", 10000, "三眼金猊化形"],
-  ["snow-empress-human", "雪女魂灵", [], 4, null, [], [], "extreme-north-core", ["清冷", "依恋", "守护极北"], "保存雪帝本源", 10000, "雪帝魂灵形态"],
+  ["snow-empress-human", "雪女魂灵", [], 4, 10005, [], [], "extreme-north-core", ["清冷", "依恋", "守护极北"], "保存雪帝本源", 10005, "雪帝魂灵形态"],
   ["nan-qiuqiu", "南秋秋", [], 3, 9989, ["胭脂龙"], ["peerless-tang-sect"], "shrek-city", ["骄傲", "直接", "重视宗门"], "重建地龙门", 10010, "魂帝"],
   ["ye-guyii", "叶骨衣", [], 3, 9988, ["神圣天使"], ["peerless-tang-sect"], "shrek-city", ["正直", "勇敢", "厌恶邪魂师"], "清剿邪魂师", 10010, "魂帝"],
 
@@ -313,6 +314,7 @@ export const EXPANDED_EVENTS: CanonEventDefinition[] = ([
   ["d2-shrek-defense", 10011, "史莱克城防御战", "shrek-city", ["huo-yuhao", "xuan-lao", "juzi"], 5, "史莱克面对帝国军团与高阶魂导器。"],
   ["d2-undead-demesne", 10012, "亡灵半位面投入战争", "shrek-city", ["huo-yuhao"], 4, "亡灵传承成为救援与战争力量。"],
   ["d2-soul-spirit-born", 10005, "魂灵体系首次成形", "shrek-city", ["huo-yuhao", "tian-meng", "snow-empress"], 5, "魂师与魂兽关系出现新道路。"],
+  ["d2-spirit-pagoda-founded", 10012, "第一代传灵塔开始建立", "shrek-city", ["huo-yuhao", "xuan-lao", "di-tian"], 5, "魂灵实验走向制度化，传灵师与平等契约开始公开培养。"],
   ["d2-final-holy-spirit", 10014, "圣灵教核心决战", "holy-spirit-depths", ["huo-yuhao", "zhongli-wu", "ye-xishui"], 5, "邪魂师组织遭受决定性打击。"],
   ["d2-god-realm-ascent", 10016, "霍雨浩继承情绪神位", undefined, ["huo-yuhao", "tang-wutong"], 5, "新一代强者离开斗罗位面。"],
 

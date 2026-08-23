@@ -949,7 +949,7 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
     ],
     2: [
       { pattern: /唐门/, id: "peerless-tang-sect", name: "绝世唐门", rank: 10 }, { pattern: /史莱克|内院/, id: "shrek-inner-court", name: "史莱克学院内院", rank: 30 },
-      { pattern: /日月|魂导师/, id: "sun-moon-royal-academy", name: "日月皇家魂导师学院", rank: 10 }, { pattern: /本体宗/, id: "body-sect", name: "本体宗", rank: 30 },
+      { pattern: /日月|魂导师/, id: "sun-moon-royal-academy", name: "日月皇家魂导师学院", rank: 10 }, { pattern: /本体宗/, id: "body-sect", name: "本体宗", rank: 30 }, { pattern: /传灵塔/, id: "first-spirit-pagoda", name: "传灵塔", rank: 20 },
     ],
     3: [
       { pattern: /唐门/, id: "d3-tang-sect", name: "两万年唐门", rank: 20 }, { pattern: /传灵塔/, id: "spirit-pagoda", name: "传灵塔", rank: 10 },
@@ -1297,8 +1297,22 @@ function soulSpiritGrade(years: number): "十年" | "百年" | "千年" | "万�
 
 function soulSpiritResolution(game: StoredGame, action: string): ActionResolution {
   const era = game.view.era ?? 1;
+  const year = game.view.worldTime?.year ?? 0;
   const character = game.view.character!;
   if (era === 1) return impossible("魂灵体系在这个时代尚未形成，只能研究灵魂残留与契约设想。", ["研究魂兽残魂", "调查魂环中的精神残留", "按传统方式准备猎魂"]);
+  if (era === 2 && year < 10_005) {
+    if (/研究|设想|调查/.test(action)) {
+      let theory = game.view.professions.find((item) => item.id === "魂灵理论");
+      if (!theory) { theory = { id: "魂灵理论", name: "灵魂契约理论", level: "假说", progress: 0, experiments: 0, failures: 0, knownMethods: [] }; game.view.professions.push(theory); }
+      theory.experiments += 1;
+      theory.progress = Math.min(24, theory.progress + integer(actionRandom(game), 2, 5));
+      return { intent: "魂灵前置研究", minutes: speedMinutes(game, 240, 960), ruleSummary: "当前只能记录魂兽残魂、智慧魂环与契约承载的观察，尚无可复制的魂灵技术。", fallbackNarrative: "几份记录能证明魂环里可能残留意识，却拼不成一套能让魂兽继续存活的办法。我把失败条件写在假说旁边，没有把猜测冒充成果。", suggestions: ["研究智慧魂环记录", "寻找精神系导师", "按传统路线准备魂环"] };
+    }
+    return impossible("这个年份还没有可供申请或购买的魂灵体系。", ["研究魂兽残魂", "调查智慧魂环传闻", "按传统路线准备猎魂"]);
+  }
+  if (era === 2 && year < 10_012 && !game.view.affiliations.some((item) => /史莱克/.test(item.name))) {
+    return impossible("魂灵目前仍是史莱克内部的高风险保密试验，外部不存在公开服务窗口。", ["加入史莱克并取得研究许可", "调查魂灵公开消息", "按传统路线准备猎魂"]);
+  }
   ensureMartialSoulAccounts(game);
   const activeRings = character.soulRingSets[character.activeMartialSoulIndex];
   const ringIndex = activeRings.length + 1;
@@ -1310,8 +1324,9 @@ function soulSpiritResolution(game: StoredGame, action: string): ActionResolutio
     if (!candidates.length) return impossible("当地登记库没有适合当前魂环槽位的合规魂灵。", ["前往更大的城市", "申请调取其他分塔库存", "按传统路线调查魂兽"]);
     const beast = pick(actionRandom(game), candidates);
     const years = Math.min(limit, Math.max(beast.ageRange[0], Math.round(Math.min(beast.ageRange[1], limit) * .72)));
-    const provider = era === 2 ? "魂灵研究机构的试点窗口" : "传灵塔正规服务窗口";
-    game.view.soulSpiritContract = { stage: "调查", provider, beastId: beast.id, beastName: beast.name, years, compatibility: 0, cost: Math.max(120, Math.round(years * .7)), warning: "尚未完成精神适配评估，不能签约。" };
+    const experimental = era === 2 && year < 10_012;
+    const provider = experimental ? "史莱克魂灵红色机密试验组" : "传灵塔正规服务窗口";
+    game.view.soulSpiritContract = { stage: "调查", provider, beastId: beast.id, beastName: beast.name, years, compatibility: 0, cost: experimental ? 0 : Math.max(120, Math.round(years * .7)), warning: "尚未完成精神适配评估，不能签约。" };
     return { intent: "调查魂灵", minutes: 90, ruleSummary: `找到一份${beast.name}魂灵档案，标称${years}年；价格、精神负担和适配性尚待评估。`, fallbackNarrative: `工作人员没有先说“最强”，而是把死亡记录、退契案例和一叠检测表推到桌上。玻璃后的${beast.name}魂灵只显出模糊轮廓，偶尔朝这边转一下头。`, suggestions: ["评估魂灵适配", "核对魂灵来源", "放弃这份魂灵"] };
   }
 
