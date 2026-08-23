@@ -56,6 +56,7 @@ export const EXPANDED_FACTIONS: FactionDefinition[] = [
   faction("dou-spirit-overseas", "海外斗灵帝国", "海外帝国", "d3-dou-spirit-capital", "迁往海外大陆后延续的斗灵帝国。", 19800),
 
   faction("d4-federal-fleet", "斗罗联邦舰队", "星际军方", "mother-ship-port", "三万年后的联邦星际舰队。", 29800),
+  faction("d4-seventh-fleet", "斗罗联邦第七舰队", "最新服役的联邦宇宙舰队", "mother-ship-port", "七大舰队之一，由白凌大将担任舰队司令；以一艘行星级母舰为旗舰，并配属多级护卫、战列、攻击、侦察、运输与补给舰。", 30012),
   faction("shrek-space-command", "史莱克星际体系", "学院与舰队协作", "shrek-city", "培养星际指挥、机甲与魂师人才。", 29800),
   faction("senluo-planet", "森罗星魂兽自治体系", "魂兽自治", "senluo-planet", "由魂兽与联邦共同维持的生态星球。", 29800),
   faction("elf-planet", "精灵星体系", "生态星球", "elf-planet", "精灵族与生命能量高度集中的星球。", 29800),
@@ -225,6 +226,7 @@ export const EXPANDED_CHARACTERS: CanonCharacterDefinition[] = ([
   ["lan-xiao", "蓝潇", [], 3, 29960, [], ["douluo-federation"], "tianluo-planet", ["理性", "仁慈", "负责"], "保护养子并研究古魂兽", 29994, "古魂兽研究员"],
   ["nan-cheng", "南澄", [], 3, 29962, ["冰"], ["douluo-federation"], "tianluo-planet", ["温柔", "警觉", "护子"], "保护家庭", 29994, "魂师研究员"],
   ["ying-luojhong", "樱落红", [], 3, 29940, [], ["shrek-space-command"], "shrek-city", ["严厉", "惜才", "负责"], "培养星际实验班", 30000, "史莱克院长"],
+  ["bai-ling-admiral", "白凌", ["白凌大将"], 4, 29937, [], ["d4-federal-fleet", "d4-seventh-fleet"], "mother-ship-port", ["沉稳", "负责", "重视军情"], "指挥联邦第七舰队并维护舰队安全", 30012, "第七舰队司令"],
   ["wang-tianyu", "汪天羽", [], 4, 29920, ["蓝电霸王龙"], ["sea-god-pavilion"], "shrek-city", ["威严", "严谨", "护校"], "守护史莱克传承", 30000, "神级强者"],
   ["le-gongzi", "乐公子", ["唐乐", "唐舞麟"], 5, 19994, ["蓝银皇"], [], "mother-ship-port", ["温和", "失忆", "护短"], "找回记忆并保护蓝轩宇", 30000, "失忆神级强者"],
   ["na-na-teacher", "娜娜", ["古月娜"], 5, null, ["元素掌控"], [], "tiandou-planet", ["清冷", "失忆", "温柔"], "找回记忆并保护学生", 30000, "失忆神级强者"],
@@ -355,6 +357,7 @@ export const EXPANDED_EVENTS: CanonEventDefinition[] = ([
   ["d4-forest-star-trial", 30006, "森罗星试炼", "senluo-planet", ["lan-xuanyu", "yuanen-huihui"], 4, "魂兽生态星成为青年试炼场。"],
   ["d4-elf-star", 30007, "精灵星生命亲和考验", "elf-planet", ["lan-mengqin", "lan-xuanyu"], 4, "生命能量改变部分队员机缘。"],
   ["d4-fleet-entry", 30012, "十八岁的蓝轩宇团队进入联邦舰队", "mother-ship-port", ["lan-xuanyu", "bai-xiuxiu"], 4, "故事进入星际军事阶段。"],
+  ["d4-seventh-fleet-rescue", 30012, "联邦第七舰队参与恒星救援", undefined, ["lan-xuanyu", "bai-ling-admiral"], 4, "最新服役的第七舰队由白凌大将指挥，以行星级母舰及完整编队执行恒星附近救援。"],
   ["d4-dragon-horse-infiltration", 30013, "潜入龙马星系", "dragon-horse-star", ["lan-xuanyu", "bai-xiuxiu"], 5, "蓝轩宇以龙族身份进入天龙星。"],
   ["d4-rising-dragon", 30014, "升龙大赛", "dragon-horse-star", ["lan-xuanyu", "huang-yuanlang"], 4, "龙族青年围绕资源和地位竞争。"],
   ["d4-future-rookies", 30015, "未来新秀挑战赛", "dragon-horse-star", ["lan-xuanyu", "bai-xiuxiu"], 4, "龙马联邦青年强者集中交锋。"],

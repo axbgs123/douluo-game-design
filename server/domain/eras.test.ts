@@ -6,6 +6,7 @@ import { guardActionByStoryRules, selectNarrativeRules, violatesCanonChronology 
 import { resolveAction } from "./actions.js";
 import { advanceWorldTime, buildMapView, createHiddenWorld } from "./world.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, factionActiveAtYear } from "../data/world.js";
 
 function playingGame(era: GameEra, seed: string) {
   const game = createGame({ gender: "男", difficulty: "标准", seed, era });
@@ -126,6 +127,19 @@ describe("multi-era foundations", () => {
     expect(resolveAction(game, "购买船票并搭乘客运航班前往天斗星").intent).toBe("星际客运");
     expect(game.view.locationId).toBe("tiandou-planet");
     expect(game.view.character!.coins).toBeLessThan(beforeCoins);
+  });
+
+  it("records the source-verified seventh fleet command chain and flagship structure", () => {
+    const fleet = FACTIONS.find((item) => item.id === "d4-seventh-fleet");
+    const commander = CANON_CHARACTERS.find((item) => item.id === "bai-ling-admiral");
+    const rescue = CANON_EVENTS.find((item) => item.id === "d4-seventh-fleet-rescue");
+    expect(fleet).toMatchObject({ name: "斗罗联邦第七舰队", kind: "最新服役的联邦宇宙舰队", activeFromYear: 30012 });
+    expect(fleet?.description).toContain("行星级母舰");
+    expect(factionActiveAtYear(fleet!, 30011)).toBe(false);
+    expect(factionActiveAtYear(fleet!, 30012)).toBe(true);
+    expect(commander).toMatchObject({ name: "白凌", birthYear: 29937, factionIds: ["d4-federal-fleet", "d4-seventh-fleet"] });
+    expect(30012 - commander!.birthYear!).toBe(75);
+    expect(rescue?.participantIds).toEqual(["lan-xuanyu", "bai-ling-admiral"]);
   });
 
   it("does not let a passenger ticket satisfy an accepted interplanetary freight contract", () => {
