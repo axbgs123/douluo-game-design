@@ -1265,9 +1265,12 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const codexRandom = createRandom(`${seed}:enabled-codex-souls`);
   for (const candidate of hiddenCandidates) {
     if (!enabledCodexSouls.length || codexRandom() >= 0.12) continue;
-    const entry = pick(codexRandom, enabledCodexSouls);
+    const identityIndex = MARTIAL_SOUL_GRADE_ORDER.indexOf(candidate.public.rarity);
+    const compatibleCodexSouls = enabledCodexSouls.filter((entry) => MARTIAL_SOUL_GRADE_ORDER.indexOf(martialSoulGrade(entry.name, entry.rarity, Math.max(...entry.initialSoulPowers, 0))) >= identityIndex);
+    if (!compatibleCodexSouls.length) continue;
+    const entry = pick(codexRandom, compatibleCodexSouls);
     const definition = metaSoulById(entry.id);
-    candidate.martialSoul = definition ?? {
+    const replacement = definition ?? {
       id: entry.id,
       name: entry.name,
       category: entry.category,
@@ -1277,6 +1280,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       omens: [`${entry.name}曾在梦里留下轮廓`, `魂力对${entry.name}的意象产生共鸣`],
       metaRarity: entry.rarity,
     };
+    candidate.martialSoul = { ...replacement, grade: martialSoulGrade(replacement.name, replacement.metaRarity, replacement.soulPowerRange[1]) };
     candidate.innateSoulPower = Math.max(candidate.innateSoulPower, integer(codexRandom, candidate.martialSoul.soulPowerRange[0], candidate.martialSoul.soulPowerRange[1]));
   }
 

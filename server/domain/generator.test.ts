@@ -13,6 +13,7 @@ import {
   selectCandidate,
 } from "./generator.js";
 import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
+import type { MetaProgressionView } from "../../shared/game.js";
 
 const personality = {
   keywords: ["谨慎", "重情", "好学", "坚韧", "自由"],
@@ -81,6 +82,21 @@ describe("candidate generation", () => {
     expect(normalizeMartialSoulName("霜戈")).toBe("玄霜破军戈");
     expect(martialSoulGrade("玄霜破军戈", undefined, 10)).toBe("神话");
     expect(normalizeMartialSoulName("噬影血藤")).toBe("九幽噬影血藤");
+  });
+
+  it("does not let an enabled low-grade codex soul overwrite a high-grade origin", () => {
+    const meta = {
+      weightPreferences: { origin: "天骄", martialSoul: "均衡", gift: "均衡" },
+      purchasedUpgrades: {},
+      martialSoulCodex: [{ id: "white-stone-shield", name: "河纹石盾", category: "器武魂", description: "普通石盾", rarity: "白色", charges: 0, completedRuns: 1, enabled: true, initialSoulPowers: [3], growthRoutes: ["防御"] }],
+    } as MetaProgressionView;
+    for (let index = 0; index < 80; index += 1) {
+      const game = createGame({ gender: "男", difficulty: "标准", seed: `codex-grade-${index}` }, meta);
+      for (const candidate of game.hiddenCandidates) {
+        expect(MARTIAL_SOUL_GRADE_ORDER.indexOf(candidate.martialSoul.grade ?? "平凡"))
+          .toBeGreaterThanOrEqual(MARTIAL_SOUL_GRADE_ORDER.indexOf(candidate.public.rarity));
+      }
+    }
   });
 
   it("changes candidates on reroll while preserving the seed", () => {
