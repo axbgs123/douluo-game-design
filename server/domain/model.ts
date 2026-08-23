@@ -169,6 +169,7 @@ export interface HiddenWorldState {
 
 export interface StoredGame {
   schemaVersion: number;
+  revision: number;
   view: GameView;
   hiddenCandidates: HiddenCandidate[];
   personalityProfile: PersonalityProfile;

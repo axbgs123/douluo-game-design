@@ -26,6 +26,41 @@ export class NarrativeAuditError extends Error {
   }
 }
 
+const ACTION_FAMILIES: RegExp[] = [
+  /修炼|冥想|闭关|运转|练功/,
+  /休息|睡觉|疗伤|恢复/,
+  /前往|去往|出发|旅行|离开|赶路/,
+  /询问|打听|交谈|告诉|拜访|问/,
+  /调查|搜索|观察|查找|研究/,
+  /购买|买|采购|花费/,
+  /攻击|战斗|防御|闪避|逃跑|刺杀|杀/,
+  /猎魂|魂兽|魂环|追踪|吸收/,
+  /加入|投靠|入学|拜师|承诺|拒绝/,
+  /等待|快进|过去.*(?:天|月|年)/,
+];
+
+export function validateInterpretedAction(game: StoredGame, original: string, interpreted: string): string {
+  const compactOriginal = original.replace(/\s+/g, "");
+  const compactInterpreted = interpreted.replace(/\s+/g, "");
+  if (!compactInterpreted || compactInterpreted.length > 1200) return original;
+  const originalFamilies = ACTION_FAMILIES.filter((pattern) => pattern.test(compactOriginal));
+  if (originalFamilies.length && !originalFamilies.some((pattern) => pattern.test(compactInterpreted))) return original;
+  const originalNumbers = new Set(compactOriginal.match(/\d+(?:\.\d+)?/g) ?? []);
+  if ((compactInterpreted.match(/\d+(?:\.\d+)?/g) ?? []).some((value) => !originalNumbers.has(value))) return original;
+  const originalQuantities = new Set(compactOriginal.match(/[零一二三四五六七八九十百千万两]+(?:天|日|月|年|级|枚|个|次|魂币)/g) ?? []);
+  if ((compactInterpreted.match(/[零一二三四五六七八九十百千万两]+(?:天|日|月|年|级|枚|个|次|魂币)/g) ?? []).some((value) => !originalQuantities.has(value))) return original;
+  if (!/(已经|成功|完成|获得|拥有|抵达|杀死|击败)/.test(compactOriginal) && /(已经|成功|完成|获得|拥有|抵达|杀死|击败)/.test(compactInterpreted)) return original;
+  const protectedTerms = [
+    ...game.view.inventory,
+    ...game.view.map.map((item) => item.name),
+    ...game.view.relations.map((item) => item.name),
+    ...game.view.knownFigures.map((item) => item.name),
+    ...game.view.affiliations.map((item) => item.name),
+  ].filter((term) => term.length >= 2);
+  if (protectedTerms.some((term) => compactInterpreted.includes(term) && !compactOriginal.includes(term))) return original;
+  return interpreted.trim();
+}
+
 export function narrativePacing(game: StoredGame, playerInput: string, resolution: ActionResolution): { kind: "略写" | "推进" | "关键"; target: string; directive: string } {
   const scene = `${playerInput} ${resolution.intent} ${resolution.ruleSummary}`;
   const importantCanonContact = CANON_CHARACTERS.some((character) => character.importance >= 4 && (playerInput.includes(character.name) || character.aliases.some((alias) => playerInput.includes(alias))));

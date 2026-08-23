@@ -1365,6 +1365,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
     schemaVersion: 8,
+    revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
     actionIndex: 0,

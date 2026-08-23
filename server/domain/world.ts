@@ -647,6 +647,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     if (matched) hidden.public = matched;
   }
   legacy.schemaVersion = 8;
+  legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
   legacy.world.canonCausalFootprints ??= [];

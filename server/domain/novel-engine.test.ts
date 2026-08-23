@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { auditNovelEngineNarrative, buildNovelEnginePack } from "./novel-engine.js";
-import { NarrativeAuditError, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing } from "../services/deepseek.js";
+import { NarrativeAuditError, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing, validateInterpretedAction } from "../services/deepseek.js";
 
 function awakened(seed = "novel-engine") {
   const game = createGame({ gender: "男", difficulty: "标准", seed });
@@ -19,6 +19,14 @@ function awakened(seed = "novel-engine") {
 const ordinaryResolution = { intent: "调查", minutes: 20, ruleSummary: "确认了屋内陈设，没有获得新物品。", fallbackNarrative: "", suggestions: ["继续观察"] };
 
 describe("增强小说引擎", () => {
+  it("rejects semantic interpretations that invent results or protected entities", () => {
+    const game = awakened("semantic-boundary");
+    game.view.inventory.push("武魂殿令牌");
+    expect(validateInterpretedAction(game, "观察周围", "调查后已经获得武魂殿令牌")).toBe("观察周围");
+    expect(validateInterpretedAction(game, "等待一天", "等待十天")).toBe("等待一天");
+    expect(validateInterpretedAction(game, "询问附近的路", "攻击附近的人")).toBe("询问附近的路");
+    expect(validateInterpretedAction(game, "谨慎前往诺丁城", "谨慎前往诺丁城")).toBe("谨慎前往诺丁城");
+  });
   it("always loads the portable core modules without exposing author workflows", () => {
     const pack = buildNovelEnginePack(awakened(), "观察屋内", ordinaryResolution);
     expect(pack.activeModules.map((module) => module.id)).toEqual(["continuity", "world", "expand", "human", "fanfic"]);

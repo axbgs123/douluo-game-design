@@ -24,7 +24,8 @@ database.exec(`
     id TEXT PRIMARY KEY,
     state_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS events (
@@ -99,6 +100,9 @@ database.exec(`
   );
 `);
 
+const gameColumns = database.prepare("PRAGMA table_info(games)").all() as Array<{ name: string }>;
+if (!gameColumns.some((column) => column.name === "revision")) database.exec("ALTER TABLE games ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
+
 function seedCanonCatalog(): void {
   const characterStatement = database.prepare("INSERT OR REPLACE INTO canon_characters (id, name, importance, data_json) VALUES (?, ?, ?, ?)");
   const snapshotStatement = database.prepare("INSERT OR REPLACE INTO canon_power_snapshots (character_id, year, soul_rank, tier, note) VALUES (?, ?, ?, ?, ?)");
@@ -161,11 +165,13 @@ database.prepare(`
 `).run(JSON.stringify(defaultMetaProgression), new Date().toISOString());
 
 const upsertGameStatement = database.prepare(`
-  INSERT INTO games (id, state_json, created_at, updated_at)
-  VALUES (?, ?, ?, ?)
+  INSERT INTO games (id, state_json, created_at, updated_at, revision)
+  VALUES (?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     state_json = excluded.state_json,
-    updated_at = excluded.updated_at
+    updated_at = excluded.updated_at,
+    revision = excluded.revision
+  WHERE games.revision = ?
 `);
 
 const loadGameStatement = database.prepare("SELECT state_json FROM games WHERE id = ?");
@@ -178,25 +184,46 @@ const insertEventStatement = database.prepare(`
 const deleteGameStatement = database.prepare("DELETE FROM games WHERE id = ?");
 const deleteGameEventsStatement = database.prepare("DELETE FROM events WHERE game_id = ?");
 const deleteGameCheckpointsStatement = database.prepare("DELETE FROM game_checkpoints WHERE game_id = ?");
+const insertCheckpointStatement = database.prepare("INSERT INTO game_checkpoints (game_id, label, action_index, state_json, created_at) VALUES (?, ?, ?, ?, ?)");
+const trimCheckpointsStatement = database.prepare("DELETE FROM game_checkpoints WHERE game_id = ? AND id NOT IN (SELECT id FROM game_checkpoints WHERE game_id = ? ORDER BY id DESC LIMIT 3)");
+
+function writeGameAndEvent(game: StoredGame, eventType: string, payload: unknown): void {
+  const expectedRevision = game.revision ?? 0;
+  game.revision = expectedRevision + 1;
+  const serialized = JSON.stringify(game);
+  const saved = upsertGameStatement.run(game.view.id, serialized, game.view.createdAt, game.view.updatedAt, game.revision, expectedRevision);
+  if (Number(saved.changes) === 0) {
+    game.revision = expectedRevision;
+    throw new Error("存档已被另一项操作更新，请载入最新存档后重试");
+  }
+  const countRow = eventCountStatement.get(game.view.id) as { count: number };
+  insertEventStatement.run(game.view.id, countRow.count + 1, eventType, JSON.stringify(payload), new Date().toISOString());
+}
+
+function writeCheckpoint(game: StoredGame, label: string): void {
+  insertCheckpointStatement.run(game.view.id, label.slice(0, 80), game.actionIndex, JSON.stringify(game), new Date().toISOString());
+  trimCheckpointsStatement.run(game.view.id, game.view.id);
+}
 
 export function saveGame(game: StoredGame, eventType: string, payload: unknown = {}): void {
-  const serialized = JSON.stringify(game);
   database.exec("BEGIN IMMEDIATE");
   try {
-    upsertGameStatement.run(
-      game.view.id,
-      serialized,
-      game.view.createdAt,
-      game.view.updatedAt,
-    );
-    const countRow = eventCountStatement.get(game.view.id) as { count: number };
-    insertEventStatement.run(
-      game.view.id,
-      countRow.count + 1,
-      eventType,
-      JSON.stringify(payload),
-      new Date().toISOString(),
-    );
+    writeGameAndEvent(game, eventType, payload);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function saveGameWithLegacyCost(game: StoredGame, cost: number, reason: string, eventType: string, payload: unknown = {}): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const meta = getMetaProgression();
+    if (meta.legacyPoints < cost) throw new Error(`${reason}需要 ${cost} 传承点，当前只有 ${meta.legacyPoints} 点`);
+    meta.legacyPoints -= cost;
+    saveMetaProgression(meta);
+    writeGameAndEvent(game, eventType, payload);
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
@@ -246,8 +273,14 @@ export function closeDatabase(): void {
 }
 
 export function saveCheckpoint(game: StoredGame, label: string): void {
-  database.prepare("INSERT INTO game_checkpoints (game_id, label, action_index, state_json, created_at) VALUES (?, ?, ?, ?, ?)").run(game.view.id, label.slice(0, 80), game.actionIndex, JSON.stringify(game), new Date().toISOString());
-  database.prepare("DELETE FROM game_checkpoints WHERE game_id = ? AND id NOT IN (SELECT id FROM game_checkpoints WHERE game_id = ? ORDER BY id DESC LIMIT 3)").run(game.view.id, game.view.id);
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    writeCheckpoint(game, label);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function listCheckpoints(gameId: string): CheckpointSummary[] {
@@ -259,6 +292,7 @@ export function restoreCheckpoint(gameId: string, checkpointId: number): StoredG
   if (!row) return undefined;
   const current = loadGame(gameId);
   const restored = ensureGameState(JSON.parse(row.state_json) as StoredGame);
+  restored.revision = current?.revision ?? restored.revision;
   const reloads = Number(current?.world.flags.reloadCount ?? 0) + 1;
   restored.world.flags.reloadCount = reloads;
   restored.world.flags.performancePenalty = reloads * 5;
@@ -346,19 +380,8 @@ export function toggleCodexMartialSoul(id: string, enabled: boolean): MetaProgre
   return saveMetaProgression(meta);
 }
 
-export function claimEquippedMartialSoul(): MartialSoulTemplate | undefined {
-  const meta = getMetaProgression();
-  const id = meta.equippedMartialSoulId;
-  if (!id) return undefined;
-  const entry = meta.martialSoulCodex.find((item) => item.id === id);
-  if (!entry) { meta.equippedMartialSoulId = undefined; saveMetaProgression(meta); return undefined; }
-  if (entry.completedRuns < 1) {
-    if (entry.charges < 1) throw new Error("这个武魂的单次使用机会已经消耗");
-    entry.charges -= 1;
-  }
-  meta.equippedMartialSoulId = undefined;
-  saveMetaProgression(meta);
-  const definition = metaSoulById(id);
+function templateFromCodexEntry(entry: MartialSoulCodexEntryView): MartialSoulTemplate {
+  const definition = metaSoulById(entry.id);
   return definition ?? {
     id: entry.id,
     name: entry.name,
@@ -369,6 +392,37 @@ export function claimEquippedMartialSoul(): MartialSoulTemplate | undefined {
     omens: [`${entry.name}曾在梦中显出轮廓`, `魂力对${entry.name}的意象产生共鸣`],
     metaRarity: entry.rarity,
   };
+}
+
+export function peekEquippedMartialSoul(): MartialSoulTemplate | undefined {
+  const meta = getMetaProgression();
+  const id = meta.equippedMartialSoulId;
+  if (!id) return undefined;
+  const entry = meta.martialSoulCodex.find((item) => item.id === id);
+  if (!entry) return undefined;
+  if (entry.completedRuns < 1 && entry.charges < 1) throw new Error("这个武魂的单次使用机会已经消耗");
+  return templateFromCodexEntry(entry);
+}
+
+export function saveGameAndClaimEquippedMartialSoul(game: StoredGame, soulId: string, eventType: string, payload: unknown = {}): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const meta = getMetaProgression();
+    if (meta.equippedMartialSoulId !== soulId) throw new Error("局外武魂装备状态已经变化，请重新选择角色");
+    const entry = meta.martialSoulCodex.find((item) => item.id === soulId);
+    if (!entry) throw new Error("尚未抽到这个武魂");
+    if (entry.completedRuns < 1) {
+      if (entry.charges < 1) throw new Error("这个武魂的单次使用机会已经消耗");
+      entry.charges -= 1;
+    }
+    meta.equippedMartialSoulId = undefined;
+    saveMetaProgression(meta);
+    writeGameAndEvent(game, eventType, payload);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function spendLegacyPoints(amount: number, reason: string): MetaProgressionView {
@@ -417,63 +471,84 @@ export function equipLegacyHeirloom(name?: string): MetaProgressionView {
   return saveMetaProgression(meta);
 }
 
-export function recordRunSettlement(game: StoredGame, settlement: RunSettlementView): MetaProgressionView {
+function applyRunReward(game: StoredGame, settlement: RunSettlementView): boolean {
+  if (!settlement.qualified) return false;
+  const claim = database.prepare("INSERT OR IGNORE INTO rewarded_runs (game_id, settlement_json, rewarded_at) VALUES (?, ?, ?)")
+    .run(game.view.id, JSON.stringify(settlement), new Date().toISOString());
+  if (Number(claim.changes) === 0) return false;
   const meta = getMetaProgression();
-  if (!settlement.qualified) return meta;
+  meta.completedRuns += 1;
+  meta.legacyPoints += settlement.legacyPoints;
+  meta.martialSoulDrawTickets += 1;
+  const character = game.view.character;
+  if (character) {
+    const souls = character.martialSouls?.length ? character.martialSouls : [character.martialSoul];
+    for (const soul of souls) if (!meta.unlockedMartialSouls.includes(soul.name)) meta.unlockedMartialSouls.push(soul.name);
+    if (!meta.unlockedOrigins.includes(character.originName)) meta.unlockedOrigins.push(character.originName);
+    meta.discoveredOrigins = Math.max(meta.discoveredOrigins, meta.unlockedOrigins.length - 1);
+    for (const ring of character.soulRings) {
+      const entry = `${ring.beastName} · ${ring.years}年`;
+      if (!meta.codexEntries.includes(entry)) meta.codexEntries.push(entry);
+    }
+    for (const [index, soul] of souls.entries()) {
+      const knownDefinition = META_MARTIAL_SOULS.find((item) => item.name === soul.name);
+      let codex = meta.martialSoulCodex.find((item) => item.name === soul.name);
+      if (!codex) {
+        codex = {
+          id: knownDefinition?.id ?? `world-${Buffer.from(soul.name).toString("hex")}`,
+          name: soul.name, category: soul.category, description: soul.description,
+          rarity: knownDefinition?.metaRarity ?? (soul.grade === "神话" ? "红色" : soul.grade === "传奇" ? "金色" : soul.grade === "稀有" ? "紫色" : soul.grade === "优秀" ? "蓝色" : "白色"),
+          charges: 0, completedRuns: 0, enabled: true, initialSoulPowers: [],
+          growthRoutes: knownDefinition?.growthRoutes ?? ["当前实战路线尚未形成"],
+        };
+        meta.martialSoulCodex.push(codex);
+      }
+      codex.completedRuns += 1;
+      if (!codex.initialSoulPowers.includes(character.innateSoulPower)) codex.initialSoulPowers.push(character.innateSoulPower);
+      const route = index === 0
+        ? character.soulRings.length ? character.soulRings.map((ring) => `${ring.skillName}（${ring.years}年）`).join(" → ") : "无魂环通关路线"
+        : "本局作为副武魂觉醒，尚未开始附加魂环";
+      if (!codex.growthRoutes.includes(route)) codex.growthRoutes.push(route);
+    }
+    meta.discoveredMartialSouls = meta.martialSoulCodex.length;
+  }
+  if (game.world.metrics.completedHunts >= 1 && !meta.unlockedHeirlooms.includes("旧猎魂笔记")) meta.unlockedHeirlooms.push("旧猎魂笔记");
+  if (game.world.metrics.historicalImpact >= 20 && !meta.unlockedTraits.includes("时代见证者")) meta.unlockedTraits.push("时代见证者");
+  saveMetaProgression(meta);
+  return true;
+}
+
+export function recordRunSettlement(game: StoredGame, settlement: RunSettlementView): MetaProgressionView {
   database.exec("BEGIN IMMEDIATE");
   try {
-    const claim = database.prepare("INSERT OR IGNORE INTO rewarded_runs (game_id, settlement_json, rewarded_at) VALUES (?, ?, ?)")
-      .run(game.view.id, JSON.stringify(settlement), new Date().toISOString());
-    if (Number(claim.changes) === 0) {
-      database.exec("COMMIT");
-      return meta;
-    }
-    meta.completedRuns += 1;
-    meta.legacyPoints += settlement.legacyPoints;
-    meta.martialSoulDrawTickets += 1;
-    const character = game.view.character;
-    if (character) {
-      const souls = character.martialSouls?.length ? character.martialSouls : [character.martialSoul];
-      for (const soul of souls) if (!meta.unlockedMartialSouls.includes(soul.name)) meta.unlockedMartialSouls.push(soul.name);
-      if (!meta.unlockedOrigins.includes(character.originName)) meta.unlockedOrigins.push(character.originName);
-      meta.discoveredMartialSouls = meta.unlockedMartialSouls.length;
-      meta.discoveredOrigins = Math.max(meta.discoveredOrigins, meta.unlockedOrigins.length - 1);
-      for (const ring of character.soulRings) {
-        const entry = `${ring.beastName} · ${ring.years}年`;
-        if (!meta.codexEntries.includes(entry)) meta.codexEntries.push(entry);
-      }
-      for (const [index, soul] of souls.entries()) {
-        const knownDefinition = META_MARTIAL_SOULS.find((item) => item.name === soul.name);
-        let codex = meta.martialSoulCodex.find((item) => item.name === soul.name);
-        if (!codex) {
-          codex = {
-            id: knownDefinition?.id ?? `world-${Buffer.from(soul.name).toString("hex")}`,
-            name: soul.name,
-            category: soul.category,
-            description: soul.description,
-            rarity: knownDefinition?.metaRarity ?? (soul.grade === "神话" ? "红色" : soul.grade === "传奇" ? "金色" : soul.grade === "稀有" ? "紫色" : soul.grade === "优秀" ? "蓝色" : "白色"),
-            charges: 0,
-            completedRuns: 0,
-            enabled: true,
-            initialSoulPowers: [],
-            growthRoutes: knownDefinition?.growthRoutes ?? ["当前实战路线尚未形成"],
-          };
-          meta.martialSoulCodex.push(codex);
-        }
-        codex.completedRuns += 1;
-        if (!codex.initialSoulPowers.includes(character.innateSoulPower)) codex.initialSoulPowers.push(character.innateSoulPower);
-        const route = index === 0
-          ? character.soulRings.length ? character.soulRings.map((ring) => `${ring.skillName}（${ring.years}年）`).join(" → ") : "无魂环通关路线"
-          : "本局作为副武魂觉醒，尚未开始附加魂环";
-        if (!codex.growthRoutes.includes(route)) codex.growthRoutes.push(route);
-      }
-      meta.discoveredMartialSouls = meta.martialSoulCodex.length;
-    }
-    if (game.world.metrics.completedHunts >= 1 && !meta.unlockedHeirlooms.includes("旧猎魂笔记")) meta.unlockedHeirlooms.push("旧猎魂笔记");
-    if (game.world.metrics.historicalImpact >= 20 && !meta.unlockedTraits.includes("时代见证者")) meta.unlockedTraits.push("时代见证者");
-    saveMetaProgression(meta);
+    applyRunReward(game, settlement);
     database.exec("COMMIT");
-    return meta;
+    return getMetaProgression();
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function commitResolvedAction(previous: StoredGame, resolved: StoredGame, checkpointLabel: string, eventType: string, payload: unknown, settlement?: RunSettlementView): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    writeCheckpoint(previous, checkpointLabel);
+    if (settlement) applyRunReward(resolved, settlement);
+    writeGameAndEvent(resolved, eventType, payload);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function saveSettledGame(game: StoredGame, settlement: RunSettlementView, eventType: string): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    applyRunReward(game, settlement);
+    writeGameAndEvent(game, eventType, settlement);
+    database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
     throw error;

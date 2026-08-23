@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { DIFFICULTIES } from "../shared/game.js";
+import { DIFFICULTIES, type RunSettlementView } from "../shared/game.js";
 import { applyActionResult, resolveAction } from "./domain/actions.js";
 import {
   awakenCharacter,
@@ -22,21 +22,23 @@ import {
   equipLegacyHeirloom,
   listSaves,
   loadGame,
-  recordRunSettlement,
+  commitResolvedAction,
   purchaseLegacyUpgrade,
   saveGame,
   updateMetaPreferences,
-  claimEquippedMartialSoul,
+  peekEquippedMartialSoul,
   drawMetaMartialSoul,
   deleteGame,
   listCheckpoints,
   restoreCheckpoint,
   saveCheckpoint,
   equipCodexMartialSoul,
-  spendLegacyPoints,
+  saveGameAndClaimEquippedMartialSoul,
+  saveGameWithLegacyCost,
+  saveSettledGame,
   toggleCodexMartialSoul,
 } from "./db.js";
-import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithAuditRetries } from "./services/deepseek.js";
+import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithAuditRetries, validateInterpretedAction } from "./services/deepseek.js";
 import { readDeepSeekSettings, settingsView, writeDeepSeekSettings } from "./services/settings.js";
 import { settleRun } from "./domain/endings.js";
 import { guardActionByStoryRules } from "./domain/story-rules.js";
@@ -179,14 +181,14 @@ app.post("/api/games/:id/reroll", (request, response) => {
   if (game.view.status !== "candidate_selection") {
     return response.status(409).json({ error: "角色已经选定，不能重新抽取" });
   }
-  if (game.view.candidateRerollsUsed >= 3) {
-    const cost = 8 * (game.view.candidatePaidRerolls + 1);
-    spendLegacyPoints(cost, "继续刷新角色");
-    game.view.candidatePaidRerolls += 1;
-  }
-  rerollCandidates(game, getMetaProgression().weightPreferences, input.lockedSlots);
-  saveGame(game, "candidates.rerolled", { rerollIndex: game.view.rerollIndex, lockedSlots: input.lockedSlots, paid: game.view.candidateRerollsUsed > 3 });
-  return response.json(publicView(game));
+  const working = structuredClone(game);
+  const cost = working.view.candidateRerollsUsed >= 3 ? 8 * (working.view.candidatePaidRerolls + 1) : 0;
+  if (cost) working.view.candidatePaidRerolls += 1;
+  rerollCandidates(working, getMetaProgression().weightPreferences, input.lockedSlots);
+  const payload = { rerollIndex: working.view.rerollIndex, lockedSlots: input.lockedSlots, paid: Boolean(cost), cost };
+  if (cost) saveGameWithLegacyCost(working, cost, "继续刷新角色", "candidates.rerolled", payload);
+  else saveGame(working, "candidates.rerolled", payload);
+  return response.json(publicView(working));
 });
 
 app.post("/api/games/:id/select", (request, response) => {
@@ -195,10 +197,13 @@ app.post("/api/games/:id/select", (request, response) => {
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
   if (game.view.status !== "candidate_selection") return response.status(409).json({ error: "角色已经选定，不能再次选择候选角色" });
   if (!game.view.candidates.some((candidate) => candidate.id === input.candidateId)) return response.status(404).json({ error: "候选角色不存在" });
-  const forcedSoul = claimEquippedMartialSoul();
-  selectCandidate(game, input.candidateId, input.customName, forcedSoul);
-  saveGame(game, "candidate.selected", { candidateId: input.candidateId, customName: input.customName });
-  return response.json(publicView(game));
+  const working = structuredClone(game);
+  const forcedSoul = peekEquippedMartialSoul();
+  selectCandidate(working, input.candidateId, input.customName, forcedSoul);
+  const payload = { candidateId: input.candidateId, customName: input.customName, equippedMartialSoulId: forcedSoul?.id };
+  if (forcedSoul) saveGameAndClaimEquippedMartialSoul(working, forcedSoul.id, "candidate.selected", payload);
+  else saveGame(working, "candidate.selected", payload);
+  return response.json(publicView(working));
 });
 
 app.post("/api/games/:id/map/pins", (request, response) => {
@@ -270,11 +275,11 @@ function requireAi(response: express.Response): boolean {
   return false;
 }
 
-function settleAndRecord(game: ReturnType<typeof loadGame> extends infer T ? Exclude<T, undefined> : never): void {
+function settleIfNeeded(game: ReturnType<typeof loadGame> extends infer T ? Exclude<T, undefined> : never): RunSettlementView | undefined {
   if (game.view.runProgress.ending && !game.view.runProgress.settlement) {
-    const settlement = settleRun(game, game.view.runProgress.ending);
-    recordRunSettlement(game, settlement);
+    return settleRun(game, game.view.runProgress.ending);
   }
+  return undefined;
 }
 
 app.post("/api/games/:id/action", async (request, response) => {
@@ -294,7 +299,10 @@ app.post("/api/games/:id/action", async (request, response) => {
     const working = structuredClone(game);
     let ruleAction = input.input;
     const blockedBeforeInterpretation = guardActionByStoryRules(working, input.input);
-    if (!blockedBeforeInterpretation) ruleAction = await interpretActionWithDeepSeek(working, input.input) ?? input.input;
+    if (!blockedBeforeInterpretation) {
+      const interpreted = await interpretActionWithDeepSeek(working, input.input);
+      ruleAction = interpreted ? validateInterpretedAction(working, input.input, interpreted) : input.input;
+    }
     const resolution = resolveAction(working, ruleAction);
     let generated;
     if (!/规则阻止|无法完成/.test(resolution.intent)) generated = await narrateWithAuditRetries(working, input.input, resolution);
@@ -304,9 +312,8 @@ app.post("/api/games/:id/action", async (request, response) => {
     if (generated) applyNarrativeMemory(working, generated);
     const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
     if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString() };
-    settleAndRecord(working);
-    saveCheckpoint(game, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`);
-    saveGame(working, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds });
+    const settlement = settleIfNeeded(working);
+    commitResolvedAction(game, working, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds }, settlement);
     return response.json(publicView(working));
   } finally {
     activeActionGames.delete(game.view.id);
@@ -345,7 +352,10 @@ app.post("/api/games/:id/action/stream", async (request, response) => {
     phase("checking", "检查行动是否合法");
     let ruleAction = input.input;
     const blocked = guardActionByStoryRules(working, input.input);
-    if (!blocked) ruleAction = await interpretActionWithDeepSeek(working, input.input, controller.signal) ?? input.input;
+    if (!blocked) {
+      const interpreted = await interpretActionWithDeepSeek(working, input.input, controller.signal);
+      ruleAction = interpreted ? validateInterpretedAction(working, input.input, interpreted) : input.input;
+    }
     if (cancelled) return;
 
     phase("calculating", "计算时间、胜负与后果");
@@ -371,10 +381,9 @@ app.post("/api/games/:id/action/stream", async (request, response) => {
     if ("memory" in generated) applyNarrativeMemory(working, generated);
     const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
     if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString() };
-    settleAndRecord(working);
+    const settlement = settleIfNeeded(working);
     if (cancelled) return;
-    saveCheckpoint(game, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`);
-    saveGame(working, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds });
+    commitResolvedAction(game, working, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds }, settlement);
     send({ type: "done", game: publicView(working), explanation: resolution.ruleSummary });
     response.end();
   } catch (error) {
@@ -423,10 +432,8 @@ app.post("/api/games/:id/end", (request, response) => {
   if (game.view.status !== "playing" && game.view.status !== "ended") {
     return response.status(409).json({ error: "角色人生尚未正式开始" });
   }
-  const wasSettled = Boolean(game.view.runProgress.settlement);
   const settlement = settleRun(game, input.reason);
-  if (!wasSettled) recordRunSettlement(game, settlement);
-  saveGame(game, "run.settled", settlement);
+  saveSettledGame(game, settlement, "run.settled");
   return response.json(publicView(game));
 });
 
