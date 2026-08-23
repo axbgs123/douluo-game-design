@@ -27,6 +27,15 @@ function characterExistsInEra(characterId: string, year: number): boolean {
 }
 
 const TIMED_FACTION_MEMBERSHIPS = [
+  { characterId: "tang-san", factionId: "shrek", eventId: "shrek-enrollment" },
+  { characterId: "tang-san", factionId: "clear-sky", eventId: "clear-sky-return" },
+  { characterId: "tang-san", factionId: "tang-sect", eventId: "tang-sect-founded" },
+  { characterId: "xiao-wu", factionId: "shrek", eventId: "shrek-enrollment" },
+  { characterId: "dai-mubai", factionId: "shrek", eventId: "shrek-enrollment" },
+  { characterId: "zhu-zhuqing", factionId: "shrek", eventId: "shrek-enrollment" },
+  { characterId: "ning-rongrong", factionId: "shrek", eventId: "shrek-enrollment" },
+  { characterId: "ao-si-ka", factionId: "shrek", eventId: "shrek-enrollment" },
+  { characterId: "ma-hongjun", factionId: "shrek", eventId: "shrek-enrollment" },
   { characterId: "huo-yuhao", factionId: "peerless-tang-sect", eventId: "d2-tang-sect-meeting" },
   { characterId: "huo-yuhao", factionId: "shrek-inner-court", eventId: "d2-shrek-enrollment" },
   { characterId: "tang-wutong", factionId: "shrek-inner-court", eventId: "d2-shrek-enrollment" },

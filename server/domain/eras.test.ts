@@ -52,6 +52,13 @@ describe("multi-era foundations", () => {
   });
 
   it("does not simulate protagonists from other generations as living local NPCs", () => {
+    const era1 = createHiddenWorld(0, "holy-soul-village");
+    expect(era1.npcs["tang-san"].factionIds).not.toContain("shrek");
+    expect(era1.npcs["tang-san"].factionIds).not.toContain("clear-sky");
+    expect(era1.npcs["tang-san"].factionIds).not.toContain("tang-sect");
+    expect(createHiddenWorld(7, "heaven-dou-city").npcs["tang-san"].factionIds).toContain("shrek");
+    expect(createHiddenWorld(14, "heaven-dou-city").npcs["tang-san"].factionIds).toEqual(expect.arrayContaining(["clear-sky", "tang-sect"]));
+
     const era2 = createHiddenWorld(10_000, "shrek-city");
     expect(era2.npcs["tang-san"].alive).toBe(false);
     expect(era2.npcs["huo-yuhao"].alive).toBe(true);
