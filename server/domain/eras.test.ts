@@ -4,7 +4,7 @@ import { awakenCharacter, createGame, ERA_BASE_YEARS, finalizeCharacterShaping, 
 import { settleRun } from "./endings.js";
 import { guardActionByStoryRules, selectNarrativeRules, violatesCanonChronology } from "./story-rules.js";
 import { resolveAction } from "./actions.js";
-import { buildMapView, createHiddenWorld } from "./world.js";
+import { advanceWorldTime, buildMapView, createHiddenWorld } from "./world.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 
 function playingGame(era: GameEra, seed: string) {
@@ -58,12 +58,16 @@ describe("multi-era foundations", () => {
     expect(era2.npcs["tang-wulin"].alive).toBe(false);
     expect(era2.npcs["huo-yuhao"].age).toBe(11);
     expect(era2.npcs["huo-yuhao"].locationId).toBe("white-tiger-duke-estate");
+    expect(era2.npcs["huo-yuhao"].factionIds).not.toContain("peerless-tang-sect");
+    expect(createHiddenWorld(10_001, "shrek-city").npcs["huo-yuhao"].factionIds).toContain("peerless-tang-sect");
 
     const era3 = createHiddenWorld(20_000, "east-sea-city");
     expect(era3.npcs["huo-yuhao"].alive).toBe(false);
     expect(era3.npcs["tang-wulin"].alive).toBe(true);
     expect(era3.npcs["lan-xuanyu"].alive).toBe(false);
     expect(era3.npcs["tang-wulin"].locationId).toBe("aolai-city-d3");
+    expect(era3.npcs["tang-wulin"].factionIds).not.toContain("d3-shrek-seven");
+    expect(createHiddenWorld(20_004, "shrek-city").npcs["tang-wulin"].factionIds).toContain("d3-shrek-seven");
 
     const era4 = createHiddenWorld(30_000, "mother-ship-port");
     expect(era4.npcs["tang-wulin"].alive).toBe(false);
@@ -72,6 +76,24 @@ describe("multi-era foundations", () => {
     expect(era4.npcs["lan-xuanyu"].locationId).toBe("tianluo-planet");
     expect(era4.npcs["lan-xiao"].locationId).toBe("tianluo-planet");
     expect(era4.npcs["na-na-teacher"].locationId).toBe("tiandou-planet");
+    expect(era4.npcs["lan-xuanyu"].factionIds).not.toContain("d4-federal-fleet");
+    expect(createHiddenWorld(30_007, "mother-ship-port").npcs["lan-xuanyu"].factionIds).toContain("d4-federal-fleet");
+  });
+
+  it("unlocks future faction memberships only when their joining event occurs", () => {
+    const game = playingGame(2, "timed-faction-membership");
+    game.world = createHiddenWorld(10_000, "shrek-city");
+    game.view.worldTime = { year: 10_000, day: 1, time: "08:00", season: "春", era: "霍雨浩离府求学基准年" };
+    expect(game.world.npcs["huo-yuhao"].factionIds).not.toContain("peerless-tang-sect");
+    advanceWorldTime(game, 15 * 1_440);
+    expect(game.world.npcs["huo-yuhao"].factionIds).toContain("peerless-tang-sect");
+
+    const altered = playingGame(2, "suppressed-faction-membership");
+    altered.world = createHiddenWorld(10_000, "shrek-city");
+    altered.world.suppressedCanonEvents.push("d2-tang-sect-meeting");
+    altered.view.worldTime = { year: 10_000, day: 1, time: "08:00", season: "春", era: "霍雨浩离府求学基准年" };
+    advanceWorldTime(altered, 15 * 1_440);
+    expect(altered.world.npcs["huo-yuhao"].factionIds).not.toContain("peerless-tang-sect");
   });
 
   it("exposes the two early fourth-era administrative planets and requires valid interplanetary transport", () => {

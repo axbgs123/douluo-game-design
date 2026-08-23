@@ -26,6 +26,41 @@ function characterExistsInEra(characterId: string, year: number): boolean {
   return eraIndexAtYear(firstSnapshotYear) === eraIndexAtYear(year);
 }
 
+const TIMED_FACTION_MEMBERSHIPS = [
+  { characterId: "huo-yuhao", factionId: "peerless-tang-sect", eventId: "d2-tang-sect-meeting" },
+  { characterId: "huo-yuhao", factionId: "shrek-inner-court", eventId: "d2-shrek-enrollment" },
+  { characterId: "tang-wutong", factionId: "shrek-inner-court", eventId: "d2-shrek-enrollment" },
+  { characterId: "xiao-xiao", factionId: "shrek-inner-court", eventId: "d2-shrek-enrollment" },
+  { characterId: "tang-wulin", factionId: "d3-tang-sect", eventId: "d3-east-sea-enrollment" },
+  { characterId: "tang-wulin", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
+  { characterId: "gu-yue-na", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
+  { characterId: "xie-xie", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
+  { characterId: "xu-xiaoyan", factionId: "d3-shrek-seven", eventId: "d3-shrek-entry" },
+  { characterId: "lan-xuanyu", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
+  { characterId: "lan-xuanyu", factionId: "d4-federal-fleet", eventId: "d4-fleet-entry" },
+  { characterId: "bai-xiuxiu", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
+  { characterId: "qian-lei", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
+  { characterId: "liu-feng", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
+] as const;
+
+function canonicalFactionIdsAtDate(characterId: string, year: number, day: number): string[] {
+  const definition = characterById(characterId);
+  if (!definition) return [];
+  return definition.factionIds.filter((factionId) => {
+    const membership = TIMED_FACTION_MEMBERSHIPS.find((item) => item.characterId === characterId && item.factionId === factionId);
+    if (!membership) return true;
+    const event = CANON_EVENTS.find((item) => item.id === membership.eventId);
+    return Boolean(event && ordinal(event.year, event.day ?? 1) <= ordinal(year, day));
+  });
+}
+
+function applyFactionJoinsForEvent(game: StoredGame, eventId: string): void {
+  for (const membership of TIMED_FACTION_MEMBERSHIPS.filter((item) => item.eventId === eventId)) {
+    const npc = game.world.npcs[membership.characterId];
+    if (npc && !npc.factionIds.includes(membership.factionId)) npc.factionIds.push(membership.factionId);
+  }
+}
+
 function eraAtYear(year: number): string {
   const [base, anchor] = year >= 25000 ? [30000, "蓝轩宇觉醒"] : year >= 15000 ? [20000, "唐舞麟觉醒"] : year >= 5000 ? [10000, "霍雨浩离府求学"] : [0, "唐三觉醒"];
   const offset = year - base;
@@ -144,7 +179,7 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
       soulRank: aliveAtStart ? power.soulRank : undefined,
       powerTier: aliveAtStart ? power.tier : "不在当世活动",
       locationId: canonicalLocationAtYear(definition.id, startYear, 1),
-      factionIds: definition.factionIds,
+      factionIds: canonicalFactionIdsAtDate(definition.id, startYear, 1),
       currentGoal: !inCurrentEra ? "不在当前时代活动" : !born ? "尚未出生" : aliveAtStart ? (definition.goals[0] ?? "继续当前生活") : "已死亡",
       dispositionToPlayer: 0,
       knownToPlayer: false,
@@ -612,6 +647,7 @@ function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentO
       continue;
     }
     game.world.firedCanonEvents.push(event.id);
+    applyFactionJoinsForEvent(game, event.id);
     for (const participantId of event.participantIds) {
       const npc = game.world.npcs[participantId];
       if (npc && event.locationId) npc.locationId = event.locationId;
