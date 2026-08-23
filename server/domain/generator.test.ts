@@ -256,4 +256,16 @@ describe("candidate generation", () => {
     selectCandidate(game, game.view.candidates[2].id);
     expect(game.view.shaping?.fixedTraitEffects.every((item) => item.effect.length > 12)).toBe(true);
   });
+
+  it("turns exceptional awakening talent into concrete faction attention", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "full-soul-power-attention" });
+    game.hiddenCandidates[0].innateSoulPower = 10;
+    selectCandidate(game, game.view.candidates[0].id);
+    finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(game);
+    expect(game.world.flags.awakeningAttention).toBe("最高优先");
+    expect(game.view.tasks.some((task) => task.id === "awakening-recruitment")).toBe(true);
+    expect(game.world.dynamicEvents.some((event) => /武魂殿/.test(event.title) && event.status === "可介入")).toBe(true);
+    expect(game.view.narrative.at(-1)?.text).toMatch(/上报主殿|内部培养评估/);
+  });
 });

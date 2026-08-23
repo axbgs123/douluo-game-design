@@ -558,12 +558,17 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .preference-grid label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; }
 .preference-grid select { border: 1px solid var(--line); background: #fffdf7; color: var(--ink); padding: 11px; }
 .preference-grid .primary-button { padding: 11px 17px; }
-.catalog-grid { display: grid; grid-template-columns: repeat(8, 1fr); border: 1px solid var(--line); }
+.catalog-grid { display: grid; grid-template-columns: repeat(9, 1fr); border: 1px solid var(--line); }
 .catalog-grid article { padding: 14px 8px; text-align: center; border-right: 1px solid var(--line); }
 .catalog-grid article:last-child { border-right: 0; }
 .catalog-grid strong, .catalog-grid span { display: block; }
 .catalog-grid strong { color: var(--gold); font: 27px var(--display-font); }
 .catalog-grid span { color: var(--muted); font-size: 9px; }
+.catalog-help { margin-top: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.22); }
+.catalog-help summary { padding: 12px 14px; color: var(--gold); cursor: pointer; }
+.catalog-help dl { margin: 0; padding: 0 14px 14px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.catalog-help dl div { padding: 10px; border: 1px solid var(--line); }
+.catalog-help dt { color: var(--ink); font-weight: 700; font-size: 11px; }.catalog-help dd { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
 .legacy-upgrade-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .legacy-upgrade-grid article { border: 1px solid var(--line); background: rgba(244,234,215,.48); padding: 16px; }
 .legacy-upgrade-grid span { color: var(--gold); font-size: 10px; }.legacy-upgrade-grid strong { display: block; margin: 7px 0; }

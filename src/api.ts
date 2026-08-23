@@ -106,8 +106,16 @@ export function submitAction(id: string, input: string): Promise<GameView> {
 export type ActionStreamEvent =
   | { type: "phase"; phase: string; label: string }
   | { type: "draft"; text: string }
+  | { type: "retry"; attempt: number; label: string }
   | { type: "done"; game: GameView; explanation: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; retryable?: boolean };
+
+export class ActionStreamError extends Error {
+  constructor(message: string, public readonly retryable: boolean) {
+    super(message);
+    this.name = "ActionStreamError";
+  }
+}
 
 export async function streamAction(
   id: string,
@@ -123,7 +131,7 @@ export async function streamAction(
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(payload.error ?? "推演请求失败");
+    throw new ActionStreamError(payload.error ?? "推演请求失败", response.status === 408 || response.status === 429 || response.status >= 500);
   }
   if (!response.body) throw new Error("浏览器不支持流式正文");
   const reader = response.body.getReader();
@@ -139,7 +147,7 @@ export async function streamAction(
       if (!line.trim()) continue;
       const event = JSON.parse(line) as ActionStreamEvent;
       onEvent(event);
-      if (event.type === "error") throw new Error(event.message);
+      if (event.type === "error") throw new ActionStreamError(event.message, event.retryable !== false);
       if (event.type === "done") completed = event.game;
     }
     if (done) break;

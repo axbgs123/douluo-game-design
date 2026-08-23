@@ -1,5 +1,5 @@
 import type { ActionResolution, StoredGame } from "../domain/model.js";
-import { CANON_EVENTS, FACTIONS, characterById } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, characterById } from "../data/world.js";
 import { toThirdPersonNarrative } from "../domain/narrative.js";
 import { auditNarrative, refreshStoryArchive, sanitizeNarrativeSuggestions, selectNarrativeRules, violatesCanonChronology } from "../domain/story-rules.js";
 import { readDeepSeekSettings } from "./settings.js";
@@ -17,6 +17,32 @@ export interface NarrationResult {
     npcNotes?: Record<string, string>;
     chapterTitle?: string;
   };
+}
+
+export class NarrativeAuditError extends Error {
+  constructor(public readonly issues: string[]) {
+    super(`正文未通过审校：${issues.join("、")}`);
+    this.name = "NarrativeAuditError";
+  }
+}
+
+export function narrativePacing(game: StoredGame, playerInput: string, resolution: ActionResolution): { kind: "略写" | "推进" | "关键"; target: string; directive: string } {
+  const scene = `${playerInput} ${resolution.intent} ${resolution.ruleSummary}`;
+  const importantCanonContact = CANON_CHARACTERS.some((character) => character.importance >= 4 && (playerInput.includes(character.name) || character.aliases.some((alias) => playerInput.includes(alias))));
+  const activeEventContact = game.world.dynamicEvents.some((event) => event.status === "可介入" && playerInput.includes(event.title));
+  const key = importantCanonContact || /重要战斗|生死|死亡|复生|魂环吸收|觉醒|加入势力|背叛|拜师|建立势力|历史偏移|原作关键|结局|神位|重大选择/.test(scene);
+  const routineIntent = /^(调查|交谈|一般行动|购买|工作|休息|等待)$/u.test(resolution.intent);
+  const minor = !key && !activeEventContact && (routineIntent || /观察|查看|翻找|整理|简单询问|购买|普通工作|休息|等待|赶路|一般行动|日常/.test(scene));
+  const kind = key ? "关键" : minor ? "略写" : "推进";
+  const target = game.view.speed === "高速"
+    ? kind === "关键" ? "700至1200字" : kind === "略写" ? "160至320字" : "300至550字"
+    : kind === "关键" ? "1600至2800字" : kind === "略写" ? "280至550字" : "600至1000字";
+  const directive = kind === "略写"
+    ? "压缩过程，只保留一个影响判断的细节和明确结果；不要把开门、走路、翻找、客套逐步展开。"
+    : kind === "推进"
+      ? "本次至少完成一个完整叙事节拍：目标发生变化、获得可用信息、关系改变或局面进入下一阶段。"
+      : "关键场景写清位置、选择、反应与代价；放慢真正改变命运的瞬间，其余动作仍要压缩。";
+  return { kind, target, directive };
 }
 
 function extractJson(text: string): unknown {
@@ -64,13 +90,14 @@ export async function narrateWithDeepSeek(
   playerInput: string,
   resolution: ActionResolution,
   signal?: AbortSignal,
+  retryGuidance: string[] = [],
 ): Promise<NarrationResult | null> {
   const settings = readDeepSeekSettings();
   if (!settings.apiKey) return null;
   const activeRules = selectNarrativeRules(game, playerInput, resolution);
   const novelEngine = buildNovelEnginePack(game, playerInput, resolution, settings.novelEngineEnabled);
-  const importantScene = /战斗|魂环|觉醒|死亡|复生|加入势力|拜师|建立势力|历史|重要人物|结局/.test(`${resolution.intent}${resolution.ruleSummary}`);
-  const lengthTarget = importantScene ? "关键场景，约2000至4000字；若事件本身很短，不为凑字数重复" : game.view.speed === "高速" ? "高速模式，约300至600字" : "标准场景，约800至1500字";
+  const pacing = narrativePacing(game, playerInput, resolution);
+  const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
 
   const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
@@ -104,6 +131,7 @@ export async function narrateWithDeepSeek(
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
             novelEngine.prompt,
+            retryGuidance.length ? `上一稿未通过审校，必须逐项修复后完整重写，不要解释修改过程：${retryGuidance.join("；")}` : "",
             `本次长度要求：${lengthTarget}。按情节自然分段，不固定段数。`,
             "输出 JSON：{\"narrative\":\"第三人称限知正文\",\"suggestions\":[\"建议1\",\"建议2\",\"建议3\"],\"memory\":{\"summary\":\"长期摘要\",\"openThreads\":[\"未决事项\"],\"keyChoice\":\"本次关键选择，无则空字符串\",\"npcNotes\":{\"人名\":\"应记住的互动\"},\"chapterTitle\":\"章节名\"}}。",
           ].join("\n"),
@@ -144,6 +172,7 @@ export async function narrateWithDeepSeek(
             playerInput,
             fixedRuleResult: resolution.ruleSummary,
             fixedSuggestions: resolution.suggestions,
+            pacing,
             activeFanfictionRules: activeRules.map((rule) => ({ id: rule.id, section: rule.sectionName, rule: rule.text })),
             activeNarrativeModules: novelEngine.activeModules,
           }),
@@ -170,13 +199,35 @@ export async function narrateWithDeepSeek(
   const auditIssues = auditNarrative(game, parsed.narrative);
   const novelEngineIssues = auditNovelEngineNarrative(game, parsed.narrative, novelEngine);
   const allAuditIssues = [...auditIssues, ...novelEngineIssues];
-  if (allAuditIssues.length) throw new Error(`DeepSeek 生成内容未通过叙事检查：${allAuditIssues.join("、")}`);
+  if (allAuditIssues.length) throw new NarrativeAuditError(allAuditIssues);
 
   return {
     narrative: parsed.narrative,
     suggestions: sanitizeNarrativeSuggestions(game, parsed.suggestions.filter((item): item is string => typeof item === "string"), resolution.suggestions),
     memory: parsed.memory && typeof parsed.memory === "object" ? parsed.memory : undefined,
   };
+}
+
+export async function narrateWithAuditRetries(
+  game: StoredGame,
+  playerInput: string,
+  resolution: ActionResolution,
+  signal?: AbortSignal,
+  onRetry?: (attempt: number, reason: string) => void,
+  narrator: typeof narrateWithDeepSeek = narrateWithDeepSeek,
+): Promise<NarrationResult | null> {
+  let lastError: unknown;
+  let retryGuidance: string[] = [];
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try { return await narrator(game, playerInput, resolution, signal, retryGuidance); }
+    catch (error) {
+      if (signal?.aborted) throw error;
+      lastError = error;
+      retryGuidance = error instanceof NarrativeAuditError ? error.issues : ["上一稿没有完整返回，请重新生成完整且合法的 JSON 正文"];
+      if (attempt < 3) onRetry?.(attempt + 2, retryGuidance.join("、"));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("AI 连续多次未通过设定审校");
 }
 
 export function applyNarrativeMemory(game: StoredGame, generated: NarrationResult): void {

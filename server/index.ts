@@ -35,7 +35,7 @@ import {
   spendLegacyPoints,
   toggleCodexMartialSoul,
 } from "./db.js";
-import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithDeepSeek } from "./services/deepseek.js";
+import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithAuditRetries } from "./services/deepseek.js";
 import { readDeepSeekSettings, settingsView, writeDeepSeekSettings } from "./services/settings.js";
 import { settleRun } from "./domain/endings.js";
 import { guardActionByStoryRules } from "./domain/story-rules.js";
@@ -271,23 +271,6 @@ function settleAndRecord(game: ReturnType<typeof loadGame> extends infer T ? Exc
   }
 }
 
-async function narrateWithAuditRetries(
-  game: Exclude<ReturnType<typeof loadGame>, undefined>,
-  playerInput: string,
-  resolution: Parameters<typeof narrateWithDeepSeek>[2],
-  signal?: AbortSignal,
-) {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try { return await narrateWithDeepSeek(game, playerInput, resolution, signal); }
-    catch (error) {
-      if (signal?.aborted) throw error;
-      lastError = error;
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error("AI 连续三次未通过设定审校");
-}
-
 app.post("/api/games/:id/action", async (request, response) => {
   const input = actionSchema.parse(request.body);
   const game = loadGame(request.params.id);
@@ -365,7 +348,7 @@ app.post("/api/games/:id/action/stream", async (request, response) => {
     phase("writing", "按第三人称续写正文");
     const generated = /规则阻止|无法完成/.test(resolution.intent)
       ? { narrative: resolution.fallbackNarrative, suggestions: resolution.suggestions }
-      : await narrateWithAuditRetries(working, input.input, resolution, controller.signal);
+      : await narrateWithAuditRetries(working, input.input, resolution, controller.signal, (attempt) => send({ type: "retry", attempt, label: "重新续写" }));
     if (!generated) throw new Error("AI 没有返回可提交的正文");
     if (cancelled) return;
 
@@ -389,7 +372,7 @@ app.post("/api/games/:id/action/stream", async (request, response) => {
     response.end();
   } catch (error) {
     if (cancelled || controller.signal.aborted) return;
-    send({ type: "error", message: error instanceof Error ? error.message : "AI 推演失败，本次行动未推进" });
+    send({ type: "error", message: error instanceof Error ? error.message : "AI 推演失败，本次行动未推进", retryable: true });
     response.end();
   }
 });

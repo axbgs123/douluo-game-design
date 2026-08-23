@@ -1671,6 +1671,24 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   if (selected.originId === "modern-transmigrator") game.view.tasks.push({ id: "verify-timeline", title: "核实剧情时间线", kind: "线索", detail: "先确认当前年份、唐三位置和已经发生的关键节点。", status: "进行中" });
   if (selected.originId === "evil-soul-remnant") game.view.tasks.push({ id: "forbidden-choice", title: "决定是否接触家族禁术", kind: "计划", detail: "戒律、收益和代价都已经知道，是否修炼仍由角色决定。", status: "进行中" });
   if ((selected.originStart?.pressure ?? 1) >= 3) game.view.tasks.push({ id: "identity-burden", title: "处理身份带来的第一场麻烦", kind: "线索", detail: selected.originStart?.burden ?? selected.public.originBurden, status: "进行中", destinationId: selected.public.locationId });
+  const soulGrades = soulViews.map((soul) => MARTIAL_SOUL_GRADE_ORDER.indexOf(soul.grade ?? "平凡"));
+  const highAttention = selected.innateSoulPower >= 7 || (selected.innateSoulPower > 0 && (soulViews.length > 1 || Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("传奇")));
+  if (highAttention) {
+    const isHallIdentity = selected.roleTags.some((tag) => /武魂殿/.test(tag)) || game.view.affiliations.some((affiliation) => affiliation.id === "spirit-hall");
+    const hasMajorFaction = game.view.affiliations.some((affiliation) => ["seven-treasure", "blue-lightning", "clear-sky", "star-luo", "heaven-dou", "taixuan-sword"].includes(affiliation.id));
+    const attentionLevel = selected.innateSoulPower === 10 || soulViews.length > 1 || Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("神话") ? "最高优先" : "重点";
+    game.world.flags.awakeningAttention = attentionLevel;
+    const awakeningRelation = game.view.relations.find((relation) => /觉醒|执事|武魂殿/.test(`${relation.relation}${relation.name}${relation.faction ?? ""}`));
+    if (awakeningRelation) {
+      awakeningRelation.impression = isHallIdentity ? "将觉醒结果列入内部培养评估" : hasMajorFaction ? "既想上报天赋，也在衡量所属势力的态度" : "已经封存觉醒记录，准备上报主殿并正式接触";
+      awakeningRelation.history = [...(awakeningRelation.history ?? []), { date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `${selected.innateSoulPower}级先天魂力与${soulViews.length > 1 ? `${soulViews.length}生武魂` : soulViews[0].name}引起注意`, changes: `武魂殿关注提升至${attentionLevel}` }];
+    }
+    game.view.tasks.push({ id: "awakening-recruitment", title: isHallIdentity ? "回应武魂殿内部培养评估" : "决定如何回应武魂殿的正式接触", kind: "线索", detail: isHallIdentity ? "长老殿、教皇殿或地方主殿会重新核定培养路线；接受哪一方仍由角色决定。" : hasMajorFaction ? "武魂殿会登记并提出接触，原属势力也会介入条件谈判。" : "当地执事会向主殿上报，并提供登记、学院、导师或加入武魂殿的条件。", status: "进行中", destinationId: selected.public.locationId, deadline: "约十日内会有正式来人" });
+    const year = game.view.worldTime?.year ?? 0;
+    const day = game.view.worldTime?.day ?? 1;
+    game.world.dynamicEvents.push({ id: `awakening-attention-${game.view.id}`, title: isHallIdentity ? "武魂殿内部培养评估" : "武魂殿的正式接触", kind: "势力", locationId: selected.public.locationId, participantIds: [], detail: isHallIdentity ? "觉醒记录已进入内部渠道，不同派系会给出不同培养条件。" : hasMajorFaction ? "地方武魂殿已上报结果；来人既会招揽，也会试探原属势力底线。" : "地方执事已封存觉醒记录并上报主殿，正式招揽不会只停留在口头夸赞。", stakes: attentionLevel === "最高优先" ? 5 : 3, status: "可介入", createdYear: year, createdDay: day, expiresOrdinal: year * 360 + day + 10 });
+    character.reputation = selected.innateSoulPower === 10 ? "武魂殿重点记录的先天满魂力" : `${selected.innateSoulPower}级先天魂力新秀`;
+  }
   game.view.chapterObjective = {
     title: selected.innateSoulPower > 0 ? "让觉醒结果真正变成第一步" : "确认无魂力之后仍有哪些路",
     stakes: selected.originStart?.burden ?? selected.public.originBurden,
@@ -1693,7 +1711,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   game.storyMemory.summary = `${selected.public.name}在${selected.public.location}完成武魂觉醒，${soulViews.length === 1 ? "武魂" : soulViews.length === 2 ? "双生武魂" : "三生武魂"}为${soulViews.map((soul) => soul.name).join("、")}，先天魂力${selected.innateSoulPower}级。`;
   game.view.narrative.push(createEntry("narration", buildAwakeningResult(selected)));
   game.view.suggestions = selected.innateSoulPower > 0
-    ? [`询问${selected.innateSoulPower}级先天魂力该怎么修炼`, "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
+    ? highAttention ? ["询问武魂殿能够提供哪些具体培养条件", "先和家人或所属势力商量立场", "测试主武魂并记录其限制"] : [`询问${selected.innateSoulPower}级先天魂力该怎么修炼`, "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
     : ["追问是否存在重新检测的方法", "观察武魂本身还有没有异常", "先接受结果，回去查找其他道路"];
   game.view.updatedAt = new Date().toISOString();
   game.view.runProgress.highestSoulRank = character.soulRank;
@@ -1715,11 +1733,20 @@ function buildAwakeningResult(candidate: HiddenCandidate): string {
   const souls = candidate.martialSouls?.length ? candidate.martialSouls : [candidate.martialSoul];
   const soulCountText = souls.length === 1 ? "武魂" : souls.length === 2 ? "双生武魂" : "三生武魂";
   const soulLines = souls.map((soul, index) => `${index === 0 ? `${pronoun}的掌心里` : `紧接着，第 ${index + 1} 道魂力轮廓中`}出现了${soul.name}。这是${soul.category}。${soul.description}`);
+  const hallIdentity = candidate.roleTags.some((tag) => /武魂殿/.test(tag));
+  const attentionText = candidate.innateSoulPower === 10 || souls.length > 1
+    ? hallIdentity
+      ? "执事没有当众议论，只把记录纸折进带封印的夹层，示意旁边的人立刻送往主殿。内部培养评估会在今天开始。"
+      : "执事把水晶球又测了一遍，随后封住记录，要求家人暂时别走。这样的结果必须上报主殿，武魂殿会派人正式谈培养与归属。"
+    : candidate.innateSoulPower >= 7
+      ? "执事在魂力等级下面画了两道线，说明这份记录会作为重点天赋上报，之后会有人来谈学院与培养条件。"
+      : "";
   return [
     `${name}踩进六角阵。金色光点贴着小腿往上钻，皮肤又麻又痒。右手忽然一沉，${pronoun}差点把胳膊甩出去。`,
     souls.length > 1 ? `阵中的光没有立刻散去。负责觉醒的魂师重新数了一遍魂力轮廓——${soulCountText}。` : "",
     ...soulLines,
     powerText,
+    attentionText,
     `门外有人踮脚往里看。家里人还不知道结果，${pronoun}先听见自己喘了一口气。`,
   ].filter(Boolean).join("\n\n");
 }

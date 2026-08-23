@@ -20,6 +20,7 @@ import {
   getDeepSeekSettings,
   rewriteLastAction,
   restoreCheckpoint,
+  ActionStreamError,
   streamAction,
 } from "./api";
 import { CandidateScreen } from "./components/CandidateScreen";
@@ -80,11 +81,25 @@ export default function App() {
     setActionPhase("准备推演");
     setLastAction("");
     try {
-      const nextGame = await streamAction(game.id, input, (event) => {
-        if (event.type === "phase") setActionPhase(event.label);
-        if (event.type === "draft") setActionDraft((draft) => draft ? `${draft}\n\n${event.text}` : event.text);
-        if (event.type === "done") setLastExplanation(event.explanation);
-      }, controller.signal);
+      let nextGame: GameView | undefined;
+      let finalError: unknown;
+      for (let requestAttempt = 0; requestAttempt < 2 && !nextGame; requestAttempt += 1) {
+        try {
+          if (requestAttempt > 0) { setActionDraft(""); setActionPhase("故事正在重新续写"); }
+          nextGame = await streamAction(game.id, input, (event) => {
+            if (event.type === "phase") setActionPhase(event.label);
+            if (event.type === "retry") { setActionDraft(""); setActionPhase(`故事正在重新续写 · ${event.attempt}`); }
+            if (event.type === "draft") setActionDraft((draft) => draft ? `${draft}\n\n${event.text}` : event.text);
+            if (event.type === "done") setLastExplanation(event.explanation);
+          }, controller.signal);
+        } catch (caught) {
+          finalError = caught;
+          if (caught instanceof DOMException && caught.name === "AbortError") throw caught;
+          if (caught instanceof ActionStreamError && !caught.retryable) throw caught;
+          if (requestAttempt >= 1) throw caught;
+        }
+      }
+      if (!nextGame) throw finalError ?? new Error("续写失败");
       setGame(nextGame);
       setActionDraft("");
       setActionPhase("");

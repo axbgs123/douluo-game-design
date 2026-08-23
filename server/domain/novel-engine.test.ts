@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { auditNovelEngineNarrative, buildNovelEnginePack } from "./novel-engine.js";
+import { NarrativeAuditError, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing } from "../services/deepseek.js";
 
 function awakened(seed = "novel-engine") {
   const game = createGame({ gender: "男", difficulty: "标准", seed });
@@ -46,5 +47,27 @@ describe("增强小说引擎", () => {
     expect(auditNovelEngineNarrative(game, "他感到无比愤怒。", pack)).toContain("正文直接喊出情绪而没有外显");
     expect(auditNovelEngineNarrative(game, "印记从此可以毫无代价无限使用。", pack)).toContain("特殊体系被写成无代价万能能力");
     expect(auditNovelEngineNarrative(game, "印记目前不能无限使用，每次都会留下头痛。", pack)).not.toContain("特殊体系被写成无代价万能能力");
+  });
+
+  it("compresses minor actions while preserving space for consequential scenes", () => {
+    const game = awakened("pacing");
+    expect(narrativePacing(game, "翻找抽屉并整理旧衣", { ...ordinaryResolution, intent: "一般行动" }).kind).toBe("略写");
+    expect(narrativePacing(game, "在魂环吸收中决定是否冒险", { ...ordinaryResolution, intent: "魂环吸收", ruleSummary: "这是可能重伤的重大选择" }).kind).toBe("关键");
+  });
+
+  it("automatically regenerates with the previous audit reasons", async () => {
+    const game = awakened("automatic-regeneration");
+    const guidance: string[][] = [];
+    const narrator = (async (_game: typeof game, _input: string, _resolution: typeof ordinaryResolution, _signal?: AbortSignal, retryGuidance: string[] = []) => {
+      guidance.push(retryGuidance);
+      if (guidance.length < 3) throw new NarrativeAuditError([guidance.length === 1 ? "时间线错误" : "人物知情越界"]);
+      return { narrative: "他把能确认的事情记了下来。", suggestions: ["继续调查", "询问家人", "检查地图"] };
+    }) as typeof narrateWithDeepSeek;
+    const retries: number[] = [];
+    const result = await narrateWithAuditRetries(game, "调查", ordinaryResolution, undefined, (attempt) => retries.push(attempt), narrator);
+    expect(result?.narrative).toContain("记了下来");
+    expect(retries).toEqual([2, 3]);
+    expect(guidance[1]).toEqual(["时间线错误"]);
+    expect(guidance[2]).toEqual(["人物知情越界"]);
   });
 });
