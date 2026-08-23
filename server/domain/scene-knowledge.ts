@@ -1,4 +1,4 @@
-import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, factionActiveAtYear, locationActiveAtYear } from "../data/world.js";
 import type { StoredGame } from "./model.js";
 
 export type SceneKnowledgeKind = "地点" | "人物" | "势力" | "事件" | "情报";
@@ -32,7 +32,7 @@ export function buildSceneKnowledgePack(game: StoredGame, action: string, budget
     const discovered = game.world.discoveredLocations.includes(location.id);
     const explicitlyMentioned = mentions(action, location.name);
     if (!current && !discovered && (!explicitlyMentioned || location.hidden)) continue;
-    if (location.availableFromYear !== undefined && year < location.availableFromYear) continue;
+    if (!current && !locationActiveAtYear(location, year)) continue;
     add({ id: location.id, kind: "地点", name: location.name, fact: `${location.region}；危险度${location.danger}；${location.description}`, reason: current ? "当前地点" : explicitlyMentioned ? "行动提及" : "已发现地点" }, current ? 100 : explicitlyMentioned ? 80 : 25);
   }
 
@@ -47,8 +47,7 @@ export function buildSceneKnowledgePack(game: StoredGame, action: string, budget
   }
 
   for (const faction of FACTIONS) {
-    if (faction.activeFromYear !== undefined && year < faction.activeFromYear) continue;
-    if (faction.activeUntilYear !== undefined && year > faction.activeUntilYear) continue;
+    if (!factionActiveAtYear(faction, year)) continue;
     const affiliated = game.view.affiliations.some((item) => item.id === faction.id);
     const explicitlyMentioned = mentions(action, faction.name);
     const local = faction.headquartersId === game.view.locationId;

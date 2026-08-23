@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { GameView, IntelligenceView, KnownFigureView, MapHierarchyView, MapLocationView, NpcRelationEvidenceView, WorldEventView, WorldNewsView } from "../../shared/game.js";
-import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationById } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationActiveAtYear, locationById } from "../data/world.js";
 import type { HiddenWorldState, NpcMemoryEntry, StoredGame, WorldNpcState } from "./model.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { refreshStoryArchive } from "./story-rules.js";
@@ -10,6 +10,21 @@ import { martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial
 import { fixedTraitEffect } from "./traits.js";
 
 const DAYS_PER_YEAR = 360;
+
+function eraIndexAtYear(year: number): 1 | 2 | 3 | 4 {
+  return year >= 25_000 ? 4 : year >= 15_000 ? 3 : year >= 5_000 ? 2 : 1;
+}
+
+const CROSS_ERA_SOUL_BEASTS = new Set(["di-tian", "bi-ji", "zi-ji", "xiong-jun", "wan-yao-wang", "chi-wang"]);
+
+function characterExistsInEra(characterId: string, year: number): boolean {
+  if (CROSS_ERA_SOUL_BEASTS.has(characterId)) return true;
+  if (characterId === "tian-meng") return eraIndexAtYear(year) <= 2;
+  const definition = characterById(characterId);
+  const firstSnapshotYear = definition?.powerSnapshots.reduce((first, snapshot) => Math.min(first, snapshot.year), Number.POSITIVE_INFINITY);
+  if (firstSnapshotYear === undefined || !Number.isFinite(firstSnapshotYear)) return false;
+  return eraIndexAtYear(firstSnapshotYear) === eraIndexAtYear(year);
+}
 
 function eraAtYear(year: number): string {
   const [base, protagonist] = year >= 25000 ? [30000, "蓝轩宇"] : year >= 15000 ? [20000, "唐舞麟"] : year >= 5000 ? [10000, "霍雨浩"] : [0, "唐三"];
@@ -119,17 +134,18 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
   const npcs = Object.fromEntries(CANON_CHARACTERS.map((definition) => {
     const power = powerAtYear(definition.id, startYear);
     const born = definition.birthYear === undefined || startYear >= definition.birthYear;
-    const aliveAtStart = born && (definition.deathYear === undefined || startYear < definition.deathYear);
+    const inCurrentEra = characterExistsInEra(definition.id, startYear);
+    const aliveAtStart = inCurrentEra && born && (definition.deathYear === undefined || startYear < definition.deathYear);
     const state: WorldNpcState = {
       id: definition.id,
       name: definition.name,
       alive: aliveAtStart,
       age: definition.birthYear === undefined ? undefined : Math.max(0, startYear - definition.birthYear),
-      soulRank: power.soulRank,
-      powerTier: power.tier,
+      soulRank: aliveAtStart ? power.soulRank : undefined,
+      powerTier: aliveAtStart ? power.tier : "不在当世活动",
       locationId: canonicalLocationAtYear(definition.id, startYear),
       factionIds: definition.factionIds,
-      currentGoal: !born ? "尚未出生" : aliveAtStart ? (definition.goals[0] ?? "继续当前生活") : "已死亡",
+      currentGoal: !inCurrentEra ? "不在当前时代活动" : !born ? "尚未出生" : aliveAtStart ? (definition.goals[0] ?? "继续当前生活") : "已死亡",
       dispositionToPlayer: 0,
       knownToPlayer: false,
       lastSimulatedYear: startYear,
@@ -241,21 +257,8 @@ export function buildMapView(game: StoredGame): MapLocationView[] {
   const activeTaskText = game.view.tasks.filter((task) => task.status === "进行中").map((task) => `${task.title}${task.detail}`).join(" ");
   const selectedHome = game.hiddenCandidates.find((candidate) => candidate.public.id === game.view.selectedCandidateId)?.public;
   const year = game.view.worldTime?.year ?? 0;
-  const era = game.view.era ?? 1;
-  const persistentByEra: Record<1 | 2 | 3 | 4, Set<string>> = {
-    1: new Set(),
-    2: new Set(["star-luo-city", "extreme-north-edge", "extreme-north-core"]),
-    3: new Set(["shrek-city", "extreme-north-edge", "extreme-north-core"]),
-    4: new Set(["shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
-  };
   return LOCATIONS.filter((location) => {
-    if (location.availableFromYear !== undefined && year < location.availableFromYear) return false;
-    if (era > 1 && location.id !== currentId) {
-      const lowerBound = era === 2 ? 9_000 : era === 3 ? 19_800 : 29_800;
-      const upperBound = era === 2 ? 19_800 : era === 3 ? 29_800 : Number.POSITIVE_INFINITY;
-      const introducedInEra = location.availableFromYear !== undefined && location.availableFromYear >= lowerBound && location.availableFromYear < upperBound;
-      if (!introducedInEra && !persistentByEra[era].has(location.id)) return false;
-    }
+    if (location.id !== currentId && !locationActiveAtYear(location, year)) return false;
     const point = worldMapPoint(location.id);
     return (!point.hidden && !location.hidden) || visibleIds.has(location.id);
   }).map((location) => {
@@ -630,6 +633,15 @@ function simulateNpcYears(game: StoredGame, year: number): void {
   for (const npc of Object.values(game.world.npcs)) {
     const definition = characterById(npc.id);
     if (!definition) continue;
+    if (!characterExistsInEra(npc.id, year)) {
+      npc.alive = false;
+      npc.soulRank = undefined;
+      npc.powerTier = "不在当世活动";
+      npc.currentGoal = "不在当前时代活动";
+      npc.knownToPlayer = false;
+      npc.lastSimulatedYear = year;
+      continue;
+    }
     if (definition.birthYear !== undefined && year < definition.birthYear) {
       npc.alive = false;
       npc.age = 0;
@@ -728,7 +740,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 9;
+  legacy.schemaVersion = 10;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];

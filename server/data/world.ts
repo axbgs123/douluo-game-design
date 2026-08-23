@@ -37,6 +37,20 @@ export interface FactionDefinition {
   hidden?: boolean;
 }
 
+function eraIndexAtYear(year: number): 1 | 2 | 3 | 4 {
+  return year >= 25_000 ? 4 : year >= 15_000 ? 3 : year >= 5_000 ? 2 : 1;
+}
+
+export function factionActiveAtYear(faction: FactionDefinition, year: number): boolean {
+  if (faction.activeFromYear !== undefined && year < faction.activeFromYear) return false;
+  if (faction.activeUntilYear !== undefined && year > faction.activeUntilYear) return false;
+  const currentEra = eraIndexAtYear(year);
+  if (faction.activeFromYear === undefined) return currentEra === 1;
+  const foundingEra = eraIndexAtYear(faction.activeFromYear);
+  if (foundingEra <= 2) return currentEra === foundingEra;
+  return currentEra >= foundingEra;
+}
+
 export interface LocationDefinition {
   id: string;
   name: string;
@@ -46,6 +60,22 @@ export interface LocationDefinition {
   connections: Array<{ id: string; minutes: number }>;
   availableFromYear?: number;
   hidden?: boolean;
+}
+
+const PERSISTENT_LOCATIONS_BY_ERA: Record<2 | 3 | 4, Set<string>> = {
+  2: new Set(["star-luo-city", "extreme-north-edge", "extreme-north-core"]),
+  3: new Set(["shrek-city", "extreme-north-edge", "extreme-north-core"]),
+  4: new Set(["shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
+};
+
+export function locationActiveAtYear(location: LocationDefinition, year: number): boolean {
+  if (location.availableFromYear !== undefined && year < location.availableFromYear) return false;
+  const era = eraIndexAtYear(year);
+  if (era === 1) return location.availableFromYear === undefined;
+  const lowerBound = era === 2 ? 9_000 : era === 3 ? 19_800 : 29_800;
+  const upperBound = era === 2 ? 19_800 : era === 3 ? 29_800 : Number.POSITIVE_INFINITY;
+  const introducedInEra = location.availableFromYear !== undefined && location.availableFromYear >= lowerBound && location.availableFromYear < upperBound;
+  return introducedInEra || PERSISTENT_LOCATIONS_BY_ERA[era].has(location.id);
 }
 
 export interface CanonEventDefinition {
@@ -73,14 +103,14 @@ export interface SoulBeastDefinition {
 }
 
 export const FACTIONS: FactionDefinition[] = [
-  { id: "spirit-hall", name: "武魂殿", kind: "大陆魂师组织", headquartersId: "spirit-city", inertia: 5, description: "掌握觉醒网络、魂师登记和大量高阶战力。" },
+  { id: "spirit-hall", name: "武魂殿", kind: "大陆魂师组织", headquartersId: "spirit-city", inertia: 5, description: "掌握觉醒网络、魂师登记和大量高阶战力。", activeUntilYear: 22 },
   { id: "heaven-dou", name: "天斗帝国", kind: "帝国", headquartersId: "heaven-dou-city", inertia: 5, description: "北方帝国，贵族与魂师势力彼此牵制。" },
   { id: "star-luo", name: "星罗帝国", kind: "帝国", headquartersId: "star-luo-city", inertia: 5, description: "军政强势，皇室继承竞争残酷。" },
   { id: "shrek", name: "史莱克学院", kind: "学院", headquartersId: "shrek-village", inertia: 4, description: "规模很小，只招收天赋与实战能力突出的学生。" },
   { id: "seven-treasure", name: "七宝琉璃宗", kind: "上三宗", headquartersId: "seven-treasure-fort", inertia: 5, description: "大陆最强辅助宗门，财力和人脉雄厚。" },
-  { id: "blue-lightning", name: "蓝电霸王龙宗", kind: "上三宗", headquartersId: "blue-lightning-mountain", inertia: 5, description: "以蓝电霸王龙武魂传承闻名。" },
+  { id: "blue-lightning", name: "蓝电霸王龙宗", kind: "上三宗", headquartersId: "blue-lightning-mountain", inertia: 5, description: "以蓝电霸王龙武魂传承闻名。", activeUntilYear: 15 },
   { id: "clear-sky", name: "昊天宗", kind: "上三宗", headquartersId: "clear-sky-mountain", inertia: 5, description: "封山隐退的强攻系宗门。" },
-  { id: "tang-sect", name: "唐门", kind: "新兴宗门", headquartersId: "heaven-dou-city", inertia: 3, description: "尚未建立；满足历史条件后出现。" },
+  { id: "tang-sect", name: "唐门", kind: "新兴宗门", headquartersId: "heaven-dou-city", inertia: 3, description: "尚未建立；满足历史条件后出现。", activeFromYear: 14 },
   { id: "heaven-royal-academy", name: "天斗皇家学院", kind: "皇家学院", headquartersId: "heaven-royal-academy", inertia: 4, description: "依托皇室资源招收贵族魂师，也有秦明等重视实战的教师。" },
   { id: "five-elements", name: "五元素学院", kind: "学院联盟", headquartersId: "heaven-dou-city", inertia: 3, description: "雷霆、神风、天水、炽火和象甲五所学院的统称，各自专精一种路线。" },
   { id: "elephant-sect", name: "象甲宗", kind: "下四宗", headquartersId: "elephant-sect-fort", inertia: 3, description: "以钻石猛犸和极端防御闻名，与武魂殿关系紧密。" },

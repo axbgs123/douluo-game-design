@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { StoryArchiveView, StoryConsequenceView } from "../../shared/game.js";
-import { CANON_CHARACTERS, FACTIONS } from "../data/world.js";
+import { CANON_CHARACTERS, FACTIONS, factionActiveAtYear } from "../data/world.js";
 import { rulesForEra, type FanfictionRule } from "../data/fanfiction-rules.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 
@@ -50,11 +50,13 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
   const year = game.view.worldTime?.year ?? 0;
   const name = game.view.character?.name ?? "角色";
   const age = game.view.character?.age ?? 6;
-  const futureFaction = FACTIONS.find((faction) => faction.activeFromYear !== undefined && year < faction.activeFromYear && action.includes(faction.name));
+  const mentionedFactions = FACTIONS.filter((faction) => action.includes(faction.name));
+  const hasActiveMention = mentionedFactions.some((faction) => factionActiveAtYear(faction, year));
+  const futureFaction = !hasActiveMention ? mentionedFactions.find((faction) => faction.activeFromYear !== undefined && year < faction.activeFromYear) : undefined;
   if (futureFaction) {
     return impossible(game, `${futureFaction.name}在当前年代尚未成立，角色也没有能够接触该组织的当世线索。`, ["核对当前年代", "调查现存的相近势力", "把注意力放回当前组织"], [451, 461, 931, 935]);
   }
-  const expiredFaction = FACTIONS.find((faction) => faction.activeUntilYear !== undefined && year > faction.activeUntilYear && action.includes(faction.name));
+  const expiredFaction = !hasActiveMention ? mentionedFactions.find((faction) => !factionActiveAtYear(faction, year)) : undefined;
   if (expiredFaction) {
     return impossible(game, `${expiredFaction.name}已经不再以这个组织形态存在，角色只能调查遗址、史料或后继势力。`, ["调查该势力的历史", "寻找当前时代的后继组织", "核对当地公开势力"], [451, 461, 931, 935]);
   }
@@ -101,7 +103,7 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
     );
   }
 
-  if (year < 12 && /加入唐门|前往唐门|唐门总部|拜访唐门/.test(action)) {
+  if (year < 14 && /加入唐门|前往唐门|唐门总部|拜访唐门/.test(action)) {
     return impossible(game,
       `当前大陆上还没有公开存在的唐门组织。${name}手里也没有能证明其存在的当世线索。`,
       ["调查大陆上的暗器传闻", "打听新兴魂师组织", "继续眼前计划"],

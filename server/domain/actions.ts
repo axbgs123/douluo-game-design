@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ConditionLabel, HuntingStage, NarrativeEntry, SoulRingView, TaskView } from "../../shared/game.js";
-import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, locationById, soulBeastById } from "../data/world.js";
+import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, factionActiveAtYear, locationById, soulBeastById } from "../data/world.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
 import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, canDiscoverNpc, inferLocationId, recordCanonInfluence, recordIntelligence, rememberNpcInteraction, revealNpc } from "./world.js";
@@ -971,7 +971,7 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
   const target = choices.find((item) => item.pattern.test(action)) ?? choices.at(-1)!;
   const faction = FACTIONS.find((item) => item.id === target.id);
   const year = game.view.worldTime?.year ?? 0;
-  if (faction && ((faction.activeFromYear !== undefined && year < faction.activeFromYear) || (faction.activeUntilYear !== undefined && year > faction.activeUntilYear))) {
+  if (faction && !factionActiveAtYear(faction, year)) {
     return impossible(`${target.name}在当前时代并不存在。`, ["调查当前时代的公开势力", "寻找当地组织", "查看地图与传闻"]);
   }
   if (game.view.affiliations.some((item) => item.id === target.id)) return impossible(`我已经加入${target.name}。`, ["申请内部任务", "拜访组织成员", "提升组织声望"]);

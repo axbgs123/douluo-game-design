@@ -5,6 +5,7 @@ import { settleRun } from "./endings.js";
 import { guardActionByStoryRules, selectNarrativeRules } from "./story-rules.js";
 import { resolveAction } from "./actions.js";
 import { createHiddenWorld } from "./world.js";
+import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 
 function playingGame(era: GameEra, seed: string) {
   const game = createGame({ gender: "男", difficulty: "标准", seed, era });
@@ -44,6 +45,33 @@ describe("multi-era foundations", () => {
       expect(game.view.map.some((location) => location.id === "holy-soul-village")).toBe(false);
       expect(game.view.map.every((location) => location.id !== "spirit-city")).toBe(true);
     }
+  });
+
+  it("does not simulate protagonists from other generations as living local NPCs", () => {
+    const era2 = createHiddenWorld(10_000, "shrek-city");
+    expect(era2.npcs["tang-san"].alive).toBe(false);
+    expect(era2.npcs["huo-yuhao"].alive).toBe(true);
+    expect(era2.npcs["tang-wulin"].alive).toBe(false);
+
+    const era3 = createHiddenWorld(20_000, "east-sea-city");
+    expect(era3.npcs["huo-yuhao"].alive).toBe(false);
+    expect(era3.npcs["tang-wulin"].alive).toBe(true);
+    expect(era3.npcs["lan-xuanyu"].alive).toBe(false);
+
+    const era4 = createHiddenWorld(30_000, "mother-ship-port");
+    expect(era4.npcs["tang-wulin"].alive).toBe(false);
+    expect(era4.npcs["lan-xuanyu"].alive).toBe(true);
+    expect(era4.npcs["di-tian"].alive).toBe(true);
+  });
+
+  it("does not expose first-era factions as active organizations in later eras", () => {
+    const game = playingGame(3, "faction-era-isolation");
+    game.view.worldTime = { year: 20_000, day: 1, time: "08:00", season: "春", era: "唐舞麟基准年" };
+    const pack = buildSceneKnowledgePack(game, "打听武魂殿和传灵塔");
+    expect(pack.entries.some((entry) => entry.kind === "势力" && entry.name === "武魂殿")).toBe(false);
+    expect(pack.entries.some((entry) => entry.kind === "势力" && entry.name === "传灵塔")).toBe(true);
+    expect(buildSceneKnowledgePack(game, "调查武魂城").entries.some((entry) => entry.kind === "地点" && entry.name === "武魂城")).toBe(false);
+    expect(guardActionByStoryRules(game, "加入武魂殿")?.intent).toBe("规则阻止");
   });
 
   it("does not instantly end later-era games because their absolute year exceeds fifty", () => {

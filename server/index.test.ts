@@ -55,6 +55,18 @@ afterAll(async () => {
 });
 
 describe("HTTP 状态机", () => {
+  it("creates a requested later era through the public API", async () => {
+    const response = await fetch(`${baseUrl}/api/games`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ era: 4, gender: "女", difficulty: "困难", seed: "api-era-four" }),
+    });
+    expect(response.status).toBe(201);
+    const game = await response.json() as GameView;
+    expect(game.era).toBe(4);
+    expect(game.candidates.every((candidate) => (candidate.birthYearOffset ?? 0) >= 29_995)).toBe(true);
+  });
+
   it("rejects selecting a candidate after the selection stage", async () => {
     const createdResponse = await fetch(`${baseUrl}/api/games`, {
       method: "POST",
