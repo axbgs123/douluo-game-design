@@ -1,0 +1,10 @@
+# User-provided copyrighted source material stays local.
+/source-materials/
+/research/source-analysis.json
+
+# Local tooling and editor artifacts.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
