@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { GameEra } from "../../shared/game.js";
 import { awakenCharacter, createGame, ERA_BASE_YEARS, finalizeCharacterShaping, generateCandidates, selectCandidate, selectLifeGoal } from "./generator.js";
 import { settleRun } from "./endings.js";
-import { guardActionByStoryRules, selectNarrativeRules } from "./story-rules.js";
+import { guardActionByStoryRules, selectNarrativeRules, violatesCanonChronology } from "./story-rules.js";
 import { resolveAction } from "./actions.js";
 import { createHiddenWorld } from "./world.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
@@ -99,6 +99,11 @@ describe("multi-era foundations", () => {
     const era4 = createGame({ gender: "男", difficulty: "标准", seed: "era-4-rules", era: 4 });
     era4.view.worldTime = { year: 30_000, day: 1, time: "08:00", season: "春", era: "终极斗罗时代" };
     expect(guardActionByStoryRules(era4, "学习星舰驾驶")).toBeUndefined();
+    expect(violatesCanonChronology("定装魂导炮已经投入使用。", 9_995)).toBe(false);
+    expect(violatesCanonChronology("斗铠已经投入使用。", 10_000)).toBe(true);
+    expect(violatesCanonChronology("斗铠已经投入使用。", 20_000)).toBe(false);
+    expect(violatesCanonChronology("星舰已经投入使用。", 20_000)).toBe(true);
+    expect(violatesCanonChronology("星舰已经投入使用。", 30_000)).toBe(false);
   });
 
   it("makes a later-era soul spirit require selection, assessment and payment", () => {
@@ -214,6 +219,7 @@ describe("multi-era foundations", () => {
     resolveAction(game, "招募周星图担任导航员成为船员");
     resolveAction(game, "招募顾轮机担任轮机师成为船员");
     expect(game.view.starship?.crew).toHaveLength(3);
+    expect(resolveAction(game, "前往森罗星").intent).toBe("无法完成");
     expect(resolveAction(game, "申请配发学院项目舰").intent).toBe("取得星舰");
     expect(game.view.starship?.shipName).toBeTruthy();
     expect(game.view.tasks.some((task) => task.id?.startsWith("starship-project-") && task.status === "进行中")).toBe(true);

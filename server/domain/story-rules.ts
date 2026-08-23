@@ -173,8 +173,16 @@ export function violatesCanonChronology(text: string, year: number): boolean {
   }
   if (year < 8 && /(全大陆高级魂师学院精英大赛|魂师大赛).{0,20}(已经|夺冠|结束|决赛)/.test(compact)) return true;
   if (year < 12 && /(唐门).{0,12}(已经建立|成立|宗主|总部|弟子招募)/.test(compact)) return true;
-  if (year < 10_000) {
-    const technology = "斗铠|机甲|星舰|宇宙飞船|传灵塔|升灵台|定装魂导炮|魂导汽车";
+  const era = year >= 25_000 ? 4 : year >= 15_000 ? 3 : year >= 5_000 ? 2 : 1;
+  const unavailableTechnology = era === 1
+    ? "斗铠|机甲|星舰|宇宙飞船|传灵塔|升灵台|定装魂导炮|魂导汽车"
+    : era === 2
+      ? `斗铠|星舰|宇宙飞船|升灵台${year < 10_012 ? "|传灵塔" : ""}`
+      : era === 3
+        ? "星舰|宇宙飞船|天龙星|天马星"
+        : undefined;
+  if (unavailableTechnology) {
+    const technology = unavailableTechnology;
     const useClaim = new RegExp(`(${technology}).{0,18}(已经|建成|成立|驾驶|装备|购买|启动|投入使用|列装|制造成功|就在眼前)`);
     const reverseClaim = new RegExp(`(驾驶|装备|购买|启动|乘坐|进入).{0,12}(${technology})`);
     if (useClaim.test(compact) || reverseClaim.test(compact)) return true;

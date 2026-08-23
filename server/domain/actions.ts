@@ -324,6 +324,10 @@ function travelResolution(game: StoredGame, action: string): ActionResolution {
     return impossible(reachable ? `没有确认目的地。当前可直接前往 ${reachable}。` : "没有找到可直接到达的地点。", ["查看地图", "打听路线", "留在原地"]);
   }
   if (target.travelMinutes < 0) return impossible(`${target.name} 不能从当前位置直接到达。`, ["查看地图", "先去中转地点", "打听路线"]);
+  const offWorldIds = new Set(["senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star"]);
+  if (offWorldIds.has(target.id) || offWorldIds.has(game.view.locationId ?? "")) {
+    return impossible("跨星球移动必须通过星舰航线结算船员、燃料、物资与舰体风险。", [`驾驶星舰前往${target.name}`, "检查星舰状态", "申请舰队航次"]);
+  }
   const random = actionRandom(game);
   const minutes = game.view.speed === "高速" ? Math.max(30, Math.round(target.travelMinutes * 0.7)) : target.travelMinutes;
   const origin = game.view.location ?? "原地";
