@@ -12,6 +12,8 @@ export interface MartialSoulTemplate {
 
 export interface HiddenCandidate {
   public: CandidatePublic;
+  originId: string;
+  roleTags: string[];
   martialSoul: MartialSoulTemplate;
   innateSoulPower: number;
   hiddenGift?: string;
@@ -140,7 +142,7 @@ export interface ActionResolution {
 export interface CreateGameInput {
   gender: "男" | "女";
   difficulty: GameView["difficulty"];
-  personality: PersonalitySetup;
+  personality?: PersonalitySetup;
   lifeGoal?: string;
   seed?: string;
 }

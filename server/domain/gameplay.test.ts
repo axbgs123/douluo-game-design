@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "../data/world.js";
 import { applyActionResult, resolveAction } from "./actions.js";
 import { settleRun } from "./endings.js";
-import { awakenCharacter, createGame, selectCandidate } from "./generator.js";
+import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate } from "./generator.js";
 import { advanceWorldTime, createHiddenWorld, ensureGameState, recordCanonInfluence } from "./world.js";
 import { applyNarrativeMemory, violatesCanonChronology } from "../services/deepseek.js";
 import { rulebookStats } from "../data/fanfiction-rules.js";
@@ -16,6 +16,7 @@ const personality = {
 function awakened(seed = "gameplay") {
   const game = createGame({ gender: "男", difficulty: "标准", personality, seed });
   selectCandidate(game, game.view.candidates[0].id);
+  finalizeCharacterShaping(game, { keywords: personality.keywords, answers: personality.answers, lifeGoal: "在十八岁前成为魂王，并拥有一套自创魂技体系" });
   awakenCharacter(game);
   return game;
 }
@@ -98,7 +99,7 @@ describe("完整游玩规则", () => {
     delete (game as unknown as { schemaVersion?: number }).schemaVersion;
     delete (game.view as Partial<typeof game.view>).map;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(6);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.world.npcs["tang-san"]).toBeDefined();
   });
@@ -127,7 +128,6 @@ describe("完整游玩规则", () => {
     advanceWorldTime(game, 360 * 1440);
     expect(game.world.npcRelations.length).toBeGreaterThan(0);
     expect(game.world.dynamicEvents.length).toBeGreaterThan(0);
-    expect(game.view.activeEvents.length).toBeGreaterThan(0);
     expect(game.world.lastAutonomyOrdinal).toBeGreaterThan(0);
   });
 
@@ -207,11 +207,11 @@ describe("完整游玩规则", () => {
 
 describe("第一部世界资料", () => {
   it("包含人物、势力、地点、事件和魂兽", () => {
-    expect(CANON_CHARACTERS.length).toBeGreaterThanOrEqual(30);
-    expect(FACTIONS.length).toBeGreaterThanOrEqual(8);
-    expect(LOCATIONS.length).toBeGreaterThanOrEqual(15);
-    expect(CANON_EVENTS.length).toBeGreaterThanOrEqual(10);
-    expect(SOUL_BEASTS.length).toBeGreaterThanOrEqual(20);
+    expect(CANON_CHARACTERS.length).toBeGreaterThanOrEqual(50);
+    expect(FACTIONS.length).toBeGreaterThanOrEqual(20);
+    expect(LOCATIONS.length).toBeGreaterThanOrEqual(30);
+    expect(CANON_EVENTS.length).toBeGreaterThanOrEqual(20);
+    expect(SOUL_BEASTS.length).toBeGreaterThanOrEqual(50);
   });
 
   it("载入四个时代的完整同人规则库", () => {

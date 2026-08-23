@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   awakenCharacter,
   createGame,
+  finalizeCharacterShaping,
   generateCandidates,
   rerollCandidates,
+  rerollCharacterShaping,
   selectCandidate,
 } from "./generator.js";
 
@@ -33,6 +35,14 @@ describe("candidate generation", () => {
     expect(game.view.candidates).toHaveLength(3);
     expect(game.view.candidates.every((candidate) => !("martialSoul" in candidate))).toBe(true);
     expect(game.view.candidates.every((candidate) => candidate.omens.length === 2)).toBe(true);
+  });
+
+  it("guarantees a rare route and tells informed characters what they know", () => {
+    const candidates = generateCandidates("rare-opening", 0, "女");
+    const rare = candidates.filter((candidate) => ["稀有", "传奇"].includes(candidate.public.rarity));
+    expect(rare.length).toBeGreaterThan(0);
+    expect(rare.every((candidate) => candidate.innateSoulPower >= 5)).toBe(true);
+    expect(candidates.every((candidate) => candidate.public.selfKnowledge.length > 0 && candidate.public.knownBackground.length > 20)).toBe(true);
   });
 
   it("changes candidates on reroll while preserving the seed", () => {
@@ -70,9 +80,13 @@ describe("candidate generation", () => {
     expect("martialSoul" in game.view.candidates[0]).toBe(false);
 
     selectCandidate(game, candidateId);
-    expect(game.view.status).toBe("awakening");
+    expect(game.view.status).toBe("character_shaping");
     expect(game.view.character).toBeUndefined();
     expect(game.view.narrative[0].text).not.toMatch(/你熟悉|你认识|你见过|你从小/);
+
+    const draft = game.view.shaping!.personalityOptions[0];
+    finalizeCharacterShaping(game, { keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])), lifeGoal: game.view.shaping!.lifeGoalOptions[0] });
+    expect(game.view.status).toBe("awakening");
 
     const character = awakenCharacter(game);
     expect(game.view.status).toBe("playing");
@@ -104,11 +118,16 @@ describe("candidate generation", () => {
     }
   });
 
-  it("uses personality answers to change the opening actions", () => {
-    const bold = createGame({ gender: "男", difficulty: "标准", personality: { keywords: ["勇敢", "重情", "独立"], answers: { danger: "rush", injustice: "intervene", authority: "resist" } }, seed: "personality-impact" });
-    const careful = createGame({ gender: "男", difficulty: "标准", personality: { keywords: ["谨慎", "冷静", "耐心"], answers: { danger: "observe", injustice: "scheme", authority: "question" } }, seed: "personality-impact" });
-    selectCandidate(bold, bold.view.candidates[0].id);
-    selectCandidate(careful, careful.view.candidates[0].id);
-    expect(bold.view.suggestions).not.toEqual(careful.view.suggestions);
+  it("draws concrete goals, dark personalities and identity-based questions after selection", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "personality-impact" });
+    selectCandidate(game, game.view.candidates[2].id);
+    expect(game.view.shaping?.lifeGoalOptions).toHaveLength(6);
+    expect(game.view.shaping?.lifeGoalOptions.every((goal) => goal.length >= 18)).toBe(true);
+    expect(game.view.shaping?.personalityOptions.some((option) => /野心|利己|复仇|危险|投机|谋士/.test(`${option.title}${option.keywords.join("")}`))).toBe(true);
+    expect(game.view.shaping?.personalityOptions.every((option) => option.questions.length === 6)).toBe(true);
+
+    const previousGoals = game.view.shaping!.lifeGoalOptions;
+    rerollCharacterShaping(game, "goals");
+    expect(game.view.shaping!.lifeGoalOptions).not.toEqual(previousGoals);
   });
 });

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   CandidatePublic,
+  CharacterShapingView,
   CharacterPublic,
   MetaProgressionView,
   NarrativeEntry,
@@ -25,6 +26,12 @@ interface OriginTemplate {
   locations: string[];
   preferredCategories: string[];
   weight: number;
+  tier?: CandidatePublic["rarity"];
+  route?: string;
+  selfKnowledge?: string;
+  knownBackgrounds?: string[];
+  fixedTraits?: string[];
+  roleTags?: string[];
 }
 
 const SURNAMES = ["林", "苏", "顾", "沈", "陆", "叶", "程", "江", "白", "宁", "周", "秦"];
@@ -187,6 +194,186 @@ const ORIGINS: OriginTemplate[] = [
     preferredCategories: ["植物", "器武魂", "兽武魂"],
     weight: 7,
   },
+  {
+    id: "seven-treasure-core",
+    name: "七宝琉璃宗内门亲传",
+    summary: "他从小住在七宝城堡内院，宁风致亲自看过他的启蒙课业。",
+    details: ["剑斗罗答应在觉醒后试他三剑，输赢都要记进内门考册。", "宗门已经替他留出一间修炼室，门上还没有挂牌。", "宁荣荣把他当作同辈竞争者，见面时从不肯先服软。"],
+    locations: ["七宝琉璃宗城堡内院"],
+    preferredCategories: ["器武魂", "兽武魂"],
+    weight: 3,
+    tier: "稀有",
+    route: "上三宗天骄",
+    selfKnowledge: "本地人 · 身世明确",
+    knownBackgrounds: ["他知道自己已被列入内门亲传名册。觉醒结果会决定由剑斗罗、骨斗罗还是宗门教习接手。"],
+    fixedTraits: ["宗门荣誉", "骄傲"],
+    roleTags: ["七宝琉璃宗", "权贵", "天才", "正邪皆可"],
+  },
+  {
+    id: "spirit-hall-elder-child",
+    name: "武魂殿封号长老之子",
+    summary: "他的父亲是长老殿新晋封号斗罗霜戈，名字没有写进公开名册。",
+    details: ["教皇殿与长老殿都派人来旁观这次觉醒，谁也没有解释原因。", "父亲只教过他一句话，武魂殿记得住有价值的人。", "侍从昨夜烧掉了一封来自供奉殿的密信。"],
+    locations: ["武魂城长老殿东侧府邸"],
+    preferredCategories: ["器武魂", "兽武魂", "本体武魂"],
+    weight: 2,
+    tier: "传奇",
+    route: "武魂殿权贵",
+    selfKnowledge: "本地人 · 身世明确",
+    knownBackgrounds: ["他清楚父亲的封号和自己能调动的资源，也知道长老之子的身份会招来监视、拉拢与暗杀。"],
+    fixedTraits: ["权势敏感", "好胜"],
+    roleTags: ["武魂殿", "权贵", "天才", "反派"],
+  },
+  {
+    id: "hidden-sect-heir",
+    name: "隐世太玄剑宗少宗主",
+    summary: "太玄剑宗藏在星斗大森林西北断崖后，外界只当那里是一片死谷。",
+    details: ["宗门最强的三位长老受旧誓约束，不能轻易离山。", "祖师留下的剑碑已经沉寂百年，却在他出生那晚响过一声。", "宗门库房不缺古物，真正能在斗罗规则下使用的却没有几件。"],
+    locations: ["太玄剑宗封山剑谷"],
+    preferredCategories: ["器武魂", "本体武魂"],
+    weight: 2,
+    tier: "传奇",
+    route: "隐世宗门少主",
+    selfKnowledge: "本地人 · 知道宗门真相",
+    knownBackgrounds: ["他知道自己是少宗主，也知道宗门所谓无敌只限山门阵势。走出剑谷后，长老不会替他扫平敌人。"],
+    fixedTraits: ["自负", "守秘"],
+    roleTags: ["原创宗门", "权贵", "天才", "正邪皆可"],
+  },
+  {
+    id: "blue-lightning-heir",
+    name: "蓝电霸王龙宗核心嫡系",
+    summary: "他的名字写在宗族嫡系谱牒上，出生起就要与同辈争夺雷池名额。",
+    details: ["玉罗冕一脉的教习亲自盯着他的体魄训练。", "堂兄已经觉醒出蓝电霸王龙，族里把两人的名字写在同一页。", "宗门不缺资源，缺的是能让所有长老闭嘴的成绩。"],
+    locations: ["蓝电霸王龙宗雷霆山门"],
+    preferredCategories: ["兽武魂", "本体武魂"],
+    weight: 3,
+    tier: "稀有",
+    route: "兽武魂嫡系",
+    selfKnowledge: "本地人 · 身世明确",
+    knownBackgrounds: ["他知道自己的族谱、竞争者和宗门规矩。武魂若不是龙类，嫡系身份也保不住体面。"],
+    fixedTraits: ["家族责任", "好强"],
+    roleTags: ["蓝电霸王龙宗", "权贵", "天才"],
+  },
+  {
+    id: "clear-sky-sealed-branch",
+    name: "昊天宗封山支脉遗孤",
+    summary: "他住在昊天宗外围旧村，守村人从不许他问山上的路通向哪里。",
+    details: ["养父把一枚昊天旧令藏在粮缸底下。", "村中老人见他练力时会停下手里的活，却没人肯教。", "武魂殿的巡查队每隔几年就会来翻一次旧户册。"],
+    locations: ["昊天宗封山外围旧村"],
+    preferredCategories: ["器武魂", "兽武魂"],
+    weight: 3,
+    tier: "稀有",
+    route: "封山宗门遗脉",
+    selfKnowledge: "本地人 · 知道一半",
+    knownBackgrounds: ["他知道家里与昊天宗有关，也知道这层关系不能在武魂殿面前说。父母的真正死因仍被瞒着。"],
+    fixedTraits: ["戒备", "念旧"],
+    roleTags: ["昊天宗", "遗孤", "复仇"],
+  },
+  {
+    id: "heaven-royal-ward",
+    name: "天斗皇室旁系封爵子",
+    summary: "他有一座不大的王府、二十名护卫，还有一份随时可能被收回的封爵。",
+    details: ["雪星亲王送来过启蒙老师，代价是王府在议事时站队。", "太子府每年送礼，礼单比礼物本身更值得琢磨。", "乳母一再提醒他，皇室孩子觉醒得太好未必全是喜事。"],
+    locations: ["天斗城南旁系王府"],
+    preferredCategories: ["兽武魂", "器武魂"],
+    weight: 3,
+    tier: "稀有",
+    route: "皇室棋局",
+    selfKnowledge: "本地人 · 身世明确",
+    knownBackgrounds: ["他知道自己的爵位、血缘和两位皇叔的态度。宫廷里有人愿意扶持他，也有人希望他永远只是孩子。"],
+    fixedTraits: ["谨言", "权衡"],
+    roleTags: ["天斗帝国", "权贵", "阴谋", "正邪皆可"],
+  },
+  {
+    id: "star-luo-contender",
+    name: "星罗公爵府竞争子嗣",
+    summary: "他出生在星罗军功公爵府，同胞兄长既是家人，也是写进族规的竞争者。",
+    details: ["三岁起的失败记录都被管家装订成册。", "母亲替他争来一名魂帝教官，却没争到继承顺位。", "府中没人禁止下毒，只禁止留下证据。"],
+    locations: ["星罗城北军功公爵府"],
+    preferredCategories: ["兽武魂", "器武魂"],
+    weight: 3,
+    tier: "稀有",
+    route: "星罗生存战",
+    selfKnowledge: "本地人 · 身世明确",
+    knownBackgrounds: ["他从小就知道竞争失败者会失去什么。亲情存在，但从来排在继承规则后面。"],
+    fixedTraits: ["好胜", "警惕"],
+    roleTags: ["星罗帝国", "权贵", "反派", "竞争"],
+  },
+  {
+    id: "cultivator-reincarnation",
+    name: "异世剑修转生者",
+    summary: "他带着前世修行记忆出生，六年里已经确认经脉、灵气与旧世界完全不同。",
+    details: ["前世佩剑只剩识海里一道黯淡剑痕。", "能背出的功法很多，能在这具身体上运转的还没有一部。", "他知道自己回不去了，也不准备把这件事告诉养父母。"],
+    locations: ["落日森林东侧隐居药谷", "天斗西境山村"],
+    preferredCategories: ["器武魂", "本体武魂"],
+    weight: 2,
+    tier: "传奇",
+    route: "修仙世界转生",
+    selfKnowledge: "转生者 · 保留完整前世记忆",
+    knownBackgrounds: ["他清楚自己来自另一个修行世界，记得剑法、丹理与炼器常识。旧修为已经消失，所有知识都要重新适配魂力与材料。"],
+    fixedTraits: ["老成", "求道"],
+    roleTags: ["异界体系", "穿越者", "天才", "正邪皆可"],
+  },
+  {
+    id: "modern-transmigrator",
+    name: "带着原著记忆的穿越者",
+    summary: "他记得斗罗大陆的主要剧情，却不能确定眼前世界是否会照着记忆发展。",
+    details: ["六年来见到的地名和制度大多对得上，细节却已经有偏差。", "他能写出现代常识，做不出缺少材料和工艺的成品。", "家人把他偶尔说出的怪话当成孩子做梦。"],
+    locations: ["诺丁城辖下商镇", "索托城西侧村庄", "天斗城平民区"],
+    preferredCategories: ["器武魂", "本体武魂", "植物"],
+    weight: 3,
+    tier: "稀有",
+    route: "知晓剧情的穿越者",
+    selfKnowledge: "穿越者 · 知道原作主线",
+    knownBackgrounds: ["他知道唐三、史莱克与武魂殿的大致未来。时间只精确到年份，细节可能因他的行动发生变化。"],
+    fixedTraits: ["秘密主义"],
+    roleTags: ["穿越者", "剧情知识", "正邪皆可"],
+  },
+  {
+    id: "underworld-heir",
+    name: "黑槐会少主",
+    summary: "黑槐会替贵族处理见不得光的债务、走私和寻仇，他是会主唯一公开的继承人。",
+    details: ["他五岁就学会分辨账本上哪些名字不能念。", "会里有三位魂王，却没有一个人愿意无条件效忠孩子。", "武魂殿执法队刚端掉一处分舵，父亲怀疑内鬼就在身边。"],
+    locations: ["索托城地下黑市", "天斗城南旧仓区"],
+    preferredCategories: ["兽武魂", "器武魂", "本体武魂"],
+    weight: 3,
+    tier: "稀有",
+    route: "地下势力少主",
+    selfKnowledge: "本地人 · 身世明确",
+    knownBackgrounds: ["他知道家业靠什么赚钱，也知道父亲手上沾过血。是否接班、洗白或吞掉别人的地盘，由他自己决定。"],
+    fixedTraits: ["护短", "手段意识"],
+    roleTags: ["原创势力", "反派", "地下世界", "正邪皆可"],
+  },
+  {
+    id: "evil-soul-remnant",
+    name: "禁术魂师余脉",
+    summary: "他的家族靠吞噬类禁术活下来，三代人都在躲武魂殿的追捕。",
+    details: ["家谱最后一页写着不能吸收活人的魂力，旁边却有被刮掉的名字。", "母亲教他隐藏气息，也教他在必要时先下手。", "一名武魂殿执事已经在镇上问起旧姓。"],
+    locations: ["星罗北境废弃矿镇", "巴拉克王国沼泽村"],
+    preferredCategories: ["本体武魂", "兽武魂", "植物"],
+    weight: 2,
+    tier: "传奇",
+    route: "黑暗传承",
+    selfKnowledge: "本地人 · 知道家族禁忌",
+    knownBackgrounds: ["他知道家族力量的来源和最低限度的戒律。要守住底线、改良禁术，还是成为真正的掠夺者，游戏不会替他决定。"],
+    fixedTraits: ["多疑", "生存本能"],
+    roleTags: ["禁术", "反派", "通缉", "正邪皆可"],
+  },
+  {
+    id: "hidden-master-ward",
+    name: "隐居魂斗罗的养子",
+    summary: "收养他的老人自称普通猎户，却能让千年魂兽隔着山谷转身离开。",
+    details: ["老人不肯报封号，只说欠下的仇还没有还完。", "木屋地下锁着一只魂导储物箱，钥匙从不离身。", "他每天练的呼吸和步法不像村里任何一种活计。"],
+    locations: ["星斗大森林西侧孤峰", "落日森林北缘旧猎屋"],
+    preferredCategories: ["兽武魂", "器武魂", "本体武魂"],
+    weight: 4,
+    tier: "稀有",
+    route: "强者养成",
+    selfKnowledge: "本地人 · 知道养父是强者",
+    knownBackgrounds: ["他知道养父至少是魂斗罗，也知道老人有仇家。真正来历、武魂和为何收养他仍未说清。"],
+    fixedTraits: ["尊师", "戒备"],
+    roleTags: ["强者后代", "隐居", "天才"],
+  },
 ];
 
 const MARTIAL_SOULS: MartialSoulTemplate[] = [
@@ -292,6 +479,14 @@ const MARTIAL_SOULS: MartialSoulTemplate[] = [
   { id: "sleeping-lotus", name: "眠心莲", category: "植物", description: "气息安静的莲花武魂，可能影响精神、睡眠与恢复。", rarity: 5, soulPowerRange: [4, 9], omens: ["哭闹的婴儿在你身边容易睡着", "你能清楚记住醒来前最后一个梦"] },
   { id: "bone-mark", name: "骨纹", category: "本体武魂", description: "浮现在骨骼上的纹路，强化方向取决于长期承受的训练。", rarity: 5, soulPowerRange: [3, 9], omens: ["重活之后你的骨头会微微发热", "旧伤处偶尔浮出浅色纹路"] },
   { id: "spirit-voice", name: "灵音", category: "本体武魂", description: "以声音和呼吸为核心的本体武魂，适合控制、辅助或精神震荡。", rarity: 6, soulPowerRange: [3, 8], omens: ["你很容易模仿只听过一次的声音", "压低嗓音时周围人会不自觉安静"] },
+  { id: "seven-treasure-pagoda", name: "七宝琉璃塔", category: "器武魂", description: "七宝琉璃宗核心传承武魂，拥有极强的多方向增幅能力，也受七层限制。", rarity: 1, soulPowerRange: [6, 10], omens: ["彩色玻璃在你手中会折出比常人更多的光层", "你能同时记住几个人不同的呼吸节奏"] },
+  { id: "blue-lightning-dragon", name: "蓝电霸王龙", category: "兽武魂", description: "顶级强攻系龙武魂，魂力提升后会逐步出现龙化特征。", rarity: 1, soulPowerRange: [7, 10], omens: ["雷雨天里你的右臂会微微发麻", "暴怒时瞳孔深处偶尔掠过蓝紫电光"] },
+  { id: "clear-sky-hammer", name: "昊天锤", category: "器武魂", description: "昊天宗直系传承的顶级器武魂，以力量、爆发与锤法体系闻名。", rarity: 1, soulPowerRange: [6, 10], omens: ["你握住重物时掌心会出现黑色锤纹", "再沉的铁块到了你手里也比看上去轻"] },
+  { id: "frost-halberd", name: "霜戈", category: "器武魂", description: "继承自封号长老一脉的长兵器武魂，寒气与破甲能力会随魂环成形。", rarity: 1, soulPowerRange: [7, 10], omens: ["你触碰金属后表面偶尔会凝出薄霜", "梦里总有长刃劈开风雪的声音"] },
+  { id: "taixuan-sword-embryo", name: "太玄剑胎", category: "器武魂", description: "太玄剑宗数代未曾出现的传承武魂，初醒时只是一道无锋剑胚。", rarity: 1, soulPowerRange: [6, 10], omens: ["宗门剑碑在你靠近时会发出极轻的回声", "你握任何木条都会本能校正剑尖方向"] },
+  { id: "royal-swan", name: "鎏金天鹅", category: "兽武魂", description: "天斗皇室天鹅武魂的良性变异，兼具飞行、光与统御型辅助潜力。", rarity: 2, soulPowerRange: [5, 10], omens: ["白色飞鸟很少躲开你的靠近", "阳光照在肩背时会留下短暂金纹"] },
+  { id: "blood-shadow-vine", name: "噬影血藤", category: "植物", description: "禁术家族中偶尔出现的吞噬型植物武魂，成长很快，失控风险也高。", rarity: 1, soulPowerRange: [5, 10], omens: ["受伤时附近阴影里的藤草会朝你偏转", "你能闻到旁人魂力剧烈消耗后的气味"] },
+  { id: "void-ledger", name: "无字命册", category: "器武魂", description: "能记录因果痕迹的空白册页，前期能力弱，成长方向取决于长期选择。", rarity: 2, soulPowerRange: [5, 10], omens: ["你写下的日期很少记错", "偶尔会梦见一页页没有文字的旧纸"] },
 ];
 
 const TRAIT_LABELS: Record<string, [string, string]> = {
@@ -312,6 +507,11 @@ const ANSWER_SCORES: Record<string, Partial<Record<keyof typeof TRAIT_LABELS, nu
   reject: { ambition: -2, patience: 1 }, study: { patience: 2, ambition: 1 }, accept: { ambition: 2, courage: 1 },
   calm: { patience: 2 }, retort: { independence: 1 }, fight: { courage: 2, patience: -2 },
   prevent: { empathy: 2, courage: 2 }, investigate: { patience: 2, integrity: 1 }, protect_self: { courage: -1, patience: 1 },
+  loyal: { integrity: 2, empathy: 1 }, bargain: { patience: 2, ambition: 1 }, betray: { integrity: -2, ambition: 2 },
+  mercy: { empathy: 2 }, exploit: { empathy: -2, ambition: 2 }, eliminate: { empathy: -2, courage: 2, patience: -1 },
+  reveal: { integrity: 2, courage: 1 }, hide: { patience: 2, independence: 1 }, deceive: { integrity: -2, patience: 1 },
+  risk: { courage: 2, ambition: 2 }, wait: { patience: 2 }, withdraw: { courage: -2, patience: 1 },
+  protect: { empathy: 2, integrity: 1 }, use_them: { ambition: 2, empathy: -1 }, abandon: { empathy: -2, independence: 1 },
 };
 
 function createEntry(kind: NarrativeEntry["kind"], text: string): NarrativeEntry {
@@ -345,6 +545,7 @@ export function derivePersonality(setup: PersonalitySetup): PersonalityProfile {
 
   const ranked = Object.entries(scores)
     .sort((left, right) => Math.abs(right[1]) - Math.abs(left[1]))
+    .filter(([, score]) => score !== 0)
     .slice(0, 3)
     .map(([trait, score]) => (score >= 0 ? TRAIT_LABELS[trait][1] : TRAIT_LABELS[trait][0]));
 
@@ -357,7 +558,11 @@ const ORIGIN_PREFERENCE_IDS: Record<string, string[]> = {
   平民: ["village-farmer", "smith-family", "herbalist", "hunter-family", "fisher-family", "stone-quarry"],
   魂师家庭: ["fallen-clan", "temple-clerk", "academy-servant", "minor-noble", "sect-village"],
   漂泊: ["merchant-caravan", "refugee-family", "travelling-healer", "border-guard", "tavern-family"],
-  特殊: ["mystery-arrival", "fallen-clan", "sect-village"],
+  权贵: ["seven-treasure-core", "spirit-hall-elder-child", "blue-lightning-heir", "heaven-royal-ward", "star-luo-contender"],
+  天骄: ["seven-treasure-core", "blue-lightning-heir", "hidden-sect-heir", "hidden-master-ward", "cultivator-reincarnation"],
+  反派: ["spirit-hall-elder-child", "star-luo-contender", "underworld-heir", "evil-soul-remnant"],
+  穿越: ["cultivator-reincarnation", "modern-transmigrator"],
+  特殊: ["mystery-arrival", "fallen-clan", "sect-village", "hidden-sect-heir", "cultivator-reincarnation", "modern-transmigrator", "underworld-heir", "evil-soul-remnant"],
 };
 
 function originPool(preferences?: WeightPreferences): OriginTemplate[] {
@@ -367,10 +572,25 @@ function originPool(preferences?: WeightPreferences): OriginTemplate[] {
 
 function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences): MartialSoulTemplate {
   const preferredCategory = preferences?.martialSoul;
-  const choices = MARTIAL_SOULS.map((soul) => ({
+  const originSoulIds: Record<string, string[]> = {
+    "seven-treasure-core": ["seven-treasure-pagoda", "clear-mirror", "star-book"],
+    "spirit-hall-elder-child": ["frost-halberd", "spirit-eyes", "star-book", "iron-spear"],
+    "hidden-sect-heir": ["taixuan-sword-embryo", "spirit-eyes", "clear-mirror"],
+    "blue-lightning-heir": ["blue-lightning-dragon"],
+    "clear-sky-sealed-branch": ["clear-sky-hammer", "forged-hammer", "iron-spear"],
+    "heaven-royal-ward": ["royal-swan", "clear-mirror", "star-book"],
+    "cultivator-reincarnation": ["taixuan-sword-embryo", "star-book", "medicine-cauldron", "spirit-eyes"],
+    "modern-transmigrator": ["void-ledger", "spirit-eyes", "star-book", "clear-mirror"],
+    "evil-soul-remnant": ["blood-shadow-vine", "bone-mark", "blood-thorn"],
+  };
+  const forced = originSoulIds[origin.id];
+  const minimumPotential = origin.tier === "传奇" ? 9 : origin.tier === "稀有" ? 8 : 0;
+  const source = forced ? MARTIAL_SOULS.filter((soul) => forced.includes(soul.id)) : MARTIAL_SOULS.filter((soul) => soul.soulPowerRange[1] >= minimumPotential);
+  const choices = source.map((soul) => ({
     ...soul,
     weight: soul.rarity
       * (origin.preferredCategories.includes(soul.category) ? 1.8 : 0.65)
+      * (["稀有", "传奇"].includes(origin.tier ?? "寻常") && soul.soulPowerRange[1] >= 9 ? 2 : 1)
       * (preferredCategory && preferredCategory !== "均衡" && soul.category === preferredCategory ? 2.25 : 1),
   }));
   return weightedPick(random, choices);
@@ -389,7 +609,11 @@ function generateName(random: () => number): string {
 
 function thirdPersonClue(text: string, name: string, gender: "男" | "女"): string {
   const pronoun = gender === "女" ? "她" : "他";
-  return text.replaceAll("你的", `${pronoun}的`).replaceAll("你", pronoun).replace(new RegExp(`^${pronoun}`), name);
+  return text
+    .replaceAll("你的", `${pronoun}的`)
+    .replaceAll("你", pronoun)
+    .replace(/(^|[，。；！？\s])他(?=[的从在会能已也不只要把记知清带五六三每手名自保来出生住])/g, `$1${pronoun}`)
+    .replace(new RegExp(`^${pronoun}`), name);
 }
 
 function specificOrigin(
@@ -434,6 +658,18 @@ function specificOrigin(
       "tavern-family": `${location}归雁酒馆`,
       "stone-quarry": `${location}青崖采石场`,
       "travelling-healer": `${guardian}的游方药箱`,
+      "seven-treasure-core": "七宝琉璃宗内门议事堂",
+      "spirit-hall-elder-child": "武魂殿长老殿",
+      "hidden-sect-heir": "太玄剑宗宗主一脉",
+      "blue-lightning-heir": "蓝电霸王龙宗嫡系族谱",
+      "clear-sky-sealed-branch": "昊天宗封山支脉",
+      "heaven-royal-ward": "天斗皇室宗正名册",
+      "star-luo-contender": "星罗军功公爵府",
+      "cultivator-reincarnation": `${location}收养家庭`,
+      "modern-transmigrator": `${location}户籍`,
+      "underworld-heir": "黑槐会总舵",
+      "evil-soul-remnant": "被武魂殿通缉的旧姓家族",
+      "hidden-master-ward": "隐居魂斗罗门下",
     };
     authority = authorityByOrigin[origin.id] ?? authority;
     const nameByOrigin: Record<string, string> = {
@@ -454,20 +690,79 @@ function specificOrigin(
       "stone-quarry": `${location}青崖采石场石工家庭`,
       "travelling-healer": `${guardian}的游方医家`,
     };
-    originName = nameByOrigin[origin.id] ?? `${location}${origin.name}`;
+    originName = nameByOrigin[origin.id] ?? origin.name;
   }
+
+  const specialRelations: Record<string, CandidatePublic["startingRelations"]> = {
+    "seven-treasure-core": [
+      { name: "宁远山", relation: "内门监护人", impression: "既盼他成材，也会把失误如实写进宗门考册", faction: "七宝琉璃宗", strength: 68, category: "亲属" },
+      { name: "宁风致", relation: "宗主与启蒙导师", impression: "愿意给机会，尚未决定投入多少资源", faction: "七宝琉璃宗", strength: 34, category: "师友" },
+      { name: "尘心", relation: "候选授业者", impression: "只看剑心、天赋与临阵反应", faction: "七宝琉璃宗", strength: 18, category: "师友" },
+    ],
+    "spirit-hall-elder-child": [
+      { name: "凌峥（霜戈斗罗）", relation: "父亲", impression: "要求很高，必要时也会动用长老资源护子", faction: "武魂殿", strength: 73, category: "亲属" },
+      { name: "沈静娴", relation: "母亲", impression: "熟悉武魂城的规矩，比父亲更在意孩子能否活得长久", faction: "武魂殿", strength: 82, category: "亲属" },
+      { name: "长老殿侍从长魏崇", relation: "家臣", impression: "忠于霜戈斗罗，对继承人仍在观察", faction: "武魂殿", strength: 41, category: "势力" },
+    ],
+    "hidden-sect-heir": [
+      { name: "顾玄一", relation: "父亲与宗主", impression: "不会溺爱少宗主，更不许借长辈实力横行", faction: "太玄剑宗", strength: 76, category: "亲属" },
+      { name: "商青蘅", relation: "母亲与药堂首座", impression: "已替他准备好失败后的退路", faction: "太玄剑宗", strength: 84, category: "亲属" },
+      { name: "守碑长老闻九", relation: "启蒙老师", impression: "认为天赋不如心性可靠", faction: "太玄剑宗", strength: 56, category: "师友" },
+    ],
+    "blue-lightning-heir": [
+      { name: "玉承雷", relation: "父亲", impression: "把孩子视作嫡系一脉翻身的希望", faction: "蓝电霸王龙宗", strength: 72, category: "亲属" },
+      { name: "柳静娴", relation: "母亲", impression: "不愿孩子被族内竞争磨成只知胜负的人", faction: "蓝电霸王龙宗", strength: 79, category: "亲属" },
+      { name: "雷池教习玉川", relation: "宗门教习", impression: "觉醒结果达到门槛才会真正收徒", faction: "蓝电霸王龙宗", strength: 24, category: "师友" },
+    ],
+    "clear-sky-sealed-branch": [
+      { name: "唐守岳", relation: "养父", impression: "宁肯孩子平凡，也不愿旧事再次找上门", faction: "昊天宗", strength: 80, category: "亲属" },
+      { name: "白兰芝", relation: "养母", impression: "知道更多真相，却答应过暂时不说", strength: 84, category: "亲属" },
+      { name: "旧村守门人唐烈", relation: "支脉长辈", impression: "会在暗处判断他是否值得送回山门", faction: "昊天宗", strength: 35, category: "势力" },
+    ],
+    "heaven-royal-ward": [
+      { name: "雪临川", relation: "父亲", impression: "爱孩子，也把孩子当作王府继续存在的筹码", faction: "天斗帝国", strength: 70, category: "亲属" },
+      { name: "叶静娴", relation: "母亲", impression: "更担心宫廷站队，不愿他过早出风头", faction: "天斗帝国", strength: 80, category: "亲属" },
+      { name: "王府教习韩策", relation: "启蒙教官", impression: "拿着雪星亲王的俸禄，也收太子府的礼", faction: "天斗帝国", strength: 29, category: "师友" },
+    ],
+    "star-luo-contender": [
+      { name: "戴岳衡", relation: "父亲", impression: "只承认能从继承竞争中活下来的孩子", faction: "星罗帝国", strength: 55, category: "亲属" },
+      { name: "朱静娴", relation: "母亲", impression: "替他争资源，也要求他学会对亲人留一手", faction: "星罗帝国", strength: 69, category: "亲属" },
+      { name: "公爵府魂帝教官罗铮", relation: "教官", impression: "服从家主，不会因年幼而降低训练标准", faction: "星罗帝国", strength: 31, category: "师友" },
+    ],
+    "underworld-heir": [
+      { name: "顾黑槐", relation: "父亲与会主", impression: "护短，却只会把能守住位置的人当继承人", faction: "黑槐会", strength: 74, category: "亲属" },
+      { name: "程素琴", relation: "母亲与账房", impression: "希望孩子掌权，也暗中留着一条退路", faction: "黑槐会", strength: 78, category: "亲属" },
+      { name: "刑堂主燕七", relation: "父亲旧部", impression: "表面恭敬，实际在等觉醒结果", faction: "黑槐会", strength: 26, category: "势力" },
+    ],
+    "hidden-master-ward": [
+      { name: "岳山老人", relation: "养父与启蒙老师", impression: "愿意护他长大，不会替他赢下自己的战斗", strength: 82, category: "亲属" },
+      { name: "林秋娘", relation: "山下药师", impression: "把他当亲外甥照看，也害怕老人过去的仇家", strength: 70, category: "亲属" },
+      { name: officer, relation: "武魂殿巡查执事", impression: "觉得这户隐居人家的底细不太干净", faction: "武魂殿", strength: 9, category: "势力" },
+    ],
+  };
+  const specialFamilies: Record<string, string> = {
+    "seven-treasure-core": "内门监护人宁远山；宗主宁风致亲自过问课业",
+    "spirit-hall-elder-child": "父亲凌峥是霜戈斗罗；母亲沈静娴",
+    "hidden-sect-heir": "父亲顾玄一是宗主；母亲商青蘅执掌药堂",
+    "blue-lightning-heir": "父亲玉承雷；母亲柳静娴",
+    "clear-sky-sealed-branch": "养父唐守岳；养母白兰芝",
+    "heaven-royal-ward": "父亲雪临川有旁系封爵；母亲叶静娴",
+    "star-luo-contender": "父亲戴岳衡是军功公爵；母亲朱静娴",
+    "underworld-heir": "父亲顾黑槐是会主；母亲程素琴掌管暗账",
+    "hidden-master-ward": "养父岳山老人；山下药师林秋娘常来照看",
+  };
 
   return {
     location,
     originName,
     originSummary: `${livelihood}${obligation}`,
     originFacts: [
-      { label: "家庭", value: `${guardian}与${secondGuardian}` },
+      { label: "家庭", value: specialFamilies[origin.id] ?? `${guardian}与${secondGuardian}` },
       { label: "归属", value: authority },
       { label: "生计", value: livelihood },
       { label: "眼前事", value: obligation },
     ],
-    startingRelations: [
+    startingRelations: specialRelations[origin.id] ?? [
       { name: guardian, relation: "父亲", impression: "盼着孩子觉醒，又怕结果招来麻烦", strength: 78, category: "亲属" },
       { name: secondGuardian, relation: "母亲", impression: "提前收好了路上要用的干粮和旧衣", strength: 82, category: "亲属" },
       { name: officer, relation: "武魂殿巡查执事", impression: "只按名册与觉醒结果办事", faction: "武魂殿", strength: 8, category: "势力" },
@@ -487,16 +782,34 @@ export function generateCandidates(
   const origins = originPool(preferences);
 
   return Array.from({ length: 3 }, (_, index) => {
-    let origin = weightedPick(random, origins);
+    const slotOrigins = index === 1
+      ? origins.filter((item) => (item.tier ?? "寻常") !== "寻常")
+      : index === 2
+        ? origins.filter((item) => ["稀有", "传奇"].includes(item.tier ?? "寻常"))
+        : origins;
+    let origin = weightedPick(random, slotOrigins);
     for (let attempt = 0; usedOrigins.has(origin.id) && attempt < 8; attempt += 1) {
-      origin = weightedPick(random, origins);
+      origin = weightedPick(random, slotOrigins);
     }
     usedOrigins.add(origin.id);
 
     const soul = chooseSoul(random, origin, preferences);
     const offset = integer(random, -20, 20);
-    const innateSoulPower = integer(random, soul.soulPowerRange[0], soul.soulPowerRange[1]);
-    const name = generateName(random);
+    const talentFloor = origin.tier === "传奇" ? 7 : origin.tier === "稀有" ? 5 : 0;
+    const innateSoulPower = Math.max(talentFloor, integer(random, soul.soulPowerRange[0], soul.soulPowerRange[1]));
+    let name = generateName(random);
+    const lineageSurnames: Record<string, string[]> = {
+      "seven-treasure-core": ["宁"],
+      "spirit-hall-elder-child": ["凌"],
+      "hidden-sect-heir": ["顾"],
+      "blue-lightning-heir": ["玉"],
+      "clear-sky-sealed-branch": ["唐"],
+      "heaven-royal-ward": ["雪"],
+      "star-luo-contender": ["戴", "朱"],
+      "underworld-heir": ["顾"],
+    };
+    const lineage = lineageSurnames[origin.id];
+    if (lineage) name = `${pick(random, lineage)}${name.slice(1)}`;
     const concreteOrigin = specificOrigin(random, origin, pick(random, origin.locations), name);
     const candidate: CandidatePublic = {
       id: `${rerollIndex}-${index}-${Math.floor(random() * 1_000_000).toString(36)}`,
@@ -509,6 +822,11 @@ export function generateCandidates(
       originSummary: concreteOrigin.originSummary,
       originFacts: concreteOrigin.originFacts,
       startingRelations: concreteOrigin.startingRelations,
+      route: origin.route ?? (origin.id === "mystery-arrival" ? "身世谜团" : "本地成长"),
+      rarity: origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "少见" : "寻常"),
+      selfKnowledge: origin.selfKnowledge ?? (origin.id === "mystery-arrival" ? "本地人 · 身世未知" : "本地人 · 身世明确"),
+      knownBackground: thirdPersonClue(pick(random, origin.knownBackgrounds ?? [origin.id === "mystery-arrival" ? "你知道自己是被收养的，亲生父母和那块碎玉的来历都没人肯说。" : "你知道家里靠什么生活，也认得每天会见到的人。更深的秘密是否存在，还要靠经历确认。"]), name, gender),
+      fixedTraits: origin.fixedTraits ?? [],
       omens: [thirdPersonClue(pick(random, soul.omens), name, gender), thirdPersonClue(pick(random, [
         "觉醒日前一夜，你做了一个醒来后便模糊的梦",
         "家中长辈对你的身世似乎隐瞒了一小部分",
@@ -525,12 +843,19 @@ export function generateCandidates(
     const giftPool = giftPreference === "异界体系"
       ? ["残缺丹道传承", "无名剑典残页", "未激活的因果印记", "受压制的修行法门", "炼器宗残卷", "残缺阵道传承", "沉睡的山海血脉", "一缕受损剑魂"]
       : ["残缺丹道传承", "至尊骨雏形", "无名剑典残页", "未激活的因果印记", "武魂二次觉醒线索", "先祖残魂的记忆", "异常魂力回路", "可成长的精神空间"];
-    const hiddenGift = origin.id === "mystery-arrival" || giftRoll < giftChance
+    const disclosedOriginGifts: Record<string, string> = {
+      "cultivator-reincarnation": "受压制的前世修行法门",
+      "modern-transmigrator": "原作剧情时间线记忆",
+      "evil-soul-remnant": "家族吞噬禁术",
+    };
+    const hiddenGift = disclosedOriginGifts[origin.id] ?? (origin.id === "mystery-arrival" || giftRoll < giftChance
       ? pick(random, giftPool)
-      : undefined;
+      : undefined);
 
     return {
       public: candidate,
+      originId: origin.id,
+      roleTags: origin.roleTags ?? [origin.id === "mystery-arrival" ? "身世谜团" : "本地人"],
       martialSoul: soul,
       innateSoulPower,
       hiddenGift,
@@ -541,17 +866,227 @@ export function generateCandidates(
   });
 }
 
+const GENERAL_LIFE_GOALS = [
+  "在十八岁前成为魂王，并拥有一套经得起实战的自创魂技体系",
+  "带领自己的队伍闯进全大陆高级魂师学院精英大赛前三名",
+  "建立一个至少拥有三名魂圣坐镇、能保护一座城市的宗门",
+  "在二十五岁前获得封号，并让封号传遍两大帝国",
+  "整理出一套普通平民也能学习的魂师启蒙方法，并在十座村镇试行",
+  "亲自记录一百种魂兽的习性、弱点与适配武魂，编成可用的猎魂图鉴",
+  "找到一块十万年魂骨的可靠线索，并决定夺取、交易还是放弃",
+  "让家人脱离现在的债务、追捕或依附关系，拥有一处不会被随意夺走的家",
+  "培养三名出身普通的弟子，让其中至少一人成为魂帝",
+  "查清自己的血脉、收养或前世之谜，并让所有参与隐瞒的人付出对应代价",
+  "掌控一座主城的地下情报与交易网络，不再受任何单一势力摆布",
+  "成为大陆最难被收买的自由魂师，让三大势力都必须平等谈条件",
+  "推动武魂殿统一魂师秩序，并在新秩序里取得独立席位",
+  "拆散武魂殿在地方的控制网络，保住至少三个拒绝归附的魂师势力",
+  "夺走一位原作天才最关键的机缘，承受由此产生的追杀与历史偏差",
+  "救下一位原本会死去的重要人物，并保证改变不是靠无代价奇迹",
+  "成为大陆公认的第一辅助魂师，让强攻系封号斗罗主动请求合作",
+  "走出一条不依赖传统猎杀的成长路线，并完成至少三个可重复验证的阶段",
+  "进入杀戮之都并活着取得杀神领域，同时守住自己预先定下的底线",
+  "登上海神岛完成至少黑级考核，再决定是否继续追逐神位",
+  "收服或吞并三个敌对家族，把它们真正变成自己的资源和责任",
+  "建立一支只听从自己命令的精锐魂师队，左右一次帝国级战争的胜负",
+  "让曾经轻视自己的人公开承认判断错误，但不依靠长辈替自己出手",
+  "找到能够延长亲人寿命或修复武魂缺陷的方法，并完成一次真实验证",
+];
+
+const ORIGIN_GOALS: Record<string, string[]> = {
+  "seven-treasure-core": [
+    "在宁荣荣离宗前进入七宝琉璃宗继承序列前三，并让剑、骨两位斗罗都认可他的道路",
+    "找到七宝琉璃塔突破七层限制的可验证方法，决定公开给宗门还是据为己有",
+    "在武魂殿袭击发生前改造宗门防线，让七宝城堡少死一半的人",
+  ],
+  "spirit-hall-elder-child": [
+    "在二十岁前进入武魂殿长老殿，并建立一支不依附教皇派或供奉派的班底",
+    "帮助父亲晋升九十五级，随后亲手决定长老一脉在大陆战争中的立场",
+    "取代黄金一代中的一人，代表武魂殿赢下魂师大赛冠军",
+  ],
+  "hidden-sect-heir": [
+    "破解太玄剑宗封山旧誓，让宗门能在不依赖护山阵势的情况下立足大陆",
+    "在十五岁前走完祖师剑碑九层，并用斗罗世界的魂环重建旧剑道",
+    "带领太玄剑宗公开入世，迫使上三宗承认它的席位",
+  ],
+  "blue-lightning-heir": [
+    "在十二岁前取得雷池第一席，压过同辈嫡系并获得宗门核心传承",
+    "改变蓝电霸王龙宗覆灭的结局，至少提前找出一个潜伏的内应",
+    "让自己的武魂完成一次龙血进化，同时避免沦为只靠血脉的宗门工具",
+  ],
+  "clear-sky-sealed-branch": [
+    "查清父母与昊天宗封山的关系，在十八岁前带着证据走上山门",
+    "让昊天宗提前结束封山，并承担宗门重新入世后招来的武魂殿压力",
+    "找到一条不依靠昊天锤血脉也能获得宗门承认的道路",
+  ],
+  "heaven-royal-ward": [
+    "在雪夜大帝病重前查明太子府的异常，并决定揭发、合作还是借机夺权",
+    "保住旁系王府的封爵和领地，再让五名有实权的贵族公开效忠",
+    "进入天斗帝国继承棋局，成为摄政者、皇帝或真正操盘的人",
+  ],
+  "star-luo-contender": [
+    "在十八岁前赢下公爵府继承竞争，同时决定败者是死、流放还是成为盟友",
+    "建立一支能与星罗皇室幽冥白虎抗衡的战队，改写家族的依附关系",
+    "逃离星罗继承制度后带着足够实力归来，亲手废掉那套规则",
+  ],
+  "cultivator-reincarnation": [
+    "把一部前世剑诀改造成能与魂环共存的九层功法，并亲自修到第五层",
+    "在斗罗大陆重建丹道，炼出三种能被魂师重复使用且副作用可控的丹药",
+    "找回识海中的残损剑魂，并让它在斗罗世界规则下成为真正可成长的力量",
+  ],
+  "modern-transmigrator": [
+    "利用剧情记忆救下一名原本会死的重要人物，并接受时间线偏移后的未知后果",
+    "在不直接依附唐三的情况下进入大陆核心舞台，证明自己不是原作的旁观者",
+    "核实记忆中的十个关键节点，建立一份会随蝴蝶效应修订的秘密时间线",
+  ],
+  "underworld-heir": [
+    "在十二岁前找出黑槐会内鬼，决定公开审判、秘密处置还是反过来利用",
+    "吞并索托城三处分裂的地下势力，让黑槐会从替人办脏事变成真正的规则制定者",
+    "洗掉黑槐会最危险的生意，同时保住情报网、财富和忠于自己的旧部",
+  ],
+  "evil-soul-remnant": [
+    "在不吞噬无辜者的前提下改良家族禁术，修到魂圣并摆脱武魂殿追捕",
+    "接受禁术的掠夺道路，在二十岁前成为令两大帝国通缉的邪魂师首领",
+    "找出家谱中被刮掉的名字，判断家族戒律究竟是救命规则还是失败者的谎言",
+  ],
+};
+
+interface PersonalityArchetype {
+  title: string;
+  keywords: string[];
+  description: string;
+  tone: "正" | "中" | "暗";
+}
+
+const PERSONALITY_ARCHETYPES: PersonalityArchetype[] = [
+  { title: "冷面野心家", keywords: ["野心勃勃", "克制", "记仇"], description: "愿意等，也愿意下狠手，只是不喜欢把底牌摆出来。", tone: "暗" },
+  { title: "笑面谋士", keywords: ["圆滑", "多疑", "善于伪装"], description: "习惯先听完每个人的话，再决定谁可以利用。", tone: "暗" },
+  { title: "骄横天才", keywords: ["狂傲", "好战", "护短"], description: "吃软不吃硬，对自己人很好，对敌人没多少耐心。", tone: "中" },
+  { title: "利己生存者", keywords: ["现实", "利己", "能屈能伸"], description: "先确保自己活下来，感情和道义都要排在承受得起之后。", tone: "暗" },
+  { title: "偏执求道者", keywords: ["求道", "专注", "淡漠"], description: "对力量本身比名声更感兴趣，也可能忽略身边的人。", tone: "中" },
+  { title: "守序继承人", keywords: ["守诺", "审慎", "责任感"], description: "愿意接住身份带来的责任，但不会盲从每一条旧规矩。", tone: "正" },
+  { title: "锋利理想家", keywords: ["正直", "勇敢", "不妥协"], description: "看不惯的事会管，代价真落到头上时也得自己扛。", tone: "正" },
+  { title: "温和实干派", keywords: ["重情", "耐心", "务实"], description: "不爱喊口号，答应的事会一点点做完。", tone: "正" },
+  { title: "自由冒险者", keywords: ["好奇", "大胆", "厌恶束缚"], description: "对未知有兴趣，很容易因为一条新线索改掉原计划。", tone: "中" },
+  { title: "懒散聪明人", keywords: ["懒散", "聪明", "享乐"], description: "能省力就不硬撑，真正被逼到角落时反而很清醒。", tone: "中" },
+  { title: "沉默复仇者", keywords: ["隐忍", "记仇", "执行力强"], description: "不会轻易原谅，也不急着让仇人知道自己在等。", tone: "暗" },
+  { title: "危险的保护者", keywords: ["护短", "果断", "手段激烈"], description: "愿意为少数在意的人伤害更多陌生人。", tone: "暗" },
+  { title: "清醒的善人", keywords: ["善良", "有边界", "谨慎"], description: "肯帮人，但会先看清自己能不能承担后果。", tone: "正" },
+  { title: "天生领袖", keywords: ["自信", "善于用人", "控制欲"], description: "习惯站在队伍中央，也很难容忍命令被忽视。", tone: "中" },
+  { title: "孤狼", keywords: ["独立", "戒备", "不欠人情"], description: "不轻易信人，接受帮助后反而会记得很久。", tone: "中" },
+  { title: "投机赌徒", keywords: ["冒险", "敏锐", "贪心"], description: "看得见机会，也常常低估失败以后要还的债。", tone: "暗" },
+];
+
+function dynamicQuestions(candidate: HiddenCandidate, traits: string[], random: () => number) {
+  const traitText = traits.join("、");
+  const identityPrompt = candidate.roleTags.includes("武魂殿")
+    ? "父亲让你把一名无辜执事推出去顶罪，这能保住长老一脉的秘密。你会？"
+    : candidate.roleTags.includes("七宝琉璃宗")
+      ? "宗门发现一名平民天才，但培养他会分走原本属于你的资源。你会？"
+      : candidate.roleTags.includes("穿越者")
+        ? "你记得一场悲剧会在几年后发生，提前说出真相也可能让所有人怀疑你的来历。你会？"
+        : candidate.roleTags.includes("反派")
+          ? "手下抓到一个知道组织秘密的孩子，留着可能有用，也可能招来追查。你会？"
+          : `身为${candidate.public.originName}，长辈要求你替家里隐瞒一件会伤害外人的事。你会？`;
+  const questions = [
+    { id: "identity", prompt: identityPrompt, options: [{ id: "protect", label: "先护住自己人" }, { id: "bargain", label: "找一个双方都付代价的办法" }, { id: "reveal", label: "拒绝隐瞒并说出真相" }] },
+    { id: "rival", prompt: /记仇|冷酷|利己|野心/.test(traitText) ? "一个曾羞辱你的同龄天才如今重伤，只有你知道。你会？" : "一直与你竞争的同龄人重伤求助，救他会失去眼前机缘。你会？", options: [{ id: "mercy", label: "先救人，胜负以后再算" }, { id: "bargain", label: "救他，但要他欠下明确代价" }, { id: "exploit", label: "拿走机缘，让他自己承担" }] },
+    { id: "secret", prompt: candidate.roleTags.includes("穿越者") || candidate.roleTags.includes("异界体系") ? "最信任的人已经察觉你的知识来源异常，继续撒谎可能伤害关系。你会？" : "你发现家中长辈隐瞒的秘密会改变自己的继承位置。你会？", options: [{ id: "reveal", label: "坦白自己知道的部分" }, { id: "hide", label: "继续观察，不急着摊牌" }, { id: "deceive", label: "制造假线索试探所有人" }] },
+    { id: "power", prompt: /求道|野心|贪心|好战/.test(traitText) ? "一门禁术能让修炼速度暴涨，第一次代价只会落在陌生人身上。你会？" : "一门危险秘法能解决眼前危机，但后果暂时算不清。你会？", options: [{ id: "reject", label: "不用无法控制的力量" }, { id: "study", label: "先拆解原理和代价" }, { id: "accept", label: "先拿到力量再处理后果" }] },
+    { id: "followers", prompt: /控制欲|领袖|护短/.test(traitText) ? "忠于你的下属违抗命令救了许多人，却让计划彻底失败。你会？" : "同伴违背约定，却确实救下了更多人。你会？", options: [{ id: "mercy", label: "认可结果，再重定规矩" }, { id: "bargain", label: "功过分开，各自结算" }, { id: "eliminate", label: "不能控制的人不能留在核心" }] },
+    { id: "defeat", prompt: "一次公开失败让家族、宗门或同伴蒙羞，翻盘需要押上你尚未掌握的力量。你会？", options: [{ id: "risk", label: "当场押上所有筹码" }, { id: "wait", label: "认下失败，准备下一次" }, { id: "withdraw", label: "退出争夺，先保住剩余资源" }] },
+    { id: "loyalty", prompt: "最亲近的人与你的人生目标发生冲突，而且双方都没有退让余地。你会？", options: [{ id: "loyal", label: "暂时放下目标，保住这段关系" }, { id: "bargain", label: "把条件和底线都谈清楚" }, { id: "betray", label: "目标优先，必要时先下手" }] },
+    { id: "weak", prompt: "一个没有背景的弱者掌握了你需要的线索，他不愿交易。你会？", options: [{ id: "mercy", label: "继续说服，接受他拒绝" }, { id: "bargain", label: "找到他真正需要的筹码" }, { id: "exploit", label: "逼他交出线索" }] },
+  ];
+  const extras = questions.slice(1).sort(() => random() - 0.5).slice(0, 5);
+  return [questions[0], ...extras];
+}
+
+function lifeGoalOptions(candidate: HiddenCandidate, seed: string, rerollIndex: number): string[] {
+  const random = createRandom(`${seed}:goals:${candidate.public.id}:${rerollIndex}`);
+  const tailored = [...(ORIGIN_GOALS[candidate.originId] ?? [])].sort(() => random() - 0.5).slice(0, 2);
+  const universal = [...GENERAL_LIFE_GOALS].sort(() => random() - 0.5).filter((goal) => !tailored.includes(goal)).slice(0, 6 - tailored.length);
+  return [...tailored, ...universal].sort(() => random() - 0.5);
+}
+
+function personalityOptions(candidate: HiddenCandidate, seed: string, rerollIndex: number): CharacterShapingView["personalityOptions"] {
+  const random = createRandom(`${seed}:personalities:${candidate.public.id}:${rerollIndex}`);
+  const used = new Set<string>();
+  const pools = [PERSONALITY_ARCHETYPES, PERSONALITY_ARCHETYPES.filter((item) => item.tone === "正"), PERSONALITY_ARCHETYPES.filter((item) => item.tone === "暗"), PERSONALITY_ARCHETYPES];
+  return pools.map((pool, index) => {
+    let archetype = pick(random, pool);
+    for (let attempt = 0; used.has(archetype.title) && attempt < 12; attempt += 1) archetype = pick(random, pool);
+    used.add(archetype.title);
+    const keywords = [...new Set([...candidate.public.fixedTraits, ...archetype.keywords])];
+    return {
+      id: `${rerollIndex}-${index}-${archetype.title}`,
+      title: archetype.title,
+      keywords,
+      description: archetype.description,
+      questions: dynamicQuestions(candidate, keywords, random),
+    };
+  });
+}
+
+function buildShaping(game: StoredGame, goalRerollIndex = 0, personalityRerollIndex = 0): CharacterShapingView {
+  const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId);
+  if (!candidate) throw new Error("请先选择角色");
+  return {
+    goalRerollIndex,
+    personalityRerollIndex,
+    lifeGoalOptions: lifeGoalOptions(candidate, game.view.seed, goalRerollIndex),
+    personalityOptions: personalityOptions(candidate, game.view.seed, personalityRerollIndex),
+    fixedTraits: candidate.public.fixedTraits,
+  };
+}
+
+export function rerollCharacterShaping(game: StoredGame, part: "goals" | "personality"): void {
+  const current = game.view.shaping ?? buildShaping(game);
+  game.view.shaping = buildShaping(
+    game,
+    part === "goals" ? current.goalRerollIndex + 1 : current.goalRerollIndex,
+    part === "personality" ? current.personalityRerollIndex + 1 : current.personalityRerollIndex,
+  );
+  game.view.updatedAt = new Date().toISOString();
+}
+
+export function finalizeCharacterShaping(game: StoredGame, input: { keywords: string[]; answers: Record<string, string>; lifeGoal: string }): void {
+  if (game.view.status !== "character_shaping") throw new Error("当前不处于角色塑造阶段");
+  const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId);
+  if (!candidate) throw new Error("请先选择角色");
+  const keywords = [...new Set([...candidate.public.fixedTraits, ...input.keywords.map((item) => item.trim()).filter(Boolean)])].slice(0, 8);
+  if (keywords.length < 3) throw new Error("至少需要三个性格关键词");
+  const setup: PersonalitySetup = { keywords, answers: input.answers };
+  const profile = derivePersonality(setup);
+  game.personalityProfile = profile;
+  game.view.personality = setup;
+  game.view.personalitySummary = profile.summary;
+  game.view.lifeGoal = input.lifeGoal.trim();
+  game.view.runProgress.lifeGoal = game.view.lifeGoal;
+  game.view.status = "awakening";
+  game.view.shaping = undefined;
+  game.view.narrative = [createEntry("narration", buildAwakeningPrelude(candidate, profile))];
+  const scores = profile.scores;
+  game.view.suggestions = [
+    scores.patience >= 2 ? "留意觉醒魂师检查阵法的顺序" : scores.courage >= 2 ? "走近阵法观察六块黑石" : "站在家人身边等候点名",
+    scores.empathy >= 2 ? "安慰前一个觉醒失败的孩子" : scores.ambition >= 2 ? "打听今天有没有先天高魂力的孩子" : "听一听门外家长的议论",
+    scores.independence >= 2 ? "直接询问觉醒时该注意什么" : "把家人临行前的话再想一遍",
+  ];
+  game.view.updatedAt = new Date().toISOString();
+}
+
 export function createGame(input: CreateGameInput, meta?: MetaProgressionView): StoredGame {
   const id = randomUUID();
   const seed = input.seed?.trim() || randomUUID();
   const now = new Date().toISOString();
-  const profile = derivePersonality(input.personality);
+  const initialPersonality = input.personality ?? { keywords: [], answers: {} };
+  const profile = derivePersonality(initialPersonality);
   const hiddenCandidates = generateCandidates(seed, 0, input.gender, meta?.weightPreferences, (meta?.purchasedUpgrades["命运余量"] ?? 0) * 0.01);
 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     hiddenCandidates,
     personalityProfile: profile,
     actionIndex: 0,
@@ -572,9 +1107,9 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       status: "candidate_selection",
       difficulty: input.difficulty,
       speed: "标准",
-      personality: input.personality,
+      personality: initialPersonality,
       personalitySummary: profile.summary,
-      lifeGoal: input.lifeGoal?.trim() || "成为自己认可的强者",
+      lifeGoal: input.lifeGoal?.trim() || "尚未决定",
       rerollIndex: 0,
       candidates: hiddenCandidates.map((candidate) => candidate.public),
       narrative: [createEntry("system", "这一轮有三个人。先看出身和征兆，武魂要等选定后才会揭晓。")],
@@ -597,7 +1132,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       affiliations: [],
       chapter: { number: 1, title: "觉醒之日", summary: "六岁的主角正等着武魂觉醒。" },
       runProgress: {
-        lifeGoal: input.lifeGoal?.trim() || "成为自己认可的强者",
+        lifeGoal: input.lifeGoal?.trim() || "尚未决定",
         highestSoulRank: 0,
         discoveries: 0,
         relationshipsBuilt: 0,
@@ -645,20 +1180,16 @@ export function selectCandidate(game: StoredGame, candidateId: string, customNam
   }
 
   game.view.selectedCandidateId = candidateId;
-  game.view.status = "awakening";
+  game.view.status = "character_shaping";
   game.view.location = candidate.public.location;
   game.view.locationId = inferLocationId(candidate.public.location);
   game.world = createHiddenWorld(candidate.public.birthYearOffset ?? 0, game.view.locationId);
   game.view.worldTime = { era: candidate.public.eraRelation, year: candidate.public.birthYearOffset ?? 0, day: 1, time: "08:00", season: "春" };
   game.view.map = buildMapView(game);
   game.view.candidates = game.hiddenCandidates.map((item) => item.public);
-  game.view.narrative = [createEntry("narration", buildAwakeningPrelude(candidate, game.personalityProfile))];
-  const scores = game.personalityProfile.scores;
-  game.view.suggestions = [
-    scores.patience >= 2 ? "留意觉醒魂师检查阵法的顺序" : scores.courage >= 2 ? "走近阵法观察六块黑石" : "站在家人身边等候点名",
-    scores.empathy >= 2 ? "安慰前一个觉醒失败的孩子" : scores.ambition >= 2 ? "打听今天有没有先天高魂力的孩子" : "听一听门外家长的议论",
-    scores.independence >= 2 ? "直接询问觉醒时该注意什么" : "把家人临行前的话再想一遍",
-  ];
+  game.view.shaping = buildShaping(game);
+  game.view.narrative = [createEntry("system", `${candidate.public.name}已经选定。接下来再决定${candidate.public.gender === "女" ? "她" : "他"}会成为什么样的人。`)];
+  game.view.suggestions = [];
   game.view.updatedAt = new Date().toISOString();
 }
 
@@ -667,12 +1198,67 @@ function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityP
   const thirdPersonOrigin = candidate.public.originSummary
     .replaceAll("你的", `${pronoun}的`)
     .replaceAll("你", pronoun);
-  return [
+  const reaction = profile.scores.courage >= 2 ? "脚尖已经朝向阵法" : profile.scores.patience >= 2 ? "目光沿着六块黑石慢慢看了一圈" : "指甲在掌心掐出一道浅印";
+  const specialIdentity = /亲传|嫡系|少宗主|封号|封爵|竞争子嗣|转生者|穿越者|少主|余脉|养子/.test(candidate.public.originName);
+  const identityLine = `${specialIdentity ? `${candidate.public.name}的身份是${candidate.public.originName}` : `${candidate.public.name}生在${candidate.public.originName}`}。${thirdPersonOrigin}`;
+  const scenes: Record<string, [string, string, string]> = {
+    "seven-treasure-core": [
+      "七宝城堡的内院刚开门，觉醒厅外已经站着宗门教习和几名同龄孩子。宁风致没有坐主位，只在屏风后留了一盏茶。",
+      `${candidate.public.name}跟着宁远山走到阵前。尘心靠在窗边，视线在${pronoun}的手腕上停了一瞬。${candidate.public.name}${reaction}。`,
+      `六块黑石嵌进七宝纹地砖。教习合上内门考册，叫了${candidate.public.name}的名字。`,
+    ],
+    "spirit-hall-elder-child": [
+      "武魂城长老殿东厅封了门。教皇殿和供奉殿各来一人，隔着长桌谁也不先开口。",
+      `霜戈斗罗没有靠近，只把自己的长戈横在膝前。${candidate.public.name}${reaction}，侍从长魏崇悄悄退到门边。`,
+      `觉醒阵旁摆着两颗备用水晶球。主持仪式的红衣主教核对完家徽，叫${candidate.public.name}入阵。`,
+    ],
+    "hidden-sect-heir": [
+      "晨雾压在太玄剑谷里，宗门没有敲钟。觉醒堂只来了宗主夫妇、守碑长老和两名负责封阵的弟子。",
+      `守碑长老闻九把六块黑石逐一擦净。${candidate.public.name}${reaction}，谷外的剑鸣隔着山壁传进来，很轻。`,
+      `顾玄一亲手关上堂门。闻九没有念少宗主的尊称，只叫了${candidate.public.name}的名字。`,
+    ],
+    "blue-lightning-heir": [
+      "雷霆山门上空压着低云，雷池教习把觉醒阵搬到露天石台。嫡系长老坐了半圈，谁也没谈亲情。",
+      `同辈的名字和结果已经写在石榜上。${candidate.public.name}${reaction}，右臂被潮湿空气激得微微发麻。`,
+      `远处落下一道闷雷。教习玉川抬手示意，轮到${candidate.public.name}。`,
+    ],
+    "heaven-royal-ward": [
+      "王府把会客厅腾了出来，窗外有皇室护卫换岗。太子府与雪星亲王送来的两名见证人坐在不同方向。",
+      `乳母替${candidate.public.name}理平衣领，又立刻退开。${candidate.public.name}${reaction}，没有去看桌上那两份礼单。`,
+      `宫廷魂师展开天鹅纹名册，声音不高，厅里却一下安静。`,
+    ],
+    "star-luo-contender": [
+      "公爵府训练场没有家宴，只有教官、医师和负责记录输赢的管家。长兄的觉醒成绩挂在最显眼的位置。",
+      `魂帝教官罗铮检查完阵石。${candidate.public.name}${reaction}，母亲站在廊下，没有出声鼓励。`,
+      `管家翻到空白的一页。罗铮叫${candidate.public.name}上前，计时沙漏随即倒转。`,
+    ],
+    "cultivator-reincarnation": [
+      `天刚亮，${candidate.public.location}的觉醒室还带着药草和潮土的气味。对旁人来说今天才是开始，${candidate.public.name}已经等了六年。`,
+      `${candidate.public.name}把前世所知的经脉、灵根和眼前阵石一一对照，仍找不到完全相同的东西。${pronoun}${reaction}。`,
+      `执事摆好六块黑石，叫了${candidate.public.name}的名字。识海里的黯淡剑痕没有回应。`,
+    ],
+    "modern-transmigrator": [
+      `天刚亮，${candidate.public.location}的觉醒队伍已经排到街角。${candidate.public.name}记得原作写过这一天，却从没想过等待会这么慢。`,
+      `${pronoun}又核对了一遍年份和地点。剧情只能当旧地图，眼前每张脸都没有写在书里。${candidate.public.name}${reaction}。`,
+      `六块黑石亮起边角的金纹。执事念到${candidate.public.name}，${pronoun}把时间线笔记留在了家人的包里。`,
+    ],
+    "underworld-heir": [
+      "黑槐会包下了武魂分殿后厅。刑堂主带来的人守住两扇门，登记执事收了钱，脸色仍不好看。",
+      `顾黑槐没有教孩子该笑还是该怕。${candidate.public.name}${reaction}，先记住了厅里每个人站的位置。`,
+      `觉醒阵摆好后，执事只念名字，没有念黑槐会少主这层身份。`,
+    ],
+    "evil-soul-remnant": [
+      "觉醒仪式设在一座陌生小镇。母亲换了姓氏，路引也是真的，只是负责登记的武魂殿执事在旧姓那一栏停得太久。",
+      `${candidate.public.name}记得家谱上的戒律，也认得门外那双巡查队的靴子。${pronoun}${reaction}。`,
+      `执事把水晶球转了半圈，示意${candidate.public.name}站进阵里。母亲的手已经按在藏药的位置。`,
+    ],
+  };
+  const scene = scenes[candidate.originId] ?? [
     `天刚亮，${candidate.public.location}的石路还带着夜里的凉气。今天轮到六岁的孩子觉醒，门外已经挤了不少人。`,
-    `${candidate.public.name}生在${candidate.public.originName}。${thirdPersonOrigin}`,
-    `队伍一点点往前挪。主持仪式的魂师翻着名册，头也没抬。${candidate.public.name}把手藏进袖口，${profile.scores.courage >= 2 ? "脚尖已经朝向阵法" : profile.scores.patience >= 2 ? "目光沿着六块黑石慢慢看了一圈" : "指甲在掌心掐出一道浅印"}。`,
+    `队伍一点点往前挪。主持仪式的魂师翻着名册，头也没抬。${candidate.public.name}${reaction}。`,
     `六块黑石摆在地上，边角磨得发亮。前一个孩子哭着跑出去。执事念出了${candidate.public.name}的名字。`,
-  ].join("\n\n");
+  ];
+  return [scene[0], identityLine, scene[1], scene[2]].join("\n\n");
 }
 
 export function awakenCharacter(game: StoredGame): CharacterPublic {
@@ -706,9 +1292,41 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     personalityTraits: game.personalityProfile.summary,
   };
 
+  if (selected.originId === "cultivator-reincarnation") {
+    character.revealedGift = "前世修行记忆完整保留，修为归零，功法尚未适配魂力";
+    character.specialSystem = { name: "前世剑修传承", stage: "斗罗适配 · 未入门", progress: "0%", abilities: ["剑理记忆", "经脉辨识"], resourceHint: "需要结合武魂、魂环与当地材料逐步验证" };
+  } else if (selected.originId === "modern-transmigrator") {
+    character.revealedGift = "知道原作主要时间线；越受玩家影响，记忆越不可靠";
+  } else if (selected.originId === "evil-soul-remnant") {
+    character.revealedGift = "知道家族禁术的入门方法与戒律";
+    character.specialSystem = { name: "家族吞噬禁术", stage: "封存 · 可选择是否修炼", progress: "0%", abilities: ["隐藏异常气息"], resourceHint: "修炼会带来道德、追捕和身体风险" };
+  }
+
   game.view.character = character;
   game.view.status = "playing";
-  game.view.inventory = ["旧布包", "半日干粮"];
+  const originStart: Record<string, { coins: number; reputation: string; inventory: string[]; affiliation?: { id: string; name: string; role: string } }> = {
+    "seven-treasure-core": { coins: 800, reputation: "七宝内门熟面孔", inventory: ["七宝琉璃宗内门令", "精制行囊", "三日干粮", "备用金票"], affiliation: { id: "seven-treasure", name: "七宝琉璃宗", role: "内门亲传候选" } },
+    "spirit-hall-elder-child": { coins: 700, reputation: "长老殿嫡系", inventory: ["长老殿家徽", "武魂城通行令", "精制护身软甲", "金魂币袋"], affiliation: { id: "spirit-hall", name: "武魂殿", role: "长老嫡系" } },
+    "hidden-sect-heir": { coins: 240, reputation: "山门内人人认识", inventory: ["太玄少宗主剑令", "封山阵路图", "养剑木匣", "三日干粮"], affiliation: { id: "taixuan-sword", name: "太玄剑宗", role: "少宗主" } },
+    "blue-lightning-heir": { coins: 500, reputation: "蓝电嫡系后辈", inventory: ["蓝电霸王龙宗嫡系令", "雷池候选牌", "淬体药膏"], affiliation: { id: "blue-lightning", name: "蓝电霸王龙宗", role: "核心嫡系" } },
+    "clear-sky-sealed-branch": { coins: 60, reputation: "封山旧村后辈", inventory: ["残缺昊天旧令", "粗布行囊", "山路干粮"], affiliation: { id: "clear-sky", name: "昊天宗", role: "身份未核实的封山支脉" } },
+    "heaven-royal-ward": { coins: 1000, reputation: "皇室旁系子弟", inventory: ["旁系王府徽章", "皇城通行文书", "精制短披风", "金魂币袋"], affiliation: { id: "heaven-dou", name: "天斗帝国", role: "旁系封爵子" } },
+    "star-luo-contender": { coins: 850, reputation: "军功公爵府候选人", inventory: ["星罗公爵府身份牌", "训练记录册", "轻质护腕", "金魂币袋"], affiliation: { id: "star-luo", name: "星罗帝国", role: "公爵府竞争子嗣" } },
+    "cultivator-reincarnation": { coins: 25, reputation: "药谷里的早熟孩子", inventory: ["养父的旧药囊", "自制木剑", "前世口诀默写残页"] },
+    "modern-transmigrator": { coins: 18, reputation: "爱说怪话的孩子", inventory: ["自制时间线笔记", "炭笔", "旧布包", "半日干粮"] },
+    "underworld-heir": { coins: 450, reputation: "黑槐会少主", inventory: ["黑槐木牌", "暗账缩本", "袖中短刃", "应急钱袋"], affiliation: { id: "black-huai", name: "黑槐会", role: "少主" } },
+    "evil-soul-remnant": { coins: 35, reputation: "旧姓避难者", inventory: ["禁术戒律残页", "遮掩气息的草药", "伪造路引", "旧布包"] },
+    "hidden-master-ward": { coins: 80, reputation: "山里老猎人的养子", inventory: ["养父磨钝的猎刀", "呼吸步法木册", "疗伤药包", "两日干粮"] },
+  };
+  const start = originStart[selected.originId];
+  if (start) {
+    character.coins = start.coins;
+    character.reputation = start.reputation;
+    game.view.inventory = [...start.inventory];
+    game.view.affiliations = start.affiliation ? [{ ...start.affiliation, reputation: "身份已确认", joinedAt: "出生" }] : [];
+  } else {
+    game.view.inventory = ["旧布包", "半日干粮"];
+  }
   if (game.legacy.equippedHeirloom) game.view.inventory.push(game.legacy.equippedHeirloom);
   const foundationLevel = game.legacy.upgrades["稳固根基"] ?? 0;
   if (foundationLevel > 0) {
@@ -730,6 +1348,9 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
         { id: "first-ring", title: "获得第一魂环", kind: "修炼需求", detail: "魂力达到十级后，完成一次完整猎魂。", status: "进行中" },
       ]
     : [{ title: "理解觉醒结果", kind: "线索", detail: "没有显现先天魂力并不等于所有道路都已断绝。" }];
+  if (selected.originId === "cultivator-reincarnation") game.view.tasks.push({ id: "adapt-cultivation", title: "验证前世修行法", kind: "计划", detail: "先完成一条能安全运转的魂力经脉路线。", status: "进行中" });
+  if (selected.originId === "modern-transmigrator") game.view.tasks.push({ id: "verify-timeline", title: "核实剧情时间线", kind: "线索", detail: "先确认当前年份、唐三位置和已经发生的关键节点。", status: "进行中" });
+  if (selected.originId === "evil-soul-remnant") game.view.tasks.push({ id: "forbidden-choice", title: "决定是否接触家族禁术", kind: "计划", detail: "戒律、收益和代价都已经知道，是否修炼仍由角色决定。", status: "进行中" });
   game.storyMemory.openThreads = selected.innateSoulPower > 0
     ? ["家人与出身中尚未说清的细节", "获得第一魂环"]
     : ["家人与出身中尚未说清的细节", "理解觉醒结果"];

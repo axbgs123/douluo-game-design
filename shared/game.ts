@@ -2,7 +2,7 @@ export const DIFFICULTIES = ["爽", "简单", "标准", "困难", "地狱"] as c
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
 export type Gender = "男" | "女";
-export type GameStatus = "candidate_selection" | "awakening" | "playing" | "ended";
+export type GameStatus = "candidate_selection" | "character_shaping" | "awakening" | "playing" | "ended";
 export type GameSpeed = "标准" | "高速";
 export type ConditionLabel = "良好" | "疲惫" | "轻伤" | "重伤" | "濒死" | "死亡";
 export type HuntingStage = "需求" | "调查" | "准备" | "旅行" | "追踪" | "战斗" | "吸收" | "后果" | "完成";
@@ -24,6 +24,33 @@ export interface CandidatePublic {
   originFacts: Array<{ label: string; value: string }>;
   startingRelations: RelationView[];
   omens: string[];
+  route: string;
+  rarity: "寻常" | "少见" | "稀有" | "传奇";
+  selfKnowledge: string;
+  knownBackground: string;
+  fixedTraits: string[];
+}
+
+export interface ScenarioQuestionView {
+  id: string;
+  prompt: string;
+  options: Array<{ id: string; label: string }>;
+}
+
+export interface PersonalityDraftView {
+  id: string;
+  title: string;
+  keywords: string[];
+  description: string;
+  questions: ScenarioQuestionView[];
+}
+
+export interface CharacterShapingView {
+  goalRerollIndex: number;
+  personalityRerollIndex: number;
+  lifeGoalOptions: string[];
+  personalityOptions: PersonalityDraftView[];
+  fixedTraits: string[];
 }
 
 export interface SoulRingView {
@@ -233,6 +260,7 @@ export interface GameView {
   rerollIndex: number;
   candidates: CandidatePublic[];
   selectedCandidateId?: string;
+  shaping?: CharacterShapingView;
   character?: CharacterPublic;
   narrative: NarrativeEntry[];
   suggestions: string[];

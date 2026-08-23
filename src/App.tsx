@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react";
-import type { Difficulty, GameView, Gender, PersonalitySetup, SaveSummary } from "../shared/game";
+import type { Difficulty, GameView, Gender, SaveSummary } from "../shared/game";
 import {
   awakenCharacter,
   changeSpeed,
+  completeCharacterShaping,
   createGame,
   endRun,
   listGames,
   loadGame,
   rerollCandidates,
+  rerollCharacterShaping,
   selectCandidate,
   submitAction,
 } from "./api";
 import { CandidateScreen } from "./components/CandidateScreen";
+import { CharacterShapingScreen } from "./components/CharacterShapingScreen";
 import { MetaProgressionPanel } from "./components/MetaProgressionPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SetupScreen } from "./components/SetupScreen";
@@ -27,6 +30,10 @@ export default function App() {
 
   const refreshSaves = () => listGames().then(setSaves).catch(() => undefined);
   useEffect(() => { void refreshSaves(); }, []);
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [game?.status, game?.rerollIndex]);
 
   const run = async (operation: () => Promise<GameView>) => {
     setBusy(true);
@@ -48,7 +55,7 @@ export default function App() {
         <button type="button" className="brand" onClick={() => setGame(null)}><i>斗</i><span>未定之书<small>DOULUO TEXT RPG</small></span></button>
         <div className="nav-actions">
           {game && <button type="button" onClick={() => setGame(null)}>返回书架</button>}
-          <button type="button" className="meta-nav-button" onClick={() => setMetaOpen(true)}>局外成长</button>
+          <button type="button" className="meta-nav-button" onClick={() => setMetaOpen(true)}><b>✦ 局外成长</b><small>传承与图鉴</small></button>
           <button type="button" onClick={() => setSettingsOpen(true)}>模型设置</button>
         </div>
       </nav>
@@ -62,16 +69,23 @@ export default function App() {
             <strong>{save.characterName}</strong><span>{save.location}</span><small>{new Date(save.updatedAt).toLocaleString("zh-CN")}</small>
           </button>)}</div>
         </section>}
-        <SetupScreen busy={busy} onCreate={(input: { gender: Gender; difficulty: Difficulty; personality: PersonalitySetup; lifeGoal?: string; seed?: string }) => run(() => createGame(input))} />
+        <SetupScreen busy={busy} onCreate={(input: { gender: Gender; difficulty: Difficulty; seed?: string }) => run(() => createGame(input))} />
       </>}
 
       {game?.status === "candidate_selection" && <CandidateScreen
         candidates={game.candidates}
         rerollIndex={game.rerollIndex}
-        personalitySummary={game.personalitySummary}
         busy={busy}
         onReroll={() => run(() => rerollCandidates(game.id))}
         onSelect={(candidateId, customName) => run(() => selectCandidate(game.id, candidateId, customName))}
+      />}
+
+      {game?.status === "character_shaping" && game.shaping && <CharacterShapingScreen
+        candidate={game.candidates.find((candidate) => candidate.id === game.selectedCandidateId) ?? game.candidates[0]}
+        shaping={game.shaping}
+        busy={busy}
+        onReroll={(part) => run(() => rerollCharacterShaping(game.id, part))}
+        onComplete={(input) => run(() => completeCharacterShaping(game.id, input))}
       />}
 
       {game && (game.status === "awakening" || game.status === "playing" || game.status === "ended") && <StoryScreen

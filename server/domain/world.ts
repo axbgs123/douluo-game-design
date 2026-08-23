@@ -33,6 +33,11 @@ export function inferLocationId(location: string): string {
   if (/七宝琉璃宗|七宝商道/.test(location)) return "seven-treasure-fort";
   if (/蓝电霸王龙宗|雷谷村/.test(location)) return "blue-lightning-mountain";
   if (/昊天宗/.test(location)) return "clear-sky-mountain";
+  if (/太玄|剑谷/.test(location)) return "taixuan-valley";
+  if (/海神岛/.test(location)) return "sea-god-island";
+  if (/杀戮之都/.test(location)) return "slaughter-city";
+  if (/庚辛/.test(location)) return "gengxin-city";
+  if (/龙兴/.test(location)) return "longxing-city";
   if (/天斗城|天斗东部主城|天斗帝国中央/.test(location)) return "heaven-dou-city";
   if (/武魂城/.test(location)) return "spirit-city";
   if (/星罗/.test(location)) return "star-luo-city";
@@ -423,7 +428,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   const candidate = game.view.candidates[0];
   const startYear = game.view.worldTime?.year ?? candidate?.birthYearOffset ?? 0;
   const locationId = game.view.locationId ?? inferLocationId(game.view.location ?? candidate?.location ?? "诺丁城");
-  legacy.schemaVersion = 5;
+  legacy.schemaVersion = 6;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
   legacy.world.canonCausalFootprints ??= [];
@@ -440,6 +445,11 @@ export function ensureGameState(game: StoredGame): StoredGame {
   legacy.personalityProfile.evidence ??= [];
   const allCandidates = [...game.hiddenCandidates.map((item) => item.public), ...game.view.candidates];
   for (const item of allCandidates) {
+    item.route ??= "本地成长";
+    item.rarity ??= /身世不明|亲传|嫡系|少宗主|封号/.test(item.originName) ? "稀有" : "寻常";
+    item.selfKnowledge ??= /身世不明|无籍收养/.test(item.originName) ? "本地人 · 身世未知" : "本地人 · 身世明确";
+    item.knownBackground ??= /身世不明|无籍收养/.test(item.originName) ? "只知道自己由养父母抚养，真正来历仍未查明。" : "知道自己的家庭、住处和日常关系。";
+    item.fixedTraits ??= [];
     item.originFacts ??= [
       { label: "家庭", value: `${item.originName}的一户具体人家，旧存档尚未记录姓名` },
       { label: "归属", value: item.location },
@@ -450,6 +460,10 @@ export function ensureGameState(game: StoredGame): StoredGame {
       { name: `${item.name}的母亲`, relation: "母亲", impression: "一直留意觉醒后的去处", strength: 80, category: "亲属" },
       { name: "当值武魂殿执事", relation: "觉醒执事", impression: "公事公办", faction: "武魂殿", strength: 5, category: "势力" },
     ];
+  }
+  for (const hidden of game.hiddenCandidates) {
+    hidden.originId ??= "legacy-origin";
+    hidden.roleTags ??= ["本地人"];
   }
   game.view.lifeGoal ??= "成为自己认可的强者";
   game.view.locationId ??= locationId;

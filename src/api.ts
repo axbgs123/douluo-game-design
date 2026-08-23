@@ -37,11 +37,19 @@ export function loadGame(id: string): Promise<GameView> {
 export function createGame(input: {
   gender: Gender;
   difficulty: Difficulty;
-  personality: PersonalitySetup;
+  personality?: PersonalitySetup;
   lifeGoal?: string;
   seed?: string;
 }): Promise<GameView> {
   return request("/api/games", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function rerollCharacterShaping(id: string, part: "goals" | "personality"): Promise<GameView> {
+  return request(`/api/games/${id}/shaping/reroll`, { method: "POST", body: JSON.stringify({ part }) });
+}
+
+export function completeCharacterShaping(id: string, input: { keywords: string[]; answers: Record<string, string>; lifeGoal: string }): Promise<GameView> {
+  return request(`/api/games/${id}/shaping/complete`, { method: "POST", body: JSON.stringify(input) });
 }
 
 export function rerollCandidates(id: string): Promise<GameView> {

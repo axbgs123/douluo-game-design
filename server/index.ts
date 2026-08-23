@@ -7,8 +7,10 @@ import { applyActionResult, resolveAction } from "./domain/actions.js";
 import {
   awakenCharacter,
   createGame,
+  finalizeCharacterShaping,
   publicView,
   rerollCandidates,
+  rerollCharacterShaping,
   selectCandidate,
 } from "./domain/generator.js";
 import {
@@ -38,12 +40,18 @@ const createGameSchema = z.object({
   personality: z.object({
     keywords: z.array(z.string().trim().min(1).max(12)).min(3).max(8),
     answers: z.record(z.string(), z.string()),
-  }),
+  }).optional(),
   lifeGoal: z.string().trim().max(120).optional(),
   seed: z.string().trim().max(120).optional(),
 });
 
 const candidateSchema = z.object({ candidateId: z.string().min(1), customName: z.string().trim().min(1).max(12).optional() });
+const shapingRerollSchema = z.object({ part: z.enum(["goals", "personality"]) });
+const shapingSchema = z.object({
+  keywords: z.array(z.string().trim().min(1).max(12)).min(1).max(8),
+  answers: z.record(z.string(), z.string()).refine((answers) => Object.keys(answers).length >= 6, "请完成六道情境题"),
+  lifeGoal: z.string().trim().min(6).max(160),
+});
 const actionSchema = z.object({ input: z.string().trim().min(1).max(1200) });
 const speedSchema = z.object({ speed: z.enum(["标准", "高速"]) });
 const endSchema = z.object({ reason: z.string().trim().max(200).optional() });
@@ -120,6 +128,25 @@ app.post("/api/games/:id/select", (request, response) => {
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
   selectCandidate(game, input.candidateId, input.customName);
   saveGame(game, "candidate.selected", { candidateId: input.candidateId, customName: input.customName });
+  return response.json(publicView(game));
+});
+
+app.post("/api/games/:id/shaping/reroll", (request, response) => {
+  const input = shapingRerollSchema.parse(request.body);
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  if (game.view.status !== "character_shaping") return response.status(409).json({ error: "当前不能重新抽取角色塑造方案" });
+  rerollCharacterShaping(game, input.part);
+  saveGame(game, "character_shaping.rerolled", input);
+  return response.json(publicView(game));
+});
+
+app.post("/api/games/:id/shaping/complete", (request, response) => {
+  const input = shapingSchema.parse(request.body);
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  finalizeCharacterShaping(game, input);
+  saveGame(game, "character_shaping.completed", { keywords: input.keywords, lifeGoal: input.lifeGoal });
   return response.json(publicView(game));
 });
 
