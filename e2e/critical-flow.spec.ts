@@ -160,6 +160,22 @@ async function seedSpiritAscensionGame() {
   database.saveGame(game, "e2e.spirit-ascension-fixture");
 }
 
+async function seedMechaCareerGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 3, gender: "女", difficulty: "标准", seed: "e2e-mecha-career" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "机甲职业验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.character!.coins = 1_000;
+  game.view.character!.abilityDescriptors.perception = "顶尖";
+  game.view.affiliations.push({ id: "e2e-mecha-career-school", name: "史莱克机甲学院", role: "在册学员", reputation: "合格", joinedAt: "验收学籍" });
+  database.saveGame(game, "e2e.mecha-career-fixture");
+}
+
 async function seedStarshipCrewGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -508,6 +524,32 @@ test("斗三初级升灵台必须付费入场、虚拟遭遇、主动退出后�
   await expect(ascension).toContainText(/上次结算增加 [1-9][0-9]* 年/);
   await page.getByRole("button", { name: "武魂", exact: true }).click();
   await expect(page.locator(".ring-list")).toContainText(/9[1-9][0-9] 年/);
+});
+
+test("斗三机甲设计第二职业必须实训、认证、备料后才能完成付费委托", async ({ page }) => {
+  await seedMechaCareerGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "机甲职业验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  const career = page.locator(".special-system-card").filter({ hasText: "第二职业 · 机甲设计" });
+  await career.getByRole("button", { name: "承接委托" }).click();
+  await expect(career).toContainText("已验收委托 0");
+  for (let session = 0; session < 3; session += 1) await career.getByRole("button", { name: "设计实训" }).click();
+  await expect(career).toContainText("实训 3 · 作品 3");
+  await career.getByRole("button", { name: "职业认证" }).click();
+  await expect(career).toContainText("机甲设计师·1级");
+  await career.getByRole("button", { name: "承接委托" }).click();
+  await expect(career).toContainText("已验收委托 0");
+  await career.getByRole("button", { name: "购买图纸" }).click();
+  await career.getByRole("button", { name: "承接委托" }).click();
+  await expect(career).toContainText("已验收委托 1");
+  await page.getByRole("button", { name: "人物", exact: true }).click();
+  const profession = page.locator(".profession-list article").filter({ hasText: "机甲设计" });
+  await expect(profession).toContainText("机甲设计师·1级");
+  await expect(profession).toContainText("作品 4 · 委托 1");
 });
 
 test("斗四星舰必须按岗位招募船员后才能协同并登记真实航时", async ({ page }) => {

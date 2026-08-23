@@ -2130,6 +2130,74 @@ function professionResolution(game: StoredGame, action: string): ActionResolutio
   return { intent: "生活职业研究", minutes: speedMinutes(game, 240, 1440), ruleSummary: `${name}${success ? "实验成功" : hasMaterial ? "实验失败并记录原因" : "因缺少材料只完成纸面推演"}；熟练进度增加${gain}，材料适配与失败记录均已保存。`, fallbackNarrative: success ? `这一次材料没有在中途失控。成品算不上精致，至少每一步都能在斗罗大陆现有的工具和魂力条件下重做。` : `做到中段时结果就偏了。我没把失败归给运气，把火候、魂力和材料变化逐项记下，剩下的残料已经不能再用。`, suggestions: success ? ["测试成品效果", "记录完整步骤", "请专业人士复核"] : ["寻找合适材料", "请教专业人士", "根据失败记录修改步骤"] };
 }
 
+function eraThreeCareerResolution(game: StoredGame, action: string): ActionResolution {
+  if ((game.view.era ?? 1) < 3) return impossible("斗铠与现代机甲产业尚未形成，当前时代不能申请这些第二职业认证。", ["学习当前时代的锻造", "研究早期魂导器", "核对技术年代"]);
+  const route = /斗铠.*设计|斗铠设计师/.test(action) ? { id: "斗铠设计", role: "斗铠设计师", material: "魂导器空白图纸" }
+    : /机甲.*制造|机甲制造师/.test(action) ? { id: "机甲制造", role: "机甲制造师", material: "魂导器用稀有金属" }
+      : /机甲.*修理|机甲维修|机甲修理师/.test(action) ? { id: "机甲维修", role: "机甲修理师", material: "魂导器用稀有金属" }
+        : /锻造|锻造师/.test(action) ? { id: "锻造与炼器", role: "锻造师", material: "魂导器用稀有金属" }
+          : { id: "机甲设计", role: "机甲设计师", material: "魂导器空白图纸" };
+  let profession = game.view.professions.find((item) => item.name === route.id);
+  if (!profession) {
+    profession = { id: route.id, name: route.id, level: "学徒", progress: 0, experiments: 0, failures: 0, knownMethods: [], certifications: [], portfolio: [], commissionsCompleted: 0 };
+    game.view.professions.push(profession);
+  }
+  profession.certifications ??= [];
+  profession.portfolio ??= [];
+  profession.commissionsCompleted ??= 0;
+  const certified = Math.max(0, ...profession.certifications.filter((item) => item.startsWith(route.role)).map((item) => Number(item.match(/(\d+)级/)?.[1] ?? 0)));
+  if (/认证|考核/.test(action)) {
+    const target = Math.min(5, certified + 1);
+    const hasInstitution = game.view.affiliations.some((item) => /学院|传灵塔|机甲|锻造|协会|史莱克/.test(item.name)) || game.view.relations.some((item) => /设计师|制造师|修理师|锻造师|魂导师/.test(`${item.name}${item.relation}`));
+    if (!hasInstitution) return impossible(`${route.role}认证必须由学院、传灵塔、行业协会或有资质的专业人士复核。`, ["加入有资质的学院", `寻找${route.role}导师`, `继续积累${route.id}作品`]);
+    if (profession.progress < target * 20 || profession.experiments < target * 3 || profession.portfolio.length < target * 2) return impossible(`${target}级${route.role}认证至少需要 ${target * 20}% 熟练度、${target * 3} 次训练和 ${target * 2} 件可复核作品。`, [`继续学习${route.id}`, "整理作品档案", "复盘失败记录"]);
+    profession.certifications = profession.certifications.filter((item) => !item.startsWith(route.role));
+    profession.certifications.push(`${route.role}·${target}级`);
+    profession.level = `${target}级认证`;
+    return { intent: "第二职业认证", minutes: speedMinutes(game, 360, 1_440), ruleSummary: `作品尺寸、负载、武魂适配与失败记录通过复核，取得${route.role} ${target}级认证。`, fallbackNarrative: "考官没有只看最好的一张图。他把失败页、修改痕迹和成品测试记录并排摊开，逐项追问为什么改；最后一个问题答完，认证章才落在档案上。", suggestions: [`承接${route.id}委托`, `继续准备${target + 1}级认证`, "查看职业档案"], systemMessages: [`职业认证 · ${route.role} · ${target}级`] };
+  }
+  if (/委托|订单|接单/.test(action)) {
+    if (certified < 1) return impossible(`没有${route.role}认证，正规客户不会把可追责的产业订单交给玩家。`, [`申请${route.role}认证`, `继续学习${route.id}`, "整理训练作品"]);
+    const materialIndex = game.view.inventory.findIndex((item) => item.includes(route.material));
+    if (materialIndex < 0) return impossible(`${route.id}委托需要可登记的${route.material}，不能只交口头方案。`, [`购买${route.material}`, "核对订单材料标准", "暂缓接单"]);
+    game.view.inventory.splice(materialIndex, 1);
+    const perception = /优秀|顶尖/.test(game.view.character!.abilityDescriptors.perception) ? 8 : 0;
+    const difficulty = certified * 15 + 35;
+    const success = profession.progress + certified * 12 + perception >= difficulty;
+    profession.experiments += 1;
+    if (!success) {
+      profession.failures += 1;
+      profession.progress = Math.min(100, profession.progress + 4);
+      return { intent: "第二职业委托", minutes: speedMinutes(game, 480, 1_920), ruleSummary: `${route.role}委托未通过客户验收；材料已消耗，失败数据进入职业档案，没有获得报酬。`, fallbackNarrative: "客户把负载测试停在红线前，指出接口公差已经超过合同。材料和工时都回不来，我只能把退件原因逐条写进档案，不能把‘差一点’算成交付。", suggestions: ["复盘退件原因", `继续学习${route.id}`, `重新购买${route.material}`] };
+    }
+    const reward = certified * 180;
+    game.view.character!.coins += reward;
+    recordEconomyTransaction(game, "收入", reward, `${game.view.location ?? "当地"}${route.id}客户`, `${route.role}${certified}级委托验收款`);
+    profession.commissionsCompleted += 1;
+    profession.progress = Math.min(100, profession.progress + 5);
+    const evidence = `${route.role}${certified}级委托#${profession.commissionsCompleted}·已验收`;
+    profession.portfolio.push(evidence);
+    profession.portfolio = profession.portfolio.slice(-20);
+    return { intent: "第二职业委托", minutes: speedMinutes(game, 480, 1_920), ruleSummary: `${route.role}委托通过材料、尺寸、负载和安全验收，获得${formatSoulCoins(reward)}，作品与客户回执已入档。`, fallbackNarrative: "交付不是把图纸往桌上一放。客户按合同逐项测过尺寸、负载和失效保护，确认页签完后才付款；这份回执也成了下一次认证能被复核的作品证据。", suggestions: [`承接下一份${route.id}委托`, `准备更高等级${route.role}认证`, "核对收入与作品档案"], systemMessages: [`职业作品 · ${evidence}`] };
+  }
+  const handsOn = route.material !== "魂导器空白图纸";
+  if (handsOn) {
+    const materialIndex = game.view.inventory.findIndex((item) => item.includes(route.material));
+    if (materialIndex < 0) return impossible(`${route.id}实训需要${route.material}，纸面想象不能形成制造或维修作品。`, [`购买${route.material}`, "先学习安全理论", "寻找实训工坊"]);
+    game.view.inventory.splice(materialIndex, 1);
+  }
+  const gain = integer(actionRandom(game), 10, 14);
+  profession.experiments += 1;
+  profession.progress = Math.min(100, profession.progress + gain);
+  const method = `${route.id}训练法·${profession.experiments}`;
+  if (!profession.knownMethods.includes(method)) profession.knownMethods.push(method);
+  profession.portfolio.push(`${route.id}训练作品#${profession.experiments}`);
+  profession.portfolio = profession.portfolio.slice(-20);
+  if (!certified) profession.level = profession.progress >= 35 ? "入门" : "学徒";
+  game.world.fatiguePoints += 14;
+  return { intent: "第二职业训练", minutes: speedMinutes(game, 300, 1_200), ruleSummary: `完成第 ${profession.experiments} 次${route.id}实训，熟练度增加 ${gain}% 至 ${profession.progress}%，训练作品已入档但不能冒充认证订单。`, fallbackNarrative: handsOn ? "材料上留下的每一道误差都比课本诚实。我按尺寸、受力和安全余量重做一遍，把能复现的步骤和失败边界一起贴进训练档案。" : "我把武魂释放时的重心、魂技距离和控制延迟逐项画进图纸。训练稿不算可出售方案，但每一次修改都留下了能被考官追问的依据。", suggestions: [profession.progress >= 20 ? `申请${route.role}认证` : `继续学习${route.id}`, "整理训练作品", handsOn ? `购买${route.material}` : "临摹另一类武魂方案"] };
+}
+
 function soulSpiritGrade(years: number): "十年" | "百年" | "千年" | "万年" {
   if (years < 100) return "十年";
   if (years < 1_000) return "百年";
@@ -2783,6 +2851,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   if (guarded) resolution = guarded;
   else if (/切换|换成|改用|主修/.test(action) && /武魂/.test(action)) resolution = switchMartialSoulResolution(game, action);
   else if (/升灵台/.test(action)) resolution = spiritAscensionResolution(game, action);
+  else if (/(?:学习|练习|实训|认证|考核|委托|订单|接单).*(?:斗铠设计|机甲设计|机甲制造|机甲维修|机甲修理|锻造师)|(?:斗铠设计师|机甲设计师|机甲制造师|机甲修理师|锻造师).*(?:学习|练习|实训|认证|考核|委托|订单|接单)/.test(action)) resolution = eraThreeCareerResolution(game, action);
   else if (/魂灵/.test(action)) resolution = soulSpiritResolution(game, action);
   else if (/斗铠/.test(action) && !/购买|买|采购/.test(action) && !(game.view.combat && /攻击|防御|格挡|闪避|逃跑|弱点/.test(action))) resolution = battleArmorResolution(game, action);
   else if (/机甲/.test(action) && (!game.view.combat || !/攻击|防御|格挡|闪避|逃跑|弱点/.test(action) || !game.view.mecha?.model)) resolution = mechaResolution(game, action);

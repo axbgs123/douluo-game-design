@@ -385,6 +385,25 @@ describe("multi-era foundations", () => {
     expect(game.view.spiritAscension?.status).toBe("已结算");
   });
 
+  it("turns an era-three second profession into training, certification, material, portfolio, and paid work", () => {
+    const game = playingGame(3, "mecha-design-career");
+    game.view.character!.coins = 1_000;
+    game.view.character!.abilityDescriptors.perception = "顶尖";
+    game.view.affiliations.push({ id: "career-school", name: "史莱克机甲学院", role: "在册学员", reputation: "合格", joinedAt: "测试" });
+    expect(resolveAction(game, "承接机甲设计师委托订单").intent).toBe("无法完成");
+    for (let index = 0; index < 3; index += 1) expect(resolveAction(game, "学习机甲设计师第二职业").intent).toBe("第二职业训练");
+    expect(resolveAction(game, "申请机甲设计师认证考核").intent).toBe("第二职业认证");
+    const profession = game.view.professions.find((item) => item.name === "机甲设计")!;
+    expect(profession.certifications).toContain("机甲设计师·1级");
+    expect(resolveAction(game, "承接机甲设计师委托订单").intent).toBe("无法完成");
+    expect(resolveAction(game, "购买魂导器空白图纸").intent).toBe("购买");
+    const coinsAfterMaterial = game.view.character!.coins;
+    expect(resolveAction(game, "承接机甲设计师委托订单").intent).toBe("第二职业委托");
+    expect(game.view.character!.coins).toBeGreaterThan(coinsAfterMaterial);
+    expect(profession.commissionsCompleted).toBe(1);
+    expect(profession.portfolio?.at(-1)).toContain("已验收");
+  });
+
   it("requires a licensed command crew and resources for interplanetary travel", () => {
     const game = playingGame(4, "starship-command-loop");
     game.view.character!.age = 7;

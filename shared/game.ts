@@ -334,6 +334,9 @@ export interface ProfessionView {
   experiments: number;
   failures: number;
   knownMethods: string[];
+  certifications?: string[];
+  portfolio?: string[];
+  commissionsCompleted?: number;
 }
 
 export interface ManagedFactionView {
