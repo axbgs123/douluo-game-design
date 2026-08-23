@@ -8,3 +8,14 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Application build and local runtime data.
+node_modules/
+dist/
+dist-server/
+.data/
+*.db
+*.db-shm
+*.db-wal
+coverage/
+.playwright-cli/
+output/playwright/
