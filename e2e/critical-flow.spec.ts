@@ -151,12 +151,16 @@ async function seedSpiritAscensionGame() {
   generator.awakenCharacter(game);
   generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
   game.view.character!.soulRank = 30;
-  game.view.character!.coins = 600_000;
+  game.view.character!.coins = 1_000_000;
   game.view.character!.abilityDescriptors.perception = "顶尖";
   const ring = { index: 1, beastId: "e2e-ascension-ring", beastName: "百年青影狼", years: 900, color: "黄", skillName: "青影突袭", skillDescription: "用于核验升灵台灵力结算的既有魂环。" };
   game.view.character!.soulRingSets[game.view.character!.activeMartialSoulIndex] = [ring];
   game.view.character!.soulRings = game.view.character!.soulRingSets[game.view.character!.activeMartialSoulIndex];
   game.view.affiliations.push({ id: "e2e-east-sea-academy", name: "东海学院", role: "在册学员", reputation: "合格", joinedAt: "验收学籍" });
+  game.view.relations.push(
+    { id: "e2e-ascension-striker", name: "陆锋", relation: "强攻系同伴", impression: "可信", strength: 70, category: "同伴" },
+    { id: "e2e-ascension-guard", name: "石岳", relation: "防御系同伴", impression: "可信", strength: 70, category: "同伴" },
+  );
   database.saveGame(game, "e2e.spirit-ascension-fixture");
 }
 
@@ -524,6 +528,30 @@ test("斗三初级升灵台必须付费入场、虚拟遭遇、主动退出后�
   await expect(ascension).toContainText(/上次结算增加 [1-9][0-9]* 年/);
   await page.getByRole("button", { name: "武魂", exact: true }).click();
   await expect(page.locator(".ring-list")).toContainText(/9[1-9][0-9] 年/);
+});
+
+test("斗三升灵台暴动期必须明确组队并完成百秒守护才能稳固灵力", async ({ page }) => {
+  await seedSpiritAscensionGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "升灵台验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await submitAction(page, "申请暴动期初级升灵台团队名额，与陆锋和石岳组队");
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  const ascension = page.locator(".special-system-card").filter({ hasText: "升灵台" });
+  await expect(ascension).toContainText("暴动期 · 初级");
+  await expect(ascension).toContainText("同行 · 陆锋、石岳");
+  await ascension.getByRole("button", { name: "进入升灵台" }).click();
+  await ascension.getByRole("button", { name: "搜寻魂兽" }).click();
+  await expect(ascension).toContainText("灵力 0");
+  await expect(ascension).toContainText(/待吸收 [1-9][0-9]*/);
+  await ascension.getByRole("button", { name: "百秒守护" }).click();
+  await expect(ascension).toContainText("待吸收 0");
+  await expect(ascension).toContainText(/灵力 [1-9][0-9]*/);
+  await ascension.getByRole("button", { name: "主动退出" }).click();
+  await ascension.getByRole("button", { name: "结算灵力" }).click();
+  await expect(ascension).toContainText("升灵台 · 已结算");
 });
 
 test("斗三机甲设计第二职业必须实训、认证、备料后才能完成付费委托", async ({ page }) => {

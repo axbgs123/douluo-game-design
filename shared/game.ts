@@ -164,10 +164,14 @@ export interface MechaProgressView {
 export interface SpiritAscensionView {
   status: "已预约" | "探索中" | "待结算" | "已结算";
   tier: "初级";
+  mode?: "常规" | "暴动期";
+  companionNames?: string[];
+  uprisingEntryYears?: number[];
   entryFee: number;
   encounters: number;
   virtualDefeats: number;
   spiritualEnergy: number;
+  pendingSpiritualEnergy?: number;
   neuralShock: number;
   totalEntries: number;
   bestYearsGained: number;

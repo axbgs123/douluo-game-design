@@ -385,6 +385,33 @@ describe("multi-era foundations", () => {
     expect(game.view.spiritAscension?.status).toBe("已结算");
   });
 
+  it("requires an explicit trusted team and a separate hundred-second absorption in an uprising-period visit", () => {
+    const game = playingGame(3, "spirit-ascension-uprising");
+    const character = game.view.character!;
+    character.soulRank = 30;
+    character.coins = 1_000_000;
+    character.abilityDescriptors.perception = "顶尖";
+    const ring = { index: 1, beastId: "uprising-ring", beastName: "百年风狼", years: 700, color: "黄", skillName: "风袭", skillDescription: "暴动期测试魂环" };
+    character.soulRingSets[character.activeMartialSoulIndex] = [ring];
+    character.soulRings = character.soulRingSets[character.activeMartialSoulIndex];
+    game.view.affiliations.push({ id: "uprising-school", name: "东海学院", role: "在册学员", reputation: "合格", joinedAt: "测试" });
+    game.view.relations.push(
+      { id: "uprising-striker", name: "陆锋", relation: "强攻系同伴", impression: "可信", strength: 70, category: "同伴" },
+      { id: "uprising-guard", name: "石岳", relation: "防御系同伴", impression: "可信", strength: 70, category: "同伴" },
+    );
+    expect(resolveAction(game, "申请暴动期初级升灵台团队名额，与陆锋组队").intent).toBe("无法完成");
+    expect(resolveAction(game, "申请暴动期初级升灵台团队名额，与陆锋和石岳组队").intent).toBe("预约升灵台");
+    expect(game.view.spiritAscension?.mode).toBe("暴动期");
+    expect(game.view.spiritAscension?.companionNames).toEqual(["陆锋", "石岳"]);
+    expect(resolveAction(game, "进入初级升灵台").intent).toBe("进入升灵台");
+    expect(resolveAction(game, "搜寻升灵台虚拟魂兽").intent).toBe("升灵台遭遇");
+    expect(game.view.spiritAscension?.spiritualEnergy).toBe(0);
+    expect(game.view.spiritAscension?.pendingSpiritualEnergy).toBeGreaterThan(0);
+    expect(resolveAction(game, "守护队友百秒吸收升灵台灵力").intent).toBe("升灵台团队守护");
+    expect(game.view.spiritAscension?.spiritualEnergy).toBeGreaterThan(0);
+    expect(game.view.spiritAscension?.pendingSpiritualEnergy).toBe(0);
+  });
+
   it("turns an era-three second profession into training, certification, material, portfolio, and paid work", () => {
     const game = playingGame(3, "mecha-design-career");
     game.view.character!.coins = 1_000;

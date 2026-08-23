@@ -2289,12 +2289,24 @@ function spiritAscensionResolution(game: StoredGame, action: string): ActionReso
     if (!activeRings.length && !(character.soulSpirits?.length)) return impossible("当前没有可承接升灵台灵力的魂环或魂灵。", ["先取得第一魂环", "签订正规魂灵", "继续基础修炼"]);
     const hasChannel = game.view.locationId === "spirit-pagoda-hq" || game.view.affiliations.some((item) => /传灵塔|学院/.test(item.name));
     if (!hasChannel) return impossible("初级升灵台名额有限，需要在传灵塔受理点或通过在册学院申请。", ["前往传灵塔总部", "加入有合作资格的学院", "寻找合法名额渠道"]);
-    const entryFee = 500_000;
+    const violent = /暴动期/.test(action);
+    const companions = violent ? game.view.relations.filter((relation) => action.includes(relation.name)) : [];
+    const uprisingEntryYears = current?.uprisingEntryYears ?? [];
+    const currentYear = game.view.worldTime?.year ?? 0;
+    if (violent && uprisingEntryYears.filter((year) => year === currentYear).length >= 2) return impossible("本年度两次暴动期进入记录已经用完，传灵塔不会再签发第三次同年名额。", ["等待下一原作年", "申请常规初级名额", "复盘已有暴动期记录"]);
+    if (violent && (companions.length < 2 || companions.length > 6)) return impossible("暴动期团队申请必须明确点名二至六名同伴，加上玩家后不得超过七人。", ["写出全部同行者姓名", "缩减到七人以内", "改申请常规初级名额"]);
+    for (const companion of companions) {
+      const trust = companion.dimensions?.trust ?? companion.strength ?? 0;
+      const npc = companion.id ? game.world.npcs[companion.id] : undefined;
+      if (trust < 45 || companion.category === "敌对") return impossible(`${companion.name}的信任不足以共同承担暴动期风险。`, [`继续与${companion.name}建立信任`, "更换可信同伴", "申请常规初级名额"]);
+      if (npc && (!npc.alive || npc.locationId !== game.view.locationId)) return impossible(`${companion.name}当前不能在同一传灵塔受理点完成团队接入。`, [`与${companion.name}会合`, "调整进入日期", "更换同地同伴"]);
+    }
+    const entryFee = violent ? 800_000 : 500_000;
     if (character.coins < entryFee) return impossible(`初级升灵台一次准入按现有统一账本折算需要${formatSoulCoins(entryFee)}，当前资金不足。`, ["积攒费用", "争取学院奖励名额", "承接传灵塔合规任务"]);
     character.coins -= entryFee;
     recordEconomyTransaction(game, "支出", entryFee, "传灵塔升灵台受理处", "初级升灵台单次名额与脑波保护服务");
-    game.view.spiritAscension = { status: "已预约", tier: "初级", entryFee, encounters: 0, virtualDefeats: 0, spiritualEnergy: 0, neuralShock: 0, totalEntries: (current?.totalEntries ?? 0) + 1, bestYearsGained: current?.bestYearsGained ?? 0 };
-    return { intent: "预约升灵台", minutes: 90, ruleSummary: `支付${formatSoulCoins(entryFee)}并取得一次初级升灵台名额；尚未入舱，也尚未获得灵力。`, fallbackNarrative: "身份、修为和名额逐项核验后，费用才从账面划走。工作人员把求救信号和脑波警戒线讲了两遍，最后提醒：进去之后最重要的是活着出来。", suggestions: ["进入初级升灵台", "复核求救信号器", "检查魂环承受上限"] };
+    game.view.spiritAscension = { status: "已预约", tier: "初级", mode: violent ? "暴动期" : "常规", companionNames: companions.map((item) => item.name), uprisingEntryYears: violent ? [...uprisingEntryYears, currentYear] : uprisingEntryYears, entryFee, encounters: 0, virtualDefeats: 0, spiritualEnergy: 0, pendingSpiritualEnergy: 0, neuralShock: 0, totalEntries: (current?.totalEntries ?? 0) + 1, bestYearsGained: current?.bestYearsGained ?? 0 };
+    return { intent: "预约升灵台", minutes: 90, ruleSummary: `支付${formatSoulCoins(entryFee)}并取得一次${violent ? `暴动期团队（${companions.map((item) => item.name).join("、")}）` : "常规"}初级升灵台名额；尚未入舱，也尚未获得灵力。`, fallbackNarrative: "身份、修为和名额逐项核验后，费用才从账面划走。工作人员把求救信号和脑波警戒线讲了两遍，最后提醒：进去之后最重要的是活着出来。", suggestions: ["进入初级升灵台", "复核求救信号器", "检查魂环承受上限"] };
   }
   if (/进入|入舱|启动/.test(action)) {
     if (!current || current.status !== "已预约") return impossible("没有可使用的初级升灵台预约名额。", ["申请初级升灵台名额", "核对预约记录", "前往传灵塔受理点"]);
@@ -2305,27 +2317,41 @@ function spiritAscensionResolution(game: StoredGame, action: string): ActionReso
   if (/搜寻|探索|遭遇|猎杀|击杀|战斗/.test(action) && /魂兽|升灵台/.test(action)) {
     if (!current || current.status !== "探索中") return impossible("当前并未处于升灵台探索中。", ["申请初级升灵台名额", "进入初级升灵台", "查看升灵台记录"]);
     const random = actionRandom(game);
-    const beastYears = integer(random, 80, 520);
+    const violent = current.mode === "暴动期";
+    const beastYears = violent ? integer(random, 300, 1_200) : integer(random, 80, 520);
     const perception = /优秀|顶尖/.test(character.abilityDescriptors.perception) ? 180 : 80;
-    const combatCapacity = character.soulRank * 35 + activeRings.length * 120 + perception;
+    const teamSupport = (current.companionNames?.length ?? 0) * 140;
+    const combatCapacity = character.soulRank * 35 + activeRings.length * 120 + perception + teamSupport;
     const success = combatCapacity >= beastYears + integer(random, 0, 280);
     current.encounters += 1;
-    current.neuralShock = Math.min(100, current.neuralShock + (success ? integer(random, 5, 12) : integer(random, 28, 42)));
+    current.neuralShock = Math.min(100, current.neuralShock + (success ? integer(random, violent ? 8 : 5, violent ? 16 : 12) : integer(random, 28, 42)));
     if (success) {
-      const energy = Math.max(8, Math.round(beastYears * .16));
+      const energy = Math.max(8, Math.round(beastYears * (violent ? .2 : .16)));
       current.virtualDefeats += 1;
-      current.spiritualEnergy += energy;
+      if (violent) current.pendingSpiritualEnergy = (current.pendingSpiritualEnergy ?? 0) + energy;
+      else current.spiritualEnergy += energy;
     }
     const forcedExit = current.neuralShock >= 80;
-    if (forcedExit) { current.status = "待结算"; current.exitReason = "脑波保护强制退出"; }
+    if (forcedExit) { current.status = "待结算"; current.exitReason = "脑波保护强制退出"; current.pendingSpiritualEnergy = 0; }
     game.world.fatiguePoints += success ? 12 : 22;
-    return { intent: "升灵台遭遇", minutes: speedMinutes(game, 45, 120), ruleSummary: `${success ? `击败 ${beastYears} 年虚拟魂兽并吸收灵力` : `未能击败 ${beastYears} 年虚拟魂兽`}；累计灵力 ${current.spiritualEnergy}，脑波冲击 ${current.neuralShock}%。${forcedExit ? "保护系统已强制退出，现实肉体没有被判定死亡。" : "仍可继续探索或主动求救退出。"}`, fallbackNarrative: success ? "虚拟魂兽崩散成细碎光点，灵力没有立刻变成魂环年限，而是沿着武魂暂时沉积。林间又传来动静，我得决定贪下一次机会，还是带着已有收获离开。" : forcedExit ? "最后一次冲击像重锤砸进意识。眼前森林骤然熄灭，保护舱把我强制唤醒；身体没有真实伤口，眩晕和冷汗却一点不少。" : "攻击落空后，疼痛反馈几乎骗过了大脑。我按住求救信号器，没有急着再冲；这里不会轻易伤到肉体，不代表意识能无限承受。", suggestions: forcedExit ? ["结算升灵台灵力", "接受脑波检查", "查看本次记录"] : ["继续搜寻升灵台虚拟魂兽", "按动求救信号主动退出", "观察安全路线"] };
+    return { intent: "升灵台遭遇", minutes: speedMinutes(game, 45, 120), ruleSummary: `${success ? `击败 ${beastYears} 年虚拟魂兽${violent ? "，灵力尚待百秒守护吸收" : "并吸收灵力"}` : `未能击败 ${beastYears} 年虚拟魂兽`}；已稳固灵力 ${current.spiritualEnergy}，待吸收 ${(current.pendingSpiritualEnergy ?? 0)}，脑波冲击 ${current.neuralShock}%。${forcedExit ? "保护系统已强制退出，未稳固灵力已经散失，现实肉体没有被判定死亡。" : "仍可继续探索或主动求救退出。"}`, fallbackNarrative: success ? violent ? "虚拟魂兽崩散后，灵力仍在林间聚拢。队伍没有立刻抢下一只目标，而是拉开警戒圈；这百秒里若有人逼近，刚赢下来的收获仍可能全部散掉。" : "虚拟魂兽崩散成细碎光点，灵力没有立刻变成魂环年限，而是沿着武魂暂时沉积。林间又传来动静，我得决定贪下一次机会，还是带着已有收获离开。" : forcedExit ? "最后一次冲击像重锤砸进意识。眼前森林骤然熄灭，保护舱把我强制唤醒；身体没有真实伤口，眩晕和冷汗却一点不少。" : "攻击落空后，疼痛反馈几乎骗过了大脑。我按住求救信号器，没有急着再冲；这里不会轻易伤到肉体，不代表意识能无限承受。", suggestions: forcedExit ? ["结算升灵台灵力", "接受脑波检查", "查看本次记录"] : violent && (current.pendingSpiritualEnergy ?? 0) > 0 ? ["守护队友百秒吸收升灵台灵力", "按动求救信号主动退出", "观察其他魂师动向"] : ["继续搜寻升灵台虚拟魂兽", "按动求救信号主动退出", "观察安全路线"] };
+  }
+  if (/守护|百秒|完成吸收/.test(action) && /升灵台|灵力/.test(action)) {
+    if (!current || current.status !== "探索中" || current.mode !== "暴动期") return impossible("只有暴动期探索中的未稳固灵力需要团队百秒守护。", ["查看升灵台状态", "继续常规探索", "主动退出升灵台"]);
+    const pending = current.pendingSpiritualEnergy ?? 0;
+    if (pending <= 0) return impossible("当前没有等待团队守护吸收的灵力。", ["搜寻升灵台虚拟魂兽", "观察其他魂师动向", "主动退出升灵台"]);
+    current.spiritualEnergy += pending;
+    current.pendingSpiritualEnergy = 0;
+    current.neuralShock = Math.min(100, current.neuralShock + 6);
+    return { intent: "升灵台团队守护", minutes: 2, ruleSummary: `团队完成百秒警戒，${pending} 点灵力从待吸收转为已稳固；同伴没有被折算成无条件数值奖励。`, fallbackNarrative: "百秒比战斗本身更慢。有人盯住林线，有人守着退路，直到最后一缕光真正沉进武魂，队伍才重新移动。", suggestions: ["继续搜寻升灵台虚拟魂兽", "主动退出升灵台", "检查队伍脑波状态"] };
   }
   if (/退出|求救|撤离/.test(action)) {
     if (!current || current.status !== "探索中") return impossible("当前没有正在进行的升灵台探索可退出。", ["查看升灵台记录", "申请初级升灵台名额", "进入初级升灵台"]);
+    const lostPending = current.pendingSpiritualEnergy ?? 0;
+    current.pendingSpiritualEnergy = 0;
     current.status = "待结算";
     current.exitReason = "主动求救";
-    return { intent: "退出升灵台", minutes: 20, ruleSummary: `主动按动求救信号退出；带回 ${current.spiritualEnergy} 点待结算灵力，现实身体没有新增外伤。`, fallbackNarrative: "信号按下后，森林像被从中撕开。舱盖升起时我先确认自己的手脚，再听工作人员复述脑波数据；主动离开保住了已经吸收的灵力，也终止了继续冒险。", suggestions: ["结算升灵台灵力", "接受脑波检查", "复盘虚拟魂兽遭遇"] };
+    return { intent: "退出升灵台", minutes: 20, ruleSummary: `主动按动求救信号退出；带回 ${current.spiritualEnergy} 点待结算灵力${lostPending ? `，另有 ${lostPending} 点未完成吸收而散失` : ""}，现实身体没有新增外伤。`, fallbackNarrative: "信号按下后，森林像被从中撕开。舱盖升起时我先确认自己的手脚，再听工作人员复述脑波数据；主动离开保住了已经吸收的灵力，也终止了继续冒险。", suggestions: ["结算升灵台灵力", "接受脑波检查", "复盘虚拟魂兽遭遇"] };
   }
   if (/结算|吸收.*灵力|转化.*灵力/.test(action)) {
     if (!current || current.status !== "待结算") return impossible("当前没有已经退出且等待结算的升灵台灵力。", ["完成升灵台探索", "主动退出升灵台", "查看升灵台记录"]);
