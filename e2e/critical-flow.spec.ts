@@ -91,3 +91,16 @@ test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状�
   await expect(page.getByText("星舰资格 · 无", { exact: true })).toBeVisible();
   await expect(page.getByText(/指挥训练 \d+% · 船员 0 · 完成任务 0/)).toBeVisible();
 });
+
+test("有效结算可以在同一存档开启下一时代并显示旧世回声", async ({ page }) => {
+  test.setTimeout(60_000);
+  await createPlayingCharacter(page, 1);
+  for (let day = 1; day <= 8; day += 1) await submitAction(page, `在住处训练并记录第${day}天的变化`);
+  await page.getByRole("button", { name: "申请结算" }).click();
+  await page.getByRole("button", { name: "交给程序判定" }).click();
+  await expect(page.getByRole("button", { name: "在同一存档开启斗2继承人" })).toBeVisible();
+  await page.getByRole("button", { name: "在同一存档开启斗2继承人" }).click();
+  await expect(page.getByRole("heading", { name: "选择角色" })).toBeVisible();
+  await expect(page.getByText("旧世回声", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".candidate-meta").first()).toContainText("霍雨浩");
+});

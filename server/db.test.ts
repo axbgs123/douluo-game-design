@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createGame } from "./domain/generator.js";
+import { awakenCharacter, createEraSuccessor, createGame, finalizeCharacterShaping, selectCandidate } from "./domain/generator.js";
 
 const testDirectoryPrefix = join(tmpdir(), "douluo-db-test-");
 const testDirectory = mkdtempSync(testDirectoryPrefix);
@@ -16,6 +16,23 @@ afterAll(() => {
 });
 
 describe("存档数据库", () => {
+  it("replaces a settled slot with its next-era successor and preserves a terminal checkpoint", () => {
+    const parent = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "database-era-successor" });
+    selectCandidate(parent, parent.view.candidates[0].id, "顾远");
+    finalizeCharacterShaping(parent, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(parent);
+    parent.view.status = "ended";
+    parent.view.runProgress.settlement = { ending: "测试终章", baseScore: 60, multiplier: 1, legacyPoints: 60, highlights: [], qualified: true };
+    database.saveGame(parent, "test.parent");
+    const successor = createEraSuccessor(parent);
+
+    database.saveEraSuccessor(parent, successor);
+
+    expect(database.loadGame(parent.view.id)?.view.era).toBe(2);
+    expect(database.loadGame(parent.view.id)?.view.status).toBe("candidate_selection");
+    expect(database.listCheckpoints(parent.view.id).some((checkpoint) => checkpoint.label.includes("世代终章"))).toBe(true);
+  });
+
   it("deletes the game together with events and checkpoints", () => {
     const game = createGame({ gender: "男", difficulty: "标准", seed: "delete-save-test" });
     database.saveGame(game, "test.created");

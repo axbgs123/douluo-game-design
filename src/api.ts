@@ -62,6 +62,10 @@ export function createGame(input: {
   return request("/api/games", { method: "POST", body: JSON.stringify(input) });
 }
 
+export function createEraSuccessor(id: string): Promise<GameView> {
+  return request(`/api/games/${id}/successor`, { method: "POST" });
+}
+
 export function rerollCharacterShaping(id: string, part: "goals" | "personality", lockedSlots: number[] = []): Promise<GameView> {
   return request(`/api/games/${id}/shaping/reroll`, { method: "POST", body: JSON.stringify({ part, lockedSlots }) });
 }

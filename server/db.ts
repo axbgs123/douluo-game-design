@@ -555,6 +555,18 @@ export function saveSettledGame(game: StoredGame, settlement: RunSettlementView,
   }
 }
 
+export function saveEraSuccessor(parent: StoredGame, successor: StoredGame): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    writeCheckpoint(parent, `世代终章 · 第 ${parent.view.era} 时代 · ${parent.view.character?.name ?? "无名者"}`);
+    writeGameAndEvent(successor, "era.successor_created", { sourceEra: parent.view.era, targetEra: successor.view.era, ancestorName: parent.view.character?.name });
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 function tableCount(table: string): number {
   const row = database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
   return row.count;

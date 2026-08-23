@@ -55,6 +55,24 @@ afterAll(async () => {
 });
 
 describe("HTTP 状态机", () => {
+  it("advances a qualified settled save into the next era through the public API", async () => {
+    const parent = createGame({ era: 1, gender: "女", difficulty: "标准", seed: "api-era-successor" });
+    selectCandidate(parent, parent.view.candidates[0].id, "顾遥");
+    finalizeCharacterShaping(parent, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(parent);
+    parent.view.status = "ended";
+    parent.view.runProgress.settlement = { ending: "旧世终章", baseScore: 70, multiplier: 1, legacyPoints: 70, highlights: [], qualified: true };
+    database.saveGame(parent, "test.settled-parent");
+
+    const response = await fetch(`${baseUrl}/api/games/${parent.view.id}/successor`, { method: "POST" });
+    expect(response.status).toBe(201);
+    const successor = await response.json() as GameView;
+    expect(successor.id).toBe(parent.view.id);
+    expect(successor.era).toBe(2);
+    expect(successor.worldInheritance?.ancestorName).toBe("顾遥");
+    expect(database.listCheckpoints(parent.view.id).some((checkpoint) => checkpoint.label.includes("世代终章"))).toBe(true);
+  });
+
   it("creates a requested later era through the public API", async () => {
     const response = await fetch(`${baseUrl}/api/games`, {
       method: "POST",

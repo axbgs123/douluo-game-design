@@ -1495,6 +1495,47 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   return game;
 }
 
+export function createEraSuccessor(parent: StoredGame, meta?: MetaProgressionView): StoredGame {
+  const sourceEra = parent.view.era ?? 1;
+  if (parent.view.status !== "ended" || !parent.view.runProgress.settlement?.qualified) throw new Error("只有完成结算并达到有效周目条件，才能建立连续世界线");
+  if (sourceEra >= 4) throw new Error("斗四已经是当前连续世界线的最后开放时代");
+  const targetEra = (sourceEra + 1) as 2 | 3 | 4;
+  const ancestor = parent.view.character;
+  if (!ancestor) throw new Error("结算存档缺少可继承的人物记录");
+  const priorGeneration = parent.view.worldInheritance?.generation ?? 0;
+  const legacyArtifact = `旧世档案 · ${ancestor.name}`;
+  const inheritedEchoes = [
+    `${ancestor.name}在第${sourceEra}时代以“${parent.view.runProgress.settlement.ending}”留下记载`,
+    `旧世最高魂力${parent.view.runProgress.highestSoulRank}级，历史影响${parent.world.metrics.historicalImpact}`,
+    ...parent.world.canonCausalFootprints.slice(-2).map((footprint) => footprint.description),
+  ].slice(0, 4);
+  const worldInheritance = {
+    generation: priorGeneration + 1,
+    sourceEra,
+    targetEra,
+    ancestorName: ancestor.name,
+    ending: parent.view.runProgress.settlement.ending,
+    highestSoulRank: parent.view.runProgress.highestSoulRank,
+    historicalImpact: parent.world.metrics.historicalImpact,
+    legacyArtifact,
+    echoes: inheritedEchoes,
+  } as const;
+  const successor = createGame({ era: targetEra, gender: ancestor.gender, difficulty: parent.view.difficulty, seed: `${parent.view.seed}:generation:${targetEra}:${parent.revision}` }, meta);
+  successor.view.id = parent.view.id;
+  successor.revision = parent.revision;
+  successor.view.createdAt = parent.view.createdAt;
+  successor.view.updatedAt = new Date().toISOString();
+  successor.view.worldInheritance = worldInheritance;
+  successor.legacy.worldInheritance = worldInheritance;
+  successor.view.narrative.unshift(createEntry("system", `连续世界线 · 第 ${worldInheritance.generation + 1} 代。${ancestor.name}的时代已经过去，留下的不是原样等级，而是可被调查、质疑和改变的历史。`));
+  for (const candidate of successor.hiddenCandidates) {
+    candidate.public.originFacts = [...candidate.public.originFacts, { label: "旧世回声", value: `${legacyArtifact}由家族或保管机构传到这一代，真实性仍需核验。` }];
+    candidate.public.omens = [...candidate.public.omens, `幼年时曾反复梦见${ancestor.name}留下的一段模糊旧史`];
+  }
+  successor.view.candidates = successor.hiddenCandidates.map((candidate) => candidate.public);
+  return successor;
+}
+
 export function rerollCandidates(game: StoredGame, preferences?: WeightPreferences, lockedSlots: number[] = []): void {
   const nextIndex = game.view.rerollIndex + 1;
   const fresh = generateCandidates(
@@ -1507,6 +1548,11 @@ export function rerollCandidates(game: StoredGame, preferences?: WeightPreferenc
   );
   const locks = new Set(lockedSlots.filter((slot) => slot >= 0 && slot < 3));
   game.hiddenCandidates = fresh.map((candidate, index) => locks.has(index) ? game.hiddenCandidates[index] ?? candidate : candidate);
+  const inheritance = game.legacy.worldInheritance;
+  if (inheritance) for (const candidate of game.hiddenCandidates) {
+    if (!candidate.public.originFacts.some((fact) => fact.label === "旧世回声")) candidate.public.originFacts.push({ label: "旧世回声", value: `${inheritance.legacyArtifact}由家族或保管机构传到这一代，真实性仍需核验。` });
+    if (!candidate.public.omens.some((omen) => omen.includes(inheritance.ancestorName))) candidate.public.omens.push(`幼年时曾反复梦见${inheritance.ancestorName}留下的一段模糊旧史`);
+  }
   game.view.rerollIndex = nextIndex;
   game.view.candidateRerollsUsed += 1;
   game.view.candidates = game.hiddenCandidates.map((candidate) => candidate.public);
@@ -1546,7 +1592,10 @@ export function selectCandidate(game: StoredGame, candidateId: string, customNam
   game.view.mapHierarchy = buildMapHierarchy(game);
   game.view.candidates = game.hiddenCandidates.map((item) => item.public);
   game.view.shaping = buildShaping(game, 0, 0, [false, false, false], undefined, false);
-  game.view.narrative = [createEntry("system", `${candidate.public.name}已经选定。接下来再决定${candidate.public.gender === "女" ? "她" : "他"}会成为什么样的人。`)];
+  game.view.narrative = [
+    createEntry("system", `${candidate.public.name}已经选定。接下来再决定${candidate.public.gender === "女" ? "她" : "他"}会成为什么样的人。`),
+    ...(game.view.worldInheritance ? [createEntry("system", `旧世回声 · ${game.view.worldInheritance.legacyArtifact}会在觉醒后成为可调查的家族线索。`)] : []),
+  ];
   game.view.suggestions = [];
   game.view.updatedAt = new Date().toISOString();
 }
@@ -1711,6 +1760,8 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   game.world.flags.originAdvantage = selected.originStart?.advantage ?? selected.public.originAdvantage;
   game.world.flags.originBurden = selected.originStart?.burden ?? selected.public.originBurden;
   if (game.legacy.equippedHeirloom) game.view.inventory.push(game.legacy.equippedHeirloom);
+  const inheritance = game.legacy.worldInheritance;
+  if (inheritance && !game.view.inventory.includes(inheritance.legacyArtifact)) game.view.inventory.push(inheritance.legacyArtifact);
   const foundationLevel = game.legacy.upgrades["稳固根基"] ?? 0;
   if (foundationLevel > 0) {
     game.world.healthPoints = Math.min(100, game.world.healthPoints + foundationLevel * 5);
@@ -1734,6 +1785,13 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   game.view.tasks = selected.innateSoulPower > 0
     ? [{ id: "first-ring", title: "获得第一魂环", kind: "修炼需求", detail: "魂力达到十级后，完成一次完整猎魂。", status: "进行中" }]
     : [{ title: "理解觉醒结果", kind: "线索", detail: "没有显现先天魂力并不等于所有道路都已断绝。" }];
+  if (inheritance) {
+    game.view.tasks.push({ id: "inherited-worldline", title: `核验${inheritance.ancestorName}留下的旧世档案`, kind: "线索", detail: `档案跨越约万年，记录了“${inheritance.ending}”，但传抄、势力宣传与历史偏移都可能改变内容。`, status: "进行中" });
+    recordIntelligence(game, { subjectType: "事件", subjectId: `world-inheritance-${inheritance.generation}`, title: `${inheritance.ancestorName}的旧世记录`, detail: inheritance.echoes.join("；"), source: inheritance.legacyArtifact, confidence: 55, status: "推测" });
+    game.world.flags.inheritedWorldlineGeneration = inheritance.generation;
+    game.world.flags.inheritedHistoricalImpact = inheritance.historicalImpact;
+    game.view.narrative.push(createEntry("system", `世代继承 · 获得${inheritance.legacyArtifact}。它只提供有偏差可能的历史线索，不直接继承魂力、魂环或装备战力。`));
+  }
   if (selected.originId === "cultivator-reincarnation") game.view.tasks.push({ id: "adapt-cultivation", title: "验证前世修行法", kind: "计划", detail: "先完成一条能安全运转的魂力经脉路线。", status: "进行中" });
   if (selected.originId === "modern-transmigrator") game.view.tasks.push({ id: "verify-timeline", title: "核实剧情时间线", kind: "线索", detail: "先确认当前年份、唐三位置和已经发生的关键节点。", status: "进行中" });
   if (selected.originId === "evil-soul-remnant") game.view.tasks.push({ id: "forbidden-choice", title: "决定是否接触家族禁术", kind: "计划", detail: "戒律、收益和代价都已经知道，是否修炼仍由角色决定。", status: "进行中" });

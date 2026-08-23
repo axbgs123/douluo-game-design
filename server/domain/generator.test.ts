@@ -7,6 +7,7 @@ import {
   MARTIAL_SOUL_CATALOG_STATS,
   awakenCharacter,
   createGame,
+  createEraSuccessor,
   finalizeCharacterShaping,
   generateCandidates,
   martialSoulMultiplicity,
@@ -279,5 +280,32 @@ describe("candidate generation", () => {
     expect(game.view.tasks.some((task) => task.id === "awakening-recruitment")).toBe(true);
     expect(game.world.dynamicEvents.some((event) => /武魂殿/.test(event.title) && event.status === "可介入")).toBe(true);
     expect(game.view.narrative.at(-1)?.text).toMatch(/上报主殿|内部培养评估/);
+  });
+
+  it("carries a settled worldline into the next era without copying combat power", () => {
+    const parent = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "continuous-era-parent" });
+    selectCandidate(parent, parent.view.candidates[0].id, "顾远");
+    finalizeCharacterShaping(parent, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(parent);
+    parent.view.character!.soulRank = 72;
+    parent.view.runProgress.highestSoulRank = 72;
+    parent.world.metrics.historicalImpact = 24;
+    parent.view.status = "ended";
+    parent.view.runProgress.ending = "守住旧日宗门";
+    parent.view.runProgress.settlement = { ending: "守住旧日宗门", baseScore: 80, multiplier: 1, legacyPoints: 80, highlights: [], qualified: true };
+
+    const successor = createEraSuccessor(parent);
+    expect(successor.view.id).toBe(parent.view.id);
+    expect(successor.view.era).toBe(2);
+    expect(successor.view.worldInheritance).toMatchObject({ ancestorName: "顾远", sourceEra: 1, targetEra: 2, highestSoulRank: 72 });
+    expect(successor.view.candidates.every((candidate) => candidate.originFacts.some((fact) => fact.label === "旧世回声"))).toBe(true);
+    selectCandidate(successor, successor.view.candidates[0].id);
+    finalizeCharacterShaping(successor, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(successor);
+    expect(successor.view.character?.age).toBe(6);
+    expect(successor.view.character?.soulRank).not.toBe(72);
+    expect(successor.view.inventory).toContain("旧世档案 · 顾远");
+    expect(successor.view.tasks.some((task) => task.id === "inherited-worldline")).toBe(true);
+    expect(successor.view.intelligence.some((item) => item.title.includes("顾远"))).toBe(true);
   });
 });

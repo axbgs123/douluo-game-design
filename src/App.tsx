@@ -7,6 +7,7 @@ import {
   completeCharacterShaping,
   createCheckpoint,
   createGame,
+  createEraSuccessor,
   deleteGame,
   endRun,
   listGames,
@@ -213,6 +214,7 @@ export default function App() {
         onAction={runAction}
         onSpeed={(speed) => run(() => changeSpeed(game.id, speed))}
         onEnd={(reason) => run(() => endRun(game.id, reason))}
+        onContinueEra={() => run(() => createEraSuccessor(game.id))}
         onMapPin={(input) => run(() => addMapPin(game.id, input))}
         onMapPinRemove={(pinId) => run(() => removeMapPin(game.id, pinId))}
       />}

@@ -9,6 +9,7 @@ import { applyActionResult, resolveAction } from "./domain/actions.js";
 import {
   awakenCharacter,
   createGame,
+  createEraSuccessor,
   finalizeCharacterShaping,
   publicView,
   rerollCandidates,
@@ -36,6 +37,7 @@ import {
   saveGameAndClaimEquippedMartialSoul,
   saveGameWithLegacyCost,
   saveSettledGame,
+  saveEraSuccessor,
   toggleCodexMartialSoul,
 } from "./db.js";
 import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithAuditRetries, validateInterpretedAction } from "./services/deepseek.js";
@@ -439,6 +441,18 @@ app.post("/api/games/:id/end", (request, response) => {
   const settlement = settleRun(game, input.reason);
   saveSettledGame(game, settlement, "run.settled");
   return response.json(publicView(game));
+});
+
+app.post("/api/games/:id/successor", (request, response) => {
+  const parent = loadGame(request.params.id);
+  if (!parent) return response.status(404).json({ error: "没有找到这个存档" });
+  try {
+    const successor = createEraSuccessor(parent, getMetaProgression());
+    saveEraSuccessor(parent, successor);
+    return response.status(201).json(publicView(successor));
+  } catch (error) {
+    return response.status(409).json({ error: error instanceof Error ? error.message : "无法建立下一时代" });
+  }
 });
 
 app.get("/api/settings/deepseek", (_request, response) => {

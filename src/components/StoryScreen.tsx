@@ -23,6 +23,7 @@ interface StoryScreenProps {
   onOpenSettings: () => void;
   onSpeed: (speed: GameSpeed) => Promise<void>;
   onEnd: (reason?: string) => Promise<void>;
+  onContinueEra: () => Promise<void> | void;
   onMapPin: (input: { label: string; x: number; y: number }) => Promise<void>;
   onMapPinRemove: (pinId: string) => Promise<void>;
 }
@@ -41,7 +42,7 @@ function panelBadge(game: GameView, panel: Panel): string | undefined {
   return undefined;
 }
 
-export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft, lastAction, lastExplanation, checkpoints, onAwaken, onAction, onCancelAction, onRetry, onRewrite, onCreateCheckpoint, onRestoreCheckpoint, onOpenSettings, onSpeed, onEnd, onMapPin, onMapPinRemove }: StoryScreenProps) {
+export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft, lastAction, lastExplanation, checkpoints, onAwaken, onAction, onCancelAction, onRetry, onRewrite, onCreateCheckpoint, onRestoreCheckpoint, onOpenSettings, onSpeed, onEnd, onContinueEra, onMapPin, onMapPinRemove }: StoryScreenProps) {
   const [input, setInput] = useState("");
   const [panel, setPanel] = useState<Panel>("人物");
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -88,7 +89,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
           </div>
 
           {game.status === "awakening" ? <div className="awakening-action"><button className="primary-button" type="button" disabled={busy} onClick={() => void onAwaken()}>{busy ? "觉醒中…" : "觉醒武魂"}</button></div>
-            : game.status === "ended" ? <EndingPanel game={game} />
+            : game.status === "ended" ? <EndingPanel game={game} busy={busy} onContinueEra={onContinueEra} />
               : !aiConnected ? <div className="ai-required-card"><strong>连接 AI 后开始正文</strong><p>当前仍可查看角色、地图、资料和模型设置，但正式行动不会在无 AI 时推进。</p><button type="button" onClick={onOpenSettings}>设置模型</button></div>
                 : <div className="action-area">
                     <div className="suggestion-list">{game.suggestions.map((suggestion, index) => <button type="button" key={`${suggestion}-${index}`} disabled={busy} onClick={() => submit(suggestion)}><span>{index + 1}</span>{suggestion}</button>)}</div>
@@ -295,9 +296,10 @@ function WorldPanel({ game, submit, busy }: { game: GameView; submit: (value: st
   return <div className="world-panel"><h3 className="panel-title">原作因果</h3>{game.canonInfluences.length ? <div className="causal-chain">{game.canonInfluences.map((cause, index) => <article key={cause.id}><i>{index + 1}</i><div><strong>{cause.action}</strong><span>{cause.affects} · {cause.strength}</span><small>{cause.date}</small></div></article>)}</div> : <article className="canon-stable"><strong>原作轨迹稳定</strong><p>主角还没有接触关键人物、势力或事件，原作节点不会自行改变。</p></article>}{game.managedFactions.length > 0 && <><h3 className="panel-title">掌管势力</h3><div className="managed-faction-list">{game.managedFactions.map((faction) => <article key={faction.id}><header><strong>{faction.name}</strong><span>{faction.role}</span></header><p>{faction.members} 人 · 资源 {faction.resources} · {faction.territory.join("、")}</p><small>{faction.departments.join("、")}；待处理：{faction.internalIssues.join("、") || "暂无"}</small></article>)}</div></>}{game.activeEvents.length > 0 && <><h3 className="panel-title">眼前事件</h3><div className="world-event-list">{game.activeEvents.map((event) => <article key={event.id}><header><span>{event.kind} · {event.remaining}</span><strong>{event.title}</strong></header><p>{event.detail}</p><small>{event.location}</small><div><button type="button" disabled={busy} onClick={() => submit(`调查${event.title}`)}>调查</button><button type="button" disabled={busy} onClick={() => submit(`帮助处理${event.title}`)}>介入</button><button type="button" disabled={busy} onClick={() => submit(`拒绝${event.title}`)}>拒绝</button></div></article>)}</div></>}<h3 className="panel-title">近日消息</h3>{game.news.length ? <div className="news-list">{game.news.map((item) => <article key={item.id}><span>{item.date}</span><strong>{item.title}</strong><p>{item.detail}</p></article>)}</div> : <p className="panel-copy">暂时没有传到角色耳中的大事。</p>}<h3 className="panel-title">已知人物</h3>{game.knownFigures.length ? <div className="figure-list">{game.knownFigures.map((figure) => <article key={figure.id}><header><strong>{figure.name}</strong><span>{figure.knownPower}</span></header><p>{figure.title ?? figure.faction ?? "身份不详"}</p><small>{figure.location} · {figure.status} · {figure.source} {figure.confidence}%</small></article>)}</div> : <p className="panel-copy">角色还没有接触到重要人物。</p>}</div>;
 }
 
-function EndingPanel({ game }: { game: GameView }) {
+function EndingPanel({ game, busy, onContinueEra }: { game: GameView; busy: boolean; onContinueEra: () => Promise<void> | void }) {
   const settlement = game.runProgress.settlement;
-  return <section className="ending-panel"><p className="eyebrow">程序结算</p><h2>{settlement?.ending ?? game.runProgress.ending ?? "故事结束"}</h2>{settlement ? <><div className={`ending-score ${settlement.qualified ? "" : "unqualified"}`}><strong>{settlement.legacyPoints}</strong><span>{settlement.qualified ? "传承点" : "中止收益"}</span><small>{settlement.baseScore} × {settlement.multiplier.toFixed(2)}</small></div><ul>{settlement.highlights.map((item) => <li key={item}>{item}</li>)}</ul></> : <p>这一生已经结束，记录已写入存档。</p>}</section>;
+  const canContinue = Boolean(settlement?.qualified && game.era < 4);
+  return <section className="ending-panel"><p className="eyebrow">程序结算</p><h2>{settlement?.ending ?? game.runProgress.ending ?? "故事结束"}</h2>{settlement ? <><div className={`ending-score ${settlement.qualified ? "" : "unqualified"}`}><strong>{settlement.legacyPoints}</strong><span>{settlement.qualified ? "传承点" : "中止收益"}</span><small>{settlement.baseScore} × {settlement.multiplier.toFixed(2)}</small></div><ul>{settlement.highlights.map((item) => <li key={item}>{item}</li>)}</ul>{canContinue && <button type="button" className="primary-button" disabled={busy} onClick={() => void onContinueEra()}>在同一存档开启斗{game.era + 1}继承人</button>}{game.era >= 4 && settlement.qualified && <p>四个时代的连续世界线已经完成。</p>}</> : <p>这一生已经结束，记录已写入存档。</p>}</section>;
 }
 
 function SimpleList({ title, values, empty }: { title: string; values: string[]; empty: string }) {

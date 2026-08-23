@@ -1,4 +1,4 @@
-import type { CandidatePublic, CandidateRarity, CharacterPublic, ConditionLabel, GameView, PersonalitySetup } from "../../shared/game.js";
+import type { CandidatePublic, CandidateRarity, CharacterPublic, ConditionLabel, GameView, PersonalitySetup, WorldInheritanceView } from "../../shared/game.js";
 
 export interface MartialSoulTemplate {
   id: string;
@@ -200,6 +200,7 @@ export interface StoredGame {
     upgrades: Record<string, number>;
     equippedHeirloom?: string;
     plannedMartialSoulId?: string;
+    worldInheritance?: WorldInheritanceView;
   };
 }
 

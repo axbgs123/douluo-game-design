@@ -499,6 +499,18 @@ export interface RunProgressView {
   settlement?: RunSettlementView;
 }
 
+export interface WorldInheritanceView {
+  generation: number;
+  sourceEra: GameEra;
+  targetEra: GameEra;
+  ancestorName: string;
+  ending: string;
+  highestSoulRank: number;
+  historicalImpact: number;
+  legacyArtifact: string;
+  echoes: string[];
+}
+
 export interface GameView {
   id: string;
   seed: string;
@@ -551,6 +563,7 @@ export interface GameView {
   hunting?: HuntingView;
   combat?: CombatView;
   runProgress: RunProgressView;
+  worldInheritance?: WorldInheritanceView;
   createdAt: string;
   updatedAt: string;
 }
