@@ -461,6 +461,9 @@ export interface CombatView {
   escaped: boolean;
   insight?: number;
   guard?: number;
+  allies?: Array<{ name: string; readiness: number; condition: "完好" | "疲惫" | "受伤" }>;
+  controlResistance?: number;
+  controlStatus?: string;
   lastExchange?: string;
 }
 

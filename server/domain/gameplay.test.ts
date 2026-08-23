@@ -91,6 +91,32 @@ describe("完整游玩规则", () => {
     expect(result.ruleSummary).toContain("造成 0 点");
   });
 
+  it("猎魂组队要求可信且同地的同行者", () => {
+    const game = awakened("hunt-companion-trust");
+    game.view.hunting = { stage: "准备", ringIndex: 1, targetBeastId: "datura-snake", targetName: "曼陀罗蛇", targetYears: 120, locationId: game.view.locationId, recommendations: [], preparation: [], trailProgress: "待准备" };
+    game.view.relations = [{ id: "stranger", name: "陌生佣兵", relation: "陌生人", impression: "尚未建立信任", strength: 12, category: "其他" }];
+    expect(resolveAction(game, "邀请陌生佣兵组队猎魂").intent).toBe("无法完成");
+    expect(game.view.hunting.preparation).toEqual([]);
+    game.view.relations.push({ id: "trusted-guide", name: "林岳", relation: "可靠同伴", impression: "共同训练过", strength: 65, category: "同伴" });
+    expect(resolveAction(game, "邀请林岳作为同行者组队猎魂").intent).toBe("猎魂准备");
+    expect(game.view.hunting.preparation.some((item) => item.includes("同行者：林岳") && item.includes("协同"))).toBe(true);
+  });
+
+  it("控制魂技有可累积抗性且战斗会保存同行者状态", () => {
+    const game = awakened("combat-control-resistance");
+    game.view.character!.soulRank = 30;
+    game.view.hunting = { stage: "战斗", ringIndex: 4, targetBeastId: "datura-snake", targetName: "曼陀罗蛇", targetYears: 800, locationId: game.view.locationId, recommendations: [], preparation: ["同行者：林岳（协同60）"], trailProgress: "已锁定目标" };
+    game.view.combat = { id: "combat-control", enemyName: "曼陀罗蛇", enemyPower: "800 年", round: 0, playerCondition: "良好", enemyCondition: "完好", distance: "中距离", escaped: false, allies: [{ name: "林岳", readiness: 60, condition: "完好" }], controlResistance: 38 };
+    game.world.flags.combatEnemyHp = 1_000;
+    expect(resolveAction(game, "使用控制魂技束缚目标").ruleSummary).toContain("缺少可验证的控制魂技");
+    game.view.character!.soulRings.push({ index: 1, beastId: "datura-snake", beastName: "曼陀罗蛇", years: 120, color: "黄", skillName: "蓝银缠绕", skillDescription: "用藤蔓束缚并控制目标" });
+    const beforeResistance = game.view.combat!.controlResistance!;
+    const controlled = resolveAction(game, "让林岳掩护并使用蓝银缠绕控制目标");
+    expect(game.view.combat?.controlResistance).toBeGreaterThan(beforeResistance);
+    expect(game.view.combat?.controlStatus).toMatch(/控制生效|抵抗成功/);
+    expect(controlled.ruleSummary).toContain("同行者：林岳");
+  });
+
   it("战斗触发合规复生后会脱离战斗而不是保留已结束状态", () => {
     const game = awakened("combat-revival");
     const character = game.view.character!;

@@ -549,7 +549,18 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
     if (!game.view.inventory.includes("猎魂绳")) game.view.inventory.push("猎魂绳");
     additions.push("止血散", "猎魂绳");
   }
-  if (/同伴|导师|帮手|组队/.test(action) && game.view.relations.length) additions.push(`同行者：${game.view.relations[0].name}`);
+  if (/同伴|导师|帮手|组队|同行/.test(action)) {
+    const eligible = game.view.relations.filter((relation) => {
+      const trust = relation.dimensions?.trust ?? relation.strength ?? 0;
+      if (trust < 30 || relation.category === "敌对" || /敌|仇/.test(relation.relation)) return false;
+      const npc = relation.id ? game.world.npcs[relation.id] : undefined;
+      return !npc || (npc.alive && npc.locationId === game.view.locationId);
+    });
+    const companion = eligible.find((relation) => action.includes(relation.name)) ?? eligible[0];
+    if (!companion) return impossible("没有找到信任足够、当前同地且愿意承担猎魂风险的同行者。", ["先建立可信关系", "与候选同伴会合", "独自准备并降低目标风险"]);
+    const readiness = Math.min(90, Math.max(25, Math.round((companion.dimensions?.trust ?? companion.strength ?? 30) * .8)));
+    additions.push(`同行者：${companion.name}（协同${readiness}）`);
+  }
   if (/检查|适配|资料|研究/.test(action)) additions.push("目标习性笔记");
   if (!additions.length) additions.push("简易路线图");
   for (const addition of additions) if (!hunting.preparation.includes(addition)) hunting.preparation.push(addition);
@@ -605,6 +616,11 @@ function trackBeast(game: StoredGame): ActionResolution {
       escaped: false,
       insight: 0,
       guard: 0,
+      allies: hunting.preparation.filter((item) => item.startsWith("同行者：")).map((item) => {
+        const match = item.match(/^同行者：(.+?)（协同(\d+)）$/);
+        return { name: match?.[1] ?? item.replace("同行者：", ""), readiness: Number(match?.[2] ?? 30), condition: "完好" as const };
+      }),
+      controlResistance: Math.min(85, 18 + (beast?.danger ?? 2) * 10 + Math.round((hunting.targetYears ?? 100) / 2_000)),
       lastExchange: "刚刚锁定目标，双方都在判断距离。",
     };
     game.world.flags.combatEnemyHp = 65 + (beast?.danger ?? 2) * 12;
@@ -643,8 +659,13 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   const closeDistance = /近身|逼近|贴近/.test(action);
   const openDistance = /拉开|远程|后退/.test(action);
   const reckless = /全力|拼命|不顾防御/.test(action);
+  const controlAttempt = /控制|缠绕|束缚|冰封|眩晕|迟缓|定身/.test(action);
+  const controlSource = character.soulRings.some((ring) => action.includes(ring.skillName) || /控制|缠绕|束缚|冰封|眩晕|迟缓|定身/.test(ring.skillDescription));
+  const teamTactic = /配合|协同|夹击|掩护|队友|同伴/.test(action);
   combat.insight ??= 0;
   combat.guard ??= 0;
+  combat.allies ??= [];
+  combat.controlResistance ??= Math.min(85, 18 + danger * 10 + Math.round((hunting.targetYears ?? 100) / 2_000));
   if (closeDistance) combat.distance = "近距离";
   if (openDistance) combat.distance = "远距离";
 
@@ -669,15 +690,31 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   if (observe) combat.insight = Math.min(3, combat.insight + 1);
   combat.guard = defend ? Math.min(3, combat.guard + 1) : Math.max(0, combat.guard - 1);
   const usedSoulSkill = character.soulRings.some((ring) => action.includes(ring.skillName));
-  const tacticalBonus = combat.insight * 5 + (usedSoulSkill ? 10 : 0);
-  const damage = flee || observe ? 0 : defend ? Math.round((attackBase + tacticalBonus) * .35) : Math.round((attackBase + tacticalBonus) * (reckless ? 1.3 : 1));
+  const allyPower = combat.allies.filter((ally) => ally.condition !== "受伤").reduce((sum, ally) => sum + ally.readiness, 0) / (teamTactic ? 4 : 8);
+  const controlChance = controlSource ? Math.max(.08, Math.min(.88, .35 + character.soulRank / 180 + combat.insight * .07 - combat.controlResistance / 140)) : 0;
+  const controlSucceeded = controlAttempt && controlSource && random() < controlChance;
+  if (controlAttempt) {
+    combat.controlStatus = !controlSource ? "缺少可验证的控制魂技" : controlSucceeded ? "本回合控制生效" : "目标抵抗成功";
+    if (controlSource) combat.controlResistance = Math.min(100, combat.controlResistance + (controlSucceeded ? 16 : 8));
+  } else {
+    combat.controlStatus = undefined;
+  }
+  const tacticalBonus = combat.insight * 5 + (usedSoulSkill ? 10 : 0) + allyPower;
+  const damageMultiplier = controlAttempt ? (controlSucceeded ? .65 : .25) : reckless ? 1.3 : 1;
+  const damage = flee || observe ? 0 : defend ? Math.round((attackBase + tacticalBonus) * .35) : Math.round((attackBase + tacticalBonus) * damageMultiplier);
   enemyHp -= damage;
   const distanceReduction = combat.distance === "远距离" ? 6 : combat.distance === "近距离" ? -4 : 0;
   const observationReduction = observe ? 8 + combat.insight * 2 : 0;
   const guardReduction = defend ? 12 + combat.guard * 3 : 0;
   const equipmentReduction = (activeBattleArmor ? activeBattleArmor.tier * 5 + Math.round(activeBattleArmor.compatibility / 14) : 0) + (activeMecha ? 12 : 0);
-  const enemyAttack = Math.max(2, integer(random, 5, 15) + danger * 4 + Math.round((hunting.targetYears ?? 100) / 180) - Math.round(playerPower * 0.14) - distanceReduction - observationReduction - guardReduction - equipmentReduction + (reckless ? 8 : 0));
+  const allyReduction = Math.round(allyPower * .45);
+  const controlReduction = controlSucceeded ? 18 + danger * 2 : 0;
+  const enemyAttack = Math.max(2, integer(random, 5, 15) + danger * 4 + Math.round((hunting.targetYears ?? 100) / 180) - Math.round(playerPower * 0.14) - distanceReduction - observationReduction - guardReduction - equipmentReduction - allyReduction - controlReduction + (reckless ? 8 : 0));
   if (enemyHp > 0) game.world.healthPoints -= enemyAttack;
+  if (enemyHp > 0 && combat.allies.length && enemyAttack >= 10 && random() < .18 + danger * .03) {
+    const exposedAlly = combat.allies.find((ally) => ally.condition === "完好") ?? combat.allies.find((ally) => ally.condition === "疲惫");
+    if (exposedAlly) exposedAlly.condition = enemyAttack >= 22 ? "受伤" : "疲惫";
+  }
   game.world.fatiguePoints += 8 + danger + (reckless ? 5 : 0);
   game.world.flags.combatEnemyHp = enemyHp;
   combat.enemyCondition = enemyHp <= 0 ? "失去战斗能力" : enemyHp < 30 ? "重伤" : enemyHp < 60 ? "受伤" : "完好";
@@ -688,7 +725,9 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
       ? `完成第${combat.insight}层观察，没有冒险出手，承受${enemyAttack}点伤害。`
       : defend
         ? `以防守反击造成${damage}点伤害，承受${enemyAttack}点伤害。`
-        : `${usedSoulSkill ? "魂技命中" : "攻击命中"}造成${damage}点伤害，承受${enemyHp > 0 ? enemyAttack : 0}点伤害。`;
+        : controlAttempt
+          ? `${combat.controlStatus}，造成${damage}点伤害，承受${enemyHp > 0 ? enemyAttack : 0}点伤害。`
+          : `${usedSoulSkill ? "魂技命中" : teamTactic && combat.allies.length ? "团队夹击命中" : "攻击命中"}造成${damage}点伤害，承受${enemyHp > 0 ? enemyAttack : 0}点伤害。`;
 
   if (enemyHp <= 0 && game.world.healthPoints > 0) {
     hunting.stage = "吸收";
@@ -700,7 +739,7 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   return {
     intent: "战斗",
     minutes: 10,
-    ruleSummary: `第 ${combat.round} 回合，玩家造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。${activeBattleArmor ? `${activeBattleArmor.title}提供增幅与减伤。` : ""}${activeMecha ? `${activeMecha.model}消耗 6% 能源参战。` : ""}敌方状态 ${combat.enemyCondition}，玩家状态 ${combat.playerCondition}。`,
+    ruleSummary: `第 ${combat.round} 回合，${combat.allies.length ? "玩家与同行者" : "玩家"}造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。${controlAttempt ? `控制结果：${combat.controlStatus}；当前控制抗性 ${combat.controlResistance}%。` : ""}${combat.allies.length ? `同行者：${combat.allies.map((ally) => `${ally.name}${ally.condition}`).join("、")}。` : ""}${activeBattleArmor ? `${activeBattleArmor.title}提供增幅与减伤。` : ""}${activeMecha ? `${activeMecha.model}消耗 6% 能源参战。` : ""}敌方状态 ${combat.enemyCondition}，玩家状态 ${combat.playerCondition}。`,
     fallbackNarrative: enemyHp <= 0
       ? `我抓住它转身的空当，把最后一下送了进去。${combat.enemyName}撞断一根矮树，挣了几下，不再起来。魂环从尸身上浮出时，我的手还在抖。`
       : flee
