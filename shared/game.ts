@@ -213,6 +213,9 @@ export interface AffiliationView {
   role: string;
   reputation: string;
   joinedAt: string;
+  contribution?: number;
+  completedAssignments?: number;
+  rankEvidence?: string[];
 }
 
 export interface StoryChapterView {

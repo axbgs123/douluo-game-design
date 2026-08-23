@@ -691,6 +691,30 @@ describe("第一部世界资料", () => {
     expect(village.view.economy.transactions.at(-1)?.balance).toBe(village.view.character!.coins);
   });
 
+  it("后世机构事务必须先行动再验收，晋升依赖贡献与履历", () => {
+    const game = awakened("institution-route");
+    game.view.era = 2;
+    game.view.worldTime!.year = 10_010;
+    game.view.affiliations = [{ id: "sun-moon-royal-academy", name: "日月皇家魂导师学院", role: "外围成员", reputation: "生疏", joinedAt: "测试", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
+    const receive = resolveAction(game, "向日月皇家魂导师学院领取机构事务");
+    applyActionResult(game, "向日月皇家魂导师学院领取机构事务", receive, receive.fallbackNarrative, receive.suggestions);
+    expect(game.view.tasks.some((item) => item.title.includes("魂导器") && item.status === "进行中")).toBe(true);
+    expect(resolveAction(game, "向日月皇家魂导师学院交付机构事务").intent).toBe("无法完成");
+
+    const study = resolveAction(game, "学习一级魂导器核心阵法");
+    applyActionResult(game, "学习一级魂导器核心阵法", study, study.fallbackNarrative, study.suggestions);
+    const delivery = resolveAction(game, "向日月皇家魂导师学院交付机构事务");
+    expect(delivery.intent).toBe("交付机构事务");
+    expect(game.view.affiliations[0].contribution).toBeGreaterThan(0);
+    expect(game.view.economy.transactions.at(-1)?.note).toContain("验收报酬");
+
+    game.view.affiliations[0].contribution = 20;
+    game.view.affiliations[0].completedAssignments = 2;
+    expect(resolveAction(game, "向日月皇家魂导师学院申请晋升").intent).toBe("机构晋升");
+    expect(game.view.affiliations[0].role).toBe("正式成员");
+    expect(game.view.affiliations[0].rankEvidence).toHaveLength(1);
+  });
+
   it("连续世代档案需要分步核验且不会把历史权益变成当前资产", () => {
     const parent = awakened("inheritance-verification");
     parent.view.managedFactions.push({ id: "archive-sect", name: "青册门", role: "门主", members: 36, resources: 120, territory: ["青册谷"], departments: ["档案堂"], internalIssues: [] });

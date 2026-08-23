@@ -821,6 +821,11 @@ export function ensureGameState(game: StoredGame): StoredGame {
     task.progressEvidence ??= [];
   }
   game.view.reputations ??= [];
+  for (const affiliation of game.view.affiliations ?? []) {
+    affiliation.contribution ??= 0;
+    affiliation.completedAssignments ??= 0;
+    affiliation.rankEvidence ??= [];
+  }
   game.view.inventoryLoad ??= { used: game.view.inventory?.length ?? 0, capacity: 18, state: "轻便", storage: [] };
   game.view.professions ??= [];
   game.view.managedFactions ??= [];

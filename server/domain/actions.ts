@@ -1056,7 +1056,7 @@ function academyResolution(game: StoredGame): ActionResolution {
   const academyName = academyNameByLocation[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}初级魂师学堂`;
   if (game.view.affiliations.some((item) => item.name === academyName)) return impossible(`我已经是${academyName}的学员。`, ["参加课程", "寻找导师", "认识同学"]);
   const joinedAt = `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`;
-  game.view.affiliations.push({ id: `academy-${game.view.locationId}`, name: academyName, role: character.coins < 20 ? "工读生" : "学员", reputation: "新入学", joinedAt });
+  game.view.affiliations.push({ id: `academy-${game.view.locationId}`, name: academyName, role: character.coins < 20 ? "工读生" : "学员", reputation: "新入学", joinedAt, contribution: 0, completedAssignments: 0, rankEvidence: [] });
   game.view.relations.push({ id: `academy-${game.view.locationId}`, name: academyName, relation: "所属学院", impression: "档案刚刚登记", strength: 12, category: "势力" });
   ensureTask(game, { id: "academy-foundation", title: "完成学院基础课程", kind: "计划", detail: "学习魂兽、魂环、冥想和实战基础。", status: "进行中" });
   game.world.deviation += 1;
@@ -1098,13 +1098,59 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
   }
   if (game.view.affiliations.some((item) => item.id === target.id)) return impossible(`我已经加入${target.name}。`, ["申请内部任务", "拜访组织成员", "提升组织声望"]);
   if (character.soulRank < target.rank) return impossible(`${target.name}的公开门槛约为 ${target.rank} 级，我当前的实力还不够。`, ["继续修炼", "寻找举荐人", "先完成外围委托"]);
-  game.view.affiliations.push({ id: target.id, name: target.name, role: "外围成员", reputation: "生疏", joinedAt: `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日` });
+  game.view.affiliations.push({ id: target.id, name: target.name, role: "外围成员", reputation: "生疏", joinedAt: `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, contribution: 0, completedAssignments: 0, rankEvidence: [] });
   game.view.economy.salary = Math.max(game.view.economy.salary, target.rank >= 40 ? 18 : target.rank >= 20 ? 10 : 5);
   game.view.relations.push({ id: target.id, name: target.name, relation: "所属势力", impression: "尚未建立功劳", strength: 10, category: "势力" });
   game.world.deviation += target.rank >= 40 ? 8 : target.rank >= 20 ? 4 : 2;
   if (!target.id.startsWith("local-")) recordCanonInfluence(game, { source: "加入势力", description: `加入${target.name}`, affectedFactionIds: [target.id], strength: target.rank >= 40 ? 8 : target.rank >= 20 ? 5 : 2 });
   ensureTask(game, { id: `faction-${target.id}`, title: `在${target.name}站稳脚跟`, kind: "计划", detail: "完成组织事务，观察内部关系与规矩。", status: "进行中" });
   return { intent: "加入势力", minutes: 360, ruleSummary: `通过初步审核，成为${target.name}外围成员。`, fallbackNarrative: `负责登记的人问得很细，连家里做什么都记了。我拿到的牌子只够进外院，背面还有一行小字，损坏要赔。`, suggestions: ["领取第一件事务", "打听内部规矩", "认识同批成员"], systemMessages: [`身份 · ${target.name} · 外围成员`] };
+}
+
+function institutionResolution(game: StoredGame, action: string): ActionResolution {
+  const affiliation = game.view.affiliations.find((item) => action.includes(item.name)) ?? game.view.affiliations[0];
+  if (!affiliation) return impossible("我还没有任何能够发放正式事务的在册机构身份。", ["加入当地机构", "申请学院", "先完成外围委托"]);
+  affiliation.contribution ??= 0;
+  affiliation.completedAssignments ??= 0;
+  affiliation.rankEvidence ??= [];
+  const active = game.view.tasks.find((task) => task.id?.startsWith(`institution-${affiliation.id}-`) && task.status === "进行中");
+  if (/领取|申请.*任务|申请.*事务/.test(action) && !/晋升/.test(action)) {
+    if (active) return impossible(`${affiliation.name}已有一项未交付事务：${active.title}。`, [`处理${active.title}`, `核对${active.title}的验收条件`, "放弃或说明失败原因"]);
+    const assignment = (game.view.era ?? 1) === 2 && /魂导|日月/.test(affiliation.name) ? "制作并测试一件合规一级魂导器"
+      : (game.view.era ?? 1) === 3 && /传灵塔/.test(affiliation.name) ? "核对一份魂灵来源与适配档案"
+        : (game.view.era ?? 1) === 3 && /战神/.test(affiliation.name) ? "完成一次有记录的城市巡防"
+          : (game.view.era ?? 1) === 4 && /舰队|星际|联邦/.test(affiliation.name) ? "完成一次舰桥模拟与船员协同记录"
+            : `完成${affiliation.name}的一项在册外围事务`;
+    ensureTask(game, { id: `institution-${affiliation.id}-${game.actionIndex}`, title: assignment, kind: "计划", detail: `委托方为${affiliation.name}；必须有领取后的行动记录才能验收，不能用一句“完成”跳过。`, status: "进行中", ownerId: affiliation.id });
+    return { intent: "领取机构事务", minutes: 30, ruleSummary: `从${affiliation.name}领取“${assignment}”，尚未获得贡献或报酬。`, fallbackNarrative: `事务牌背面写着期限、验收人和失败责任。登记员把副本留在柜里，我拿走的这一份只有完成记录对得上，才会盖第二个章。`, suggestions: [`处理${assignment}`, "确认验收证据", "准备所需资源"] };
+  }
+  if (/完成|交付|验收/.test(action)) {
+    if (!active) return impossible(`${affiliation.name}没有等待交付的在册事务。`, ["领取机构事务", "查看任务", "询问内部规矩"]);
+    const evidencePattern = /魂导器/.test(active.title) ? /魂导|核心阵法|制作|实验/ : /魂灵/.test(active.title) ? /魂灵|适配|来源|档案/ : /巡防/.test(active.title) ? /巡防|调查|战斗|治安/ : /舰桥/.test(active.title) ? /舰桥|星舰|船员|指挥|模拟/ : /事务/.test(active.title) ? /工作|调查|介入|护送|处理/ : new RegExp(active.title.slice(0, 8));
+    const evidence = game.world.actionLedger.filter((entry) => entry.index > (active.createdActionIndex ?? -1) && !["领取机构事务", "交付机构事务", "一般行动", "无法完成", "规则阻止"].includes(entry.intent) && evidencePattern.test(`${entry.action}${entry.intent}${entry.result}`));
+    if (!evidence.length) return impossible(`“${active.title}”缺少领取后的可核验行动记录。`, [`实际处理${active.title}`, "收集制作、巡防或训练记录", "核对验收条件"]);
+    active.status = "完成";
+    active.progressEvidence = evidence.slice(-3).map((entry) => `${entry.action}（${entry.result}）`);
+    const contribution = Math.min(20, 8 + evidence.length * 2);
+    affiliation.contribution += contribution;
+    affiliation.completedAssignments += 1;
+    affiliation.reputation = affiliation.contribution >= 50 ? "有稳定功绩" : affiliation.contribution >= 20 ? "受到认可" : "完成过事务";
+    const reward = Math.max(3, Math.round((game.view.era ?? 1) * 4 + contribution / 2));
+    game.view.character!.coins += reward;
+    recordEconomyTransaction(game, "收入", reward, affiliation.name, `${active.title}验收报酬`);
+    return { intent: "交付机构事务", minutes: 60, ruleSummary: `${affiliation.name}依据${evidence.length}条行动证据验收“${active.title}”，贡献 +${contribution}，获得${formatSoulCoins(reward)}。`, fallbackNarrative: `验收人没有听我复述结果，而是把行动记录、成品或值勤签名逐项对过。最后一个章落下，报酬和贡献分别记进两本账。`, suggestions: ["申请下一项事务", "查看贡献与岗位", "申请晋升"] };
+  }
+  if (/晋升|升职|转正/.test(action)) {
+    const steps = [{ role: "外围成员", next: "正式成员", need: 20, assignments: 2 }, { role: "正式成员", next: "骨干成员", need: 50, assignments: 4 }, { role: "骨干成员", next: "核心成员", need: 90, assignments: 7 }] as const;
+    const step = steps.find((item) => item.role === affiliation.role);
+    if (!step) return impossible(`${affiliation.role}没有可由日常事务自动取得的更高公开岗位。`, ["承担关键机构任务", "申请专业岗位", "维持现有职责"]);
+    if (affiliation.contribution < step.need || affiliation.completedAssignments < step.assignments) return impossible(`晋升${step.next}需要贡献 ${step.need} 且完成 ${step.assignments} 项事务；当前为 ${affiliation.contribution} / ${affiliation.completedAssignments}。`, ["领取机构事务", "完成当前任务", "查看贡献记录"]);
+    affiliation.role = step.next;
+    affiliation.rankEvidence.push(`${game.view.worldTime?.year ?? 0}年第${game.view.worldTime?.day ?? 1}日：凭${affiliation.contribution}贡献与${affiliation.completedAssignments}项验收事务晋升${step.next}`);
+    game.view.economy.salary = Math.max(game.view.economy.salary, step.next === "核心成员" ? 30 : step.next === "骨干成员" ? 18 : 10);
+    return { intent: "机构晋升", minutes: 120, ruleSummary: `${affiliation.name}依据贡献与已验收事务将岗位晋升为${step.next}，证据写入履历。`, fallbackNarrative: `这次换牌子不是一句口头认可。旧牌、任务册和贡献页摆在一起核过，新岗位对应的职责也当面念清。`, suggestions: ["查看新职责", "领取岗位任务", "认识同级成员"], systemMessages: [`身份 · ${affiliation.name} · ${step.next}`] };
+  }
+  return impossible("机构行动需要明确领取、交付或申请晋升。", ["领取机构事务", "交付当前事务", "申请晋升"]);
 }
 
 function mentorResolution(game: StoredGame, action: string): ActionResolution {
@@ -2000,6 +2046,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/完成承诺|履行承诺/.test(action)) resolution = fulfillPromiseResolution(game, action);
   else if (/上课|课程|学院学习|参加实战课/.test(action)) resolution = academyStudyResolution(game);
   else if (/入学|报名.*学院|申请.*学院|成为工读生/.test(action)) resolution = academyResolution(game);
+  else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正/.test(action)) resolution = institutionResolution(game, action);
   else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克/.test(action)) resolution = factionResolution(game, action);
   else if (/拜师|拜.*为师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);

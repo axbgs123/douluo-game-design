@@ -101,7 +101,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
         <aside className="side-panel">
           <nav className="panel-tabs">{PANELS.map((item) => { const badge = panelBadge(game, item); return <button key={item} type="button" className={panel === item ? "active" : ""} onClick={() => setPanel(item)}><span>{item}</span>{badge && <b>{badge}</b>}</button>; })}</nav>
           <div className="panel-content">
-            {panel === "人物" && <CharacterPanel game={game} />}
+            {panel === "人物" && <CharacterPanel game={game} submit={submit} busy={busy} />}
             {panel === "武魂" && <SoulPanel game={game} submit={submit} busy={busy} />}
             {panel === "时代" && <EraPanel game={game} submit={submit} busy={busy} />}
             {panel === "背包" && <InventoryPanel game={game} submit={submit} busy={busy} />}
@@ -156,7 +156,7 @@ function EraPanel({ game, submit, busy }: { game: GameView; submit: (value: stri
   </div>;
 }
 
-function CharacterPanel({ game }: { game: GameView }) {
+function CharacterPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
   if (!game.character) return <LockedPanel text="觉醒后显示" />;
   const character = game.character;
   return <div className="detail-stack">
@@ -168,7 +168,7 @@ function CharacterPanel({ game }: { game: GameView }) {
     </dl>
     {character.injuries.length > 0 && <SimpleList title="伤势" values={character.injuries} empty="" />}
     <p className="panel-label">人生目标</p><p className="panel-copy">{game.lifeGoal}</p><small className="goal-verification-note">结算时由魂力、任务、关系、探索与真实历史影响共同验收。</small>
-    {game.affiliations.length > 0 && <><p className="panel-label">身份</p><div className="affiliation-list">{game.affiliations.map((item) => <article key={item.id}><strong>{item.name}</strong><span>{item.role} · {item.reputation}</span></article>)}</div></>}
+    {game.affiliations.length > 0 && <><p className="panel-label">身份</p><div className="affiliation-list">{game.affiliations.map((item) => <article key={item.id}><strong>{item.name}</strong><span>{item.role} · {item.reputation}</span><small>贡献 {item.contribution ?? 0} · 已验收事务 {item.completedAssignments ?? 0}</small><div className="button-row"><button type="button" disabled={busy} onClick={() => submit(`向${item.name}领取机构事务`)}>领任务</button><button type="button" disabled={busy} onClick={() => submit(`向${item.name}交付机构事务`)}>交付</button><button type="button" disabled={busy} onClick={() => submit(`向${item.name}申请晋升`)}>晋升</button></div></article>)}</div></>}
     {game.reputations.length > 0 && <><p className="panel-label">分地区名声</p><div className="reputation-list">{game.reputations.map((item) => <article key={`${item.scope}-${item.publicName}`}><strong>{item.publicName}</strong><span>{item.scope} · {item.reputation}</span><small>追查热度 {item.heat} · {item.source}</small></article>)}</div></>}
     {game.professions.length > 0 && <><p className="panel-label">技艺与研究</p><div className="profession-list">{game.professions.map((item) => <article key={item.id}><header><strong>{item.name}</strong><span>{item.level}</span></header><progress max={100} value={item.progress} /><small>实验 {item.experiments} · 失败 {item.failures} · 已掌握 {item.knownMethods.length}</small></article>)}</div></>}
     <div className="trait-cloud">{character.personalityTraits.map((trait) => <span key={trait}>{trait}</span>)}</div>
