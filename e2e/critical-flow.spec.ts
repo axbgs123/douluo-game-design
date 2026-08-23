@@ -23,6 +23,13 @@ async function submitAction(page: import("@playwright/test").Page, action: strin
   await expect(page.locator(".action-form textarea")).toBeEnabled();
 }
 
+async function clickEraAction(page: import("@playwright/test").Page, buttonName: string, submittedAction: string) {
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  await page.getByRole("button", { name: buttonName, exact: true }).click();
+  await expect(page.locator("blockquote.player-entry").last()).toContainText(submittedAction);
+  await expect(page.locator(".action-form textarea")).toBeEnabled();
+}
+
 test.beforeEach(async ({ request }) => {
   const games = await request.get("/api/games");
   expect(games.ok()).toBeTruthy();
@@ -62,14 +69,13 @@ test("玩家可以从界面进入斗四且出生地图不会显示斗一地标",
 
 test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状态", async ({ page }) => {
   await createPlayingCharacter(page, 2);
-  await submitAction(page, "学习魂导器核心阵法理论");
-  await expect(page.getByText("魂导器研究", { exact: true })).toBeVisible();
-  await expect(page.locator(".profession-list progress")).toHaveAttribute("value", /[1-9][0-9]?|100/);
+  await clickEraAction(page, "学习核心阵法", "学习一级魂导器核心阵法");
+  await expect(page.getByText(/熟练度 [1-9][0-9]?%/)).toBeVisible();
+  await expect(page.getByText("魂灵与魂导纪元", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "返回书架" }).click();
   await createPlayingCharacter(page, 3);
-  await submitAction(page, "进行机甲模拟训练");
-  await page.getByRole("button", { name: "武魂", exact: true }).click();
+  await clickEraAction(page, "机甲模拟", "进行机甲模拟训练");
   await expect(page.getByText("机甲执照 · 无", { exact: true })).toBeVisible();
   await expect(page.getByText(/模拟训练 \d+% · 1 次/)).toBeVisible();
 
@@ -77,8 +83,7 @@ test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状�
   await createPlayingCharacter(page, 4);
   await expect(page.locator(".world-clock strong")).toContainText("蓝轩宇");
   await expect(page.locator(".world-clock strong")).not.toContainText("唐三");
-  await submitAction(page, "进行星舰指挥模拟训练");
-  await page.getByRole("button", { name: "武魂", exact: true }).click();
+  await clickEraAction(page, "舰桥模拟", "进行星舰指挥模拟训练");
   await expect(page.getByText("星舰资格 · 无", { exact: true })).toBeVisible();
-  await expect(page.getByText(/指挥训练 \d+% · 船员 0 · 任务 0/)).toBeVisible();
+  await expect(page.getByText(/指挥训练 \d+% · 船员 0 · 完成任务 0/)).toBeVisible();
 });

@@ -433,6 +433,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .special-system-card header span, .special-system-card header strong { display: block; }
 .special-system-card header span { color: #685b8b; font-size: 10px; }.special-system-card header strong { margin-top: 4px; }
 .special-system-card p, .special-system-card small { color: var(--muted); font-size: 11px; line-height: 1.65; }
+.era-system-intro { border: 1px solid rgba(167,125,47,.36); background: linear-gradient(135deg, rgba(167,125,47,.11), rgba(82,76,120,.06)); padding: 14px; }
+.era-system-intro small, .era-system-intro strong { display: block; }.era-system-intro small { color: var(--gold); font-size: 10px; }.era-system-intro strong { margin-top: 4px; font-size: 15px; }.era-system-intro p { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+.era-system-panel .button-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }.era-system-panel .button-row button { flex: 1 1 42%; min-height: 34px; }
 .ring-list { display: grid; gap: 9px; }
 .ring-list article { display: grid; grid-template-columns: 15px 1fr; gap: 10px; border-top: 1px solid var(--line); padding-top: 12px; }
 .ring-list strong, .ring-list span { display: block; font-size: 11px; }

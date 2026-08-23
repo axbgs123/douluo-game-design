@@ -27,8 +27,8 @@ interface StoryScreenProps {
   onMapPinRemove: (pinId: string) => Promise<void>;
 }
 
-type Panel = "人物" | "武魂" | "背包" | "地图" | "关系" | "任务" | "情报" | "手记" | "猎魂" | "世界";
-const PANELS: Panel[] = ["人物", "武魂", "背包", "地图", "关系", "任务", "情报", "手记", "猎魂", "世界"];
+type Panel = "人物" | "武魂" | "时代" | "背包" | "地图" | "关系" | "任务" | "情报" | "手记" | "猎魂" | "世界";
+const PANELS: Panel[] = ["人物", "武魂", "时代", "背包", "地图", "关系", "任务", "情报", "手记", "猎魂", "世界"];
 
 function panelBadge(game: GameView, panel: Panel): string | undefined {
   if (panel === "人物" && game.character?.injuries.length) return String(game.character.injuries.length);
@@ -102,6 +102,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
           <div className="panel-content">
             {panel === "人物" && <CharacterPanel game={game} />}
             {panel === "武魂" && <SoulPanel game={game} submit={submit} busy={busy} />}
+            {panel === "时代" && <EraPanel game={game} submit={submit} busy={busy} />}
             {panel === "背包" && <InventoryPanel game={game} submit={submit} busy={busy} />}
             {panel === "地图" && <MapPanel game={game} submit={submit} busy={busy} onMapPin={onMapPin} onMapPinRemove={onMapPinRemove} />}
             {panel === "关系" && <RelationPanel game={game} />}
@@ -116,6 +117,41 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
       </div>
     </main>
   );
+}
+
+function EraActionButton({ busy, onClick, children }: { busy: boolean; onClick: () => void; children: string }) {
+  return <button type="button" disabled={busy} onClick={onClick}>{children}</button>;
+}
+
+function EraPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
+  if (!game.character) return <LockedPanel text="觉醒后开放时代系统" />;
+  const era = game.era ?? 1;
+  const profession = game.professions.find((item) => item.name === "魂导器研究");
+  const nextMechaLicense = ({ 无: "白级", 白级: "黄级", 黄级: "紫级", 紫级: "黑级", 黑级: "黑级" } as const)[game.mecha?.license ?? "无"];
+  const nextStarshipLicense = ({ 无: "见习指挥", 见习指挥: "三级指挥", 三级指挥: "二级指挥", 二级指挥: "一级指挥", 一级指挥: "一级指挥" } as const)[game.starship?.license ?? "无"];
+  const year = game.worldTime?.year ?? 0;
+  const shrekAccess = game.affiliations.some((item) => /史莱克/.test(item.name));
+  const soulSpiritStatus = year < 10_005 ? "前置理论期" : year < 10_012 && !shrekAccess ? "史莱克保密试验期" : year < 10_012 ? "史莱克内部试验资格" : "传灵塔试验开放期";
+
+  return <div className="detail-stack era-system-panel" data-era={era}>
+    <article className="era-system-intro"><small>第 {era} 部时代系统</small><strong>{era === 1 ? "魂师之路" : era === 2 ? "魂灵与魂导纪元" : era === 3 ? "斗铠与机甲纪元" : "星际探索纪元"}</strong><p>{era === 1 ? "从冥想、学院与猎魂建立自己的成长路线。" : era === 2 ? "技术进步有年份、机构、材料和认证门槛。" : era === 3 ? "斗铠必须与武魂适配，机甲驾驶必须逐级取得执照。" : "远航需要资格、可信船员、合规舰船和返航资源。"}</p></article>
+
+    {era === 1 && <>
+      <article className="special-system-card"><header><span>斗一核心</span><strong>修炼与猎魂</strong></header><p>当前魂力 {game.character.soulRank} 级；达到十级瓶颈后可开始完整猎魂流程。</p><div className="button-row"><EraActionButton busy={busy} onClick={() => submit("安静冥想修炼")}>冥想修炼</EraActionButton><EraActionButton busy={busy} onClick={() => submit("申请当地学院入学")}>申请入学</EraActionButton><EraActionButton busy={busy} onClick={() => submit("开始调查适合当前武魂的魂兽")}>调查魂兽</EraActionButton></div></article>
+    </>}
+
+    {era === 2 && <>
+      <article className="special-system-card"><header><span>魂导器 · {profession?.level ?? "未入门"}</span><strong>核心阵法与实体制作</strong></header><p>熟练度 {profession?.progress ?? 0}% · 实验 {profession?.experiments ?? 0} · 失败 {profession?.failures ?? 0} · 方法 {profession?.knownMethods.length ?? 0}</p><div className="button-row"><EraActionButton busy={busy} onClick={() => submit("学习一级魂导器核心阵法")}>学习核心阵法</EraActionButton><EraActionButton busy={busy} onClick={() => submit("购买魂导器用稀有金属")}>购买稀有金属</EraActionButton><EraActionButton busy={busy} onClick={() => submit("购买魂导核心晶体")}>购买核心晶体</EraActionButton><EraActionButton busy={busy} onClick={() => submit("制作一级训练用魂导器")}>制作一级魂导器</EraActionButton></div></article>
+      <article className="special-system-card"><header><span>魂灵 · {soulSpiritStatus}</span><strong>{game.soulSpiritContract ? `${game.soulSpiritContract.beastName}方案` : "尚未选定魂灵"}</strong></header><p>{game.soulSpiritContract ? `阶段 ${game.soulSpiritContract.stage} · 适配 ${game.soulSpiritContract.compatibility}% · 费用 ${formatSoulCoins(game.soulSpiritContract.cost)}` : year < 10_005 ? "只能研究残魂与契约假说，不能获得成熟魂灵。" : "申请仍受魂力瓶颈、机构资格、适配和费用约束。"}</p><div className="button-row"><EraActionButton busy={busy} onClick={() => submit(year < 10_005 ? "研究魂兽残魂与魂灵设想" : "申请一份适合当前魂环的正规魂灵")}>{year < 10_005 ? "研究魂灵假说" : "申请魂灵"}</EraActionButton>{game.soulSpiritContract && <><EraActionButton busy={busy} onClick={() => submit("评估魂灵适配")}>评估适配</EraActionButton><EraActionButton busy={busy} onClick={() => submit("签订魂灵契约")}>签订契约</EraActionButton></>}</div></article>
+    </>}
+
+    {era === 3 && <>
+      <article className="special-system-card"><header><span>斗铠工程</span><strong>{game.battleArmorProject ? `${game.battleArmorProject.tier}字斗铠 · 下一件 ${game.battleArmorProject.nextPiece}` : "尚未建立斗铠工程"}</strong></header><p>{game.battleArmorProject ? `图纸 ${game.battleArmorProject.blueprintProgress}% · 适配 ${game.battleArmorProject.compatibility}% · 失败 ${game.battleArmorProject.failedPieces}` : `当前魂力 ${game.character.soulRank} 级；一字斗铠需要达到相应修为后逐件制作。`}</p><div className="button-row"><EraActionButton busy={busy} onClick={() => submit("继续设计一字斗铠并做武魂适配测试")}>设计一字斗铠</EraActionButton><EraActionButton busy={busy} onClick={() => submit("购买斗铠稀有金属")}>购买斗铠金属</EraActionButton>{game.battleArmorProject && <EraActionButton busy={busy} onClick={() => submit(`制作${game.battleArmorProject!.tier}字斗铠${game.battleArmorProject!.nextPiece}`)}>制作下一部件</EraActionButton>}</div></article>
+      <article className="special-system-card"><header><span>机甲执照 · {game.mecha?.license ?? "无"}</span><strong>{game.mecha?.model ?? "尚无自有机甲"}</strong></header><p>模拟训练 {game.mecha?.simulatorProgress ?? 0}% · {game.mecha?.simulatorSessions ?? 0} 次 · 实操通过 {game.mecha?.practicalPasses ?? 0} 次</p><div className="button-row"><EraActionButton busy={busy} onClick={() => submit("进行机甲模拟训练")}>机甲模拟</EraActionButton><EraActionButton busy={busy || game.mecha?.license === "黑级"} onClick={() => submit(`参加${nextMechaLicense}机甲驾驶考核`)}>执照考核</EraActionButton></div></article>
+    </>}
+
+    {era === 4 && <article className="special-system-card"><header><span>星舰资格 · {game.starship?.license ?? "无"}</span><strong>{game.starship?.shipName ?? "尚无登记星舰"}</strong></header><p>指挥训练 {game.starship?.simulatorProgress ?? 0}% · 船员 {game.starship?.crew.length ?? 0} · 完成任务 {game.starship?.missionsCompleted ?? 0}</p>{game.starship?.shipName && <small>舰体 {game.starship.hull}% · 燃料 {game.starship.fuel}% · 物资 {game.starship.supplies}%</small>}<div className="button-row"><EraActionButton busy={busy} onClick={() => submit("进行星舰指挥模拟训练")}>舰桥模拟</EraActionButton><EraActionButton busy={busy || game.starship?.license === "一级指挥"} onClick={() => submit(`参加${nextStarshipLicense}考核`)}>指挥考核</EraActionButton><EraActionButton busy={busy} onClick={() => submit("检查可信关系并招募驾驶员船员")}>招募驾驶员</EraActionButton><EraActionButton busy={busy} onClick={() => submit("申请配发学院项目舰")}>申请项目舰</EraActionButton></div></article>}
+  </div>;
 }
 
 function CharacterPanel({ game }: { game: GameView }) {
