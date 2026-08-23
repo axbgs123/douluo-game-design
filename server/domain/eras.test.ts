@@ -57,6 +57,7 @@ describe("multi-era foundations", () => {
     expect(era3.npcs["huo-yuhao"].alive).toBe(false);
     expect(era3.npcs["tang-wulin"].alive).toBe(true);
     expect(era3.npcs["lan-xuanyu"].alive).toBe(false);
+    expect(era3.npcs["tang-wulin"].locationId).toBe("aolai-city-d3");
 
     const era4 = createHiddenWorld(30_000, "mother-ship-port");
     expect(era4.npcs["tang-wulin"].alive).toBe(false);
