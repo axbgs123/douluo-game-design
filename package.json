@@ -12,7 +12,8 @@
     "start": "node dist-server/server/index.js",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "quality:long-session": "tsx scripts/quality-report.ts"
+    "quality:long-session": "tsx scripts/quality-report.ts",
+    "security:release": "node scripts/release-security-check.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",

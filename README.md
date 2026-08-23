@@ -85,9 +85,10 @@ npm test
 npm run build
 npm run test:e2e
 npm run quality:long-session
+npm run security:release
 ```
 
-当前基线为 10 个测试文件、148 项单元/集成测试和 5 条 Playwright 浏览器流程。生产依赖审计使用 `npm audit --omit=dev`。
+当前基线为 10 个测试文件、148 项单元/集成测试和 5 条 Playwright 浏览器流程。发布安全门禁检查被跟踪文件中的密钥、私有数据、原著压缩包和构建产物；生产依赖审计使用 `npm audit --omit=dev`。
 
 更完整的交接、验证边界与剩余风险见：
 
