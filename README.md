@@ -17,6 +17,7 @@
 - `docs/random-origins.md`：随机人物、异世界出身与金手指生成规则。
 - `docs/crossover-policy.md`：外部作品设定与力量进入斗罗世界的兼容规则。
 - `docs/cultivation-inspirations.md`：首批修仙作品设定参考包与斗罗化方式。
+- `docs/soul-hunting-system.md`：基于原著与同人调研整理的猎魂、推荐和吸收规则。
 - `docs/difficulty-and-legacy.md`：五档难度、多周目点数与继承机制。
 - `docs/timeline-inheritance.md`：平行重开、连续世界和跨时代历史推演。
 - `docs/discovery-log.md`：需求访谈问题与后续决策记录。
