@@ -506,6 +506,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   if (game.view.shaping) {
     game.view.shaping.goalRerollsUsed ??= game.view.shaping.goalRerollIndex ?? 0;
     game.view.shaping.goalLocks ??= [false, false, false];
+    game.view.shaping.lifeGoalDifficulties ??= game.view.shaping.lifeGoalOptions.map(() => "困难");
   }
   game.view.locationId ??= locationId;
   game.view.map ??= [];

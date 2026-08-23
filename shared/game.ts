@@ -4,6 +4,7 @@ export type Difficulty = (typeof DIFFICULTIES)[number];
 export type Gender = "男" | "女";
 export type CandidateRarity = "平凡" | "优秀" | "稀有" | "传奇" | "神话";
 export type MartialSoulRarity = "白色" | "蓝色" | "紫色" | "金色" | "红色" | "七彩";
+export type LifeGoalDifficulty = "普通" | "困难" | "极难";
 export type GameStatus = "candidate_selection" | "character_shaping" | "awakening" | "playing" | "ended";
 export type GameSpeed = "标准" | "高速";
 export type ConditionLabel = "良好" | "疲惫" | "轻伤" | "重伤" | "濒死" | "死亡";
@@ -60,6 +61,7 @@ export interface CharacterShapingView {
   goalRerollsUsed: number;
   goalLocks: boolean[];
   lifeGoalOptions: string[];
+  lifeGoalDifficulties: LifeGoalDifficulty[];
   personalityOptions: PersonalityDraftView[];
   fixedTraits: string[];
 }

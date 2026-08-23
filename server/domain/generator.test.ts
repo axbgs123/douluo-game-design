@@ -142,6 +142,7 @@ describe("candidate generation", () => {
     const game = createGame({ gender: "男", difficulty: "标准", seed: "personality-impact" });
     selectCandidate(game, game.view.candidates[2].id);
     expect(game.view.shaping?.lifeGoalOptions).toHaveLength(3);
+    expect(game.view.shaping?.lifeGoalDifficulties).toHaveLength(3);
     expect(game.view.shaping?.lifeGoalOptions.every((goal) => goal.length >= 18)).toBe(true);
     expect(game.view.shaping?.personalityOptions.some((option) => /野心|利己|复仇|危险|投机|谋士/.test(`${option.title}${option.keywords.join("")}`))).toBe(true);
     expect(game.view.shaping?.personalityOptions.every((option) => option.questions.length === 6)).toBe(true);
@@ -149,5 +150,24 @@ describe("candidate generation", () => {
     const previousGoals = game.view.shaping!.lifeGoalOptions;
     rerollCharacterShaping(game, "goals");
     expect(game.view.shaping!.lifeGoalOptions).not.toEqual(previousGoals);
+  });
+
+  it("makes powerful martial souls more likely to draw harder life goals", () => {
+    let weakExtreme = 0;
+    let strongExtreme = 0;
+    for (let index = 0; index < 80; index += 1) {
+      const weak = createGame({ gender: "男", difficulty: "标准", seed: `goal-power-${index}` });
+      weak.hiddenCandidates[0].martialSoul = { id: "weak-test", name: "细木棍", category: "器武魂", description: "测试", rarity: 20, soulPowerRange: [0, 3], omens: [] };
+      weak.hiddenCandidates[0].innateSoulPower = 1;
+      selectCandidate(weak, weak.view.candidates[0].id);
+      weakExtreme += weak.view.shaping!.lifeGoalDifficulties.filter((item) => item === "极难").length;
+
+      const strong = createGame({ gender: "男", difficulty: "标准", seed: `goal-power-${index}` });
+      strong.hiddenCandidates[0].martialSoul = { id: "strong-test", name: "祖龙", category: "兽武魂", description: "测试", rarity: 1, soulPowerRange: [9, 10], omens: [], metaRarity: "七彩" };
+      strong.hiddenCandidates[0].innateSoulPower = 10;
+      selectCandidate(strong, strong.view.candidates[0].id);
+      strongExtreme += strong.view.shaping!.lifeGoalDifficulties.filter((item) => item === "极难").length;
+    }
+    expect(strongExtreme).toBeGreaterThan(weakExtreme * 2);
   });
 });

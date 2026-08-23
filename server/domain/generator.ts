@@ -6,6 +6,7 @@ import type {
   MetaProgressionView,
   NarrativeEntry,
   PersonalitySetup,
+  LifeGoalDifficulty,
 } from "../../shared/game.js";
 import type {
   CreateGameInput,
@@ -1087,11 +1088,39 @@ function dynamicQuestions(candidate: HiddenCandidate, traits: string[], random: 
   return [questions[0], ...extras];
 }
 
+export function lifeGoalDifficulty(goal: string): LifeGoalDifficulty {
+  if (/成神|神位|百级|大陆公认的第一|封号传遍|统一魂师|帝国级战争|杀神领域|海神岛|十万年魂骨|改写|改变.*覆灭|左右.*战争|取代黄金一代|公开入世.*上三宗/.test(goal)) return "极难";
+  if (/魂王|魂帝|魂圣|魂斗罗|封号|大赛前三|建立.*宗门|三名|十座|一百种|掌控一座|吞并|继承序列|核心传承|重建|第五层|救下一名|进入大陆核心/.test(goal)) return "困难";
+  return "普通";
+}
+
+function martialSoulGoalPotential(candidate: HiddenCandidate): number {
+  const colorBonus: Record<string, number> = { 白色: 0, 蓝色: 1, 紫色: 2, 金色: 3, 红色: 5, 七彩: 6 };
+  return Math.min(12, candidate.martialSoul.soulPowerRange[1] + (colorBonus[candidate.martialSoul.metaRarity ?? ""] ?? 0) + Math.floor(candidate.innateSoulPower / 5));
+}
+
+function goalWeight(candidate: HiddenCandidate, goal: string, tailored: Set<string>): number {
+  const potential = martialSoulGoalPotential(candidate);
+  const difficulty = lifeGoalDifficulty(goal);
+  const base = potential >= 11
+    ? ({ 普通: 1, 困难: 4, 极难: 8 } as const)[difficulty]
+    : potential >= 8
+      ? ({ 普通: 2, 困难: 5, 极难: 3 } as const)[difficulty]
+      : ({ 普通: 6, 困难: 2.5, 极难: 0.7 } as const)[difficulty];
+  return base * (tailored.has(goal) ? 2.4 : 1);
+}
+
 function lifeGoalOptions(candidate: HiddenCandidate, seed: string, rerollIndex: number): string[] {
   const random = createRandom(`${seed}:goals:${candidate.public.id}:${rerollIndex}`);
-  const tailored = [...(ORIGIN_GOALS[candidate.originId] ?? [])].sort(() => random() - 0.5).slice(0, 1);
-  const universal = [...GENERAL_LIFE_GOALS].sort(() => random() - 0.5).filter((goal) => !tailored.includes(goal)).slice(0, 3 - tailored.length);
-  return [...tailored, ...universal].sort(() => random() - 0.5);
+  const tailored = new Set(ORIGIN_GOALS[candidate.originId] ?? []);
+  const remaining = [...new Set([...tailored, ...GENERAL_LIFE_GOALS])];
+  const selected: string[] = [];
+  while (selected.length < 3 && remaining.length) {
+    const choice = weightedPick(random, remaining.map((goal) => ({ goal, weight: goalWeight(candidate, goal, tailored) })));
+    selected.push(choice.goal);
+    remaining.splice(remaining.indexOf(choice.goal), 1);
+  }
+  return selected;
 }
 
 function personalityOptions(candidate: HiddenCandidate, seed: string, rerollIndex: number): CharacterShapingView["personalityOptions"] {
@@ -1124,6 +1153,7 @@ function buildShaping(game: StoredGame, goalRerollIndex = 0, personalityRerollIn
     goalRerollsUsed: goalRerollIndex,
     goalLocks,
     lifeGoalOptions: goals,
+    lifeGoalDifficulties: goals.map(lifeGoalDifficulty),
     personalityOptions: personalityOptions(candidate, game.view.seed, personalityRerollIndex),
     fixedTraits: candidate.public.fixedTraits,
   };
