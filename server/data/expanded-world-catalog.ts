@@ -56,6 +56,11 @@ export const EXPANDED_FACTIONS: FactionDefinition[] = [
   faction("dou-spirit-overseas", "海外斗灵帝国", "海外帝国", "d3-dou-spirit-capital", "迁往海外大陆后延续的斗灵帝国。", 19800),
 
   faction("d4-federal-fleet", "斗罗联邦舰队", "星际军方", "mother-ship-port", "三万年后的联邦星际舰队。", 29800),
+  faction("d4-first-fleet", "斗罗联邦第一舰队", "母星近域驻防舰队", "mother-ship-port", "长期驻守母星附近小行星基地；组合战舰以牺牲持续性换取极限攻击，终极武器一次发射后需要长时间恢复。", 29800),
+  faction("d4-third-fleet", "斗罗联邦第三舰队", "龙马方向攻坚舰队", "mother-ship-port", "曾在天龙星外太空执行压制作战；组合主炮重视远距离切割、持续攻击与分割战场。", 29800),
+  faction("d4-fourth-fleet", "斗罗联邦第四舰队", "星域警戒舰队", "mother-ship-port", "老牌舰队，曾负责龙马联邦与斗罗联邦连接星域的警戒、识别和驱逐。", 29800),
+  faction("d4-fifth-fleet", "斗罗联邦第五舰队", "控制与毁伤舰队", "mother-ship-port", "组合舰队可形成环形结构，终极组合主炮兼具强控制与毁伤能力。", 29800),
+  faction("d4-sixth-fleet", "斗罗联邦第六舰队", "联邦正规宇宙舰队", "mother-ship-port", "下属中队可由流星级攻击舰等舰船组成，在复杂陨石与星雷环境执行搜索和围控。", 29800),
   faction("d4-seventh-fleet", "斗罗联邦第七舰队", "最新服役的联邦宇宙舰队", "mother-ship-port", "七大舰队之一，由白凌大将担任舰队司令；以一艘行星级母舰为旗舰，并配属多级护卫、战列、攻击、侦察、运输与补给舰。", 30012),
   faction("shrek-space-command", "史莱克星际体系", "学院与舰队协作", "shrek-city", "培养星际指挥、机甲与魂师人才。", 29800),
   faction("senluo-planet", "森罗星魂兽自治体系", "魂兽自治", "senluo-planet", "由魂兽与联邦共同维持的生态星球。", 29800),

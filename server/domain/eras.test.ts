@@ -142,6 +142,21 @@ describe("multi-era foundations", () => {
     expect(rescue?.participantIds).toEqual(["lan-xuanyu", "bai-ling-admiral"]);
   });
 
+  it("keeps only source-supported numbered fleet roles and does not invent the second fleet", () => {
+    const supported = new Map([
+      ["d4-first-fleet", "母星附近小行星基地"],
+      ["d4-third-fleet", "天龙星外太空"],
+      ["d4-fourth-fleet", "连接星域"],
+      ["d4-fifth-fleet", "环形结构"],
+      ["d4-sixth-fleet", "陨石与星雷环境"],
+    ]);
+    for (const [id, evidence] of supported) expect(FACTIONS.find((item) => item.id === id)?.description).toContain(evidence);
+    expect(FACTIONS.some((item) => item.id === "d4-second-fleet" || item.name === "斗罗联邦第二舰队")).toBe(false);
+    for (const fleet of FACTIONS.filter((item) => /^d4-(?:first|third|fourth|fifth|sixth)-fleet$/.test(item.id))) {
+      expect(fleet.description).not.toMatch(/司令|大将/);
+    }
+  });
+
   it("does not let a passenger ticket satisfy an accepted interplanetary freight contract", () => {
     const game = playingGame(4, "d4-passenger-freight-boundary");
     game.view.locationId = "tianluo-planet";
