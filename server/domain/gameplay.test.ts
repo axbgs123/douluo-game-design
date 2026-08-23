@@ -433,14 +433,16 @@ describe("完整游玩规则", () => {
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).startingRelations;
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).household;
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
+    game.view.mediaOutlets = [{ name: "城市告示处", stance: "地方治安", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(17);
+    expect(migrated.schemaVersion).toBe(18);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
     expect(migrated.world.npcs["tang-san"]).toBeDefined();
     expect(migrated.world.npcs["tang-san"].factionIds).toEqual([]);
+    expect(migrated.view.mediaOutlets[0].responsibleEditor).toMatchObject({ name: "沈砚", sourceTrust: 64, handledReports: 2, playerTrust: 0, interactions: 0 });
   });
 
   it("重要人物互动会留下记忆并推动世界偏差", () => {
@@ -821,6 +823,37 @@ describe("第一部世界资料", () => {
     advanceWorldTime(game, 30 * 1_440);
     expect(rumor.status).toBe("已传播");
     expect(game.view.news.some((item) => item.id === `${rumor.id}-media`)).toBe(false);
+  });
+
+  it("责任编辑采访只解释来源边界，补充材料必须来自访谈后的独立调查", () => {
+    const game = awakened("media-editor-interview");
+    for (const npc of Object.values(game.world.npcs)) npc.locationId = "offscreen-test";
+    for (const [index, witness] of Object.values(game.world.npcs).slice(0, 6).entries()) {
+      witness.alive = true;
+      witness.currentGoal = "保存现场证词";
+      witness.locationId = game.view.locationId!;
+      witness.factionIds = [index % 2 ? "spirit-hall" : "shrek"];
+    }
+    const crime = { intent: "违法行动", minutes: 30, ruleSummary: "现场出现争议并留下记录。", fallbackNarrative: "见证者提交了说法。", suggestions: [] };
+    applyActionResult(game, "在街口公开抢劫", crime, crime.fallbackNarrative, crime.suggestions);
+    advanceWorldTime(game, 20 * 1_440);
+    const rumor = game.world.socialRumors[0];
+    expect(rumor.mediaStatus).toBe("已刊发");
+
+    const interview = resolveAction(game, "联系报道责任编辑询问选稿依据");
+    expect(interview.intent).toBe("责任编辑采访");
+    expect(interview.ruleSummary).toContain("采访本身不改稿、不撤稿");
+    applyActionResult(game, "联系报道责任编辑询问选稿依据", interview, interview.fallbackNarrative, interview.suggestions);
+    expect(resolveAction(game, "向责任编辑提交补充证据").intent).toBe("无法完成");
+
+    const investigation = resolveAction(game, "调查报道来源和现场记录");
+    applyActionResult(game, "调查报道来源和现场记录", investigation, investigation.fallbackNarrative, investigation.suggestions);
+    const supplement = resolveAction(game, "向责任编辑提交补充证据");
+    expect(supplement.intent).toBe("向责任编辑补充证据");
+    expect(supplement.ruleSummary).toContain("是否更正或追加报道仍需单独结算");
+    const editor = game.view.mediaOutlets.find((item) => item.name === "城市告示处")!.responsibleEditor!;
+    expect(editor).toMatchObject({ name: "沈砚", interactions: 2, playerTrust: 6, sourceTrust: 63, responsibility: "在岗核验", activeRumorId: rumor.id });
+    expect(editor.evidence.some((item) => item.includes("补充材料行动"))).toBe(true);
   });
 
   it("四个时代使用各自可用的公共传播渠道", () => {

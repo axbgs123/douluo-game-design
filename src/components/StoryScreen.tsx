@@ -111,7 +111,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
             {panel === "情报" && <IntelligencePanel game={game} />}
             {panel === "手记" && <ArchivePanel game={game} />}
             {panel === "猎魂" && <HuntPanel game={game} submit={submit} busy={busy} />}
-            {panel === "世界" && <WorldPanel game={game} submit={submit} busy={busy} />}
+            {panel === "世界" && <><MediaAccountabilityPanel game={game} submit={submit} busy={busy} /><WorldPanel game={game} submit={submit} busy={busy} /></>}
           </div>
           <footer className="panel-footer"><span>{game.difficulty}</span><span>{game.speed}</span></footer>
         </aside>
@@ -315,6 +315,18 @@ function HuntPanel({ game, submit, busy }: { game: GameView; submit: (value: str
     {hunting.recommendations.map((item) => <article className="recommendation-card" key={item.beastId}><strong>{item.name}</strong><span>{item.estimatedYears} · {item.risk}</span><p>{item.fit}</p><small>{item.source}</small><button type="button" disabled={busy} onClick={() => submit(`选择${item.name}作为魂环目标`)}>选择</button></article>)}
     {hunting.preparation.length > 0 && <SimpleList title="准备" values={hunting.preparation} empty="" />}{hunting.absorptionRisk && <p className="risk-line">吸收风险：{hunting.absorptionRisk}</p>}{hunting.result && <p className="result-line">{hunting.result}</p>}
   </div>;
+}
+
+function MediaAccountabilityPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
+  if (!game.mediaOutlets.length) return null;
+  return <section className="detail-stack media-accountability-panel">
+    <h3 className="panel-title">媒体责任档案</h3>
+    <div className="player-relation-ledger">{game.mediaOutlets.map((outlet) => <article key={outlet.name}>
+      <header><strong>{outlet.name}</strong><span>{outlet.status} · {outlet.trustScore}</span></header>
+      <p>{outlet.stance}</p>
+      {outlet.responsibleEditor ? <><small>{outlet.responsibleEditor.role} · {outlet.responsibleEditor.name} · 来源信任 {outlet.responsibleEditor.sourceTrust} · 对主角信任 {outlet.responsibleEditor.playerTrust ?? 0}</small><em>处理 {outlet.responsibleEditor.handledReports} 篇 · 互动 {outlet.responsibleEditor.interactions ?? 0} 次 · {outlet.responsibleEditor.responsibility}</em><div><button type="button" disabled={busy} onClick={() => submit(`联系${outlet.responsibleEditor!.name}责任编辑询问选稿依据`)}>采访编辑</button><button type="button" disabled={busy || outlet.responsibleEditor.requestedEvidenceAtActionIndex === undefined} onClick={() => submit(`向${outlet.responsibleEditor!.name}责任编辑提交补充证据`)}>补交材料</button></div></> : <small>旧档案尚无可核验责任编辑</small>}
+    </article>)}</div>
+  </section>;
 }
 
 function WorldPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {

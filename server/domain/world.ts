@@ -528,7 +528,9 @@ export function recordMediaOutletReputation(game: StoredGame, input: { name: str
     game.view.mediaOutlets.push(outlet);
   }
   const editorProfile = responsibleEditor(input.name);
-  outlet.responsibleEditor ??= { ...editorProfile, sourceTrust: 60, handledReports: 0, responsibility: "待复核", evidence: [] };
+  outlet.responsibleEditor ??= { ...editorProfile, sourceTrust: 60, handledReports: 0, responsibility: "待复核", evidence: [], playerTrust: 0, interactions: 0 };
+  outlet.responsibleEditor.playerTrust ??= 0;
+  outlet.responsibleEditor.interactions ??= 0;
   outlet.stance = input.stance;
   outlet.trustScore = Math.max(0, Math.min(100, outlet.trustScore + input.trustDelta));
   if (input.publication) outlet.publications += 1;
@@ -961,7 +963,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 17;
+  legacy.schemaVersion = 18;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -999,6 +1001,13 @@ export function ensureGameState(game: StoredGame): StoredGame {
   }
   game.view.reputations ??= [];
   game.view.mediaOutlets ??= [];
+  for (const outlet of game.view.mediaOutlets) {
+    const profile = responsibleEditor(outlet.name);
+    outlet.responsibleEditor ??= { ...profile, sourceTrust: outlet.trustScore ?? 60, handledReports: outlet.publications ?? 0, responsibility: outlet.corrections > 0 ? "已签发更正" : outlet.publications > 0 ? "在岗核验" : "待复核", evidence: [...(outlet.evidence ?? [])].slice(-12), playerTrust: 0, interactions: 0 };
+    outlet.responsibleEditor.playerTrust ??= 0;
+    outlet.responsibleEditor.interactions ??= 0;
+    outlet.responsibleEditor.evidence ??= [];
+  }
   for (const affiliation of game.view.affiliations ?? []) {
     affiliation.contribution ??= 0;
     affiliation.completedAssignments ??= 0;

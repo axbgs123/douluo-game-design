@@ -678,6 +678,11 @@ export interface MediaOutletReputationView {
     handledReports: number;
     responsibility: "在岗核验" | "已签发更正" | "待复核";
     evidence: string[];
+    playerTrust?: number;
+    interactions?: number;
+    lastContactAt?: string;
+    requestedEvidenceAtActionIndex?: number;
+    activeRumorId?: string;
   };
 }
 
