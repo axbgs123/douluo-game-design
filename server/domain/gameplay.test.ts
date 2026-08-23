@@ -183,6 +183,36 @@ describe("完整游玩规则", () => {
     expect(game.view.combat.comboCooldownUntilRound).toBe(4);
   });
 
+  it("三人阵型要求固定三岗位共同训练，实战消耗与冷却独立于双人连携", () => {
+    const game = awakened("three-person-formation");
+    game.view.relations.push(
+      { id: "formation-striker", name: "陆锋", relation: "强攻系战士", impression: "擅长正面攻击", strength: 70, category: "同伴", dimensions: { closeness: 60, trust: 70, respect: 60, sharedInterest: 40, vigilance: 0, hostility: 0, favorDebt: 0, identityKnowledge: 80 }, history: [] },
+      { id: "formation-guard", name: "石岳", relation: "防御系护卫", impression: "擅长盾牌守护", strength: 70, category: "同伴", dimensions: { closeness: 60, trust: 70, respect: 60, sharedInterest: 40, vigilance: 0, hostility: 0, favorDebt: 0, identityKnowledge: 80 }, history: [] },
+      { id: "formation-control", name: "宁索", relation: "控制系魂师", impression: "擅长束缚阵法", strength: 70, category: "同伴", dimensions: { closeness: 60, trust: 70, respect: 60, sharedInterest: 40, vigilance: 0, hostility: 0, favorDebt: 0, identityKnowledge: 80 }, history: [] },
+    );
+    game.view.hunting = { stage: "战斗", ringIndex: 1, recommendations: [], preparation: [], trailProgress: "测试" };
+    game.view.combat = { id: "formation-before-training", enemyName: "测试魂兽", enemyPower: "800年", round: 0, playerCondition: "良好", enemyCondition: "完好", distance: "中距离", escaped: false, allies: [
+      { name: "陆锋", role: "强攻", readiness: 80, condition: "完好" }, { name: "石岳", role: "防护", readiness: 80, condition: "完好" }, { name: "宁索", role: "控制", readiness: 80, condition: "完好" },
+    ] };
+    expect(resolveAction(game, "让陆锋石岳宁索准备攻守枢纽阵型").intent).toBe("无法完成");
+    game.view.combat = undefined;
+    game.view.hunting = undefined;
+    for (let index = 0; index < 2; index += 1) expect(resolveAction(game, "与陆锋石岳宁索共同训练攻守枢纽阵型").intent).toBe("连携训练");
+    const training = game.view.comboTrainings.find((item) => item.name === "攻守枢纽")!;
+    expect(training).toMatchObject({ companionNames: ["宁索", "石岳", "陆锋"], sessions: 2, failures: 0 });
+    expect(training.mastery).toBeGreaterThanOrEqual(15);
+    game.view.hunting = { stage: "战斗", ringIndex: 1, recommendations: [], preparation: [], trailProgress: "测试" };
+    game.view.combat = { id: "formation-after-training", enemyName: "测试魂兽", enemyPower: "800年", round: 0, playerCondition: "良好", enemyCondition: "完好", distance: "中距离", escaped: false, allies: [
+      { name: "陆锋", role: "强攻", readiness: 80, condition: "完好" }, { name: "石岳", role: "防护", readiness: 80, condition: "完好" }, { name: "宁索", role: "控制", readiness: 80, condition: "完好" },
+    ] };
+    game.world.flags.combatEnemyHp = 300;
+    expect(resolveAction(game, "让陆锋石岳宁索准备攻守枢纽阵型").intent).toBe("战斗");
+    expect(game.view.combat.comboPreparation).toMatchObject({ name: "攻守枢纽", allyNames: ["陆锋", "石岳", "宁索"], mastery: training.mastery });
+    expect(resolveAction(game, "发动攻守枢纽阵型").intent).toBe("战斗");
+    expect(game.view.combat.allies?.map((ally) => ally.readiness)).toEqual([60, 60, 60]);
+    expect(game.view.combat.comboCooldownUntilRound).toBe(6);
+  });
+
   it("控制魂技有可累积抗性且战斗会保存同行者状态", () => {
     const game = awakened("combat-control-resistance");
     game.view.character!.soulRank = 30;

@@ -559,8 +559,8 @@ export interface CombatView {
   controlStatus?: string;
   comboPreparation?: {
     name: string;
-    roles: [CompanionRole, CompanionRole];
-    allyNames: [string, string];
+    roles: CompanionRole[];
+    allyNames: string[];
     preparedAtRound: number;
     expiresAfterRound: number;
     mastery?: number;
@@ -576,8 +576,8 @@ export type CompanionRole = "强攻" | "防护" | "控制" | "治疗" | "侦察"
 export interface ComboTrainingView {
   id: string;
   name: string;
-  roles: [CompanionRole, CompanionRole];
-  companionNames: [string, string];
+  roles: CompanionRole[];
+  companionNames: string[];
   sessions: number;
   failures: number;
   mastery: number;
