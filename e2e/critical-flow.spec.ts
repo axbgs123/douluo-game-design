@@ -20,6 +20,30 @@ async function seedComboTrainingGame() {
   database.saveGame(game, "e2e.combo-fixture");
 }
 
+async function seedMediaAccountabilityGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, actions, world, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/domain/actions.js"), import("../server/domain/world.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 1, gender: "女", difficulty: "标准", seed: "e2e-media-accountability" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "媒介验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  for (const npc of Object.values(game.world.npcs)) npc.locationId = "offscreen-e2e";
+  for (const [index, witness] of Object.values(game.world.npcs).slice(0, 6).entries()) {
+    witness.alive = true;
+    witness.currentGoal = "保存现场证词";
+    witness.locationId = game.view.locationId!;
+    witness.factionIds = [index % 2 ? "spirit-hall" : "shrek"];
+  }
+  const crime = actions.resolveAction(game, "在街口公开抢劫");
+  actions.applyActionResult(game, "在街口公开抢劫", crime, crime.fallbackNarrative, crime.suggestions);
+  world.advanceWorldTime(game, 20 * 1_440);
+  if (!game.world.socialRumors.some((rumor) => rumor.mediaStatus === "已刊发" && rumor.valence < 0)) throw new Error("媒体 E2E 夹具未形成已刊发负面报道");
+  database.saveGame(game, "e2e.media-fixture");
+}
+
 async function createPlayingCharacter(page: import("@playwright/test").Page, era: 1 | 2 | 3 | 4) {
   await page.goto("/");
   if (era > 1) await page.getByRole("button", { name: `斗${era === 2 ? "二" : era === 3 ? "三" : "四"}` }).click();
@@ -152,6 +176,31 @@ test("固定连携训练会在浏览器显示熟练度、战术分支与失败�
   await expect(training).toBeVisible();
   await expect(training).toContainText("轮换救护");
   await expect(training).toContainText("训练 6 次 · 失败复盘 1 次 · 证据 6 条");
+});
+
+test("责任编辑采访、独立补证与更正会形成完整浏览器责任链", async ({ page }) => {
+  await seedMediaAccountabilityGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "媒介验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: /^世界/ }).click();
+  const editor = page.locator(".media-accountability-panel article").filter({ hasText: "沈砚" });
+  await expect(editor).toBeVisible();
+  await editor.getByRole("button", { name: "采访编辑" }).click();
+  await expect(page.locator("blockquote.player-entry").last()).toContainText("询问选稿依据");
+  await expect(editor).toContainText("互动 1 次");
+  await submitAction(page, "调查报道来源和现场记录");
+  await editor.getByRole("button", { name: "补交材料" }).click();
+  await expect(page.locator("blockquote.player-entry").last()).toContainText("提交补充证据");
+  await expect(editor).toContainText("互动 2 次");
+  await submitAction(page, "申请核验负面传闻");
+  await submitAction(page, "调查消息来源和现场记录");
+  await submitAction(page, "提交调查证据公开澄清负面传闻");
+  await expect(editor).toContainText("已签发更正");
+  await expect(page.locator(".news-list")).toContainText("更正说明");
+  await expect(page.locator(".news-list")).toContainText("旧消息");
 });
 
 test("有效结算可以在同一存档开启下一时代并核验累积谱系", async ({ page }) => {
