@@ -91,14 +91,51 @@ function requestSignal(timeout: number, external?: AbortSignal): AbortSignal {
   return external ? AbortSignal.any([external, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
 }
 
+interface ChatCompletionPayload {
+  choices?: Array<{ message?: { content?: string } }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+}
+
+async function safeRecordModelCall(input: Parameters<(typeof import("../db.js"))["recordModelCall"]>[0]): Promise<void> {
+  try {
+    const { recordModelCall } = await import("../db.js");
+    recordModelCall(input);
+  } catch {
+    // Telemetry must never make a player action fail.
+  }
+}
+
+async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", settings: { apiKey: string; baseUrl: string; model: string }, body: unknown, timeout: number, signal?: AbortSignal): Promise<ChatCompletionPayload> {
+  const started = performance.now();
+  const serialized = JSON.stringify(body);
+  let recorded = false;
+  try {
+    const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${settings.apiKey}`, "Content-Type": "application/json" },
+      signal: requestSignal(timeout, signal),
+      body: serialized,
+    });
+    if (!response.ok) {
+      await safeRecordModelCall({ gameId: game.view.id, role, model: settings.model, status: "failure", latencyMs: performance.now() - started, promptChars: serialized.length, outputChars: 0, errorCode: `http_${response.status}` });
+      recorded = true;
+      throw new Error(`${role === "intent" ? "DeepSeek 行动理解" : "DeepSeek 请求"}失败：${response.status}`);
+    }
+    const payload = await response.json() as ChatCompletionPayload;
+    const content = payload.choices?.[0]?.message?.content ?? "";
+    await safeRecordModelCall({ gameId: game.view.id, role, model: settings.model, status: "success", latencyMs: performance.now() - started, promptChars: serialized.length, outputChars: content.length, promptTokens: payload.usage?.prompt_tokens, completionTokens: payload.usage?.completion_tokens, totalTokens: payload.usage?.total_tokens });
+    recorded = true;
+    return payload;
+  } catch (error) {
+    if (!recorded) await safeRecordModelCall({ gameId: game.view.id, role, model: settings.model, status: "failure", latencyMs: performance.now() - started, promptChars: serialized.length, outputChars: 0, errorCode: error instanceof DOMException ? error.name : error instanceof Error ? error.constructor.name : "unknown" });
+    throw error;
+  }
+}
+
 export async function interpretActionWithDeepSeek(game: StoredGame, playerInput: string, signal?: AbortSignal): Promise<string | null> {
   const settings = readDeepSeekSettings();
   if (!settings.apiKey) return null;
-  const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${settings.apiKey}`, "Content-Type": "application/json" },
-    signal: requestSignal(20_000, signal),
-    body: JSON.stringify({
+  const payload = await tracedCompletion(game, "intent", settings, {
       model: settings.model,
       response_format: { type: "json_object" },
       temperature: 0.1,
@@ -113,10 +150,7 @@ export async function interpretActionWithDeepSeek(game: StoredGame, playerInput:
         ].join("\n") },
         { role: "user", content: JSON.stringify({ playerInput, era: game.view.era ?? 1, worldTime: game.view.worldTime, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), currentHunt: game.view.hunting, currentEvents: game.world.dynamicEvents.filter((item) => item.status === "可介入").map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
       ],
-    }),
-  });
-  if (!response.ok) throw new Error(`DeepSeek 行动理解失败：${response.status}`);
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    }, 20_000, signal);
   const content = payload.choices?.[0]?.message?.content;
   if (!content) return null;
   const parsed = extractJson(content) as { ruleAction?: unknown };
@@ -139,14 +173,7 @@ export async function narrateWithDeepSeek(
   const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
   const eraTitle = ({ 1: "《斗罗大陆》第一部", 2: "《绝世唐门》", 3: "《龙王传说》", 4: "《终极斗罗》" } as const)[game.view.era ?? 1];
 
-  const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${settings.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    signal: requestSignal(45_000, signal),
-    body: JSON.stringify({
+  const payload = await tracedCompletion(game, "narrator", settings, {
       model: settings.model,
       response_format: { type: "json_object" },
       temperature: 0.8,
@@ -216,16 +243,7 @@ export async function narrateWithDeepSeek(
           }),
         },
       ],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`DeepSeek 请求失败：${response.status}`);
-  }
-
-  const payload = await response.json() as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
+    }, 45_000, signal);
   const content = payload.choices?.[0]?.message?.content;
   if (!content) throw new Error("DeepSeek 返回了空内容");
   const parsed = extractJson(content) as Partial<NarrationResult>;

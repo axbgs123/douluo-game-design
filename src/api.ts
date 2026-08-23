@@ -5,6 +5,7 @@ import type {
   GameView,
   Gender,
   MetaProgressionView,
+  ModelUsageView,
   PersonalitySetup,
   SaveSummary,
   WorldCatalogStatsView,
@@ -204,6 +205,10 @@ export function toggleMetaMartialSoul(id: string, enabled: boolean): Promise<Met
 
 export function getDeepSeekSettings(): Promise<DeepSeekSettingsView> {
   return request("/api/settings/deepseek");
+}
+
+export function getModelUsage(gameId?: string): Promise<ModelUsageView> {
+  return request(`/api/settings/deepseek/usage${gameId ? `?gameId=${encodeURIComponent(gameId)}` : ""}`);
 }
 
 export function saveDeepSeekSettings(input: {

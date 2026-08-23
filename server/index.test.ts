@@ -136,5 +136,8 @@ describe("HTTP 状态机", () => {
     expect(afterFirst.actionIndex).toBe(1);
     expect(afterSecond.actionIndex).toBe(1);
     expect(afterSecond.revision).toBe(afterFirst.revision);
+    const usageResponse = await fetch(`${baseUrl}/api/settings/deepseek/usage?gameId=${game.view.id}`);
+    expect(usageResponse.status).toBe(200);
+    expect(await usageResponse.json()).toMatchObject({ calls: 2, failures: 0 });
   });
 });

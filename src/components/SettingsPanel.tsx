@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { DeepSeekSettingsView } from "../../shared/game";
-import { getDeepSeekSettings, saveDeepSeekSettings } from "../api";
+import type { DeepSeekSettingsView, ModelUsageView } from "../../shared/game";
+import { getDeepSeekSettings, getModelUsage, saveDeepSeekSettings } from "../api";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -15,6 +15,7 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
   const [model, setModel] = useState("deepseek-v4-flash");
   const [novelEngineEnabled, setNovelEngineEnabled] = useState(true);
   const [message, setMessage] = useState("");
+  const [usage, setUsage] = useState<ModelUsageView | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -24,6 +25,7 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
       setModel(settings.model);
       setNovelEngineEnabled(settings.novelEngineEnabled);
     }).catch((error: Error) => setMessage(error.message));
+    void getModelUsage().then(setUsage).catch(() => undefined);
   }, [open]);
 
   if (!open) return null;
@@ -34,6 +36,7 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
       <h2>DeepSeek 设置</h2>
       <p className="settings-copy">API Key 仅保存在本机 <code>.data</code>。</p>
       <p className="settings-copy">复杂行动会先整理语义，再生成正文并更新长期记忆。</p>
+      {usage && <p className="settings-copy">本机调用统计：{usage.calls} 次 · 失败 {usage.failures} 次 · {usage.totalTokens || "未返回"} tokens · 累计 {(usage.totalLatencyMs / 1000).toFixed(1)} 秒。只记录计数、延迟与状态，不保存提示词或正文。</p>}
       <form onSubmit={(event) => {
         event.preventDefault();
         if (!apiKey.trim() && !view?.hasKey) return;

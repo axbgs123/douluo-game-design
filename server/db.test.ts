@@ -16,6 +16,13 @@ afterAll(() => {
 });
 
 describe("存档数据库", () => {
+  it("records model cost telemetry without storing prompts or generated prose", () => {
+    database.recordModelCall({ gameId: "telemetry-game", role: "narrator", model: "test-model", status: "success", latencyMs: 321, promptChars: 900, outputChars: 300, promptTokens: 120, completionTokens: 45, totalTokens: 165 });
+    database.recordModelCall({ gameId: "telemetry-game", role: "intent", model: "test-model", status: "failure", latencyMs: 80, promptChars: 200, outputChars: 0, errorCode: "timeout" });
+
+    expect(database.getModelUsage("telemetry-game")).toMatchObject({ calls: 2, failures: 1, promptTokens: 120, completionTokens: 45, totalTokens: 165, totalLatencyMs: 401 });
+  });
+
   it("replaces a settled slot with its next-era successor and preserves a terminal checkpoint", () => {
     const parent = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "database-era-successor" });
     selectCandidate(parent, parent.view.candidates[0].id, "顾远");

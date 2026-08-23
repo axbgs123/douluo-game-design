@@ -19,6 +19,7 @@ import {
 } from "./domain/generator.js";
 import {
   getMetaProgression,
+  getModelUsage,
   getWorldCatalogStats,
   equipLegacyHeirloom,
   listSaves,
@@ -457,6 +458,10 @@ app.post("/api/games/:id/successor", (request, response) => {
 
 app.get("/api/settings/deepseek", (_request, response) => {
   response.json(settingsView());
+});
+
+app.get("/api/settings/deepseek/usage", (request, response) => {
+  response.json(getModelUsage(typeof request.query.gameId === "string" ? request.query.gameId : undefined));
 });
 
 app.post("/api/settings/deepseek", (request, response) => {

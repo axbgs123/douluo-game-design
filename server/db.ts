@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes } from "node:crypto";
-import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
+import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, ModelUsageView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
 import type { MartialSoulTemplate } from "./domain/model.js";
 import { META_MARTIAL_SOULS, metaSoulById } from "./data/meta-martial-souls.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "./data/world.js";
@@ -67,6 +67,24 @@ database.exec(`
     FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS model_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    model TEXT NOT NULL,
+    status TEXT NOT NULL,
+    latency_ms INTEGER NOT NULL,
+    prompt_chars INTEGER NOT NULL,
+    output_chars INTEGER NOT NULL,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    error_code TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_model_calls_game_created ON model_calls(game_id, id DESC);
+
   CREATE TABLE IF NOT EXISTS canon_characters (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -99,6 +117,16 @@ database.exec(`
     PRIMARY KEY (era, rule_id)
   );
 `);
+
+export function recordModelCall(input: { gameId: string; role: "intent" | "narrator"; model: string; status: "success" | "failure"; latencyMs: number; promptChars: number; outputChars: number; promptTokens?: number; completionTokens?: number; totalTokens?: number; errorCode?: string }): void {
+  database.prepare("INSERT INTO model_calls (game_id, role, model, status, latency_ms, prompt_chars, output_chars, prompt_tokens, completion_tokens, total_tokens, error_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.model.slice(0, 120), input.status, Math.max(0, Math.round(input.latencyMs)), Math.max(0, input.promptChars), Math.max(0, input.outputChars), Math.max(0, input.promptTokens ?? 0), Math.max(0, input.completionTokens ?? 0), Math.max(0, input.totalTokens ?? 0), input.errorCode?.slice(0, 80) ?? null, new Date().toISOString());
+}
+
+export function getModelUsage(gameId?: string): ModelUsageView {
+  const where = gameId ? " WHERE game_id = ?" : "";
+  const row = database.prepare(`SELECT COUNT(*) calls, SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) failures, COALESCE(SUM(prompt_tokens), 0) prompt_tokens, COALESCE(SUM(completion_tokens), 0) completion_tokens, COALESCE(SUM(total_tokens), 0) total_tokens, COALESCE(SUM(latency_ms), 0) total_latency_ms, MAX(created_at) last_call_at FROM model_calls${where}`).get(...(gameId ? [gameId] : [])) as { calls: number; failures: number; prompt_tokens: number; completion_tokens: number; total_tokens: number; total_latency_ms: number; last_call_at?: string };
+  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined };
+}
 
 const gameColumns = database.prepare("PRAGMA table_info(games)").all() as Array<{ name: string }>;
 if (!gameColumns.some((column) => column.name === "revision")) database.exec("ALTER TABLE games ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");

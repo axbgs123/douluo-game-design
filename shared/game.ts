@@ -601,6 +601,16 @@ export interface CheckpointSummary {
 
 export interface DeepSeekSettingsView { hasKey: boolean; baseUrl: string; model: string; novelEngineEnabled: boolean }
 
+export interface ModelUsageView {
+  calls: number;
+  failures: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  totalLatencyMs: number;
+  lastCallAt?: string;
+}
+
 export interface MetaProgressionView {
   legacyPoints: number;
   completedRuns: number;
