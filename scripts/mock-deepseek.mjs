@@ -28,9 +28,18 @@ const server = createServer((request, response) => {
     let body;
     try { body = JSON.parse(raw); }
     catch { response.writeHead(400).end(); return; }
-    const prompt = JSON.stringify(body.messages ?? []);
+    const messages = body.messages ?? [];
+    const prompt = JSON.stringify(messages);
+    const userMessage = [...messages].reverse().find((message) => message?.role === "user")?.content;
+    let playerInput = "等待一天";
+    try {
+      const parsed = JSON.parse(userMessage ?? "{}");
+      if (typeof parsed.playerInput === "string" && parsed.playerInput.trim()) playerInput = parsed.playerInput.trim();
+    } catch {
+      // Narration prompts are not required to contain the semantic payload.
+    }
     const content = prompt.includes("行动语义整理器")
-      ? JSON.stringify({ ruleAction: "等待一天" })
+      ? JSON.stringify({ ruleAction: playerInput })
       : JSON.stringify({
           narrative: "晨光沿着窗纸落进屋里，他把昨夜散乱的东西重新收好，在安静中等过了一天。院外偶尔传来脚步声，除此之外没有新的变故。",
           suggestions: ["查看屋外的动静", "整理随身物品", "询问附近的住民"],
