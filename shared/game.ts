@@ -146,9 +146,19 @@ export interface MechaProgressView {
   simulatorProgress: number;
   simulatorSessions: number;
   practicalPasses: number;
+  customDesign?: {
+    grade: "紫级" | "黑级";
+    progress: number;
+    sessions: number;
+    specialistId?: string;
+    specialistName: string;
+    martialSoulName: string;
+  };
   model?: string;
   condition?: "完好" | "受损" | "大修";
   energy?: number;
+  ownerId?: string;
+  ownerName?: string;
 }
 
 export interface StarshipProgressView {

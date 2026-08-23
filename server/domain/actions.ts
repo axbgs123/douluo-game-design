@@ -2303,6 +2303,18 @@ function mechaResolution(game: StoredGame, action: string): ActionResolution {
     game.world.fatiguePoints += 10;
     return { intent: "机甲模拟训练", minutes: speedMinutes(game, 120, 480), ruleSummary: `完成第 ${mecha.simulatorSessions} 次模拟训练，驾驶进度增加 ${gain}%，当前 ${mecha.simulatorProgress}%。`, fallbackNarrative: "模拟舱把过载、盲区和迟滞都照实还原。第一次转向太急，虚拟机体在建筑边缘擦出整片警告。我重新跑同一段路线，直到手脚动作不再互相抢指令。", suggestions: ["继续机甲模拟训练", "参加白级机甲驾驶考核", "复盘失误记录"] };
   }
+  if (/设计|定制|适配方案/.test(action) && /紫级|黑级/.test(action)) {
+    const requested = action.includes("黑级") ? "黑级" as const : "紫级" as const;
+    if (licenses.indexOf(mecha.license) < licenses.indexOf(requested)) return impossible(`必须先取得${requested}驾驶资质，才能把真实操控记录写入专属设计。`, [`参加${requested}机甲考核`, "继续模拟训练", "寻找机甲设计师"]);
+    const specialist = game.view.relations.find((item) => /机甲设计师|机甲制造师|机甲修理师|魂导师/.test(`${item.name}${item.relation}`));
+    if (!specialist) return impossible(`${requested}机甲需要可信的设计、制造或魂导专业人员协作，不能凭空完成专属方案。`, ["寻找可信机甲设计师", "培养机甲制造第二职业", "继续使用黄色制式机甲"]);
+    if (!mecha.customDesign || mecha.customDesign.grade !== requested || mecha.customDesign.martialSoulName !== game.view.character!.martialSoul.name) {
+      mecha.customDesign = { grade: requested, progress: 0, sessions: 0, specialistId: specialist.id, specialistName: specialist.name, martialSoulName: game.view.character!.martialSoul.name };
+    }
+    mecha.customDesign.sessions += 1;
+    mecha.customDesign.progress = Math.min(100, mecha.customDesign.progress + 34);
+    return { intent: "机甲专属设计", minutes: speedMinutes(game, 360, 1_440), ruleSummary: `${specialist.name}协作完成第 ${mecha.customDesign.sessions} 轮${requested}机甲武魂适配，专属方案进度 ${mecha.customDesign.progress}%。`, fallbackNarrative: "设计桌上没有现成答案。武魂释放时的重心、魂技作用距离与精神操控延迟被逐项写入模型，设计师把不合身的通用结构一处处删掉。", suggestions: [mecha.customDesign.progress < 100 ? `继续设计${requested}专属机甲` : `订购${requested}专属机甲`, "复核武魂适配数据", "核对制造与维护预算"] };
+  }
   if (/考核|执照|认证/.test(action)) {
     const requested = (["黑级", "紫级", "黄级", "白级"] as const).find((level) => action.includes(level)) ?? "白级";
     const targetIndex = licenses.indexOf(requested);
@@ -2333,6 +2345,7 @@ function mechaResolution(game: StoredGame, action: string): ActionResolution {
     if (/军用|武装|制式战斗/.test(action) && !militaryMember) return impossible("军用制式机甲不向普通学生和民间个人直接出售。", ["购买民用训练机甲", "申请军方岗位", "租用学院教学机"]);
     const specialist = game.view.relations.some((item) => /机甲设计师|机甲制造师|机甲修理师|魂导师/.test(`${item.name}${item.relation}`));
     if ((requested === "紫级" || requested === "黑级") && !specialist) return impossible(`${requested}机甲必须围绕驾驶者武魂完成专属设计、制造和维护，不能购买通用成品。`, ["寻找可信机甲设计师", "培养机甲制造第二职业", "继续使用黄色制式机甲"]);
+    if ((requested === "紫级" || requested === "黑级") && (mecha.customDesign?.grade !== requested || mecha.customDesign.martialSoulName !== character.martialSoul.name || mecha.customDesign.progress < 100)) return impossible(`${requested}机甲必须先完成与当前武魂一致的专属设计方案，认识设计师不能替代实际协作。`, [`设计${requested}专属机甲`, "复核武魂适配数据", "继续使用黄色制式机甲"]);
     if (requested === "紫级" && character.soulRank < 10) return impossible("紫色专属机甲必须由魂师驾驭。", ["成为正式魂师", "继续黄色机甲训练", "学习专属机甲设计"]);
     if (requested === "黑级" && (character.soulRank < 60 || !/优秀|顶尖/.test(character.abilityDescriptors.perception))) return impossible("黑色超级机甲至少要求魂帝修为与高阶精神感知，并且只能绑定一位主人。", ["提升至六环", "训练精神感知", "完善专属设计"]);
     const costs: Record<typeof requested, number> = { 白级: 5_000, 黄级: 30_000, 紫级: 240_000, 黑级: 2_000_000 };
@@ -2342,7 +2355,14 @@ function mechaResolution(game: StoredGame, action: string): ActionResolution {
     mecha.model = requested === "白级" ? "白色基础教学机甲" : requested === "黄级" ? "黄色民用制式机甲" : requested === "紫级" ? `紫色${character.martialSoul.name}专属机甲` : `黑色${character.martialSoul.name}超级机甲`;
     mecha.condition = "完好";
     mecha.energy = 100;
+    mecha.ownerId = character.id;
+    mecha.ownerName = character.name;
     return { intent: "购买机甲", minutes: 180, ruleSummary: `支付${formatSoulCoins(cost)}，登记并取得${mecha.model}；所有权与驾驶资质均已核验。`, fallbackNarrative: "机体编号、能源记录和维修历史一项不少。付款后，登记员把所有权转到我的档案名下，我绕着外壳检查一圈，没把展厅灯光当成完好证明。", suggestions: ["进行低速试驾", "检查机甲维护手册", "购买备用能源"] };
+  }
+  if (/转让|过户|出售给/.test(action)) {
+    if (!mecha.model) return impossible("当前没有登记在名下的机甲可供转让。", ["查看机甲登记", "购买合规机甲", "使用学院模拟舱"]);
+    if (mecha.license === "黑级") return impossible(`黑色超级机甲的核心操控与${mecha.ownerName ?? "原主人"}唯一绑定，不能通过普通交易转让给另一名驾驶者。`, ["保留原主人登记", "封存黑级机甲", "由专业团队解除非核心部件"]);
+    return impossible("机甲过户需要核验受让人的同级驾驶资质、年龄、资金与登记机构，本行动尚未提供合格受让人。", ["指定有资质的成年受让人", "前往登记机构核验", "保留当前所有权"]);
   }
   if (/驾驶|启动|出击|使用/.test(action)) {
     if (!mecha.model || mecha.condition === "大修") return impossible("当前没有可安全启动的自有机甲。", ["购买合规机甲", "完成机甲维修", "使用模拟舱训练"]);

@@ -120,6 +120,26 @@ async function seedMechaLicenseGame() {
   database.saveGame(game, "e2e.mecha-license-fixture");
 }
 
+async function seedBlackMechaDesignGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 3, gender: "男", difficulty: "标准", seed: "e2e-black-mecha-design" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "黑级机甲验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.character!.age = 18;
+  game.view.character!.soulRank = 60;
+  game.view.character!.coins = 2_100_000;
+  game.view.character!.abilityDescriptors.perception = "顶尖";
+  game.view.affiliations.push({ id: "e2e-black-mecha-school", name: "史莱克机甲学院", role: "高级学员", reputation: "优秀", joinedAt: "验收学籍" });
+  game.view.relations.push({ id: "e2e-black-designer", name: "林工", relation: "机甲设计师", impression: "可信并熟悉武魂适配", strength: 75, category: "师友" });
+  game.view.mecha = { license: "黑级", simulatorProgress: 100, simulatorSessions: 12, practicalPasses: 4 };
+  database.saveGame(game, "e2e.black-mecha-design-fixture");
+}
+
 async function seedStarshipCrewGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -421,6 +441,28 @@ test("斗三机甲必须逐级取证且成年后才能登记所有权并试驾",
   await expect(mecha).toContainText("完好 · 能源 100%");
   await mecha.getByRole("button", { name: "低速试驾" }).click();
   await expect(mecha).toContainText("完好 · 能源 90%");
+});
+
+test("斗三黑级机甲必须完成武魂专属设计并绑定唯一所有者", async ({ page }) => {
+  await seedBlackMechaDesignGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "黑级机甲验收" });
+  await expect(save).toBeVisible();
+  const ownerName = await save.locator("strong").first().textContent();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  const mecha = page.locator(".special-system-card").filter({ hasText: "机甲资质" });
+  await mecha.getByRole("button", { name: "购置机甲" }).click();
+  await expect(mecha).toContainText("尚无自有机甲");
+  for (let session = 0; session < 3; session += 1) await mecha.getByRole("button", { name: "专属设计" }).click();
+  await expect(mecha).toContainText(/专属设计 · 黑级 · .+ · 100% · 林工/);
+  await mecha.getByRole("button", { name: "购置机甲" }).click();
+  await expect(mecha).toContainText(/黑色.+超级机甲/);
+  await expect(mecha).toContainText(`所有者 ${ownerName}`);
+  const registeredModel = await mecha.locator("strong").textContent();
+  await submitAction(page, "把黑级机甲过户转让给林工");
+  await expect(mecha.locator("strong")).toHaveText(registeredModel ?? "");
 });
 
 test("斗四星舰必须按岗位招募船员后才能协同并登记真实航时", async ({ page }) => {

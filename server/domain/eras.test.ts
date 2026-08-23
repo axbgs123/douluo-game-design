@@ -342,8 +342,21 @@ describe("multi-era foundations", () => {
     game.view.character!.coins = 300_000;
     expect(resolveAction(game, "购买紫级通用机甲").intent).toBe("无法完成");
     game.view.relations.push({ id: "designer", name: "林工", relation: "机甲设计师", impression: "可信", strength: 70 });
+    expect(resolveAction(game, "订购紫级专属机甲").intent).toBe("无法完成");
+    for (let index = 0; index < 3; index += 1) expect(resolveAction(game, "与林工设计紫级专属机甲").intent).toBe("机甲专属设计");
     expect(resolveAction(game, "订购紫级专属机甲").intent).toBe("购买机甲");
     expect(game.view.mecha?.model).toContain("专属机甲");
+    expect(game.view.mecha?.ownerName).toBe(game.view.character!.name);
+    game.view.character!.soulRank = 60;
+    game.view.character!.abilityDescriptors.perception = "顶尖";
+    game.view.character!.coins = 2_100_000;
+    expect(resolveAction(game, "参加黑级机甲驾驶考核").intent).toBe("机甲驾驶考核");
+    expect(resolveAction(game, "订购黑级专属机甲").intent).toBe("无法完成");
+    for (let index = 0; index < 3; index += 1) expect(resolveAction(game, "与林工设计黑级专属机甲").intent).toBe("机甲专属设计");
+    expect(resolveAction(game, "订购黑级专属机甲").intent).toBe("购买机甲");
+    const ownerName = game.view.mecha?.ownerName;
+    expect(resolveAction(game, "把黑级机甲过户转让给林工").intent).toBe("无法完成");
+    expect(game.view.mecha?.ownerName).toBe(ownerName);
   });
 
   it("requires a licensed command crew and resources for interplanetary travel", () => {
