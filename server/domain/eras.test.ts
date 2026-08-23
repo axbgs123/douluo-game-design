@@ -267,6 +267,7 @@ describe("multi-era foundations", () => {
 
   it("requires training and a license before buying a mecha", () => {
     const game = playingGame(3, "mecha-license-loop");
+    game.view.character!.age = 16;
     game.view.character!.coins = 10_000;
     game.view.affiliations.push({ id: "federal-school", name: "明都联邦学院", role: "学员", reputation: "在册", joinedAt: "测试" });
     expect(resolveAction(game, "购买白级训练机甲").intent).toBe("无法完成");
@@ -275,9 +276,27 @@ describe("multi-era foundations", () => {
     expect(resolveAction(game, "参加白级机甲驾驶考核").intent).toBe("机甲驾驶考核");
     expect(game.view.mecha?.license).toBe("白级");
     expect(resolveAction(game, "购买白级训练机甲").intent).toBe("购买机甲");
-    expect(game.view.mecha?.model).toBe("白级通用训练机甲");
+    expect(game.view.mecha?.model).toBe("白色基础教学机甲");
     expect(resolveAction(game, "驾驶机甲进行低速试驾").intent).toBe("驾驶机甲");
     expect(game.view.mecha?.energy).toBe(90);
+  });
+
+  it("keeps mecha color grades tied to canon body, soul power, and customization limits", () => {
+    const game = playingGame(3, "mecha-grade-limits");
+    game.view.affiliations.push({ id: "federal-school", name: "明都联邦学院", role: "学员", reputation: "在册", joinedAt: "测试" });
+    for (let index = 0; index < 12; index += 1) resolveAction(game, "进行机甲模拟训练");
+    expect(resolveAction(game, "参加白级机甲驾驶考核").intent).toBe("无法完成");
+    game.view.character!.age = 18;
+    expect(resolveAction(game, "参加白级机甲驾驶考核").intent).toBe("机甲驾驶考核");
+    expect(resolveAction(game, "参加黄级机甲驾驶考核").intent).toBe("机甲驾驶考核");
+    expect(resolveAction(game, "参加紫级机甲驾驶考核").intent).toBe("无法完成");
+    game.view.character!.soulRank = 10;
+    expect(resolveAction(game, "参加紫级机甲驾驶考核").intent).toBe("机甲驾驶考核");
+    game.view.character!.coins = 300_000;
+    expect(resolveAction(game, "购买紫级通用机甲").intent).toBe("无法完成");
+    game.view.relations.push({ id: "designer", name: "林工", relation: "机甲设计师", impression: "可信", strength: 70 });
+    expect(resolveAction(game, "订购紫级专属机甲").intent).toBe("购买机甲");
+    expect(game.view.mecha?.model).toContain("专属机甲");
   });
 
   it("requires a licensed command crew and resources for interplanetary travel", () => {

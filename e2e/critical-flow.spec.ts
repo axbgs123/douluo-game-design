@@ -80,7 +80,7 @@ test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状�
   await page.getByRole("button", { name: "地图", exact: true }).click();
   await expect(page.getByText("傲来城", { exact: true }).first()).toBeVisible();
   await clickEraAction(page, "机甲模拟", "进行机甲模拟训练");
-  await expect(page.getByText("机甲执照 · 无", { exact: true })).toBeVisible();
+  await expect(page.getByText("机甲资质 · 无", { exact: true })).toBeVisible();
   await expect(page.getByText(/模拟训练 \d+% · 1 次/)).toBeVisible();
 
   await page.getByRole("button", { name: "返回书架" }).click();

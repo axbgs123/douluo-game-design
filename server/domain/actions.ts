@@ -1522,7 +1522,7 @@ function battleArmorResolution(game: StoredGame, action: string): ActionResoluti
 }
 
 function mechaResolution(game: StoredGame, action: string): ActionResolution {
-  if ((game.view.era ?? 1) < 3) return impossible("当前时代没有成熟的现代机甲训练与执照体系。", ["研究当前时代的魂导器", "核对技术年代", "训练武魂实战"]);
+  if ((game.view.era ?? 1) < 3) return impossible("当前时代没有成熟的现代机甲训练与驾驶资质体系。", ["研究当前时代的魂导器", "核对技术年代", "训练武魂实战"]);
   const mecha = game.view.mecha ??= { license: "无", simulatorProgress: 0, simulatorSessions: 0, practicalPasses: 0 };
   const licenses = ["无", "白级", "黄级", "紫级", "黑级"] as const;
   if (/模拟|训练|课程|练习/.test(action) && !/购买|订购/.test(action)) {
@@ -1537,23 +1537,39 @@ function mechaResolution(game: StoredGame, action: string): ActionResolution {
     const requested = (["黑级", "紫级", "黄级", "白级"] as const).find((level) => action.includes(level)) ?? "白级";
     const targetIndex = licenses.indexOf(requested);
     const currentIndex = licenses.indexOf(mecha.license);
-    if (targetIndex !== currentIndex + 1) return impossible("机甲执照必须按白、黄、紫、黑逐级考核。", [`参加${licenses[currentIndex + 1] ?? "下一等级"}机甲考核`, "继续模拟训练", "查看执照"]);
+    if (targetIndex !== currentIndex + 1) return impossible("机甲驾驶资质必须按白、黄、紫、黑逐级考核。", [`参加${licenses[currentIndex + 1] ?? "下一等级"}机甲考核`, "继续模拟训练", "查看资质"]);
     const requiredProgress = targetIndex * 22;
     const requiredSessions = targetIndex * 3;
+    const character = game.view.character!;
+    if (character.age < 12) return impossible("未满十二岁只能学习机甲理论和使用受监护的模拟舱，不能参加真实机体驾驶考核。", ["继续机甲模拟训练", "学习机甲安全规范", "等待达到实操年龄"]);
+    const requiredSoulRank = requested === "紫级" ? 10 : requested === "黑级" ? 60 : 0;
+    if (character.soulRank < requiredSoulRank) return impossible(`${requested}机甲要求至少 ${requiredSoulRank} 级魂力；普通人最多只能稳定驾驭黄色制式机甲。`, ["提升魂力修为", "继续低级机甲训练", "学习机甲结构"]);
+    if (requested === "黑级" && !/优秀|顶尖/.test(character.abilityDescriptors.perception)) return impossible("黑色超级机甲除六环修为外还要求足以辅助操控的高阶精神感知。", ["训练精神感知", "继续紫级专属机甲训练", "请高级机甲师评估"]);
     const institution = game.view.affiliations.some((item) => /学院|联邦|军|机甲|史莱克/.test(item.name));
     if (!institution) return impossible("正式驾驶考核需要学院、联邦交通或军方训练机构受理。", ["加入有资质的学院", "寻找公开考点", "继续模拟训练"]);
     if (mecha.simulatorProgress < requiredProgress || mecha.simulatorSessions < requiredSessions) return impossible(`${requested}考核至少需要 ${requiredProgress}% 训练进度和 ${requiredSessions} 次模拟记录。`, ["继续机甲模拟训练", "复盘失误记录", "预约后续考核"]);
     mecha.license = requested;
     mecha.practicalPasses += 1;
-    return { intent: "机甲驾驶考核", minutes: speedMinutes(game, 240, 960), ruleSummary: `通过路线、故障处置与紧急制动考核，取得${requested}机甲驾驶执照。`, fallbackNarrative: "考核不是打一场漂亮的模拟战。动力故障、平民避让和强制迫降各来了一次。机体停回黄线内后，考官才把新等级写进驾驶档案。", suggestions: ["查看执照权限", "继续高级模拟训练", mecha.model ? "维护自有机甲" : `购买${requested}训练机甲`], systemMessages: [`执照 · ${requested}机甲驾驶`] };
+    return { intent: "机甲驾驶考核", minutes: speedMinutes(game, 240, 960), ruleSummary: `通过路线、故障处置与紧急制动考核，取得${requested}机甲驾驶资质。`, fallbackNarrative: "考核不是打一场漂亮的模拟战。动力故障、平民避让和强制迫降各来了一次。机体停回黄线内后，考官才把新等级写进驾驶档案。", suggestions: ["查看资质权限", "继续高级模拟训练", mecha.model ? "维护自有机甲" : requested === "白级" ? "申请租用白色教学机甲" : `筹备${requested}机甲`], systemMessages: [`资质 · ${requested}机甲驾驶`] };
   }
   if (/购买|订购/.test(action)) {
-    if (mecha.license === "无") return impossible("没有机甲驾驶执照，正规渠道不会出售可驾驶机体。", ["参加白级机甲考核", "继续模拟训练", "租用带教训练机"]);
-    const levelIndex = licenses.indexOf(mecha.license);
-    const cost = levelIndex * 5_000;
-    if (game.view.character!.coins < cost) return impossible(`当前许可等级的训练机至少需要${formatSoulCoins(cost)}。`, ["积攒资金", "申请学院训练机", "先租用机甲"]);
-    game.view.character!.coins -= cost;
-    mecha.model = `${mecha.license}通用训练机甲`;
+    if (mecha.license === "无") return impossible("没有机甲驾驶资质，正规渠道不会出售可驾驶机体。", ["参加白级机甲考核", "继续模拟训练", "租用带教训练机"]);
+    const requested = (["黑级", "紫级", "黄级", "白级"] as const).find((level) => action.includes(level)) ?? mecha.license;
+    const levelIndex = licenses.indexOf(requested);
+    if (levelIndex > licenses.indexOf(mecha.license)) return impossible(`当前只有${mecha.license}驾驶资质，不能取得${requested}机甲。`, [`参加${requested}机甲考核`, "继续模拟训练", "查看资质"]);
+    const character = game.view.character!;
+    if (character.age < 16) return impossible("未成年人不能独立登记大型机甲所有权，只能通过学院或训练机构租用教学机。", ["申请租用白色教学机甲", "使用学院模拟舱", "由监护人与机构审核"]);
+    const militaryMember = game.view.affiliations.some((item) => /联邦舰队|军团|军方|战神殿/.test(item.name));
+    if (/军用|武装|制式战斗/.test(action) && !militaryMember) return impossible("军用制式机甲不向普通学生和民间个人直接出售。", ["购买民用训练机甲", "申请军方岗位", "租用学院教学机"]);
+    const specialist = game.view.relations.some((item) => /机甲设计师|机甲制造师|机甲修理师|魂导师/.test(`${item.name}${item.relation}`));
+    if ((requested === "紫级" || requested === "黑级") && !specialist) return impossible(`${requested}机甲必须围绕驾驶者武魂完成专属设计、制造和维护，不能购买通用成品。`, ["寻找可信机甲设计师", "培养机甲制造第二职业", "继续使用黄色制式机甲"]);
+    if (requested === "紫级" && character.soulRank < 10) return impossible("紫色专属机甲必须由魂师驾驭。", ["成为正式魂师", "继续黄色机甲训练", "学习专属机甲设计"]);
+    if (requested === "黑级" && (character.soulRank < 60 || !/优秀|顶尖/.test(character.abilityDescriptors.perception))) return impossible("黑色超级机甲至少要求魂帝修为与高阶精神感知，并且只能绑定一位主人。", ["提升至六环", "训练精神感知", "完善专属设计"]);
+    const costs: Record<typeof requested, number> = { 白级: 5_000, 黄级: 30_000, 紫级: 240_000, 黑级: 2_000_000 };
+    const cost = costs[requested];
+    if (character.coins < cost) return impossible(`${requested}机甲的合规取得、登记和初次维护至少需要${formatSoulCoins(cost)}。`, ["积攒资金", "申请学院训练机", "先租用机甲"]);
+    character.coins -= cost;
+    mecha.model = requested === "白级" ? "白色基础教学机甲" : requested === "黄级" ? "黄色民用制式机甲" : requested === "紫级" ? `紫色${character.martialSoul.name}专属机甲` : `黑色${character.martialSoul.name}超级机甲`;
     mecha.condition = "完好";
     mecha.energy = 100;
     return { intent: "购买机甲", minutes: 180, ruleSummary: `支付${formatSoulCoins(cost)}，登记并取得${mecha.model}；所有权与驾驶执照均已核验。`, fallbackNarrative: "机体编号、能源记录和维修历史一项不少。付款后，登记员把所有权转到我的档案名下，我绕着外壳检查一圈，没把展厅灯光当成完好证明。", suggestions: ["进行低速试驾", "检查机甲维护手册", "购买备用能源"] };
