@@ -64,6 +64,45 @@ async function seedFourPersonFormationGame() {
   database.saveGame(game, "e2e.four-person-fixture");
 }
 
+async function seedSoulSpiritGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 2, gender: "女", difficulty: "标准", seed: "e2e-soul-spirit-contract" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "魂灵验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.worldTime!.year = 10_012;
+  game.view.character!.soulRank = 10;
+  game.view.character!.coins = 2_000;
+  game.view.character!.abilityDescriptors.spirit = "顶尖";
+  game.view.character!.soulRings = [];
+  game.view.character!.soulRingSets[game.view.character!.activeMartialSoulIndex] = [];
+  database.saveGame(game, "e2e.soul-spirit-fixture");
+}
+
+async function seedBattleArmorGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 3, gender: "男", difficulty: "标准", seed: "e2e-battle-armor-project" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "斗铠验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.character!.soulRank = 50;
+  game.view.character!.coins = 10_000;
+  game.view.character!.abilityDescriptors.perception = "顶尖";
+  game.view.professions.push(
+    { id: "e2e-armor-design", name: "魂导器研究", level: "熟练", progress: 100, experiments: 12, failures: 0, knownMethods: ["斗铠核心法阵"] },
+    { id: "e2e-armor-craft", name: "锻造与炼器", level: "熟练", progress: 100, experiments: 12, failures: 0, knownMethods: ["千锻金属塑形"] },
+  );
+  database.saveGame(game, "e2e.battle-armor-fixture");
+}
+
 async function createPlayingCharacter(page: import("@playwright/test").Page, era: 1 | 2 | 3 | 4) {
   await page.goto("/");
   if (era > 1) await page.getByRole("button", { name: `斗${era === 2 ? "二" : era === 3 ? "三" : "四"}` }).click();
@@ -254,6 +293,54 @@ test("四人编队可以从共同训练、明确出发一路进入实战并发�
   await expect(page.locator(".action-receipt p")).toContainText("发动连携“四象战阵”");
   await expect(page.locator(".hunt-stage strong")).toHaveText("吸收");
   await expect(page.locator(".hunt-stage")).toContainText("目标已被击败");
+});
+
+test("斗二魂灵必须从申请、适配评估走到付费契约并形成持久魂灵", async ({ page }) => {
+  await seedSoulSpiritGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "魂灵验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  let contract = page.locator(".special-system-card").filter({ hasText: "魂灵" }).first();
+  await contract.getByRole("button", { name: "申请魂灵" }).click();
+  contract = page.locator(".special-system-card").filter({ hasText: "阶段 调查" });
+  await expect(contract).toBeVisible();
+  await contract.getByRole("button", { name: "签订契约" }).click();
+  await expect(contract).toContainText("阶段 调查");
+  await contract.getByRole("button", { name: "评估适配" }).click();
+  contract = page.locator(".special-system-card").filter({ hasText: "阶段 可签约" });
+  await expect(contract).toContainText(/适配 [6-9][0-9]%/);
+  await contract.getByRole("button", { name: "签订契约" }).click();
+  await expect(page.locator("blockquote.player-entry").last()).toContainText("签订魂灵契约");
+  await page.getByRole("button", { name: "武魂", exact: true }).click();
+  const spirit = page.locator(".special-system-card").filter({ hasText: "人工魂灵" });
+  await expect(spirit).toBeVisible();
+  await expect(spirit).toContainText("磨合");
+});
+
+test("斗三斗铠必须完成设计、材料门禁与逐件制作", async ({ page }) => {
+  await seedBattleArmorGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "斗铠验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  let project = page.locator(".special-system-card").filter({ hasText: "斗铠工程" });
+  for (let design = 0; design < 4; design += 1) await project.getByRole("button", { name: "设计一字斗铠" }).click();
+  await expect(project).toContainText("图纸 100%");
+  await project.getByRole("button", { name: "制作下一部件" }).click();
+  await expect(project).toContainText("下一件 右手前臂甲");
+  await project.getByRole("button", { name: "购买斗铠金属" }).click();
+  for (let attempt = 0; attempt < 3 && await project.getByText("下一件 右手前臂甲", { exact: false }).count(); attempt += 1) {
+    await project.getByRole("button", { name: "制作下一部件" }).click();
+    if ((await project.textContent())?.includes("下一件 左手前臂甲")) break;
+    await project.getByRole("button", { name: "购买斗铠金属" }).click();
+  }
+  await expect(project).toContainText("下一件 左手前臂甲");
+  await expect(page.getByText("斗铠 · 1字斗铠 · 右手前臂甲", { exact: true })).toBeVisible();
 });
 
 test("有效结算可以在同一存档开启下一时代并核验累积谱系", async ({ page }) => {
