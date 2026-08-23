@@ -11,7 +11,9 @@ import type { StoredGame } from "./domain/model.js";
 import { ensureGameState } from "./domain/world.js";
 import { BIRTH_PROFILE_COUNT } from "./domain/generator.js";
 
-const databasePath = resolve(process.cwd(), ".data", "douluo.db");
+const databasePath = process.env.DOULUO_DATA_DIR
+  ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
+  : resolve(process.cwd(), ".data", "douluo.db");
 mkdirSync(dirname(databasePath), { recursive: true });
 
 const database = new DatabaseSync(databasePath);
@@ -158,6 +160,8 @@ const insertEventStatement = database.prepare(`
   VALUES (?, ?, ?, ?, ?)
 `);
 const deleteGameStatement = database.prepare("DELETE FROM games WHERE id = ?");
+const deleteGameEventsStatement = database.prepare("DELETE FROM events WHERE game_id = ?");
+const deleteGameCheckpointsStatement = database.prepare("DELETE FROM game_checkpoints WHERE game_id = ?");
 
 export function saveGame(game: StoredGame, eventType: string, payload: unknown = {}): void {
   const serialized = JSON.stringify(game);
@@ -208,7 +212,21 @@ export function listSaves(): SaveSummary[] {
 }
 
 export function deleteGame(id: string): boolean {
-  return Number(deleteGameStatement.run(id).changes) > 0;
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    deleteGameCheckpointsStatement.run(id);
+    deleteGameEventsStatement.run(id);
+    const deleted = Number(deleteGameStatement.run(id).changes) > 0;
+    database.exec("COMMIT");
+    return deleted;
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function closeDatabase(): void {
+  database.close();
 }
 
 export function saveCheckpoint(game: StoredGame, label: string): void {

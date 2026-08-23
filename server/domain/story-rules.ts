@@ -162,12 +162,43 @@ function narrationOutsideDialogue(text: string): string {
   return text.split(/([“「『][\s\S]*?[”」』])/g).filter((_part, index) => index % 2 === 0).join("");
 }
 
+function parseNumberToken(token: string): number {
+  if (/^\d+$/.test(token)) return Number(token);
+  const digits: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  if (token.includes("百")) {
+    const [hundreds, rest = ""] = token.split("百");
+    return (digits[hundreds] ?? 1) * 100 + (rest ? parseNumberToken(rest.replace(/^零/, "")) : 0);
+  }
+  if (token.includes("十")) {
+    const [tens, ones] = token.split("十");
+    return (tens ? digits[tens] ?? 0 : 1) * 10 + (ones ? digits[ones] ?? 0 : 0);
+  }
+  return digits[token] ?? Number.NaN;
+}
+
 export function auditNarrative(game: StoredGame, text: string): string[] {
   const issues: string[] = [];
   const outside = narrationOutsideDialogue(text);
   if (/(^|[。！？\n])\s*我/.test(outside) || /我的/.test(outside)) issues.push("正文出现第一人称叙述");
   if (/首先|其次|最后|值得注意的是|这意味着|本质上|总而言之|综上所述|不是.{0,18}而是/.test(text)) issues.push("正文含有模板化表达");
   if (violatesCanonChronology(text, game.view.worldTime?.year ?? 0)) issues.push("正文违反当前时代或原作时间线");
+  for (const npc of Object.values(game.world.npcs)) {
+    const escapedName = npc.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rankClaims = [
+      ...text.matchAll(new RegExp(`${escapedName}.{0,12}?([零一二三四五六七八九十百两\\d]{1,4})级`, "g")),
+      ...text.matchAll(new RegExp(`([零一二三四五六七八九十百两\\d]{1,4})级.{0,12}?${escapedName}`, "g")),
+    ];
+    for (const claim of rankClaims) {
+      const rank = parseNumberToken(claim[1]);
+      const publicPower = game.view.knownFigures.find((figure) => figure.id === npc.id)?.knownPower;
+      if (npc.soulRank === undefined || Math.abs(rank - npc.soulRank) > 3 || publicPower !== `${rank} 级`) {
+        issues.push(`正文提前泄露或写错${npc.name}在当前年份的魂力`);
+        break;
+      }
+    }
+    const ageClaim = text.match(new RegExp(`${escapedName}.{0,8}?([零一二三四五六七八九十百两\\d]{1,4})岁`));
+    if (ageClaim && (npc.age === undefined || parseNumberToken(ageClaim[1]) !== npc.age)) issues.push(`正文写错${npc.name}在当前年份的年龄`);
+  }
   if ((text.match(/！/g)?.length ?? 0) >= 5) issues.push("正文依赖连续感叹号制造强度");
   if (text.length > 4800) issues.push("单次正文过长");
   return issues;

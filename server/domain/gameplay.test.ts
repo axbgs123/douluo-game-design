@@ -204,6 +204,33 @@ describe("完整游玩规则", () => {
     expect(beforeAwakening.npcs["ning-rongrong"].locationId).toBe("seven-treasure-fort");
   });
 
+  it("never applies a future power snapshot to a younger canon character", () => {
+    const earlyStarLuo = createHiddenWorld(-5, "star-luo-city");
+    expect(earlyStarLuo.npcs["dai-mubai"].age).toBe(4);
+    expect(earlyStarLuo.npcs["dai-mubai"].soulRank).toBeUndefined();
+    expect(earlyStarLuo.npcs["dai-mubai"].powerTier).toBe("尚未觉醒");
+    expect(earlyStarLuo.npcs["dai-weisi"].age).toBe(10);
+    expect(earlyStarLuo.npcs["dai-weisi"].soulRank).toBeLessThan(20);
+    expect(earlyStarLuo.npcs["dai-weisi"].soulRank).not.toBe(49);
+  });
+
+  it("does not treat sharing a city as personally knowing a canon figure", () => {
+    const earlyStarLuo = createHiddenWorld(-5, "star-luo-city");
+    expect(Object.values(earlyStarLuo.npcs).some((npc) => npc.knownToPlayer)).toBe(false);
+  });
+
+  it("removes unsupported omniscient NPC knowledge from legacy saves", () => {
+    const game = awakened("legacy-omniscience");
+    game.view.worldTime = { era: "比唐三觉醒早约 5 年", year: -5, day: 1, time: "08:00", season: "春" };
+    game.world = createHiddenWorld(-5, "star-luo-city");
+    game.world.npcs["dai-weisi"].knownToPlayer = true;
+    game.world.npcs["dai-weisi"].soulRank = 49;
+    const migrated = ensureGameState(game);
+    expect(migrated.world.npcs["dai-weisi"].knownToPlayer).toBe(false);
+    expect(migrated.world.npcs["dai-weisi"].soulRank).toBeLessThan(20);
+    expect(migrated.view.knownFigures.some((figure) => figure.id === "dai-weisi")).toBe(false);
+  });
+
   it("normalizes generated prose to third-person limited", () => {
     const game = awakened("third-person");
     applyActionResult(game, "回家", { intent: "测试", minutes: 0, ruleSummary: "", fallbackNarrative: "", suggestions: [] }, "我顺着土路回家。路人问：“你去哪？”我没有回答。", []);
@@ -216,6 +243,16 @@ describe("完整游玩规则", () => {
     expect(violatesCanonChronology("宁荣荣已经去了史莱克学院就读。", -1)).toBe(true);
     expect(violatesCanonChronology("七宝琉璃宗位于天斗城外，守卫严密。", -1)).toBe(false);
     expect(violatesCanonChronology("宁荣荣进入史莱克学院就读。", 6)).toBe(false);
+  });
+
+  it("rejects canon ages and ranks copied from a future snapshot", () => {
+    const game = awakened("future-power-audit");
+    game.view.worldTime = { era: "比唐三觉醒早约 5 年", year: -5, day: 1, time: "08:00", season: "春" };
+    game.world = createHiddenWorld(-5, "star-luo-city");
+    expect(auditNarrative(game, "十岁的戴维斯已经是四十九级魂宗。"))
+      .toContain("正文提前泄露或写错戴维斯在当前年份的魂力");
+    expect(auditNarrative(game, "四岁的戴沐白已经三十七级。"))
+      .toContain("正文提前泄露或写错戴沐白在当前年份的魂力");
   });
 });
 

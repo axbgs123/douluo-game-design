@@ -9,6 +9,11 @@ import { worldMapPoint } from "../../shared/world-map.js";
 
 const DAYS_PER_YEAR = 360;
 
+function eraAtYear(year: number): string {
+  if (year === 0) return "唐三觉醒同年";
+  return year < 0 ? `比唐三觉醒早约 ${Math.abs(year)} 年` : `比唐三觉醒晚约 ${year} 年`;
+}
+
 const DYNAMIC_EVENT_TEMPLATES = [
   { title: "失踪的采药队", kind: "地方" as const, detail: "一支采药队过了约定日期仍没回来，家属正在凑钱找人。", stakes: 2 },
   { title: "魂兽越界", kind: "地方" as const, detail: "外围魂兽闯入耕地，痕迹和当地人熟悉的种类对不上。", stakes: 3 },
@@ -46,11 +51,36 @@ export function inferLocationId(location: string): string {
   return "notting-city";
 }
 
+function tierForRank(rank: number): string {
+  if (rank < 10) return "魂士";
+  if (rank < 20) return "魂师";
+  if (rank < 30) return "大魂师";
+  if (rank < 40) return "魂尊";
+  if (rank < 50) return "魂宗";
+  if (rank < 60) return "魂王";
+  if (rank < 70) return "魂帝";
+  if (rank < 80) return "魂圣";
+  if (rank < 90) return "魂斗罗";
+  return "封号斗罗";
+}
+
 function powerAtYear(characterId: string, year: number): { soulRank?: number; tier: string } {
   const definition = characterById(characterId);
   if (!definition?.powerSnapshots.length) return { tier: "未知" };
   const snapshots = [...definition.powerSnapshots].sort((left, right) => left.year - right.year);
-  const prior = snapshots.filter((snapshot) => snapshot.year <= year).at(-1) ?? snapshots[0];
+  const first = snapshots[0];
+  if (year < first.year) {
+    if (definition.birthYear === undefined) return { tier: "实力未核实" };
+    const age = year - definition.birthYear;
+    if (age < 6) return { tier: "尚未觉醒" };
+    if (first.soulRank === undefined) return { tier: "实力未核实" };
+    const firstAge = first.year - definition.birthYear;
+    if (firstAge <= 6) return { soulRank: Math.min(first.soulRank, 10), tier: tierForRank(Math.min(first.soulRank, 10)) };
+    const ratio = Math.max(0, Math.min(1, (age - 6) / (firstAge - 6)));
+    const estimatedRank = Math.max(1, Math.round(6 + (first.soulRank - 6) * ratio));
+    return { soulRank: estimatedRank, tier: tierForRank(estimatedRank) };
+  }
+  const prior = snapshots.filter((snapshot) => snapshot.year <= year).at(-1) ?? first;
   const next = snapshots.find((snapshot) => snapshot.year > year);
   if (prior.soulRank !== undefined && next?.soulRank !== undefined && next.year !== prior.year) {
     const ratio = Math.max(0, Math.min(1, (year - prior.year) / (next.year - prior.year)));
@@ -83,7 +113,7 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
       factionIds: definition.factionIds,
       currentGoal: born ? (definition.goals[0] ?? "继续当前生活") : "尚未出生",
       dispositionToPlayer: 0,
-      knownToPlayer: born && canonicalLocationAtYear(definition.id, startYear) === startLocationId && definition.importance <= 3,
+      knownToPlayer: false,
       lastSimulatedYear: startYear,
       memoryOfPlayer: [],
       autonomyLog: [],
@@ -190,21 +220,32 @@ function knownPower(npc: WorldNpcState): string {
   return npc.powerTier;
 }
 
+function estimatedPower(npc: WorldNpcState): string {
+  if (npc.powerTier === "尚未觉醒") return "尚未觉醒";
+  if (npc.soulRank === undefined) return "实力不明";
+  return `约${tierForRank(npc.soulRank)}`;
+}
+
 export function buildKnownFigures(game: StoredGame): KnownFigureView[] {
-  return Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer).map((npc) => {
+  return Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer && npc.currentGoal !== "尚未出生").map((npc) => {
     const definition = characterById(npc.id);
     const faction = FACTIONS.find((item) => npc.factionIds.includes(item.id));
     const intel = [...game.world.intelligenceRecords].reverse().find((item) => item.subjectType === "人物" && item.subjectId === npc.id);
+    const relation = game.view.relations.some((item) => item.id === npc.id);
+    const metInPerson = relation || npc.memoryOfPlayer.length > 0 || Boolean(intel && /亲历|当面|交谈/.test(intel.source));
+    const confidence = intel?.confidence ?? (metInPerson ? 90 : 30);
+    const visiblePower = confidence >= 85 && metInPerson ? knownPower(npc) : confidence >= 55 ? estimatedPower(npc) : "实力不明";
+    const locationName = locationById(npc.locationId)?.name ?? "不明";
     return {
       id: npc.id,
       name: npc.name,
       title: definition?.aliases[0],
       faction: faction?.name,
-      knownPower: knownPower(npc),
-      location: locationById(npc.locationId)?.name ?? "不明",
-      status: npc.alive ? npc.currentGoal : "已死亡",
-      source: intel?.source ?? "亲历",
-      confidence: intel?.confidence ?? (npc.locationId === game.view.locationId ? 100 : 65),
+      knownPower: visiblePower,
+      location: metInPerson && npc.locationId === game.view.locationId ? locationName : confidence >= 70 ? locationName : `${locationName}一带（未核实）`,
+      status: npc.alive ? (metInPerson ? npc.currentGoal : intel?.status === "确定" ? "消息已核实" : "近况不明") : "已死亡",
+      source: intel?.source ?? (metInPerson ? "亲历" : "旧闻"),
+      confidence,
     };
   });
 }
@@ -556,6 +597,7 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
   }
   time.time = `${Math.floor(minuteOfDay / 60).toString().padStart(2, "0")}:${(minuteOfDay % 60).toString().padStart(2, "0")}`;
   time.season = seasonForDay(time.day);
+  time.era = eraAtYear(time.year);
   simulateNpcYears(game, time.year);
   const currentOrdinal = ordinal(time.year, time.day);
   const messages = [...simulateNpcAutonomy(game, previousOrdinal, currentOrdinal), ...simulateCanonEvents(game, previousYear, time.year)];
@@ -570,7 +612,7 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
 
 export function revealNpc(game: StoredGame, npcId: string): void {
   const npc = game.world.npcs[npcId];
-  if (!npc) return;
+  if (!npc || npc.currentGoal === "尚未出生") return;
   npc.knownToPlayer = true;
   game.view.knownFigures = buildKnownFigures(game);
 }
@@ -614,6 +656,15 @@ export function ensureGameState(game: StoredGame): StoredGame {
     relation.history ??= [{ year: relation.lastChangedYear, day: 1, delta: relation.bond, reason: "旧存档关系记录，具体经过未能完整保留" }];
   }
   for (const npc of Object.values(legacy.world.npcs)) { npc.memoryOfPlayer ??= []; npc.autonomyLog ??= []; }
+  simulateNpcYears(game, startYear);
+  const evidencedNpcIds = new Set([
+    ...legacy.world.intelligenceRecords.filter((record) => record.subjectType === "人物").map((record) => record.subjectId),
+    ...game.view.relations.map((relation) => relation.id).filter((id): id is string => Boolean(id)),
+    ...Object.values(legacy.world.npcs).filter((npc) => npc.memoryOfPlayer.length > 0).map((npc) => npc.id),
+  ]);
+  for (const npc of Object.values(legacy.world.npcs)) {
+    if (!evidencedNpcIds.has(npc.id)) npc.knownToPlayer = false;
+  }
   game.storyMemory ??= {
     summary: game.view.narrative.slice(-6).map((entry) => entry.text).join(" ").slice(0, 1000),
     openThreads: game.view.tasks.filter((task) => task.status !== "完成").map((task) => task.title).slice(0, 8),
@@ -691,6 +742,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   if (game.view.worldTime) {
     game.view.worldTime.year ??= startYear;
     game.view.worldTime.season ??= "春";
+    game.view.worldTime.era = eraAtYear(game.view.worldTime.year);
   }
   if (game.view.character) {
     game.storyMemory.openThreads = game.storyMemory.openThreads.filter((thread) => thread !== "武魂觉醒结果");

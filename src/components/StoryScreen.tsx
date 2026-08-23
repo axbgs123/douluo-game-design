@@ -66,7 +66,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
           <div className="speed-switch" aria-label="游戏速度">
             {(["标准", "高速"] as GameSpeed[]).map((speed) => <button key={speed} type="button" disabled={busy || game.status === "ended"} className={game.speed === speed ? "active" : ""} onClick={() => void onSpeed(speed)}>{speed}</button>)}
           </div>
-          <div className="world-clock"><span>{game.worldTime?.era}{game.character ? ` · ${game.character.age} 岁` : ""}</span><strong>{game.worldTime ? `${game.worldTime.season} · ${canonYearLabel(game.worldTime.year)} · 第 ${game.worldTime.day} 日 · ${game.worldTime.time}` : "觉醒日前"}</strong></div>
+          <div className="world-clock"><span>{game.character ? `${game.character.age} 岁` : game.worldTime?.era}</span><strong>{game.worldTime ? `${game.worldTime.season} · ${canonYearLabel(game.worldTime.year)} · 第 ${game.worldTime.day} 日 · ${game.worldTime.time}` : "觉醒日前"}</strong></div>
         </div>
       </header>
 
@@ -80,12 +80,10 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
               : entry.kind === "system"
                 ? <p key={entry.id} className="system-entry">{entry.text}</p>
                 : <article key={entry.id} className="prose-entry">{entry.text.split("\n\n").map((paragraph, index) => <p key={`${entry.id}-${index}`}>{paragraph}</p>)}</article>)}
-            {busy && actionPhase && <section className="generation-card">
-              <header><i /><strong>{actionPhase}</strong><button type="button" onClick={onCancelAction}>取消</button></header>
-              <ol>{["检查行动是否合法", "计算时间、胜负与后果", "按第三人称续写正文", "核对时间线、知情边界与程序结果", "写入存档"].map((label) => <li key={label} className={label === actionPhase ? "active" : ""}>{label}</li>)}</ol>
-              {actionDraft && <article>{actionDraft}</article>}
-              <small>取消或失败不会推进时间，也不会写入结果。</small>
-            </section>}
+            {busy && actionPhase && <>
+              {actionDraft && <article className="prose-entry draft-prose">{actionDraft.split("\n\n").map((paragraph, index) => <p key={`draft-${index}`}>{paragraph}</p>)}</article>}
+              <div className="writing-indicator"><i /><span>{actionDraft ? "故事仍在继续……" : "故事正在续写……"}</span><button type="button" onClick={onCancelAction}>停笔</button></div>
+            </>}
             <div ref={narrativeEnd} />
           </div>
 

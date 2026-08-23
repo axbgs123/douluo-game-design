@@ -42,6 +42,9 @@ export default function App() {
   const [lastExplanation, setLastExplanation] = useState("");
   const [actionController, setActionController] = useState<AbortController | null>(null);
   const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<SaveSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const refreshSaves = () => listGames().then(setSaves).catch(() => undefined);
   useEffect(() => { void refreshSaves(); void getDeepSeekSettings().then(setAiSettings).catch(() => undefined); }, []);
@@ -77,7 +80,7 @@ export default function App() {
     try {
       const nextGame = await streamAction(game.id, input, (event) => {
         if (event.type === "phase") setActionPhase(event.label);
-        if (event.type === "draft") setActionDraft((draft) => `${draft}${event.text}`);
+        if (event.type === "draft") setActionDraft((draft) => draft ? `${draft}\n\n${event.text}` : event.text);
         if (event.type === "done") setLastExplanation(event.explanation);
       }, controller.signal);
       setGame(nextGame);
@@ -87,13 +90,37 @@ export default function App() {
       await refreshSaves();
     } catch (caught) {
       setLastAction(input);
-      if (caught instanceof DOMException && caught.name === "AbortError") setError("已取消。本次行动没有推进时间，也没有写入存档。");
-      else setError(caught instanceof Error ? caught.message : "推演失败，本次行动未写入存档");
+      if (caught instanceof DOMException && caught.name === "AbortError") setError("已经停笔。刚才的行动没有发生。");
+      else setError("这段故事暂时没能续上，刚才的行动没有发生。");
     } finally {
       setBusy(false);
       setActionController(null);
     }
   };
+
+  const confirmDeleteSave = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setError("");
+    try {
+      await deleteGame(deleteTarget.id);
+      setSaves((current) => current.filter((save) => save.id !== deleteTarget.id));
+      setNotice(`已删除“${deleteTarget.characterName}”的存档`);
+      setDeleteTarget(null);
+      await refreshSaves();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "删除存档失败");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const saveCard = (save: SaveSummary, index: number, legacy = false) => <article key={save.id} className={legacy ? "legacy-save" : ""}>
+    <button type="button" onClick={() => void run(() => loadGame(save.id))}>
+      <i>{legacy ? `旧版存档 ${index + 1}` : `存档 ${index + 1}`}</i><strong>{save.characterName}</strong><span>{save.location}</span><small>{new Date(save.updatedAt).toLocaleString("zh-CN")}</small>
+    </button>
+    <button type="button" className="delete-save" onClick={() => setDeleteTarget(save)}>删除</button>
+  </article>;
 
   return <>
     <div className="app-frame">
@@ -107,14 +134,14 @@ export default function App() {
       </nav>
 
       {error && <div className="error-banner"><span>{error}</span><button type="button" onClick={() => setError("")}>×</button></div>}
+      {notice && <div className="notice-banner"><span>{notice}</span><button type="button" onClick={() => setNotice("")}>×</button></div>}
 
       {!game && <>
         {saves.length > 0 && <section className="save-shelf">
           <div><h2>存档</h2></div>
-          <div className="save-row">{saves.slice(0, 3).map((save, index) => <article key={save.id}><button type="button" onClick={() => void run(() => loadGame(save.id))}>
-            <i>存档 {index + 1}</i><strong>{save.characterName}</strong><span>{save.location}</span><small>{new Date(save.updatedAt).toLocaleString("zh-CN")}</small>
-          </button><button type="button" className="delete-save" onClick={() => { if (window.confirm(`确定删除${save.characterName}的存档？此操作不能恢复。`)) void deleteGame(save.id).then(refreshSaves).catch((caught: Error) => setError(caught.message)); }}>删除</button></article>)}</div>
+          <div className="save-row">{saves.slice(0, 3).map((save, index) => saveCard(save, index))}</div>
         </section>}
+        {saves.length > 3 && <details className="legacy-save-manager" open><summary>管理旧版遗留存档 <b>{saves.length - 3}</b></summary><p>旧版本没有限制存档数量。这些存档不会消失，但需要删至三个以内才能开始新人生。</p><div className="save-row">{saves.slice(3).map((save, index) => saveCard(save, index, true))}</div></details>}
         {saves.length < 3 ? <SetupScreen busy={busy} onCreate={(input: { gender: Gender; difficulty: Difficulty; seed?: string }) => run(() => createGame(input))} /> : <section className="save-limit"><strong>三个存档位都已使用</strong><p>删除一个旧存档后才能开始新人生。每个存档都会在行动提交和关键节点后自动保存。</p></section>}
       </>}
 
@@ -160,6 +187,7 @@ export default function App() {
         onMapPinRemove={(pinId) => run(() => removeMapPin(game.id, pinId))}
       />}
     </div>
+    {deleteTarget && <div className="dialog-backdrop" role="presentation"><section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-save-title"><span>删除存档</span><h2 id="delete-save-title">{deleteTarget.characterName}</h2><p>这个人物、剧情进度和三个回溯节点都会被永久删除。</p><div><button type="button" disabled={deleting} onClick={() => setDeleteTarget(null)}>保留</button><button type="button" className="danger-button" disabled={deleting} onClick={() => void confirmDeleteSave()}>{deleting ? "删除中…" : "确认删除"}</button></div></section></div>}
     <MetaProgressionPanel open={metaOpen} onClose={() => setMetaOpen(false)} />
     <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={setAiSettings} />
   </>;

@@ -719,7 +719,7 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
   const systemMessages: string[] = [];
   if (mentioned) {
     const npc = game.world.npcs[mentioned.id];
-    if (npc?.locationId === game.view.locationId) {
+    if (npc?.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId) {
       revealNpc(game, mentioned.id);
       npc.dispositionToPlayer += 2;
       npc.memoryOfPlayer.push(`${game.view.worldTime?.year ?? 0}年在${game.view.location ?? "此地"}与玩家交谈`);
@@ -761,7 +761,7 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
 
 function investigateResolution(game: StoredGame, action: string): ActionResolution {
   const random = actionRandom(game);
-  const localNpc = Object.values(game.world.npcs).find((npc) => npc.locationId === game.view.locationId && !npc.knownToPlayer && random() < 0.45);
+  const localNpc = Object.values(game.world.npcs).find((npc) => npc.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId && !npc.knownToPlayer && random() < 0.45);
   const systemMessages: string[] = [];
   if (localNpc) {
     revealNpc(game, localNpc.id);
