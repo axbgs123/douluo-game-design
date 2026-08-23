@@ -57,9 +57,8 @@ export function StoryScreen({ game, busy, onAwaken, onAction }: StoryScreenProps
 
           {game.status === "awakening" ? (
             <div className="awakening-action">
-              <p>阵法已经亮起。武魂结果尚未生成到玩家可见状态。</p>
               <button className="primary-button" type="button" disabled={busy} onClick={() => void onAwaken()}>
-                {busy ? "光芒正在汇聚…" : "伸出右手，接受觉醒"}
+                {busy ? "觉醒中…" : "觉醒武魂"}
               </button>
             </div>
           ) : (
@@ -75,13 +74,13 @@ export function StoryScreen({ game, busy, onAwaken, onAction }: StoryScreenProps
                 <textarea
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
-                  placeholder="描述你要做的事，也可以直接写出要说的话……"
+                  placeholder="输入行动或对话……"
                   rows={3}
                   disabled={busy}
                 />
                 <button className="send-button" type="submit" disabled={busy || !input.trim()}>{busy ? "推演中" : "行动"}</button>
               </form>
-              <p className="action-hint">建议不是限制。世界会结算任何尝试，也会让不可能的行动付出代价。</p>
+              <p className="action-hint">可自由输入</p>
             </div>
           )}
         </section>
@@ -110,7 +109,7 @@ export function StoryScreen({ game, busy, onAwaken, onAction }: StoryScreenProps
 }
 
 function CharacterPanel({ game }: { game: GameView }) {
-  if (!game.character) return <LockedPanel text="武魂觉醒后，人物状态才会在这里显现。" />;
+  if (!game.character) return <LockedPanel text="觉醒后显示" />;
   return <div className="detail-stack">
     <div className="identity-block"><small>姓名</small><strong>{game.character.name}</strong><span>{game.character.originName}</span></div>
     <dl className="stat-list">
@@ -124,7 +123,7 @@ function CharacterPanel({ game }: { game: GameView }) {
 }
 
 function SoulPanel({ game }: { game: GameView }) {
-  if (!game.character) return <LockedPanel text="阵法中的光还没有散去。" />;
+  if (!game.character) return <LockedPanel text="尚未觉醒" />;
   return <div className="detail-stack">
     <div className="identity-block"><small>{game.character.martialSoul.category}</small><strong>{game.character.martialSoul.name}</strong></div>
     <p className="panel-copy">{game.character.martialSoul.description}</p>
@@ -133,12 +132,12 @@ function SoulPanel({ game }: { game: GameView }) {
 }
 
 function RelationPanel({ game }: { game: GameView }) {
-  if (!game.relations.length) return <LockedPanel text="尚未形成可记录的关系。" />;
+  if (!game.relations.length) return <LockedPanel text="暂无关系" />;
   return <div className="card-list">{game.relations.map((relation) => <article key={relation.name}><strong>{relation.name}</strong><span>{relation.relation}</span><p>{relation.impression}</p></article>)}</div>;
 }
 
 function TaskPanel({ game }: { game: GameView }) {
-  if (!game.tasks.length) return <LockedPanel text="这里不会凭空生成奖励任务，只记录真实的承诺与计划。" />;
+  if (!game.tasks.length) return <LockedPanel text="暂无记录" />;
   return <div className="card-list">{game.tasks.map((task) => <article key={task.title}><span>{task.kind}</span><strong>{task.title}</strong><p>{task.detail}</p></article>)}</div>;
 }
 

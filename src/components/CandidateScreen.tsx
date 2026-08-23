@@ -20,11 +20,9 @@ export function CandidateScreen({
   return (
     <main className="candidate-page">
       <header className="candidate-header">
-        <p className="eyebrow">命运候选 · 第 {rerollIndex + 1} 轮</p>
-        <h1>先看家里，再决定跟谁走</h1>
-        <p>这三个人都还没觉醒。你现在能知道的只有出身、住处和一些反常的小事。</p>
-        <p className="random-note">本地规则负责抽取，DeepSeek 只写选定后的剧情。每次新游戏都会换随机种子，相同种子则能复现结果。</p>
-        <div className="trait-line">初始性格：{personalitySummary.join(" · ")}</div>
+        <p className="eyebrow">第 {rerollIndex + 1} 次抽取</p>
+        <h1>选择角色</h1>
+        <div className="trait-line">性格 · {personalitySummary.join(" · ")}</div>
       </header>
 
       <section className="candidate-grid">
@@ -41,7 +39,7 @@ export function CandidateScreen({
               {candidate.omens.map((omen) => <p key={omen}>{omen}</p>)}
             </div>
             <button type="button" className="select-button" disabled={busy} onClick={() => void onSelect(candidate.id)}>
-              选择这段人生
+              选择
             </button>
           </article>
         ))}
@@ -49,9 +47,8 @@ export function CandidateScreen({
 
       <div className="candidate-actions">
         <button type="button" className="ghost-button" disabled={busy} onClick={() => void onReroll()}>
-          换三个人
+          重抽
         </button>
-        <p>可以一直换，稀有结果的概率不会偷偷上涨。</p>
       </div>
     </main>
   );

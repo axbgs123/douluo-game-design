@@ -46,9 +46,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .error-banner button { border: 0; background: none; cursor: pointer; font-size: 20px; }
 
 .eyebrow { color: var(--gold); text-transform: uppercase; letter-spacing: .24em; font: 11px/1.5 ui-monospace, monospace; margin: 0 0 12px; }
-.setup-page { max-width: 1180px; margin: 0 auto; padding: 74px 32px 120px; display: grid; grid-template-columns: .82fr 1.18fr; gap: clamp(48px, 5vw, 76px); align-items: start; }
+.setup-page { max-width: 1180px; margin: 0 auto; padding: 74px 32px 120px; display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: clamp(38px, 4vw, 60px); align-items: start; }
 .intro-panel { position: sticky; top: 136px; padding-top: 42px; }
-.intro-panel h1, .candidate-header h1 { font-family: var(--display-font); font-size: clamp(40px, 4vw, 56px); line-height: 1.22; font-weight: 400; letter-spacing: .04em; margin: 0 0 28px; color: var(--ink); }
+.intro-panel h1, .candidate-header h1 { font-family: var(--display-font); font-size: clamp(38px, 4vw, 52px); line-height: 1.22; font-weight: 400; letter-spacing: .04em; margin: 0 0 28px; color: var(--ink); }
 .intro-copy { color: var(--muted); line-height: 2; font-size: 16px; max-width: 36em; }
 .principle-strip { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 34px; }
 .principle-strip span, .trait-cloud span { border: 1px solid var(--line); color: var(--gold); padding: 7px 10px; font-size: 11px; letter-spacing: .08em; }
@@ -100,10 +100,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .save-row small { color: var(--faint); }
 
 .candidate-page { max-width: 1240px; margin: auto; padding: 70px 32px 110px; }
-.candidate-header { text-align: center; max-width: 760px; margin: 0 auto 52px; }
+.candidate-header { text-align: center; max-width: 760px; margin: 0 auto 34px; }
 .candidate-header h1 { font-size: clamp(38px, 5vw, 64px); margin-bottom: 20px; }
 .candidate-header > p:not(.eyebrow) { color: var(--muted); line-height: 1.8; }
-.candidate-header .random-note { display: inline-block; margin-top: 8px; padding: 9px 12px; border: 1px solid var(--line); background: rgba(255,255,255,.35); color: #716552; font-size: 10px; }
 .trait-line { color: var(--gold); font-size: 12px; margin-top: 18px; }
 .candidate-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .candidate-card { position: relative; display: flex; flex-direction: column; min-height: 530px; padding: 30px; background: linear-gradient(160deg, #fffaf0, #f1e6d1); border: 1px solid var(--line); box-shadow: var(--shadow); overflow: hidden; }
@@ -197,7 +196,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .settings-message { color: var(--gold); font-size: 11px; }
 
 .meta-modal { width: min(940px, 100%); max-height: calc(100vh - 40px); overflow: auto; position: relative; padding: clamp(26px, 4vw, 46px); background: var(--paper-raised); border: 1px solid rgba(138,103,37,.35); box-shadow: var(--shadow); }
-.meta-header { display: grid; grid-template-columns: minmax(220px, .7fr) 1.3fr; gap: 38px; align-items: end; padding-bottom: 26px; border-bottom: 1px solid var(--line); }
+.meta-header { padding-bottom: 26px; border-bottom: 1px solid var(--line); }
 .meta-header h2 { font: 42px/1 var(--display-font); margin: 0; }
 .meta-header > p { color: var(--muted); font-size: 13px; line-height: 1.85; margin: 0; }
 .meta-loading { color: var(--muted); padding: 40px 0; }

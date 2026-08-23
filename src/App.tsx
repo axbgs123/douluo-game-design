@@ -55,7 +55,7 @@ export default function App() {
 
       {!game && <>
         {saves.length > 0 && <section className="save-shelf">
-          <div><p className="eyebrow">本地书架</p><h2>继续未完的人生</h2></div>
+          <div><h2>存档</h2></div>
           <div className="save-row">{saves.slice(0, 4).map((save) => <button type="button" key={save.id} onClick={() => void run(() => loadGame(save.id))}>
             <strong>{save.characterName}</strong><span>{save.location}</span><small>{new Date(save.updatedAt).toLocaleString("zh-CN")}</small>
           </button>)}</div>

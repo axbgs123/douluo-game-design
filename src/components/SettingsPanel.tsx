@@ -27,9 +27,9 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="settings-modal" role="dialog" aria-modal="true" aria-label="DeepSeek 设置" onMouseDown={(event) => event.stopPropagation()}>
       <button type="button" className="modal-close" onClick={onClose}>×</button>
-      <p className="eyebrow">本地叙事模型</p>
+      <p className="eyebrow">本地模型</p>
       <h2>DeepSeek 设置</h2>
-      <p className="settings-copy">API Key 只写入本机 <code>.data</code> 目录，不会返回浏览器、进入存档或提交 Git。</p>
+      <p className="settings-copy">API Key 仅保存在本机 <code>.data</code>。</p>
       <form onSubmit={(event) => {
         event.preventDefault();
         if (!apiKey.trim()) return;
