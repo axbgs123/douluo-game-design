@@ -43,6 +43,9 @@ test("玩家可以完成角色创建、推进故事并管理存档", async ({ pa
   await createPlayingCharacter(page, 1);
   await page.getByRole("button", { name: "背包", exact: true }).click();
   await expect(page.getByRole("button", { name: "承接货运", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^手记/ }).click();
+  await page.getByPlaceholder("搜索已知档案……").fill("第一魂环");
+  await expect(page.locator(".known-record-search")).toContainText("获得第一魂环");
   await submitAction(page, "在住处等待一天，留意附近动静");
   await expect(page.getByText("晨光沿着窗纸落进屋里", { exact: false })).toBeVisible();
   await page.getByText("查看判定", { exact: true }).click();

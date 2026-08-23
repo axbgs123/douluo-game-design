@@ -109,7 +109,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
             {panel === "关系" && <RelationPanel game={game} submit={submit} busy={busy} />}
             {panel === "任务" && <><InstitutionReviewerPanel game={game} submit={submit} busy={busy} /><TaskPanel game={game} /></>}
             {panel === "情报" && <IntelligencePanel game={game} />}
-            {panel === "手记" && <ArchivePanel game={game} />}
+            {panel === "手记" && <><KnownRecordSearch game={game} /><ArchivePanel game={game} /></>}
             {panel === "猎魂" && <HuntPanel game={game} submit={submit} busy={busy} />}
             {panel === "世界" && <><MediaAccountabilityPanel game={game} submit={submit} busy={busy} /><WorldPanel game={game} submit={submit} busy={busy} /></>}
           </div>
@@ -293,6 +293,21 @@ function TaskPanel({ game }: { game: GameView }) {
 function IntelligencePanel({ game }: { game: GameView }) {
   if (!game.intelligence.length) return <LockedPanel text="还没有通过亲历、调查或可靠消息获得情报" />;
   return <div className="intel-panel"><div className="intel-legend"><span>确定</span><span>推测</span><span>传闻</span><span>矛盾</span></div>{game.intelligence.map((intel) => <article key={intel.id} className={`intel-${intel.status}`}><header><small>{intel.subjectType} · {intel.status}</small><strong>{intel.title}</strong><b>{intel.confidence}%</b></header><p>{intel.detail}</p><footer><span>{intel.source}</span><span>{intel.acquiredAt} · {intel.freshness}</span></footer></article>)}</div>;
+}
+
+function KnownRecordSearch({ game }: { game: GameView }) {
+  const [query, setQuery] = useState("");
+  const records = [
+    ...game.intelligence.map((item) => ({ kind: `情报 · ${item.status}`, title: item.title, detail: `${item.detail} · 来源：${item.source}` })),
+    ...game.news.map((item) => ({ kind: "世界消息", title: item.title, detail: `${item.detail} · ${item.date}` })),
+    ...game.tasks.map((item) => ({ kind: `任务 · ${item.status ?? "进行中"}`, title: item.title, detail: item.detail })),
+    ...game.relations.map((item) => ({ kind: `关系 · ${item.relation}`, title: item.name, detail: `${item.impression} · ${item.history?.at(-1)?.reason ?? "暂无后续记录"}` })),
+    ...game.storyArchive.openThreads.map((item) => ({ kind: "未解线索", title: item, detail: "来自故事手记" })),
+    ...game.storyArchive.keyChoices.map((item) => ({ kind: "关键选择", title: item, detail: "来自故事手记" })),
+  ];
+  const normalized = query.trim().toLocaleLowerCase("zh-CN");
+  const matches = normalized ? records.filter((item) => `${item.kind}${item.title}${item.detail}`.toLocaleLowerCase("zh-CN").includes(normalized)).slice(0, 30) : [];
+  return <section className="detail-stack known-record-search"><h3 className="panel-title">已知档案检索</h3><input aria-label="搜索已知档案" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索已知档案……" />{normalized && <div className="player-relation-ledger">{matches.length ? matches.map((item, index) => <article key={`${item.kind}-${item.title}-${index}`}><header><strong>{item.title}</strong><span>{item.kind}</span></header><p>{item.detail}</p></article>) : <p className="panel-copy">当前角色已知档案中没有匹配记录；搜索不会泄露隐藏人物或未来事件。</p>}</div>}</section>;
 }
 
 function ArchivePanel({ game }: { game: GameView }) {
