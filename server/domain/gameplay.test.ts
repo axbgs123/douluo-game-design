@@ -3,7 +3,7 @@ import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from
 import { applyActionResult, resolveAction } from "./actions.js";
 import { settleRun } from "./endings.js";
 import { awakenCharacter, createEraSuccessor, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
-import { advanceWorldTime, canDiscoverNpc, createHiddenWorld, ensureGameState, recordCanonInfluence, recordIntelligence, revealNpc } from "./world.js";
+import { advanceWorldTime, buildMapView, canDiscoverNpc, createHiddenWorld, ensureGameState, recordCanonInfluence, recordIntelligence, revealNpc } from "./world.js";
 import { applyNarrativeMemory, violatesCanonChronology } from "../services/deepseek.js";
 import { rulebookStats } from "../data/fanfiction-rules.js";
 import { auditNarrative, selectNarrativeRules } from "./story-rules.js";
@@ -689,6 +689,35 @@ describe("第一部世界资料", () => {
     expect(business.ruleSummary).toMatch(/盈利|亏损/);
     expect(village.view.economy.transactions.slice(-2).map((item) => item.kind)).toEqual(["投资", "收入"]);
     expect(village.view.economy.transactions.at(-1)?.balance).toBe(village.view.character!.coins);
+  });
+
+  it("跨区域运输合同先占用周转金和运力，抵达后才按货损与期限结算", () => {
+    const game = awakened("logistics-contract");
+    game.view.locationId = "holy-soul-village";
+    game.view.location = "圣魂村";
+    game.world.discoveredLocations.push("holy-soul-village", "notting-city");
+    game.view.map = buildMapView(game);
+    game.view.character!.coins = 200;
+    const before = game.view.character!.coins;
+
+    const accepted = resolveAction(game, "承接运往诺丁城的药材运输合同");
+    expect(accepted.intent).toBe("承接运输合同");
+    const task = game.view.tasks.find((item) => item.kind === "运输合同")!;
+    expect(task.destinationId).toBe("notting-city");
+    expect(task.logistics).toMatchObject({ category: "药材", originId: "holy-soul-village", destinationId: "notting-city", cargoIntegrity: 100, mode: "陆路托运" });
+    expect(game.view.character!.coins).toBeLessThan(before);
+    expect(game.view.inventory).toContain(task.logistics!.cargoLabel);
+    expect(game.view.economy.transactions.at(-1)?.kind).toBe("投资");
+    expect(resolveAction(game, "交付运输合同").intent).toBe("无法完成");
+
+    expect(resolveAction(game, "前往诺丁城").intent).toBe("旅行");
+    const delivered = resolveAction(game, "交付运输合同货物");
+    expect(delivered.intent).toBe("交付运输合同");
+    expect(task.status).toBe("完成");
+    expect(game.view.inventory).not.toContain(task.logistics!.cargoLabel);
+    expect(game.view.character!.coins).toBeGreaterThan(before);
+    expect(game.view.economy.transactions.at(-1)).toMatchObject({ kind: "收入", counterparty: expect.stringContaining("诺丁城") });
+    expect(task.progressEvidence?.at(-1)).toContain("验收");
   });
 
   it("后世机构事务必须先行动再验收，晋升依赖贡献与履历", () => {

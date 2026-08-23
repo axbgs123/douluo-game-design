@@ -119,6 +119,7 @@ function recordPlayerRelation(game: StoredGame, relation: StoredGame["view"]["re
 }
 
 function itemWeight(item: string): number {
+  if (/封签货箱/.test(item)) return 6;
   if (/魂导器|戒指|腰带|钱袋|钥匙|令|纸|册|药|草|丹/.test(item)) return 0.5;
   if (/锤|甲|长枪|大剑|矿|内丹|魂骨/.test(item)) return 4;
   if (/干粮|绳|行囊|包/.test(item)) return 1.5;
@@ -153,9 +154,7 @@ function recordEconomyTransaction(game: StoredGame, kind: StoredGame["view"]["ec
 
 type MarketCategory = StoredGame["view"]["economy"]["marketReports"][number]["category"];
 
-function updateMarketReport(game: StoredGame, category: MarketCategory) {
-  const locationId = game.view.locationId ?? "local";
-  const location = game.view.location ?? "当地";
+function updateMarketReport(game: StoredGame, category: MarketCategory, locationId = game.view.locationId ?? "local", location = locationById(locationId)?.name ?? game.view.location ?? "当地") {
   const locationText = `${location}${locationById(locationId)?.region ?? ""}`;
   let supply = 50;
   let demand = 50;
@@ -178,6 +177,23 @@ function updateMarketReport(game: StoredGame, category: MarketCategory) {
   game.view.economy.marketReports.push(report);
   game.view.economy.marketReports = game.view.economy.marketReports.slice(-30);
   return report;
+}
+
+function worldOrdinal(game: StoredGame): number {
+  return (game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
+}
+
+function activeLogisticsContract(game: StoredGame) {
+  return game.view.tasks.find((task) => task.kind === "运输合同" && task.status === "进行中" && task.logistics);
+}
+
+function recordLogisticsTransit(game: StoredGame, damaged: boolean, evidence: string): void {
+  const task = activeLogisticsContract(game);
+  if (!task?.logistics) return;
+  task.progressEvidence ??= [];
+  task.progressEvidence.push(evidence);
+  task.progressEvidence = task.progressEvidence.slice(-5);
+  if (damaged) task.logistics.cargoIntegrity = Math.max(40, task.logistics.cargoIntegrity - 20);
 }
 
 function tryResurrection(game: StoredGame): boolean {
@@ -373,6 +389,7 @@ function travelResolution(game: StoredGame, action: string): ActionResolution {
   if (offWorldIds.has(target.id) || offWorldIds.has(game.view.locationId ?? "")) {
     const passengerRoute = (game.view.era ?? 1) === 4 && /船票|客运|航班|民航|搭乘/.test(action) && !["dragon-horse-star", "sky-horse-star"].includes(target.id);
     if (passengerRoute) {
+      if (activeLogisticsContract(game)?.logistics?.mode === "星际货运") return impossible("商业货运舱单不能随普通客运船票托带；这份合同必须由已登记星舰实际承运。", [`驾驶星舰前往${target.name}`, "检查星舰补给", "放弃或赔付合同"]);
       const fare = Math.max(80, Math.ceil(target.travelMinutes / 72));
       if (character.coins < fare) return impossible(`联邦客运船票与保险需要${formatSoulCoins(fare)}。`, ["打工筹措船票", "申请学院交通补助", "继续留在当前星球"]);
       character.coins -= fare;
@@ -403,6 +420,7 @@ function travelResolution(game: StoredGame, action: string): ActionResolution {
     game.world.healthPoints -= integer(random, 4, 14);
     game.view.inventory = game.view.inventory.filter((item, index) => !(item === "半日干粮" && index === game.view.inventory.indexOf("半日干粮")));
   }
+  recordLogisticsTransit(game, encounter, `${origin}至${target.name}的在途记录${encounter ? "：遭遇风险，货封受损" : "：路线与货封正常"}`);
   game.view.map = buildMapView(game);
   game.view.mapHierarchy = buildMapHierarchy(game);
   return {
@@ -1423,6 +1441,54 @@ function buyResolution(game: StoredGame, action: string): ActionResolution {
 function economyResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
   const economy = game.view.economy;
+  if (/承接|接受|领取/.test(action) && /运输合同|货运合同|运货委托/.test(action)) {
+    if (activeLogisticsContract(game)) return impossible("当前已有一份未交付的运输合同，不能用新合同覆盖旧货单。", ["查看运输合同", "前往交付地点", "交付运输合同"]);
+    syncInventoryAndEconomy(game);
+    const destinations = game.view.map.filter((location) => location.travelMinutes > 0);
+    const destination = destinations.find((location) => action.includes(location.name)) ?? destinations.find((location) => !["高", "禁区"].includes(location.danger));
+    if (!destination) return impossible("当地没有已知且可直接承运的目的地。", ["查看地图", "调查交通路线", "前往交通节点"]);
+    const planetaryIds = ["tianluo-planet", "tiandou-planet", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star"];
+    const offWorld = planetaryIds.includes(destination.id) || planetaryIds.includes(game.view.locationId ?? "");
+    if (offWorld && !game.view.starship?.shipName) return impossible("跨星球货运不能夹带在普通客运船票中，需要已登记星舰和合法货舱。", ["申请项目舰", "先承接本星球运输", "搭乘客运航班"]);
+    if (!offWorld && game.view.inventoryLoad.used + 6 > game.view.inventoryLoad.capacity) return impossible("随身或车载余量不足以装下六单位封箱货物。", ["存放无关物品", "取得储物魂导器", "放弃这份合同"]);
+    const category: MarketCategory = /药/.test(action) ? "药材" : /金属/.test(action) ? "金属" : /粮|食/.test(action) ? "粮食" : /魂导/.test(action) ? "魂导材料" : "日用品";
+    const originMarket = updateMarketReport(game, category);
+    const baseCost = { 药材: 7, 金属: 12, 粮食: 4, 魂导材料: 20, 日用品: 5 }[category] * 6;
+    const purchaseCost = Math.max(6, Math.round(baseCost * originMarket.priceIndex / 100));
+    if (character.coins < purchaseCost) return impossible(`采购合同货物需要${formatSoulCoins(purchaseCost)}周转金，当前资金不足。`, ["积累周转金", "申请合法借贷", "选择更低价货类"]);
+    const travelDays = Math.max(1, Math.ceil(destination.travelMinutes / 1_440));
+    const destinationMarket = updateMarketReport(game, category, destination.id, destination.name);
+    const destinationValue = Math.max(6, Math.round(baseCost * destinationMarket.priceIndex / 100));
+    const payout = destinationValue + Math.max(8, Math.ceil(destination.travelMinutes / 720));
+    const id = `logistics-${game.actionIndex}`;
+    const cargoLabel = `封签货箱·${category}`;
+    const deadlineOrdinal = worldOrdinal(game) + travelDays + (offWorld ? 4 : 2);
+    character.coins -= purchaseCost;
+    if (!offWorld) game.view.inventory.push(cargoLabel);
+    recordEconomyTransaction(game, "投资", purchaseCost, `${game.view.location ?? "当地"}货运行`, `${category}运输合同采购与封签`);
+    ensureTask(game, { id, title: `将${category}运往${destination.name}`, kind: "运输合同", detail: `从${game.view.location ?? "当地"}承运六单位${category}；完好准时交付${formatSoulCoins(payout)}，逾期或破损扣款。`, status: "进行中", destinationId: destination.id, deadline: `最迟原作 ${Math.floor((deadlineOrdinal - 1) / 360)} 年第 ${((deadlineOrdinal - 1) % 360) + 1} 日交付`, logistics: { category, originId: game.view.locationId ?? "local", originName: game.view.location ?? "当地", destinationId: destination.id, destinationName: destination.name, cargoLabel, purchaseCost, payout, cargoIntegrity: 100, deadlineOrdinal, mode: offWorld ? "星际货运" : "陆路托运" } });
+    return { intent: "承接运输合同", minutes: 90, ruleSummary: `按起运地价格指数 ${originMarket.priceIndex} 支付${formatSoulCoins(purchaseCost)}采购并封签六单位${category}，承诺运往${destination.name}；当地价格指数 ${destinationMarket.priceIndex} 对应准时完好交付价${formatSoulCoins(payout)}，尚未产生收入。`, fallbackNarrative: `货行先验了我的身份和运力，才把采购款、货封编号、两地行情、目的地和最后期限写在同一张单上。钱已经离开账面，只有货物真的抵达，差价才可能成为利润。`, suggestions: [`前往${destination.name}`, "检查货封与路线", "查看交付期限"] };
+  }
+  if (/交付|结算/.test(action) && /运输合同|货运合同|运货委托|货物/.test(action)) {
+    const task = activeLogisticsContract(game);
+    if (!task?.logistics) return impossible("当前没有等待交付的运输合同。", ["承接运输合同", "查看任务", "调查市场"]);
+    const contract = task.logistics;
+    if (game.view.locationId !== contract.destinationId) return impossible(`合同只能在${contract.destinationName}按货封验收。`, [`前往${contract.destinationName}`, "检查合同目的地", "查看路线"]);
+    if (contract.mode === "陆路托运" && !game.view.inventory.includes(contract.cargoLabel)) {
+      task.status = "失败";
+      return { intent: "运输合同失败", minutes: 60, ruleSummary: "验收时无法出示封签货箱，合同按全损结案且没有收入。", fallbackNarrative: "收货人核完单据，又让人把车和行囊查了一遍。货封不在，解释不能替代货物；回单最后只留下全损和零支付两行。", suggestions: ["调查货物去向", "赔偿委托方", "保留事故记录"] };
+    }
+    const late = worldOrdinal(game) > contract.deadlineOrdinal;
+    const payout = Math.max(0, Math.round(contract.payout * contract.cargoIntegrity / 100 * (late ? .7 : 1)));
+    character.coins += payout;
+    game.view.inventory = game.view.inventory.filter((item) => item !== contract.cargoLabel);
+    task.status = "完成";
+    task.progressEvidence ??= [];
+    task.progressEvidence.push(`${contract.destinationName}验收：货封完整度 ${contract.cargoIntegrity}%${late ? "，逾期扣款" : "，期限内交付"}`);
+    recordEconomyTransaction(game, "收入", payout, `${contract.destinationName}收货行`, `${contract.category}运输合同结算`);
+    const profit = payout - contract.purchaseCost;
+    return { intent: "交付运输合同", minutes: 120, ruleSummary: `${contract.destinationName}按货封、完整度和期限支付${formatSoulCoins(payout)}；本单${profit >= 0 ? `盈利${formatSoulCoins(profit)}` : `亏损${formatSoulCoins(Math.abs(profit))}`}。`, fallbackNarrative: `收货人没有因为我抵达就立刻付款。他逐个核对封签、破损和日期，扣款也写在回单上。最后到账的数减去出发前的采购款，才是这趟真正留下的结果。`, suggestions: ["核对运输账目", "调查当地供需", "寻找返程货物"] };
+  }
   if (/市场行情|调查物价|打听物价|询价|供需/.test(action)) {
     const requested: MarketCategory[] = /药/.test(action) ? ["药材"] : /金属/.test(action) ? ["金属"] : /粮/.test(action) ? ["粮食"] : /魂导/.test(action) ? ["魂导材料"] : ["药材", "金属", "粮食", "魂导材料", "日用品"];
     const reports = requested.map((category) => updateMarketReport(game, category));
@@ -1912,6 +1978,7 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
     starship.loggedFlightHours += loggedHours;
     const military = game.view.affiliations.find((item) => item.militaryRank);
     if (military) military.flightHours = (military.flightHours ?? 0) + loggedHours;
+    recordLogisticsTransit(game, hazard, `${game.view.location ?? destination.name}星际货运记录${hazard ? "：航程故障导致货封受损" : "：舱单与货封正常"}`);
     return { intent: "星际航行", minutes: travelMinutes, ruleSummary: `${starship.shipName}抵达${destination.name}；航程约 ${Math.round(travelMinutes / 1_440)} 天，消耗燃料 ${fuelCost}%、物资 ${supplyCost}%${hazard ? `，途中故障使舰体降至 ${starship.hull}%` : "，航行未发生需要维修的事故"}。`, fallbackNarrative: hazard ? `航程中段，舰体警报突然从尾部一路亮到轮机舱。船员没有等我喊口号，各自按演练封舱、切断故障回路。抵达${destination.name}时没有少人，但外壳留下了必须进坞处理的伤。` : `离港以后，星图上的距离很久都没有明显缩短。驾驶、导航和轮机按班次交接，真正抵达${destination.name}时，最先被检查的是剩余燃料和返航余量，而不是窗外景色。`, suggestions: ["检查舰体与船员", "开展当地调查", "规划返航补给"], systemMessages: [`抵达 · ${destination.name}`] };
   }
   if (/调查|扫描|探索任务|采样/.test(action)) {
@@ -2073,7 +2140,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
   else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
   else if (/建立|创建|招募|任命|扩建|领地|外交|情报网|经营势力|管理宗门/.test(action) && /宗门|势力|组织|成员|领地|外交|情报/.test(action)) resolution = factionManagementResolution(game, action);
-  else if (/存入.*(?:魂币|钱)|存钱|取出.*(?:魂币|钱)|取钱|借贷|借钱|贷款|还债|偿还债务|黑市|开店|商铺|经营生意|悬赏|市场行情|调查物价|打听物价|询价|供需/.test(action)) resolution = economyResolution(game, action);
+  else if (/存入.*(?:魂币|钱)|存钱|取出.*(?:魂币|钱)|取钱|借贷|借钱|贷款|还债|偿还债务|黑市|开店|商铺|经营生意|悬赏|市场行情|调查物价|打听物价|询价|供需|运输合同|货运合同|运货委托/.test(action)) resolution = economyResolution(game, action);
   else if (/存放|收进仓库|放回住处|取回|从.*取出|拿回/.test(action)) resolution = storageResolution(game, action);
   else if (/化名|伪装身份|假名|自称/.test(action)) resolution = disguiseResolution(game, action);
   else if (/偷窃|盗窃|抢劫|诈骗|绑架|放火|勒索/.test(action)) resolution = crimeResolution(game, action);

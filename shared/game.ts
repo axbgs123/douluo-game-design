@@ -339,7 +339,7 @@ export interface NpcRelationEvidenceView {
 export interface TaskView {
   id?: string;
   title: string;
-  kind: "承诺" | "线索" | "计划" | "修炼需求" | "悬赏";
+  kind: "承诺" | "线索" | "计划" | "修炼需求" | "悬赏" | "运输合同";
   detail: string;
   status?: "进行中" | "完成" | "失败";
   deadline?: string;
@@ -347,6 +347,21 @@ export interface TaskView {
   ownerId?: string;
   createdActionIndex?: number;
   progressEvidence?: string[];
+  logistics?: LogisticsContractView;
+}
+
+export interface LogisticsContractView {
+  category: MarketReportView["category"];
+  originId: string;
+  originName: string;
+  destinationId: string;
+  destinationName: string;
+  cargoLabel: string;
+  purchaseCost: number;
+  payout: number;
+  cargoIntegrity: number;
+  deadlineOrdinal: number;
+  mode: "陆路托运" | "星际货运";
 }
 
 export interface WorldTimeView {

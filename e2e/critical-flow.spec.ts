@@ -41,6 +41,8 @@ test.beforeEach(async ({ request }) => {
 
 test("玩家可以完成角色创建、推进故事并管理存档", async ({ page }) => {
   await createPlayingCharacter(page, 1);
+  await page.getByRole("button", { name: "背包", exact: true }).click();
+  await expect(page.getByRole("button", { name: "承接货运", exact: true })).toBeVisible();
   await submitAction(page, "在住处等待一天，留意附近动静");
   await expect(page.getByText("晨光沿着窗纸落进屋里", { exact: false })).toBeVisible();
   await page.getByText("查看判定", { exact: true }).click();

@@ -128,6 +128,24 @@ describe("multi-era foundations", () => {
     expect(game.view.character!.coins).toBeLessThan(beforeCoins);
   });
 
+  it("does not let a passenger ticket satisfy an accepted interplanetary freight contract", () => {
+    const game = playingGame(4, "d4-passenger-freight-boundary");
+    game.view.locationId = "tianluo-planet";
+    game.view.location = "天罗星";
+    game.world.discoveredLocations.push("tianluo-planet", "tiandou-planet");
+    game.view.map = buildMapView(game);
+    game.view.character!.coins = 1_000;
+    game.view.character!.age = 7;
+    resolveAction(game, "进行星舰指挥模拟训练");
+    game.view.starship!.shipName = "测试登记舰";
+    game.view.starship!.shipClass = "陨星级侦察舰";
+
+    expect(resolveAction(game, "承接运往天斗星的日用品运输合同").intent).toBe("承接运输合同");
+    expect(game.view.tasks.find((task) => task.kind === "运输合同")?.logistics?.mode).toBe("星际货运");
+    expect(resolveAction(game, "购买船票并搭乘客运航班前往天斗星").intent).toBe("无法完成");
+    expect(game.view.locationId).toBe("tianluo-planet");
+  });
+
   it("does not expose first-era factions as active organizations in later eras", () => {
     const game = playingGame(3, "faction-era-isolation");
     game.view.worldTime = { year: 20_000, day: 1, time: "08:00", season: "春", era: "唐舞麟基准年" };
