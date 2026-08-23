@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "../data/world.js";
-import { resolveAction } from "./actions.js";
+import { applyActionResult, resolveAction } from "./actions.js";
 import { settleRun } from "./endings.js";
 import { awakenCharacter, createGame, selectCandidate } from "./generator.js";
-import { advanceWorldTime, ensureGameState } from "./world.js";
-import { applyNarrativeMemory } from "../services/deepseek.js";
+import { advanceWorldTime, createHiddenWorld, ensureGameState, recordCanonInfluence } from "./world.js";
+import { applyNarrativeMemory, violatesCanonChronology } from "../services/deepseek.js";
 
 const personality = {
   keywords: ["谨慎", "好奇", "重情"],
@@ -96,7 +96,7 @@ describe("完整游玩规则", () => {
     delete (game as unknown as { schemaVersion?: number }).schemaVersion;
     delete (game.view as Partial<typeof game.view>).map;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.schemaVersion).toBe(4);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.world.npcs["tang-san"]).toBeDefined();
   });
@@ -153,9 +153,53 @@ describe("完整游玩规则", () => {
     game.world.npcs["tang-san"].knownToPlayer = true;
     applyNarrativeMemory(game, { narrative: "", suggestions: [], memory: { summary: "我在诺丁城认识了唐三。", openThreads: ["学院名额"], keyChoice: "答应帮助工读生", npcNotes: { 唐三: "记得我替他保守过秘密" }, chapterTitle: "学院后街" } });
     expect(game.storyMemory.summary).toContain("唐三");
+    expect(game.storyMemory.summary).not.toContain("我在诺丁城");
     expect(game.storyMemory.openThreads).toContain("学院名额");
     expect(game.view.chapter.title).toBe("学院后街");
     expect(game.world.npcs["tang-san"].memoryOfPlayer.at(-1)).toContain("保守");
+  });
+
+  it("unrelated deviation cannot rewrite a canon event", () => {
+    const game = awakened("causal-guard");
+    game.world = createHiddenWorld(-1, game.view.locationId!);
+    game.world.deviation = 999;
+    game.view.worldTime = { era: "比唐三早一年", year: -1, day: 360, time: "23:00", season: "冬" };
+    advanceWorldTime(game, 120);
+    expect(game.world.firedCanonEvents).toContain("tang-awakening");
+    expect(game.world.suppressedCanonEvents).not.toContain("tang-awakening");
+  });
+
+  it("a strong linked cause can change the matching canon event", () => {
+    const game = awakened("causal-link");
+    game.world = createHiddenWorld(-1, game.view.locationId!);
+    game.view.canonInfluences = [];
+    game.view.worldTime = { era: "比唐三早一年", year: -1, day: 360, time: "23:00", season: "冬" };
+    recordCanonInfluence(game, { source: "测试", description: "提前改变唐三的入学条件", affectedNpcIds: ["tang-san"], strength: 50 });
+    advanceWorldTime(game, 120);
+    expect(game.world.suppressedCanonEvents).toContain("tang-awakening");
+    expect(game.view.canonInfluences[0].affects).toContain("唐三");
+  });
+
+  it("respects birth years and canonical locations", () => {
+    const early = createHiddenWorld(-20, "notting-city");
+    expect(early.npcs["tang-san"].alive).toBe(false);
+    const beforeAwakening = createHiddenWorld(-1, "notting-city");
+    expect(beforeAwakening.npcs["ning-rongrong"].age).toBe(5);
+    expect(beforeAwakening.npcs["ning-rongrong"].locationId).toBe("seven-treasure-fort");
+  });
+
+  it("normalizes generated prose to third-person limited", () => {
+    const game = awakened("third-person");
+    applyActionResult(game, "回家", { intent: "测试", minutes: 0, ruleSummary: "", fallbackNarrative: "", suggestions: [] }, "我顺着土路回家。路人问：“你去哪？”我没有回答。", []);
+    const text = game.view.narrative.at(-1)?.text ?? "";
+    expect(text).toContain(game.view.character!.name);
+    expect(text).not.toMatch(/(^|[^“「『])我/);
+  });
+
+  it("rejects future canon developments before their year", () => {
+    expect(violatesCanonChronology("宁荣荣已经去了史莱克学院就读。", -1)).toBe(true);
+    expect(violatesCanonChronology("七宝琉璃宗位于天斗城外，守卫严密。", -1)).toBe(false);
+    expect(violatesCanonChronology("宁荣荣进入史莱克学院就读。", 6)).toBe(false);
   });
 });
 

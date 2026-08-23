@@ -21,6 +21,8 @@ export interface CandidatePublic {
   location: string;
   originName: string;
   originSummary: string;
+  originFacts: Array<{ label: string; value: string }>;
+  startingRelations: RelationView[];
   omens: string[];
 }
 
@@ -88,6 +90,8 @@ export interface RelationView {
   impression: string;
   faction?: string;
   lastSeen?: string;
+  strength?: number;
+  category?: "亲属" | "师友" | "同伴" | "势力" | "敌对" | "其他";
 }
 
 export interface TaskView {
@@ -128,6 +132,14 @@ export interface WorldEventView {
   location: string;
   status: string;
   remaining: string;
+}
+
+export interface CanonInfluenceView {
+  id: string;
+  action: string;
+  affects: string;
+  strength: string;
+  date: string;
 }
 
 export interface HuntRecommendationView {
@@ -217,6 +229,7 @@ export interface GameView {
   map: MapLocationView[];
   news: WorldNewsView[];
   activeEvents: WorldEventView[];
+  canonInfluences: CanonInfluenceView[];
   knownFigures: KnownFigureView[];
   affiliations: AffiliationView[];
   chapter: StoryChapterView;

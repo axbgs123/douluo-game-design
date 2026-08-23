@@ -1,5 +1,6 @@
 import type { ActionResolution, StoredGame } from "../domain/model.js";
-import { characterById } from "../data/world.js";
+import { CANON_EVENTS, FACTIONS, characterById } from "../data/world.js";
+import { toThirdPersonNarrative } from "../domain/narrative.js";
 import { readDeepSeekSettings } from "./settings.js";
 
 export interface NarrationResult {
@@ -17,6 +18,18 @@ export interface NarrationResult {
 function extractJson(text: string): unknown {
   const trimmed = text.trim().replace(/^```json\s*/i, "").replace(/\s*```$/, "");
   return JSON.parse(trimmed);
+}
+
+export function violatesCanonChronology(text: string, year: number): boolean {
+  const compact = text.replace(/\s+/g, "");
+  if (year < 6) {
+    const earlyShrekNames = "唐三|小舞|宁荣荣|朱竹清";
+    if (new RegExp(`(${earlyShrekNames}).{0,28}(进入|去了|就读|加入|学员).{0,8}史莱克`).test(compact)) return true;
+    if (new RegExp(`史莱克.{0,28}(${earlyShrekNames}).{0,12}(学员|入学|就读)`).test(compact)) return true;
+  }
+  if (year < 8 && /(全大陆高级魂师学院精英大赛|魂师大赛).{0,20}(已经|夺冠|结束|决赛)/.test(compact)) return true;
+  if (year < 12 && /(唐门).{0,12}(已经建立|成立|宗主|总部|弟子招募)/.test(compact)) return true;
+  return false;
 }
 
 export async function interpretActionWithDeepSeek(game: StoredGame, playerInput: string): Promise<string | null> {
@@ -72,9 +85,12 @@ export async function narrateWithDeepSeek(
         {
           role: "system",
           content: [
-            "你是《斗罗大陆》第一部背景的第一人称互动小说叙事器。",
+            "你是《斗罗大陆》第一部背景的第三人称限知互动小说叙事器。正文始终贴着玩家角色的感受与判断，用角色姓名和他或她来写；只有人物对白可以使用第一人称。",
             "程序已经决定了行动结果；你只能描写这个结果，不能改变胜负、时间、伤势、物品、魂力、关系、猎魂阶段或世界事件。",
             "保持中文小说感、人物动机连续和世界内视角，不泄露角色不知道的隐藏设定。",
+            "严格服从 worldTime、occurredCanonEvents 与 futureCanonLocks。futureCanonLocks 中的事在对应年份前绝对没有发生，NPC 不得提前知道、参加或谈论其结果。",
+            "原作剧情只有在 playerCausalFootprints 明确连接到相关人物、势力或地点后才允许偏离。没有因果记录时，不能擅自提前、延后、替换或抹去原作事件。",
+            "区分作者知道、模型知道与角色知道。玩家问到尚未发生的原作内容时，本地人只能给出当时能查到的常识、传闻或不知道；穿越者也只能依据其已解锁的剧情记忆。",
             "正文从眼前正在发生的动作或感官细节写起，句子长短要有变化。NPC 的说话方式要符合年龄、身份和当下顾虑。",
             "少做解释，多写手上的动作、衣物、气味、声音、停顿和不体面的细节。允许人物判断错、犹豫或话说半截。",
             "删掉空泛升华、万能比喻、整齐排比和总结性收尾。不要使用「首先、其次、最后」「值得注意的是」「这意味着」「本质上」「不是……而是……」等模板句。",
@@ -83,7 +99,7 @@ export async function narrateWithDeepSeek(
             "建议必须是角色眼下做得到的动作。若程序给出了建议，优先沿用其含义。",
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
-            "输出 JSON：{\"narrative\":\"1至4段第一人称正文\",\"suggestions\":[\"建议1\",\"建议2\",\"建议3\"],\"memory\":{\"summary\":\"长期摘要\",\"openThreads\":[\"未决事项\"],\"keyChoice\":\"本次关键选择，无则空字符串\",\"npcNotes\":{\"人名\":\"应记住的互动\"},\"chapterTitle\":\"章节名\"}}。",
+            "输出 JSON：{\"narrative\":\"1至4段第三人称限知正文\",\"suggestions\":[\"建议1\",\"建议2\",\"建议3\"],\"memory\":{\"summary\":\"长期摘要\",\"openThreads\":[\"未决事项\"],\"keyChoice\":\"本次关键选择，无则空字符串\",\"npcNotes\":{\"人名\":\"应记住的互动\"},\"chapterTitle\":\"章节名\"}}。",
           ].join("\n"),
         },
         {
@@ -94,6 +110,10 @@ export async function narrateWithDeepSeek(
             personalityEvidence: game.personalityProfile.evidence?.slice(-12),
             location: game.view.location,
             worldTime: game.view.worldTime,
+            occurredCanonEvents: CANON_EVENTS.filter((event) => game.world.firedCanonEvents.includes(event.id)).map(({ year, title, publicSummary }) => ({ year, title, publicSummary })),
+            futureCanonLocks: CANON_EVENTS.filter((event) => event.year > (game.view.worldTime?.year ?? 0)).map(({ year, title, participantIds }) => ({ notBeforeYear: year, title, participants: participantIds.map((id) => characterById(id)?.name ?? id) })),
+            playerCausalFootprints: game.world.canonCausalFootprints.slice(-16),
+            knownInstitutions: FACTIONS.filter((faction) => faction.id !== "tang-sect" || (game.view.worldTime?.year ?? 0) >= 12).map(({ name, kind, description }) => ({ name, kind, description })),
             lifeGoal: game.view.lifeGoal,
             affiliations: game.view.affiliations,
             relationships: game.view.relations.slice(0, 16),
@@ -130,6 +150,8 @@ export async function narrateWithDeepSeek(
   if (typeof parsed.narrative !== "string" || !Array.isArray(parsed.suggestions)) {
     throw new Error("DeepSeek 返回结构不合法");
   }
+  const chronologyText = `${parsed.narrative}\n${parsed.suggestions.filter((item): item is string => typeof item === "string").join("\n")}`;
+  if (violatesCanonChronology(chronologyText, game.view.worldTime?.year ?? 0)) throw new Error("DeepSeek 生成内容违反当前原作时间线，已改用安全叙事");
 
   return {
     narrative: parsed.narrative,
@@ -141,14 +163,17 @@ export async function narrateWithDeepSeek(
 export function applyNarrativeMemory(game: StoredGame, generated: NarrationResult): void {
   const memory = generated.memory;
   if (!memory) return;
-  if (typeof memory.summary === "string" && memory.summary.trim()) game.storyMemory.summary = memory.summary.trim().slice(0, 4000);
+  const character = game.view.character;
+  const normalize = (text: string) => character ? toThirdPersonNarrative(text, character.name, character.gender) : text;
+  if (typeof memory.summary === "string" && memory.summary.trim()) game.storyMemory.summary = normalize(memory.summary.trim()).slice(0, 4000);
   if (Array.isArray(memory.openThreads)) game.storyMemory.openThreads = memory.openThreads.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.slice(0, 120)).slice(0, 12);
-  if (typeof memory.keyChoice === "string" && memory.keyChoice.trim()) game.storyMemory.keyChoices = [...game.storyMemory.keyChoices, memory.keyChoice.trim().slice(0, 160)].slice(-20);
+  if (typeof memory.keyChoice === "string" && memory.keyChoice.trim()) game.storyMemory.keyChoices = [...game.storyMemory.keyChoices, normalize(memory.keyChoice.trim()).slice(0, 160)].slice(-20);
   if (memory.npcNotes && typeof memory.npcNotes === "object") {
     for (const [name, note] of Object.entries(memory.npcNotes)) if (typeof note === "string" && note.trim()) {
-      game.storyMemory.npcNotes[name.slice(0, 30)] = note.trim().slice(0, 400);
+      const normalizedNote = normalize(note.trim());
+      game.storyMemory.npcNotes[name.slice(0, 30)] = normalizedNote.slice(0, 400);
       const npc = Object.values(game.world.npcs).find((item) => item.name === name && item.knownToPlayer);
-      if (npc) { npc.memoryOfPlayer.push(note.trim().slice(0, 220)); npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12); }
+      if (npc) { npc.memoryOfPlayer.push(normalizedNote.slice(0, 220)); npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12); }
     }
   }
   if (typeof memory.chapterTitle === "string" && memory.chapterTitle.trim() && memory.chapterTitle.trim() !== game.storyMemory.chapterTitle) {

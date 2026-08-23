@@ -48,10 +48,10 @@ export function rerollCandidates(id: string): Promise<GameView> {
   return request(`/api/games/${id}/reroll`, { method: "POST" });
 }
 
-export function selectCandidate(id: string, candidateId: string): Promise<GameView> {
+export function selectCandidate(id: string, candidateId: string, customName?: string): Promise<GameView> {
   return request(`/api/games/${id}/select`, {
     method: "POST",
-    body: JSON.stringify({ candidateId }),
+    body: JSON.stringify({ candidateId, customName: customName?.trim() || undefined }),
   });
 }
 

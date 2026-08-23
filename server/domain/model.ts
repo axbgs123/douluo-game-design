@@ -50,6 +50,18 @@ export interface NpcRelationState {
   lastChangedYear: number;
 }
 
+export interface CanonCausalFootprint {
+  id: string;
+  source: string;
+  description: string;
+  atYear: number;
+  atDay: number;
+  locationId: string;
+  affectedNpcIds: string[];
+  affectedFactionIds: string[];
+  strength: number;
+}
+
 export interface DynamicWorldEvent {
   id: string;
   title: string;
@@ -80,6 +92,7 @@ export interface HiddenWorldState {
   firedCanonEvents: string[];
   suppressedCanonEvents: string[];
   deviation: number;
+  canonCausalFootprints: CanonCausalFootprint[];
   npcRelations: NpcRelationState[];
   dynamicEvents: DynamicWorldEvent[];
   lastAutonomyOrdinal: number;

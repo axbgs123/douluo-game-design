@@ -28,6 +28,9 @@ interface OriginTemplate {
 
 const SURNAMES = ["林", "苏", "顾", "沈", "陆", "叶", "程", "江", "白", "宁", "周", "秦"];
 const GIVEN_NAMES = ["川", "宁", "昭", "砚", "澜", "遥", "清", "越", "衡", "棠", "烬", "青", "禾", "微"];
+const FATHER_GIVEN_NAMES = ["守义", "青禾", "岳山", "德昌", "远林", "成业", "茂生", "长顺"];
+const MOTHER_GIVEN_NAMES = ["兰芝", "素琴", "秋娘", "静娴", "春桃", "桂香", "月娥", "秀禾"];
+const OFFICER_NAMES = ["素云涛", "韩守成", "顾岩", "赵闻", "林策", "程肃"];
 
 const ORIGINS: OriginTemplate[] = [
   {
@@ -383,6 +386,94 @@ function generateName(random: () => number): string {
   return `${pick(random, SURNAMES)}${pick(random, GIVEN_NAMES)}${doubleName ? pick(random, GIVEN_NAMES) : ""}`;
 }
 
+function thirdPersonClue(text: string, name: string, gender: "男" | "女"): string {
+  const pronoun = gender === "女" ? "她" : "他";
+  return text.replaceAll("你的", `${pronoun}的`).replaceAll("你", pronoun).replace(new RegExp(`^${pronoun}`), name);
+}
+
+function specificOrigin(
+  random: () => number,
+  origin: OriginTemplate,
+  initialLocation: string,
+  characterName: string,
+): Pick<CandidatePublic, "originName" | "originSummary" | "originFacts" | "startingRelations" | "location"> {
+  const familySurname = characterName.slice(0, 1);
+  const guardian = `${familySurname}${pick(random, FATHER_GIVEN_NAMES)}`;
+  const secondGuardian = `${pick(random, SURNAMES)}${pick(random, MOTHER_GIVEN_NAMES)}`;
+  const officer = pick(random, OFFICER_NAMES);
+  const detail = pick(random, origin.details);
+  let location = initialLocation;
+  let originName = origin.name;
+  let authority = `${location}里正 ${pick(random, SURNAMES)}伯安`;
+  let livelihood = origin.summary;
+  let obligation = detail;
+
+  if (origin.id === "sect-village") {
+    const variant = pick(random, [
+      { name: "七宝琉璃宗青禾药庄佃户", location: "七宝琉璃宗东南青禾村", authority: "七宝琉璃宗外务堂青禾药庄", livelihood: "家里替七宝琉璃宗照料止血草和宁神花，每年按册交药。", obligation: "药庄管事下月会挑两名识字孩子进外院做杂役。" },
+      { name: "蓝电霸王龙宗雷谷属村牧户", location: "蓝电霸王龙宗西麓雷谷村", authority: "蓝电霸王龙宗外事院雷谷执事", livelihood: "家里替宗门放养驮兽，也负责清理山门外的雷击木。", obligation: "外事院刚补发一份欠了半年的驮兽草料钱。" },
+      { name: "七宝琉璃宗商道护庄村民", location: "天斗城西南七宝商道护庄", authority: "七宝琉璃宗商队护卫所", livelihood: "村里替七宝商队修车、喂马并轮值守夜，收成按户折成役期。", obligation: "最近一支商队误了归期，护卫所正在逐户问话。" },
+    ]);
+    ({ name: originName, location, authority, livelihood, obligation } = variant);
+  } else {
+    const authorityByOrigin: Record<string, string> = {
+      "village-farmer": `${location}里正 ${pick(random, SURNAMES)}伯安`,
+      "smith-family": `${location}百炼铁匠铺`,
+      "border-guard": `${location}第三巡守队`,
+      herbalist: `${location}采药行会`,
+      "fallen-clan": `${familySurname}氏旧宅旁支族老会`,
+      "temple-clerk": `${location}武魂分殿`,
+      "merchant-caravan": "永顺商队",
+      "mystery-arrival": `${location}收养家庭`,
+      "hunter-family": `${location}猎户互助队`,
+      "fisher-family": `${location}东平码头渔行`,
+      "academy-servant": `${location}后勤处`,
+      "minor-noble": `${familySurname}氏乡间庄园`,
+      "refugee-family": `${location}新垦户名册`,
+      "tavern-family": `${location}归雁酒馆`,
+      "stone-quarry": `${location}青崖采石场`,
+      "travelling-healer": `${guardian}的游方药箱`,
+    };
+    authority = authorityByOrigin[origin.id] ?? authority;
+    const nameByOrigin: Record<string, string> = {
+      "village-farmer": `${location}田户家庭`,
+      "smith-family": `${location}百炼铁匠铺家庭`,
+      "border-guard": `${location}第三巡守队军户`,
+      herbalist: `${location}采药行会医家`,
+      "fallen-clan": `${familySurname}氏旧宅魂师旁支`,
+      "temple-clerk": `${location}武魂分殿杂役家庭`,
+      "merchant-caravan": "永顺商队随行家庭",
+      "mystery-arrival": `${location}无籍收养家庭`,
+      "hunter-family": `${location}猎户互助队家庭`,
+      "fisher-family": `${location}东平码头渔户`,
+      "academy-servant": `${location}后勤雇工家庭`,
+      "minor-noble": `${familySurname}氏乡间庄园旁支`,
+      "refugee-family": `${location}新垦户家庭`,
+      "tavern-family": `${location}归雁酒馆家庭`,
+      "stone-quarry": `${location}青崖采石场石工家庭`,
+      "travelling-healer": `${guardian}的游方医家`,
+    };
+    originName = nameByOrigin[origin.id] ?? `${location}${origin.name}`;
+  }
+
+  return {
+    location,
+    originName,
+    originSummary: `${livelihood}${obligation}`,
+    originFacts: [
+      { label: "家庭", value: `${guardian}与${secondGuardian}` },
+      { label: "归属", value: authority },
+      { label: "生计", value: livelihood },
+      { label: "眼前事", value: obligation },
+    ],
+    startingRelations: [
+      { name: guardian, relation: "父亲", impression: "盼着孩子觉醒，又怕结果招来麻烦", strength: 78, category: "亲属" },
+      { name: secondGuardian, relation: "母亲", impression: "提前收好了路上要用的干粮和旧衣", strength: 82, category: "亲属" },
+      { name: officer, relation: "武魂殿巡查执事", impression: "只按名册与觉醒结果办事", faction: "武魂殿", strength: 8, category: "势力" },
+    ],
+  };
+}
+
 export function generateCandidates(
   seed: string,
   rerollIndex: number,
@@ -405,22 +496,27 @@ export function generateCandidates(
     const offset = integer(random, -20, 20);
     const innateSoulPower = integer(random, soul.soulPowerRange[0], soul.soulPowerRange[1]);
     const name = generateName(random);
+    const concreteOrigin = specificOrigin(random, origin, pick(random, origin.locations), name);
     const candidate: CandidatePublic = {
       id: `${rerollIndex}-${index}-${Math.floor(random() * 1_000_000).toString(36)}`,
       name,
       gender,
       eraRelation: eraRelation(offset),
       birthYearOffset: offset,
-      location: pick(random, origin.locations),
-      originName: origin.name,
-      originSummary: `${origin.summary}${pick(random, origin.details)}`,
-      omens: [pick(random, soul.omens), pick(random, [
+      location: concreteOrigin.location,
+      originName: concreteOrigin.originName,
+      originSummary: concreteOrigin.originSummary,
+      originFacts: concreteOrigin.originFacts,
+      startingRelations: concreteOrigin.startingRelations,
+      omens: [thirdPersonClue(pick(random, soul.omens), name, gender), thirdPersonClue(pick(random, [
         "觉醒日前一夜，你做了一个醒来后便模糊的梦",
         "家中长辈对你的身世似乎隐瞒了一小部分",
         "附近魂师曾评价你的气息比同龄人更稳定",
         "你没有显眼异象，平凡得近乎让人安心",
-      ])],
+      ]), name, gender)],
     };
+    candidate.originSummary = thirdPersonClue(candidate.originSummary, name, gender);
+    candidate.originFacts = candidate.originFacts.map((fact) => ({ ...fact, value: thirdPersonClue(fact.value, name, gender) }));
 
     const giftRoll = random();
     const giftPreference = preferences?.gift ?? "均衡";
@@ -454,7 +550,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     hiddenCandidates,
     personalityProfile: profile,
     actionIndex: 0,
@@ -488,9 +584,10 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       map: [],
       news: [],
       activeEvents: [],
+      canonInfluences: [],
       knownFigures: [],
       affiliations: [],
-      chapter: { number: 1, title: "觉醒之日", summary: "六岁的我正等着武魂觉醒。" },
+      chapter: { number: 1, title: "觉醒之日", summary: "六岁的主角正等着武魂觉醒。" },
       runProgress: {
         lifeGoal: input.lifeGoal?.trim() || "成为自己认可的强者",
         highestSoulRank: 0,
@@ -524,9 +621,18 @@ export function rerollCandidates(game: StoredGame, preferences?: WeightPreferenc
   game.view.updatedAt = new Date().toISOString();
 }
 
-export function selectCandidate(game: StoredGame, candidateId: string): void {
+export function selectCandidate(game: StoredGame, candidateId: string, customName?: string): void {
   const candidate = game.hiddenCandidates.find((item) => item.public.id === candidateId);
   if (!candidate) throw new Error("候选角色不存在或已经失效");
+
+  const chosenName = customName?.trim();
+  if (chosenName) {
+    const oldName = candidate.public.name;
+    candidate.public.name = chosenName;
+    candidate.public.originSummary = candidate.public.originSummary.replaceAll(oldName, chosenName);
+    candidate.public.originFacts = candidate.public.originFacts.map((fact) => ({ ...fact, value: fact.value.replaceAll(oldName, chosenName) }));
+    candidate.public.omens = candidate.public.omens.map((omen) => omen.replaceAll(oldName, chosenName));
+  }
 
   game.view.selectedCandidateId = candidateId;
   game.view.status = "awakening";
@@ -535,20 +641,27 @@ export function selectCandidate(game: StoredGame, candidateId: string): void {
   game.world = createHiddenWorld(candidate.public.birthYearOffset ?? 0, game.view.locationId);
   game.view.worldTime = { era: candidate.public.eraRelation, year: candidate.public.birthYearOffset ?? 0, day: 1, time: "08:00", season: "春" };
   game.view.map = buildMapView(game);
+  game.view.candidates = game.hiddenCandidates.map((item) => item.public);
   game.view.narrative = [createEntry("narration", buildAwakeningPrelude(candidate, game.personalityProfile))];
-  game.view.suggestions = ["观察主持觉醒的魂师", "回想家人对今日的态度", "安静等待自己的名字被叫到"];
+  const scores = game.personalityProfile.scores;
+  game.view.suggestions = [
+    scores.patience >= 2 ? "留意觉醒魂师检查阵法的顺序" : scores.courage >= 2 ? "走近阵法观察六块黑石" : "站在家人身边等候点名",
+    scores.empathy >= 2 ? "安慰前一个觉醒失败的孩子" : scores.ambition >= 2 ? "打听今天有没有先天高魂力的孩子" : "听一听门外家长的议论",
+    scores.independence >= 2 ? "直接询问觉醒时该注意什么" : "把家人临行前的话再想一遍",
+  ];
   game.view.updatedAt = new Date().toISOString();
 }
 
 function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityProfile): string {
-  const firstPersonOrigin = candidate.public.originSummary
-    .replaceAll("你的", "我的")
-    .replaceAll("你", "我");
+  const pronoun = candidate.public.gender === "女" ? "她" : "他";
+  const thirdPersonOrigin = candidate.public.originSummary
+    .replaceAll("你的", `${pronoun}的`)
+    .replaceAll("你", pronoun);
   return [
     `天刚亮，${candidate.public.location}的石路还带着夜里的凉气。今天轮到六岁的孩子觉醒，门外已经挤了不少人。`,
-    `我叫${candidate.public.name}，家里是${candidate.public.originName}。${firstPersonOrigin}`,
-    `队伍一点点往前挪。主持仪式的魂师翻着名册，头也没抬。我把手藏进袖口，${profile.summary.includes("勇敢") ? "脚尖已经朝向阵法" : "指甲在掌心掐出一道浅印"}。`,
-    "六块黑石摆在地上，边角磨得发亮。前一个孩子哭着跑出去。执事喊了我的名字。",
+    `${candidate.public.name}生在${candidate.public.originName}。${thirdPersonOrigin}`,
+    `队伍一点点往前挪。主持仪式的魂师翻着名册，头也没抬。${candidate.public.name}把手藏进袖口，${profile.scores.courage >= 2 ? "脚尖已经朝向阵法" : profile.scores.patience >= 2 ? "目光沿着六块黑石慢慢看了一圈" : "指甲在掌心掐出一道浅印"}。`,
+    `六块黑石摆在地上，边角磨得发亮。前一个孩子哭着跑出去。执事念出了${candidate.public.name}的名字。`,
   ].join("\n\n");
 }
 
@@ -598,19 +711,18 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     for (const npc of nearby) revealNpc(game, npc.id);
     if (nearby.length) game.view.narrative.push(createEntry("system", `旧世见闻 · 认出了${nearby.map((npc) => npc.name).join("、")}`));
   }
-  game.view.relations = [
-    { name: "家人", relation: "亲属", impression: "期待中带着担忧" },
-    { name: "觉醒魂师", relation: "初识", impression: selected.innateSoulPower >= 7 ? "明显重视" : "公事公办" },
-  ];
+  game.view.relations = selected.public.startingRelations.map((relation, index) => index === 2
+    ? { ...relation, impression: selected.innateSoulPower >= 7 ? "已经记住这次少见的觉醒结果" : relation.impression }
+    : relation);
   game.view.tasks = selected.innateSoulPower > 0
     ? [
-        { id: "life-goal", title: game.view.lifeGoal, kind: "计划", detail: "这是我为自己定下的人生目标。", status: "进行中" },
+        { id: "life-goal", title: game.view.lifeGoal, kind: "计划", detail: "这是角色准备花上一生去完成的事。", status: "进行中" },
         { id: "first-ring", title: "获得第一魂环", kind: "修炼需求", detail: "魂力达到十级后，完成一次完整猎魂。", status: "进行中" },
       ]
     : [{ title: "理解觉醒结果", kind: "线索", detail: "没有显现先天魂力并不等于所有道路都已断绝。" }];
   game.view.narrative.push(createEntry("narration", buildAwakeningResult(selected)));
   game.view.suggestions = selected.innateSoulPower > 0
-    ? ["询问我的先天魂力意味着什么", "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
+    ? ["询问先天魂力意味着什么", "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
     : ["追问是否存在重新检测的方法", "观察武魂本身还有没有异常", "先接受结果，回去查找其他道路"];
   game.view.updatedAt = new Date().toISOString();
   game.view.runProgress.highestSoulRank = character.soulRank;
@@ -618,17 +730,19 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
 }
 
 function buildAwakeningResult(candidate: HiddenCandidate): string {
+  const name = candidate.public.name;
+  const pronoun = candidate.public.gender === "女" ? "她" : "他";
   const powerText = candidate.innateSoulPower === 10
-    ? "手一贴上水晶球，白光猛地涨开。执事抓住我的手腕又测了一次。先天满魂力。"
+    ? `手掌刚贴上水晶球，白光便猛地涨开。执事抓住${pronoun}的手腕又测了一次。先天满魂力。`
     : candidate.innateSoulPower > 0
       ? `水晶球亮了，刻度停在先天魂力 ${candidate.innateSoulPower} 级。执事低头记下数字。`
-      : "水晶球一直没亮。执事等了两息，才把它从我手下抽走。";
+      : `水晶球一直没亮。执事等了两息，才把它从${pronoun}手下抽走。`;
 
   return [
-    "我踩进六角阵。金色光点贴着小腿往上钻，皮肤又麻又痒。右手忽然一沉，我差点把胳膊甩出去。",
-    `掌心里出现了${candidate.martialSoul.name}。${candidate.martialSoul.description}`,
+    `${name}踩进六角阵。金色光点贴着小腿往上钻，皮肤又麻又痒。右手忽然一沉，${pronoun}差点把胳膊甩出去。`,
+    `${pronoun}的掌心里出现了${candidate.martialSoul.name}。${candidate.martialSoul.description}`,
     powerText,
-    "门外有人踮脚往里看。家里人还不知道结果，我先听见自己喘了一口气。",
+    `门外有人踮脚往里看。家里人还不知道结果，${pronoun}先听见自己喘了一口气。`,
   ].join("\n\n");
 }
 

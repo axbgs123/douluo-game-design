@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import type { GameSpeed, GameView, HuntingView, MapLocationView } from "../../shared/game";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import type { GameSpeed, GameView, HuntingView } from "../../shared/game";
 
 interface StoryScreenProps {
   game: GameView;
@@ -47,7 +47,7 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd }: 
           <div className="speed-switch" aria-label="游戏速度">
             {(["标准", "高速"] as GameSpeed[]).map((speed) => <button key={speed} type="button" disabled={busy || game.status === "ended"} className={game.speed === speed ? "active" : ""} onClick={() => void onSpeed(speed)}>{speed}</button>)}
           </div>
-          <div className="world-clock"><span>{game.worldTime?.era}{game.character ? ` · ${game.character.age} 岁` : ""}</span><strong>{game.worldTime ? `${game.worldTime.season} · 原作 ${game.worldTime.year >= 0 ? "+" : ""}${game.worldTime.year} 年 · 第 ${game.worldTime.day} 日 · ${game.worldTime.time}` : "觉醒日前"}</strong></div>
+          <div className="world-clock"><span>{game.worldTime?.era}{game.character ? ` · ${game.character.age} 岁` : ""}</span><strong>{game.worldTime ? `${game.worldTime.season} · ${canonYearLabel(game.worldTime.year)} · 第 ${game.worldTime.day} 日 · ${game.worldTime.time}` : "觉醒日前"}</strong></div>
         </div>
       </header>
 
@@ -91,6 +91,11 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd }: 
   );
 }
 
+function canonYearLabel(year: number): string {
+  if (year === 0) return "唐三觉醒同年";
+  return year < 0 ? `唐三觉醒前 ${Math.abs(year)} 年` : `唐三觉醒后 ${year} 年`;
+}
+
 function CharacterPanel({ game }: { game: GameView }) {
   if (!game.character) return <LockedPanel text="觉醒后显示" />;
   const character = game.character;
@@ -123,30 +128,46 @@ function SoulPanel({ game }: { game: GameView }) {
 
 function InventoryPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
   if (!game.inventory.length) return <LockedPanel text="背包是空的" />;
-  return <div><h3 className="panel-title">随身物品</h3><div className="inventory-list">{game.inventory.map((value, index) => <article key={`${value}-${index}`}><span>{value}</span><button type="button" disabled={busy || game.status === "ended"} onClick={() => submit(`使用${value}`)}>使用</button></article>)}</div></div>;
+  return <div><h3 className="panel-title">随身物品</h3><div className="inventory-grid">{game.inventory.map((value, index) => <article key={`${value}-${index}`}><i>{String(index + 1).padStart(2, "0")}</i><strong>{value}</strong><button type="button" disabled={busy || game.status === "ended"} onClick={() => submit(`使用${value}`)}>使用</button></article>)}</div></div>;
 }
 
 function MapPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
   const visible = game.map;
   if (!visible.length) return <LockedPanel text="还没有地图信息" />;
-  return <div className="map-list">{visible.map((location: MapLocationView) => <article key={location.id} className={location.current ? "current" : ""}><header><strong>{location.name}</strong><span>{location.current ? "当前" : location.travelMinutes ? `${Math.ceil(location.travelMinutes / 60)} 小时` : location.region}</span></header><p>{location.description}</p><small>危险：{location.danger}</small>{!location.current && <button type="button" disabled={busy || game.status === "ended"} onClick={() => submit(`前往${location.name}`)}>前往</button>}</article>)}</div>;
+  const current = visible.find((item) => item.current) ?? visible[0];
+  const routes = visible.filter((item) => item.id !== current.id).slice(0, 6);
+  return <div className="map-panel-visual"><div className="route-map" style={{ "--route-count": Math.max(1, routes.length) } as CSSProperties}>
+    <svg viewBox="0 0 320 300" aria-hidden="true">{routes.map((location, index) => { const point = radialPoint(index, routes.length, 118); return <line key={location.id} x1="160" y1="150" x2={point.x} y2={point.y} />; })}</svg>
+    <div className="route-node current" style={{ left: "50%", top: "50%" }}><small>当前</small><strong>{current.name}</strong></div>
+    {routes.map((location, index) => { const point = radialPoint(index, routes.length, 118); return <button key={location.id} type="button" className={`route-node danger-${location.danger}`} style={{ left: `${point.x / 3.2}%`, top: `${point.y / 3}%` }} disabled={busy || game.status === "ended" || location.travelMinutes < 0} onClick={() => submit(`前往${location.name}`)}><small>{location.travelMinutes > 0 ? `${Math.ceil(location.travelMinutes / 60)}小时` : location.region}</small><strong>{location.name}</strong><span>{location.danger}</span></button>; })}
+  </div><article className="map-current-detail"><strong>{current.name}</strong><p>{current.description}</p><span>{current.region} · 危险 {current.danger}</span></article></div>;
 }
 
 function RelationPanel({ game }: { game: GameView }) {
   if (!game.relations.length) return <LockedPanel text="暂无关系" />;
-  return <div className="card-list">{game.relations.map((relation, index) => <article key={relation.id ?? `${relation.name}-${index}`}><span>{relation.relation}{relation.faction ? ` · ${relation.faction}` : ""}</span><strong>{relation.name}</strong><p>{relation.impression}</p>{relation.lastSeen && <small>{relation.lastSeen}</small>}</article>)}</div>;
+  const shown = game.relations.slice(0, 8);
+  return <div className="relation-panel"><div className="relation-graph">
+    <svg viewBox="0 0 320 310" aria-hidden="true">{shown.map((relation, index) => { const point = radialPoint(index, shown.length, 116); return <line key={relation.id ?? `${relation.name}-${index}`} className={`edge-${relation.category ?? "其他"}`} x1="160" y1="155" x2={point.x} y2={point.y} strokeWidth={Math.max(1.2, Math.min(4, (relation.strength ?? 12) / 22))} />; })}</svg>
+    <div className="relation-center"><small>主角</small><strong>{game.character?.name}</strong></div>
+    {shown.map((relation, index) => { const point = radialPoint(index, shown.length, 116); return <article key={relation.id ?? `${relation.name}-${index}`} className={`relation-node relation-${relation.category ?? "其他"}`} style={{ left: `${point.x / 3.2}%`, top: `${point.y / 3.1}%` }} title={relation.impression}><small>{relation.relation}</small><strong>{relation.name}</strong><span>{relation.faction ?? relation.impression}</span></article>; })}
+  </div><div className="relation-legend"><span>亲属</span><span>师友</span><span>势力</span><span>敌对</span></div>{game.relations.length > shown.length && <p className="panel-copy">另有 {game.relations.length - shown.length} 段次要关系，关系增强后会进入主图。</p>}</div>;
 }
 
 function TaskPanel({ game }: { game: GameView }) {
   if (!game.tasks.length) return <LockedPanel text="暂无记录" />;
-  return <div className="card-list">{game.tasks.map((task, index) => <article key={task.id ?? `${task.title}-${index}`}><span>{task.kind} · {task.status ?? "进行中"}</span><strong>{task.title}</strong><p>{task.detail}</p>{task.deadline && <small>{task.deadline}</small>}</article>)}</div>;
+  return <div className="task-timeline">{game.tasks.map((task, index) => <article key={task.id ?? `${task.title}-${index}`} className={`task-${task.status ?? "进行中"}`}><i>{task.status === "完成" ? "✓" : task.status === "失败" ? "×" : index + 1}</i><div><span>{task.kind} · {task.status ?? "进行中"}</span><strong>{task.title}</strong><p>{task.detail}</p>{task.deadline && <small>{task.deadline}</small>}</div></article>)}</div>;
+}
+
+function radialPoint(index: number, total: number, radius: number): { x: number; y: number } {
+  const angle = -Math.PI / 2 + (Math.PI * 2 * index) / Math.max(1, total);
+  return { x: 160 + Math.cos(angle) * radius, y: 155 + Math.sin(angle) * radius };
 }
 
 function HuntPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
   const hunting: HuntingView | undefined = game.hunting;
   const rank = game.character?.soulRank ?? 0;
   const canHunt = rank > 0 && rank % 10 === 0 && (game.character?.soulRings.length ?? 0) < Math.floor(rank / 10);
-  if (!hunting) return <div className="hunt-start"><p>{canHunt ? "魂力已经到达瓶颈，可以开始调查目标。" : `当前 ${rank} 级，达到下一个十级瓶颈后才能吸收魂环。`}</p><button type="button" disabled={busy || !canHunt} onClick={() => submit("开始调查适合我的魂兽")}>调查魂兽</button></div>;
+  if (!hunting) return <div className="hunt-start"><p>{canHunt ? "魂力已经到达瓶颈，可以开始调查目标。" : `当前 ${rank} 级，达到下一个十级瓶颈后才能吸收魂环。`}</p><button type="button" disabled={busy || !canHunt} onClick={() => submit("开始调查适合当前武魂的魂兽")}>调查魂兽</button></div>;
   return <div className="hunt-panel">
     <div className="hunt-stage"><span>第 {hunting.ringIndex} 魂环</span><strong>{hunting.stage}</strong><small>{hunting.trailProgress}</small></div>
     {hunting.targetName && <article className="hunt-target"><span>目标</span><strong>{hunting.targetName}</strong>{hunting.targetYears && <small>约 {hunting.targetYears} 年</small>}</article>}
@@ -156,7 +177,7 @@ function HuntPanel({ game, submit, busy }: { game: GameView; submit: (value: str
 }
 
 function WorldPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
-  return <div className="world-panel">{game.activeEvents.length > 0 && <><h3 className="panel-title">眼前事件</h3><div className="world-event-list">{game.activeEvents.map((event) => <article key={event.id}><header><span>{event.kind} · {event.remaining}</span><strong>{event.title}</strong></header><p>{event.detail}</p><small>{event.location}</small><div><button type="button" disabled={busy} onClick={() => submit(`调查${event.title}`)}>调查</button><button type="button" disabled={busy} onClick={() => submit(`帮助处理${event.title}`)}>介入</button></div></article>)}</div></>}<h3 className="panel-title">近日消息</h3>{game.news.length ? <div className="news-list">{game.news.map((item) => <article key={item.id}><span>{item.date}</span><strong>{item.title}</strong><p>{item.detail}</p></article>)}</div> : <p className="panel-copy">暂时没有传到你耳中的大事。</p>}<h3 className="panel-title">已知人物</h3>{game.knownFigures.length ? <div className="figure-list">{game.knownFigures.map((figure) => <article key={figure.id}><header><strong>{figure.name}</strong><span>{figure.knownPower}</span></header><p>{figure.title ?? figure.faction ?? "身份不详"}</p><small>{figure.location} · {figure.status}</small></article>)}</div> : <p className="panel-copy">你还没有接触到重要人物。</p>}</div>;
+  return <div className="world-panel"><h3 className="panel-title">原作因果</h3>{game.canonInfluences.length ? <div className="causal-chain">{game.canonInfluences.map((cause, index) => <article key={cause.id}><i>{index + 1}</i><div><strong>{cause.action}</strong><span>{cause.affects} · {cause.strength}</span><small>{cause.date}</small></div></article>)}</div> : <article className="canon-stable"><strong>原作轨迹稳定</strong><p>主角还没有接触关键人物、势力或事件，原作节点不会自行改变。</p></article>}{game.activeEvents.length > 0 && <><h3 className="panel-title">眼前事件</h3><div className="world-event-list">{game.activeEvents.map((event) => <article key={event.id}><header><span>{event.kind} · {event.remaining}</span><strong>{event.title}</strong></header><p>{event.detail}</p><small>{event.location}</small><div><button type="button" disabled={busy} onClick={() => submit(`调查${event.title}`)}>调查</button><button type="button" disabled={busy} onClick={() => submit(`帮助处理${event.title}`)}>介入</button></div></article>)}</div></>}<h3 className="panel-title">近日消息</h3>{game.news.length ? <div className="news-list">{game.news.map((item) => <article key={item.id}><span>{item.date}</span><strong>{item.title}</strong><p>{item.detail}</p></article>)}</div> : <p className="panel-copy">暂时没有传到角色耳中的大事。</p>}<h3 className="panel-title">已知人物</h3>{game.knownFigures.length ? <div className="figure-list">{game.knownFigures.map((figure) => <article key={figure.id}><header><strong>{figure.name}</strong><span>{figure.knownPower}</span></header><p>{figure.title ?? figure.faction ?? "身份不详"}</p><small>{figure.location} · {figure.status}</small></article>)}</div> : <p className="panel-copy">角色还没有接触到重要人物。</p>}</div>;
 }
 
 function EndingPanel({ game }: { game: GameView }) {

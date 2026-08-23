@@ -3,7 +3,8 @@ import type { ConditionLabel, HuntingStage, NarrativeEntry, SoulRingView, TaskVi
 import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, locationById, soulBeastById } from "../data/world.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
-import { advanceWorldTime, buildKnownFigures, buildMapView, inferLocationId, revealNpc } from "./world.js";
+import { advanceWorldTime, buildKnownFigures, buildMapView, inferLocationId, recordCanonInfluence, revealNpc } from "./world.js";
+import { toThirdPersonNarrative } from "./narrative.js";
 
 interface DifficultyRules {
   training: number;
@@ -621,15 +622,17 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
       npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12);
       if (!game.view.relations.some((relation) => relation.id === npc.id)) {
         const factionName = FACTIONS.find((faction) => mentioned.factionIds.includes(faction.id))?.name;
-        game.view.relations.push({ id: npc.id, name: npc.name, relation: "初识", impression: "仍在观察我", faction: factionName, lastSeen: game.view.location });
+        game.view.relations.push({ id: npc.id, name: npc.name, relation: "初识", impression: "仍在观察主角", faction: factionName, lastSeen: game.view.location, strength: 10, category: "师友" });
         game.world.metrics.relationshipsBuilt += 1;
       } else {
         const relation = game.view.relations.find((item) => item.id === npc.id)!;
-        relation.impression = npc.dispositionToPlayer >= 20 ? "愿意信任我处理一些私事" : npc.dispositionToPlayer >= 10 ? "记得我，也愿意多说几句" : "仍在观察我";
+        relation.impression = npc.dispositionToPlayer >= 20 ? "愿意信任主角处理一些私事" : npc.dispositionToPlayer >= 10 ? "记得主角，也愿意多说几句" : "仍在观察主角";
         relation.relation = npc.dispositionToPlayer >= 20 ? "信任" : npc.dispositionToPlayer >= 10 ? "熟识" : relation.relation;
         relation.lastSeen = game.view.location;
+        relation.strength = Math.min(100, (relation.strength ?? 8) + 8);
       }
       game.world.deviation += Math.max(1, Math.floor(mentioned.importance / 2));
+      recordCanonInfluence(game, { source: "当面交谈", description: `与${mentioned.name}当面交谈`, affectedNpcIds: [mentioned.id], affectedFactionIds: mentioned.factionIds, strength: Math.max(1, mentioned.importance - 2) });
       detail = `与 ${mentioned.name} 当面交谈，建立初步关系。`;
       systemMessages.push(`人物记录 · ${mentioned.name}`);
     } else {
@@ -723,11 +726,15 @@ function specialSystemResolution(game: StoredGame, action: string): ActionResolu
 function academyResolution(game: StoredGame): ActionResolution {
   const character = game.view.character!;
   if (character.innateSoulPower <= 0) return impossible("学院要求至少能够稳定感应魂力。", ["申请重新检测", "寻找其他修行道路", "打听理论研究者"]);
-  const academyName = /史莱克/.test(game.view.location ?? "") ? "史莱克学院" : /索托/.test(game.view.location ?? "") ? "索托初级魂师学院" : "诺丁初级魂师学院";
+  const academyNameByLocation: Record<string, string> = {
+    "shrek-village": "史莱克学院", "suotuo-city": "索托初级魂师学院", "star-luo-city": "星罗城初级魂师学院",
+    "heaven-dou-city": "天斗城初级魂师学院", "spirit-city": "武魂城初级魂师学院", "notting-academy": "诺丁初级魂师学院", "notting-city": "诺丁初级魂师学院",
+  };
+  const academyName = academyNameByLocation[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}初级魂师学堂`;
   if (game.view.affiliations.some((item) => item.name === academyName)) return impossible(`我已经是${academyName}的学员。`, ["参加课程", "寻找导师", "认识同学"]);
   const joinedAt = `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`;
   game.view.affiliations.push({ id: `academy-${game.view.locationId}`, name: academyName, role: character.coins < 20 ? "工读生" : "学员", reputation: "新入学", joinedAt });
-  game.view.relations.push({ id: `academy-${game.view.locationId}`, name: academyName, relation: "所属学院", impression: "档案刚刚登记" });
+  game.view.relations.push({ id: `academy-${game.view.locationId}`, name: academyName, relation: "所属学院", impression: "档案刚刚登记", strength: 12, category: "势力" });
   ensureTask(game, { id: "academy-foundation", title: "完成学院基础课程", kind: "计划", detail: "学习魂兽、魂环、冥想和实战基础。", status: "进行中" });
   game.world.deviation += 1;
   return { intent: "加入学院", minutes: 240, ruleSummary: `通过基础审核，成为${academyName}${character.coins < 20 ? "工读生" : "学员"}。`, fallbackNarrative: `登记老师把我的名字抄进册子，又让我按了一次手印。宿舍钥匙比想象中旧，边角磨得发白。今天起，我得按这里的钟声过日子了。`, suggestions: ["去宿舍放下行李", "查看第一堂课", "认识同届学员"], systemMessages: [`身份 · ${academyName} · ${character.coins < 20 ? "工读生" : "学员"}`] };
@@ -735,17 +742,22 @@ function academyResolution(game: StoredGame): ActionResolution {
 
 function factionResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
+  const localOrganizations: Record<string, string> = {
+    "notting-city": "诺丁城魂师互助会", "suotuo-city": "索托城猎魂人行会", "heaven-dou-city": "天斗城自由魂师公所",
+    "star-luo-city": "星罗城北区魂师武馆", "spirit-city": "武魂城登记魂师团", "soul-hunting-forest": "猎魂森林向导队",
+  };
   const choices = [
     { pattern: /武魂殿/, id: "spirit-hall", name: "武魂殿", rank: 1 }, { pattern: /七宝/, id: "seven-treasure", name: "七宝琉璃宗", rank: 20 },
     { pattern: /蓝电/, id: "blue-lightning", name: "蓝电霸王龙宗", rank: 20 }, { pattern: /昊天/, id: "clear-sky", name: "昊天宗", rank: 40 },
-    { pattern: /史莱克/, id: "shrek", name: "史莱克学院", rank: 20 }, { pattern: /宗门|势力/, id: `local-${game.view.locationId}`, name: "当地魂师组织", rank: 10 },
+    { pattern: /史莱克/, id: "shrek", name: "史莱克学院", rank: 20 }, { pattern: /宗门|势力|组织|行会|武馆/, id: `local-${game.view.locationId}`, name: localOrganizations[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}自由魂师互助队`, rank: 10 },
   ];
   const target = choices.find((item) => item.pattern.test(action)) ?? choices.at(-1)!;
   if (game.view.affiliations.some((item) => item.id === target.id)) return impossible(`我已经加入${target.name}。`, ["申请内部任务", "拜访组织成员", "提升组织声望"]);
   if (character.soulRank < target.rank) return impossible(`${target.name}的公开门槛约为 ${target.rank} 级，我当前的实力还不够。`, ["继续修炼", "寻找举荐人", "先完成外围委托"]);
   game.view.affiliations.push({ id: target.id, name: target.name, role: "外围成员", reputation: "生疏", joinedAt: `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日` });
-  game.view.relations.push({ id: target.id, name: target.name, relation: "所属势力", impression: "尚未建立功劳" });
+  game.view.relations.push({ id: target.id, name: target.name, relation: "所属势力", impression: "尚未建立功劳", strength: 10, category: "势力" });
   game.world.deviation += target.rank >= 40 ? 8 : target.rank >= 20 ? 4 : 2;
+  if (!target.id.startsWith("local-")) recordCanonInfluence(game, { source: "加入势力", description: `加入${target.name}`, affectedFactionIds: [target.id], strength: target.rank >= 40 ? 8 : target.rank >= 20 ? 5 : 2 });
   ensureTask(game, { id: `faction-${target.id}`, title: `在${target.name}站稳脚跟`, kind: "计划", detail: "完成组织事务，观察内部关系与规矩。", status: "进行中" });
   return { intent: "加入势力", minutes: 360, ruleSummary: `通过初步审核，成为${target.name}外围成员。`, fallbackNarrative: `负责登记的人问得很细，连家里做什么都记了。我拿到的牌子只够进外院，背面还有一行小字，损坏要赔。`, suggestions: ["领取第一件事务", "打听内部规矩", "认识同批成员"], systemMessages: [`身份 · ${target.name} · 外围成员`] };
 }
@@ -754,17 +766,18 @@ function mentorResolution(game: StoredGame, action: string): ActionResolution {
   const mentioned = CANON_CHARACTERS.find((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)));
   const npc = mentioned ? game.world.npcs[mentioned.id] : undefined;
   if (mentioned && npc?.locationId !== game.view.locationId) return impossible(`${mentioned.name}目前不在这里，连当面提出请求的机会都没有。`, [`打听${mentioned.name}的行踪`, "寻找当地导师", "先证明自己的能力"]);
-  const mentorName = mentioned?.name ?? "当地魂师导师";
+  const mentorName = mentioned?.name ?? `${game.view.location ?? "当地"}散修 ${pick(actionRandom(game), ["顾闻山", "周砺", "林鹤", "沈秋岩"])}`;
   const existing = game.view.relations.find((item) => item.name === mentorName);
   const trust = npc?.dispositionToPlayer ?? (existing ? 8 : 0);
   if (mentioned && trust < 6) {
     npc!.memoryOfPlayer.push("曾经提出拜师，但彼此了解不足");
     return impossible(`${mentorName}没有立刻答应，只让我先证明耐心和判断。`, [`完成${mentorName}关心的事情`, `继续向${mentorName}请教`, "寻找其他导师"]);
   }
-  if (existing) { existing.relation = "师徒"; existing.impression = "愿意认真指导我，但仍会考察选择"; }
-  else game.view.relations.push({ id: mentioned?.id ?? "local-mentor", name: mentorName, relation: "师徒", impression: "愿意先教基础，再看我的品性" });
+  if (existing) { existing.relation = "师徒"; existing.impression = "愿意认真指导，但仍会考察每次选择"; existing.strength = Math.max(45, existing.strength ?? 0); existing.category = "师友"; }
+  else game.view.relations.push({ id: mentioned?.id ?? "local-mentor", name: mentorName, relation: "师徒", impression: "愿意先教基础，再看品性", strength: 45, category: "师友" });
   game.world.metrics.relationshipsBuilt += 1;
   game.world.deviation += mentioned ? (mentioned.importance ?? 3) * 2 : 1;
+  if (mentioned) recordCanonInfluence(game, { source: "建立师徒关系", description: `拜${mentioned.name}为师`, affectedNpcIds: [mentioned.id], affectedFactionIds: mentioned.factionIds, strength: mentioned.importance * 5 });
   ensureTask(game, { id: `mentor-${mentioned?.id ?? "local"}`, title: `完成${mentorName}布置的修行`, kind: "承诺", detail: "按要求练习，并在下次见面时交代结果。", status: "进行中" });
   return { intent: "拜师", minutes: 120, ruleSummary: `${mentorName}接受了师徒关系，并留下第一项修行要求。`, fallbackNarrative: `他没有让我跪太久，伸手把我拉了起来。第一句话也不玄，只让我把每天修炼的时间和失败处一笔笔记清。`, suggestions: ["询问修炼要求", "了解导师的规矩", "开始第一项练习"], systemMessages: [`关系 · ${mentorName} · 师徒`] };
 }
@@ -772,7 +785,7 @@ function mentorResolution(game: StoredGame, action: string): ActionResolution {
 function promiseResolution(game: StoredGame, action: string): ActionResolution {
   const title = action.replace(/^(我)?(答应|承诺|保证)/, "").trim().slice(0, 32) || "履行刚刚作出的承诺";
   const id = `promise-${game.actionIndex}`;
-  ensureTask(game, { id, title, kind: "承诺", detail: `我亲口答应了这件事。违背承诺会影响人格与关系。`, status: "进行中" });
+  ensureTask(game, { id, title, kind: "承诺", detail: `角色亲口答应了这件事。违背承诺会影响人格与关系。`, status: "进行中" });
   return { intent: "作出承诺", minutes: 10, ruleSummary: `记录新承诺：${title}。`, fallbackNarrative: `话出口后，对面安静了一下。我没再补条件，只把答应的事重复了一遍。`, suggestions: ["立刻准备履约", "确认时间和地点", "记下可能的阻碍"], systemMessages: [`承诺 · ${title}`] };
 }
 
@@ -782,7 +795,7 @@ function fulfillPromiseResolution(game: StoredGame, action: string): ActionResol
   promise.status = "完成";
   game.world.metrics.promisesKept += 1;
   game.personalityProfile.scores.integrity = (game.personalityProfile.scores.integrity ?? 0) + 2;
-  for (const relation of game.view.relations) if (/委托|师徒|同伴|亲属/.test(relation.relation)) relation.impression = "知道我会把答应的事做完";
+  for (const relation of game.view.relations) if (/委托|师徒|同伴|亲属/.test(relation.relation)) relation.impression = "知道主角会把答应的事做完";
   return { intent: "履行承诺", minutes: 180, ruleSummary: `完成承诺：${promise.title}。守诺记录增加。`, fallbackNarrative: `该交的东西、该说的话，我一样没落下。对方接过去后重新数了一遍，才把那张写着约定的纸撕掉。`, suggestions: ["确认有没有后续", "休息", "检查其他计划"], systemMessages: [`承诺完成 · ${promise.title}`] };
 }
 
@@ -817,6 +830,8 @@ function dynamicEventResolution(game: StoredGame, action: string): ActionResolut
   const impact = event.stakes * (success ? 3 : 2);
   game.world.deviation += impact;
   game.world.metrics.historicalImpact += impact;
+  const affectedFactions = [...new Set(event.participantIds.flatMap((id) => CANON_CHARACTERS.find((character) => character.id === id)?.factionIds ?? []))];
+  if (event.participantIds.length || affectedFactions.length) recordCanonInfluence(game, { source: "介入事件", description: `介入${event.title}`, affectedNpcIds: event.participantIds, affectedFactionIds: affectedFactions, strength: impact });
   if (!success) { game.world.healthPoints -= event.stakes * 4; game.view.character!.reputation = "惹上麻烦"; }
   else game.view.character!.reputation = event.stakes >= 4 ? "当地知名" : "略有名声";
   for (const id of event.participantIds) {
@@ -849,6 +864,7 @@ function npcConflictResolution(game: StoredGame, action: string): ActionResoluti
     const impact = definition.importance * 20;
     game.world.deviation += impact;
     game.world.metrics.historicalImpact += impact;
+    recordCanonInfluence(game, { source: "直接冲突", description: `直接造成${definition.name}死亡`, affectedNpcIds: [definition.id], affectedFactionIds: definition.factionIds, strength: impact });
     game.view.character!.reputation = "被多方追查";
     return { intent: "袭击重要人物", minutes: 40, ruleSummary: `${definition.name}死亡，世界偏差增加 ${impact}，所属势力将作出反应。`, fallbackNarrative: `最后一下落下去后，周围反而安静了。我没时间确认第二遍，远处已经有人喊他的名字。撤离路线还能用，原先的生活大概回不去了。`, suggestions: ["立刻撤离", "清理能够追查的线索", "观察相关势力反应"], systemMessages: [`重要人物死亡 · ${definition.name}`, `世界偏差 · +${impact}`] };
   }
@@ -858,6 +874,7 @@ function npcConflictResolution(game: StoredGame, action: string): ActionResoluti
   npc.memoryOfPlayer.push("玩家曾经主动袭击自己");
   game.view.character!.injuries.push(harm >= 40 ? "强者反击造成的重伤" : "冲突中留下的外伤");
   game.world.deviation += definition.importance * 2;
+  recordCanonInfluence(game, { source: "直接冲突", description: `主动袭击${definition.name}`, affectedNpcIds: [definition.id], affectedFactionIds: definition.factionIds, strength: definition.importance * 3 });
   return { intent: "袭击重要人物", minutes: 20, ruleSummary: `袭击${definition.name}失败，受到 ${harm} 点内部伤害，对方已经记住这次敌意。`, fallbackNarrative: `我才动，他就已经转过身。下一瞬胸口像被重锤砸中，脚底擦着地面退了很远。想好的后手只来得及用一半，他看我的眼神已经彻底变了。`, suggestions: ["设法脱身", "处理伤势", "准备面对追查"] };
 }
 
@@ -998,7 +1015,9 @@ export function applyActionResult(
   narrative: string,
   suggestions: string[],
 ): void {
-  game.view.narrative.push(entry("player", input), entry("narration", narrative));
+  const character = game.view.character;
+  const thirdPerson = character ? toThirdPersonNarrative(narrative, character.name, character.gender) : narrative;
+  game.view.narrative.push(entry("player", input), entry("narration", thirdPerson));
   for (const message of result.systemMessages ?? []) game.view.narrative.push(entry("system", message));
   game.view.suggestions = suggestions.slice(0, 3);
   game.actionIndex += 1;

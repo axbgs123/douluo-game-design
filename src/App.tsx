@@ -71,7 +71,7 @@ export default function App() {
         personalitySummary={game.personalitySummary}
         busy={busy}
         onReroll={() => run(() => rerollCandidates(game.id))}
-        onSelect={(candidateId) => run(() => selectCandidate(game.id, candidateId))}
+        onSelect={(candidateId, customName) => run(() => selectCandidate(game.id, candidateId, customName))}
       />}
 
       {game && (game.status === "awakening" || game.status === "playing" || game.status === "ended") && <StoryScreen

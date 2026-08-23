@@ -42,7 +42,7 @@ const createGameSchema = z.object({
   seed: z.string().trim().max(120).optional(),
 });
 
-const candidateSchema = z.object({ candidateId: z.string().min(1) });
+const candidateSchema = z.object({ candidateId: z.string().min(1), customName: z.string().trim().min(1).max(12).optional() });
 const actionSchema = z.object({ input: z.string().trim().min(1).max(1200) });
 const speedSchema = z.object({ speed: z.enum(["标准", "高速"]) });
 const endSchema = z.object({ reason: z.string().trim().max(200).optional() });
@@ -117,8 +117,8 @@ app.post("/api/games/:id/select", (request, response) => {
   const input = candidateSchema.parse(request.body);
   const game = loadGame(request.params.id);
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
-  selectCandidate(game, input.candidateId);
-  saveGame(game, "candidate.selected", { candidateId: input.candidateId });
+  selectCandidate(game, input.candidateId, input.customName);
+  saveGame(game, "candidate.selected", { candidateId: input.candidateId, customName: input.customName });
   return response.json(publicView(game));
 });
 

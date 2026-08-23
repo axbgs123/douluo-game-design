@@ -21,11 +21,20 @@ const DIFFICULTY_COPY: Record<Difficulty, string> = {
   地狱: "无兜底",
 };
 
+const LIFE_GOALS = [
+  "登临魂师巅峰",
+  "守住家人与故乡",
+  "建立自己的宗门",
+  "改变一位原作人物的命运",
+  "查清身世与隐藏传承",
+  "游历大陆并编成魂兽图鉴",
+] as const;
+
 export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
   const [gender, setGender] = useState<Gender>("男");
   const [difficulty, setDifficulty] = useState<Difficulty>("标准");
   const [keywordText, setKeywordText] = useState("谨慎，重情，好学，坚韧，自由");
-  const [lifeGoal, setLifeGoal] = useState("成为自己认可的强者");
+  const [lifeGoal, setLifeGoal] = useState<string>(LIFE_GOALS[0]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [seed, setSeed] = useState("");
 
@@ -86,7 +95,8 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
 
         <section className="form-section">
           <div className="section-heading"><h2>人生目标</h2></div>
-          <input className="text-field" value={lifeGoal} onChange={(event) => setLifeGoal(event.target.value)} maxLength={120} placeholder="成为强者、守护家人、建立宗门……" />
+          <div className="goal-presets">{LIFE_GOALS.map((goal) => <button key={goal} type="button" className={lifeGoal === goal ? "active" : ""} onClick={() => setLifeGoal(goal)}>{goal}</button>)}</div>
+          <label className="custom-goal"><span>自定义或修改</span><input className="text-field" value={lifeGoal} onChange={(event) => setLifeGoal(event.target.value)} maxLength={120} placeholder="写下这个角色想用一生完成的事" /></label>
         </section>
 
         <section className="form-section">
