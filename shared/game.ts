@@ -163,7 +163,7 @@ export interface MechaProgressView {
 
 export interface SpiritAscensionView {
   status: "已预约" | "探索中" | "待结算" | "已结算";
-  tier: "初级";
+  tier: "初级" | "中级";
   mode?: "常规" | "暴动期";
   companionNames?: string[];
   uprisingEntryYears?: number[];
@@ -177,6 +177,11 @@ export interface SpiritAscensionView {
   bestYearsGained: number;
   exitReason?: "主动求救" | "脑波保护强制退出";
   lastYearsGained?: number;
+}
+
+export interface SpiritAscensionMembershipView {
+  registeredBattleArmorTier: 1 | 2 | 3 | 4;
+  benefitYears: number[];
 }
 
 export interface StarshipProgressView {
@@ -759,6 +764,7 @@ export interface GameView {
   battleArmorProject?: BattleArmorProjectView;
   mecha?: MechaProgressView;
   spiritAscension?: SpiritAscensionView;
+  spiritAscensionMembership?: SpiritAscensionMembershipView;
   starship?: StarshipProgressView;
   managedFactions: ManagedFactionView[];
   economy: EconomyView;

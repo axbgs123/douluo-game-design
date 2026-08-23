@@ -412,6 +412,28 @@ describe("multi-era foundations", () => {
     expect(game.view.spiritAscension?.pendingSpiritualEnergy).toBe(0);
   });
 
+  it("uses registered battle-armor benefits and a consumed entry card for an intermediate visit", () => {
+    const game = playingGame(3, "spirit-ascension-intermediate");
+    const character = game.view.character!;
+    character.soulRank = 69;
+    character.abilityDescriptors.perception = "顶尖";
+    character.battleArmors = [{ tier: 1, title: "一字斗铠", pieces: ["右手前臂甲", "左手前臂甲", "右肩大臂甲", "左肩大臂甲", "胸铠", "腰铠与战裙", "右腿足甲", "左腿足甲", "头盔"], completion: 100, compatibility: 90, status: "完整", maker: character.name }];
+    const rings = Array.from({ length: 6 }, (_, index) => ({ index: index + 1, beastId: `middle-${index}`, beastName: `${index + 1}号魂兽`, years: 2_000, color: "紫", skillName: `${index + 1}号魂技`, skillDescription: "中级升灵台测试" }));
+    character.soulRingSets[character.activeMartialSoulIndex] = rings;
+    character.soulRings = rings;
+    game.view.affiliations.push({ id: "middle-pagoda", name: "传灵塔", role: "注册魂师", reputation: "在册", joinedAt: "测试" });
+    expect(resolveAction(game, "申请中级升灵台名额").intent).toBe("无法完成");
+    expect(resolveAction(game, "向传灵塔登记一字斗铠师并领取升灵台福利").intent).toBe("登记斗铠师福利");
+    expect(game.view.inventory.filter((item) => item === "中级升灵台入门卡")).toHaveLength(2);
+    expect(resolveAction(game, "向传灵塔登记一字斗铠师并领取升灵台福利").intent).toBe("无法完成");
+    expect(resolveAction(game, "申请中级升灵台名额").intent).toBe("预约升灵台");
+    expect(game.view.inventory.filter((item) => item === "中级升灵台入门卡")).toHaveLength(1);
+    expect(game.view.spiritAscension?.tier).toBe("中级");
+    expect(resolveAction(game, "进入中级升灵台").intent).toBe("进入升灵台");
+    expect(resolveAction(game, "搜寻升灵台虚拟魂兽").intent).toBe("升灵台遭遇");
+    expect(game.view.spiritAscension?.spiritualEnergy).toBeGreaterThan(0);
+  });
+
   it("turns an era-three second profession into training, certification, material, portfolio, and paid work", () => {
     const game = playingGame(3, "mecha-design-career");
     game.view.character!.coins = 1_000;

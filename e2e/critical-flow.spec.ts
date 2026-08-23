@@ -180,6 +180,26 @@ async function seedMechaCareerGame() {
   database.saveGame(game, "e2e.mecha-career-fixture");
 }
 
+async function seedIntermediateAscensionGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 3, gender: "男", difficulty: "标准", seed: "e2e-intermediate-ascension" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "中级升灵台验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.character!.soulRank = 69;
+  game.view.character!.abilityDescriptors.perception = "顶尖";
+  game.view.character!.battleArmors = [{ tier: 1, title: "一字斗铠", pieces: ["右手前臂甲", "左手前臂甲", "右肩大臂甲", "左肩大臂甲", "胸铠", "腰铠与战裙", "右腿足甲", "左腿足甲", "头盔"], completion: 100, compatibility: 90, status: "完整", maker: game.view.character!.name }];
+  const rings = Array.from({ length: 6 }, (_, index) => ({ index: index + 1, beastId: `e2e-middle-${index}`, beastName: `${index + 1}号千年魂兽`, years: 2_000, color: "紫", skillName: `${index + 1}号魂技`, skillDescription: "用于核验中级升灵台。" }));
+  game.view.character!.soulRingSets[game.view.character!.activeMartialSoulIndex] = rings;
+  game.view.character!.soulRings = rings;
+  game.view.affiliations.push({ id: "e2e-middle-pagoda", name: "传灵塔", role: "注册魂师", reputation: "在册", joinedAt: "验收登记" });
+  database.saveGame(game, "e2e.intermediate-ascension-fixture");
+}
+
 async function seedStarshipCrewGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -514,7 +534,7 @@ test("斗三初级升灵台必须付费入场、虚拟遭遇、主动退出后�
   await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
   await page.getByRole("button", { name: "时代", exact: true }).click();
   const ascension = page.locator(".special-system-card").filter({ hasText: "升灵台" });
-  await ascension.getByRole("button", { name: "申请名额" }).click();
+  await ascension.getByRole("button", { name: "申请初级" }).click();
   await expect(ascension).toContainText("升灵台 · 已预约");
   await ascension.getByRole("button", { name: "进入升灵台" }).click();
   await expect(ascension).toContainText("升灵台 · 探索中");
@@ -548,6 +568,28 @@ test("斗三升灵台暴动期必须明确组队并完成百秒守护才能稳�
   await expect(ascension).toContainText(/待吸收 [1-9][0-9]*/);
   await ascension.getByRole("button", { name: "百秒守护" }).click();
   await expect(ascension).toContainText("待吸收 0");
+  await expect(ascension).toContainText(/灵力 [1-9][0-9]*/);
+  await ascension.getByRole("button", { name: "主动退出" }).click();
+  await ascension.getByRole("button", { name: "结算灵力" }).click();
+  await expect(ascension).toContainText("升灵台 · 已结算");
+});
+
+test("斗三中级升灵台必须凭完整斗铠年度福利卡进入", async ({ page }) => {
+  await seedIntermediateAscensionGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "中级升灵台验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  const ascension = page.locator(".special-system-card").filter({ hasText: "升灵台" });
+  await ascension.getByRole("button", { name: "登记斗铠师" }).click();
+  await expect(ascension).toContainText("斗铠师登记 · 1字 · 已领福利年份 1");
+  await ascension.getByRole("button", { name: "申请中级" }).click();
+  await expect(ascension).toContainText("常规 · 中级");
+  await ascension.getByRole("button", { name: "进入升灵台" }).click();
+  await ascension.getByRole("button", { name: "搜寻魂兽" }).click();
+  await expect(ascension).toContainText("虚拟击败 1");
   await expect(ascension).toContainText(/灵力 [1-9][0-9]*/);
   await ascension.getByRole("button", { name: "主动退出" }).click();
   await ascension.getByRole("button", { name: "结算灵力" }).click();

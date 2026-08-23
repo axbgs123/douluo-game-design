@@ -2283,50 +2283,75 @@ function spiritAscensionResolution(game: StoredGame, action: string): ActionReso
   const character = game.view.character!;
   const activeRings = character.soulRingSets[character.activeMartialSoulIndex] ?? character.soulRings;
   const current = game.view.spiritAscension;
+  if (/登记.*斗铠师|斗铠师.*登记|领取.*升灵台.*福利/.test(action)) {
+    const armor = character.battleArmors?.filter((item) => item.status === "完整").sort((a, b) => b.tier - a.tier)[0];
+    if (!armor) return impossible("传灵塔斗铠师福利需要一套已完成并可复核的一字或更高斗铠，工程立项不能代替成品。", ["完成一字斗铠", "检查斗铠部件", "取得斗铠师作品证明"]);
+    const hasChannel = game.view.locationId === "spirit-pagoda-hq" || game.view.affiliations.some((item) => /传灵塔/.test(item.name));
+    if (!hasChannel) return impossible("斗铠师福利必须在传灵塔登记，不由普通商店或学院自行签发。", ["前往传灵塔总部", "加入传灵塔服务体系", "核对斗铠档案"]);
+    const year = game.view.worldTime?.year ?? 0;
+    const membership = game.view.spiritAscensionMembership ??= { registeredBattleArmorTier: armor.tier, benefitYears: [] };
+    membership.registeredBattleArmorTier = Math.max(membership.registeredBattleArmorTier, armor.tier) as 1 | 2 | 3 | 4;
+    if (membership.benefitYears.includes(year)) return impossible("本年度斗铠师升灵台福利已经领取，不能重复生成入门卡。", ["查看中级入门卡", "等待下一原作年", "承接传灵塔任务"]);
+    membership.benefitYears.push(year);
+    game.view.inventory.push("中级升灵台入门卡", "中级升灵台入门卡");
+    return { intent: "登记斗铠师福利", minutes: 120, ruleSummary: `以完整${armor.title}完成传灵塔登记，领取本年度两张中级升灵台入门卡；福利与登记记录均已留档。`, fallbackNarrative: "工作人员逐件核对斗铠编号和共鸣测试，没有因为外观完整就直接放行。登记完成后，两张中级入门卡才写入名下；它们是年度福利，不是可以反复领取的赠品。", suggestions: ["申请中级升灵台名额", "核对入门卡", "查看斗铠师任务"] };
+  }
   if (/申请|预约|购买.*名额|取得.*名额/.test(action)) {
     if (current && current.status !== "已结算") return impossible(`上一轮升灵台流程仍处于“${current.status}”，必须先完成退出和结算。`, ["进入升灵台", "主动退出升灵台", "结算升灵台灵力"]);
-    if (character.soulRank >= 40) return impossible("初级升灵台只准四环以下魂师进入，当前修为必须申请更高层级。", ["申请中级升灵台", "核对传灵塔准入规则", "选择其他修炼方式"]);
+    const requestedTier = /中级/.test(action) ? "中级" as const : "初级" as const;
+    if (requestedTier === "初级" && character.soulRank >= 40) return impossible("初级升灵台只准四环以下魂师进入，当前修为必须申请更高层级。", ["申请中级升灵台", "核对传灵塔准入规则", "选择其他修炼方式"]);
+    if (requestedTier === "中级" && character.soulRank >= 70) return impossible("中级升灵台只准七环以下魂师进入，当前修为必须申请更高层级。", ["核对高级升灵台资格", "承接传灵塔任务", "选择其他修炼方式"]);
     if (!activeRings.length && !(character.soulSpirits?.length)) return impossible("当前没有可承接升灵台灵力的魂环或魂灵。", ["先取得第一魂环", "签订正规魂灵", "继续基础修炼"]);
     const hasChannel = game.view.locationId === "spirit-pagoda-hq" || game.view.affiliations.some((item) => /传灵塔|学院/.test(item.name));
     if (!hasChannel) return impossible("初级升灵台名额有限，需要在传灵塔受理点或通过在册学院申请。", ["前往传灵塔总部", "加入有合作资格的学院", "寻找合法名额渠道"]);
     const violent = /暴动期/.test(action);
-    const companions = violent ? game.view.relations.filter((relation) => action.includes(relation.name)) : [];
+    if (violent && requestedTier !== "初级") return impossible("当前暴动期团队规则只适用于已核验的初级升灵台路线。", ["申请常规中级名额", "申请初级暴动期名额", "核对入门卡"]);
+    const companions = violent || requestedTier === "中级" ? game.view.relations.filter((relation) => action.includes(relation.name)) : [];
     const uprisingEntryYears = current?.uprisingEntryYears ?? [];
     const currentYear = game.view.worldTime?.year ?? 0;
     if (violent && uprisingEntryYears.filter((year) => year === currentYear).length >= 2) return impossible("本年度两次暴动期进入记录已经用完，传灵塔不会再签发第三次同年名额。", ["等待下一原作年", "申请常规初级名额", "复盘已有暴动期记录"]);
     if (violent && (companions.length < 2 || companions.length > 6)) return impossible("暴动期团队申请必须明确点名二至六名同伴，加上玩家后不得超过七人。", ["写出全部同行者姓名", "缩减到七人以内", "改申请常规初级名额"]);
+    if (requestedTier === "中级" && companions.length > 6) return impossible("中级升灵台同行者加玩家后不得超过七人。", ["缩减同行者", "分批使用入门卡", "核对团队名单"]);
     for (const companion of companions) {
       const trust = companion.dimensions?.trust ?? companion.strength ?? 0;
       const npc = companion.id ? game.world.npcs[companion.id] : undefined;
       if (trust < 45 || companion.category === "敌对") return impossible(`${companion.name}的信任不足以共同承担暴动期风险。`, [`继续与${companion.name}建立信任`, "更换可信同伴", "申请常规初级名额"]);
       if (npc && (!npc.alive || npc.locationId !== game.view.locationId)) return impossible(`${companion.name}当前不能在同一传灵塔受理点完成团队接入。`, [`与${companion.name}会合`, "调整进入日期", "更换同地同伴"]);
     }
-    const entryFee = violent ? 800_000 : 500_000;
-    if (character.coins < entryFee) return impossible(`初级升灵台一次准入按现有统一账本折算需要${formatSoulCoins(entryFee)}，当前资金不足。`, ["积攒费用", "争取学院奖励名额", "承接传灵塔合规任务"]);
-    character.coins -= entryFee;
-    recordEconomyTransaction(game, "支出", entryFee, "传灵塔升灵台受理处", "初级升灵台单次名额与脑波保护服务");
-    game.view.spiritAscension = { status: "已预约", tier: "初级", mode: violent ? "暴动期" : "常规", companionNames: companions.map((item) => item.name), uprisingEntryYears: violent ? [...uprisingEntryYears, currentYear] : uprisingEntryYears, entryFee, encounters: 0, virtualDefeats: 0, spiritualEnergy: 0, pendingSpiritualEnergy: 0, neuralShock: 0, totalEntries: (current?.totalEntries ?? 0) + 1, bestYearsGained: current?.bestYearsGained ?? 0 };
-    return { intent: "预约升灵台", minutes: 90, ruleSummary: `支付${formatSoulCoins(entryFee)}并取得一次${violent ? `暴动期团队（${companions.map((item) => item.name).join("、")}）` : "常规"}初级升灵台名额；尚未入舱，也尚未获得灵力。`, fallbackNarrative: "身份、修为和名额逐项核验后，费用才从账面划走。工作人员把求救信号和脑波警戒线讲了两遍，最后提醒：进去之后最重要的是活着出来。", suggestions: ["进入初级升灵台", "复核求救信号器", "检查魂环承受上限"] };
+    const entryFee = requestedTier === "中级" ? 0 : violent ? 800_000 : 500_000;
+    if (requestedTier === "中级") {
+      const cardIndex = game.view.inventory.indexOf("中级升灵台入门卡");
+      if (cardIndex < 0) return impossible("中级升灵台不能只靠现金预约，必须提交拍卖、交换或斗铠师福利取得的实名入门卡。", ["登记斗铠师福利", "核对中级入门卡", "申请常规初级名额"]);
+      game.view.inventory.splice(cardIndex, 1);
+    } else {
+      if (character.coins < entryFee) return impossible(`初级升灵台一次准入按现有统一账本折算需要${formatSoulCoins(entryFee)}，当前资金不足。`, ["积攒费用", "争取学院奖励名额", "承接传灵塔合规任务"]);
+      character.coins -= entryFee;
+      recordEconomyTransaction(game, "支出", entryFee, "传灵塔升灵台受理处", "初级升灵台单次名额与脑波保护服务");
+    }
+    game.view.spiritAscension = { status: "已预约", tier: requestedTier, mode: violent ? "暴动期" : "常规", companionNames: companions.map((item) => item.name), uprisingEntryYears: violent ? [...uprisingEntryYears, currentYear] : uprisingEntryYears, entryFee, encounters: 0, virtualDefeats: 0, spiritualEnergy: 0, pendingSpiritualEnergy: 0, neuralShock: 0, totalEntries: (current?.totalEntries ?? 0) + 1, bestYearsGained: current?.bestYearsGained ?? 0 };
+    return { intent: "预约升灵台", minutes: 90, ruleSummary: `${requestedTier === "中级" ? "核销一张实名中级入门卡" : `支付${formatSoulCoins(entryFee)}`}并取得一次${violent ? `暴动期团队（${companions.map((item) => item.name).join("、")}）` : companions.length ? `同行（${companions.map((item) => item.name).join("、")}）` : "常规"}${requestedTier}升灵台名额；尚未入舱，也尚未获得灵力。`, fallbackNarrative: "身份、修为和名额逐项核验后，费用或入门卡才从账面划走。工作人员把求救信号和脑波警戒线讲了两遍，最后提醒：进去之后最重要的是活着出来。", suggestions: [`进入${requestedTier}升灵台`, "复核求救信号器", "检查魂环承受上限"] };
   }
   if (/进入|入舱|启动/.test(action)) {
-    if (!current || current.status !== "已预约") return impossible("没有可使用的初级升灵台预约名额。", ["申请初级升灵台名额", "核对预约记录", "前往传灵塔受理点"]);
+    if (!current || current.status !== "已预约") return impossible("没有可使用的升灵台预约名额。", ["申请升灵台名额", "核对预约记录", "前往传灵塔受理点"]);
     current.status = "探索中";
     game.world.fatiguePoints += 6;
-    return { intent: "进入升灵台", minutes: 30, ruleSummary: "完成脑波接入并进入初级升灵台虚拟森林；现实身体仍在保护舱内。", fallbackNarrative: "舱盖合拢后，金属顶棚被潮湿的树冠替代。求救信号器贴在掌心，风声和泥土气味都逼真得让人忘记身体还躺在外面。", suggestions: ["搜寻升灵台虚拟魂兽", "观察周围环境", "按动求救信号主动退出"] };
+    return { intent: "进入升灵台", minutes: 30, ruleSummary: `完成脑波接入并进入${current.tier}升灵台虚拟森林；现实身体仍在保护舱内。`, fallbackNarrative: "舱盖合拢后，金属顶棚被潮湿的树冠替代。求救信号器贴在掌心，风声和泥土气味都逼真得让人忘记身体还躺在外面。", suggestions: ["搜寻升灵台虚拟魂兽", "观察周围环境", "按动求救信号主动退出"] };
   }
   if (/搜寻|探索|遭遇|猎杀|击杀|战斗/.test(action) && /魂兽|升灵台/.test(action)) {
     if (!current || current.status !== "探索中") return impossible("当前并未处于升灵台探索中。", ["申请初级升灵台名额", "进入初级升灵台", "查看升灵台记录"]);
     const random = actionRandom(game);
     const violent = current.mode === "暴动期";
-    const beastYears = violent ? integer(random, 300, 1_200) : integer(random, 80, 520);
+    const middle = current.tier === "中级";
+    const beastYears = middle ? integer(random, 1_000, 3_800) : violent ? integer(random, 300, 1_200) : integer(random, 80, 520);
     const perception = /优秀|顶尖/.test(character.abilityDescriptors.perception) ? 180 : 80;
     const teamSupport = (current.companionNames?.length ?? 0) * 140;
-    const combatCapacity = character.soulRank * 35 + activeRings.length * 120 + perception + teamSupport;
+    const armorSupport = (character.battleArmors?.filter((item) => item.status === "完整").sort((a, b) => b.tier - a.tier)[0]?.tier ?? 0) * 900;
+    const combatCapacity = character.soulRank * 35 + activeRings.length * 120 + perception + teamSupport + armorSupport;
     const success = combatCapacity >= beastYears + integer(random, 0, 280);
     current.encounters += 1;
-    current.neuralShock = Math.min(100, current.neuralShock + (success ? integer(random, violent ? 8 : 5, violent ? 16 : 12) : integer(random, 28, 42)));
+    current.neuralShock = Math.min(100, current.neuralShock + (success ? integer(random, violent || middle ? 8 : 5, violent || middle ? 16 : 12) : integer(random, middle ? 34 : 28, middle ? 50 : 42)));
     if (success) {
-      const energy = Math.max(8, Math.round(beastYears * (violent ? .2 : .16)));
+      const energy = Math.max(8, Math.round(beastYears * (violent ? .2 : middle ? .12 : .16)));
       current.virtualDefeats += 1;
       if (violent) current.pendingSpiritualEnergy = (current.pendingSpiritualEnergy ?? 0) + energy;
       else current.spiritualEnergy += energy;
