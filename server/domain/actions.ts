@@ -612,7 +612,12 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   const beast = soulBeastById(hunting.targetBeastId ?? "");
   const danger = beast?.danger ?? 2;
   const character = game.view.character!;
-  const playerPower = character.soulRank * 2 + character.soulRings.length * 12 + (character.abilityDescriptors.physique === "顶尖" ? 12 : character.abilityDescriptors.physique === "优秀" ? 6 : 0);
+  const activeBattleArmor = /斗铠|着甲/.test(action) ? [...(character.battleArmors ?? [])].filter((armor) => armor.status === "完整").sort((left, right) => right.tier - left.tier)[0] : undefined;
+  const armorPower = activeBattleArmor ? activeBattleArmor.tier * 22 + Math.round(activeBattleArmor.compatibility / 5) : 0;
+  const activeMecha = /机甲/.test(action) && game.view.mecha?.model && game.view.mecha.condition !== "大修" && (game.view.mecha.energy ?? 0) >= 6 ? game.view.mecha : undefined;
+  if (activeMecha) activeMecha.energy = Math.max(0, (activeMecha.energy ?? 0) - 6);
+  const mechaPower = activeMecha ? 30 + ["无", "白级", "黄级", "紫级", "黑级"].indexOf(activeMecha.license) * 14 : 0;
+  const playerPower = character.soulRank * 2 + character.soulRings.length * 12 + (character.abilityDescriptors.physique === "顶尖" ? 12 : character.abilityDescriptors.physique === "优秀" ? 6 : 0) + armorPower + mechaPower;
   const prepared = hunting.preparation.length * 5;
   const observe = /观察|试探|弱点/.test(action);
   const flee = /逃|撤|离开战斗/.test(action);
@@ -652,7 +657,8 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   const distanceReduction = combat.distance === "远距离" ? 6 : combat.distance === "近距离" ? -4 : 0;
   const observationReduction = observe ? 8 + combat.insight * 2 : 0;
   const guardReduction = defend ? 12 + combat.guard * 3 : 0;
-  const enemyAttack = Math.max(2, integer(random, 5, 15) + danger * 4 + Math.round((hunting.targetYears ?? 100) / 180) - Math.round(playerPower * 0.14) - distanceReduction - observationReduction - guardReduction + (reckless ? 8 : 0));
+  const equipmentReduction = (activeBattleArmor ? activeBattleArmor.tier * 5 + Math.round(activeBattleArmor.compatibility / 14) : 0) + (activeMecha ? 12 : 0);
+  const enemyAttack = Math.max(2, integer(random, 5, 15) + danger * 4 + Math.round((hunting.targetYears ?? 100) / 180) - Math.round(playerPower * 0.14) - distanceReduction - observationReduction - guardReduction - equipmentReduction + (reckless ? 8 : 0));
   if (enemyHp > 0) game.world.healthPoints -= enemyAttack;
   game.world.fatiguePoints += 8 + danger + (reckless ? 5 : 0);
   game.world.flags.combatEnemyHp = enemyHp;
@@ -676,7 +682,7 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   return {
     intent: "战斗",
     minutes: 10,
-    ruleSummary: `第 ${combat.round} 回合，玩家造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。敌方状态 ${combat.enemyCondition}，玩家状态 ${combat.playerCondition}。`,
+    ruleSummary: `第 ${combat.round} 回合，玩家造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。${activeBattleArmor ? `${activeBattleArmor.title}提供增幅与减伤。` : ""}${activeMecha ? `${activeMecha.model}消耗 6% 能源参战。` : ""}敌方状态 ${combat.enemyCondition}，玩家状态 ${combat.playerCondition}。`,
     fallbackNarrative: enemyHp <= 0
       ? `我抓住它转身的空当，把最后一下送了进去。${combat.enemyName}撞断一根矮树，挣了几下，不再起来。魂环从尸身上浮出时，我的手还在抖。`
       : flee
@@ -1368,6 +1374,117 @@ function soulSpiritResolution(game: StoredGame, action: string): ActionResolutio
   return impossible("需要明确选择调查、评估、签约或放弃魂灵。", ["评估魂灵适配", "签订魂灵契约", "放弃这份魂灵"]);
 }
 
+const BATTLE_ARMOR_PIECES = ["右臂甲", "左臂甲", "胸铠", "双腿甲", "头盔", "双翼"];
+
+function battleArmorResolution(game: StoredGame, action: string): ActionResolution {
+  const era = game.view.era ?? 1;
+  const character = game.view.character!;
+  if (era < 3) return impossible("成熟斗铠体系尚未出现在当前时代。", ["研究金属与武魂共鸣", "制作当前时代的魂导护具", "核对技术年代"]);
+  const tierToken = action.match(/([一二三四1-4])字斗铠/)?.[1] ?? "一";
+  const tier = Math.max(1, Math.min(4, Number(tierToken.replace(/[一二三四]/, (value) => String("一二三四".indexOf(value) + 1))))) as 1 | 2 | 3 | 4;
+  const rankRequirements = [0, 40, 60, 80, 95];
+  if (character.soulRank < rankRequirements[tier]) return impossible(`${tier}字斗铠工程至少需要 ${rankRequirements[tier]} 级魂力来承受共鸣与增幅。`, ["继续修炼", "先学习斗铠设计", "寻找低负载训练护具"]);
+  character.battleArmors ??= [];
+  const previous = tier > 1 ? character.battleArmors.find((armor) => armor.tier === tier - 1 && armor.status === "完整") : undefined;
+  if (tier > 1 && !previous) return impossible(`必须先拥有完整的${tier - 1}字斗铠，才能升华到${tier}字。`, [`完成${tier - 1}字斗铠`, "改良现有斗铠", "提升锻造与设计能力"]);
+
+  let armor = character.battleArmors.find((item) => item.tier === tier);
+  if (!armor) {
+    armor = { tier, title: `${tier}字斗铠`, pieces: [], completion: 0, compatibility: 0, status: "设计中", maker: character.name };
+    character.battleArmors.push(armor);
+  }
+  if (!game.view.battleArmorProject || game.view.battleArmorProject.tier !== tier) {
+    game.view.battleArmorProject = { tier, blueprintProgress: 0, compatibility: 0, failedPieces: 0, nextPiece: BATTLE_ARMOR_PIECES[0] };
+  }
+  const project = game.view.battleArmorProject;
+
+  if (/设计|测量|推演|共鸣测试|适配/.test(action) && !/制作|锻造/.test(action)) {
+    const perception = character.abilityDescriptors.perception === "顶尖" ? 8 : character.abilityDescriptors.perception === "优秀" ? 4 : 1;
+    const gain = integer(actionRandom(game), 17, 27) + perception;
+    project.blueprintProgress = Math.min(100, project.blueprintProgress + gain);
+    project.compatibility = Math.min(98, 45 + Math.round(project.blueprintProgress * .45) + perception);
+    armor.compatibility = project.compatibility;
+    return { intent: "斗铠设计", minutes: speedMinutes(game, 240, 960), ruleSummary: `${tier}字斗铠图纸进度增加 ${gain}%，当前 ${project.blueprintProgress}%；武魂适配 ${project.compatibility}%。`, fallbackNarrative: "尺寸不是照着身体抄一遍就够了。我让武魂连续释放三次，把魂力经过肩、肘和掌心时的偏差逐个写进图纸。最后那条线改完，甲片才不会在发力时反过来卡住自己。", suggestions: project.blueprintProgress >= 100 ? [`制作${tier}字斗铠${project.nextPiece}`, "请同伴复核图纸", "准备稀有金属"] : ["继续设计斗铠", "测试武魂共鸣", "寻找斗铠设计师复核"] };
+  }
+  if (/查看|检查|进度/.test(action)) {
+    return { intent: "检查斗铠工程", minutes: 10, ruleSummary: `${armor.title}已完成 ${armor.pieces.length}/${BATTLE_ARMOR_PIECES.length} 件，图纸 ${project.blueprintProgress}%，适配 ${project.compatibility}%，失败 ${project.failedPieces} 次。`, fallbackNarrative: `我把已经完成的甲片按身体位置排开。${project.nextPiece}仍是空位，图纸边缘留着几处还没解决的魂力回路。`, suggestions: project.blueprintProgress < 100 ? ["继续设计斗铠", "测试武魂共鸣", "请人复核图纸"] : [`制作${tier}字斗铠${project.nextPiece}`, "购买斗铠稀有金属", "请锻造师协作"] };
+  }
+  if (/制作|锻造|打造|组装|升华/.test(action)) {
+    if (project.blueprintProgress < 100) return impossible(`图纸只有 ${project.blueprintProgress}%，不能在关键魂力回路未闭合时制作。`, ["继续设计斗铠", "测试武魂共鸣", "请斗铠设计师复核"]);
+    const metalIndex = game.view.inventory.findIndex((item) => /稀有金属|魂导器用.*金属|灵锻金属|魂锻金属/.test(item));
+    if (metalIndex < 0) return impossible("下一件斗铠缺少已登记的稀有金属胚料。", ["购买斗铠稀有金属", "委托锻造师准备胚料", "检查仓库存料"]);
+    const craft = game.view.professions.find((item) => /锻造|炼器/.test(item.name));
+    const design = game.view.professions.find((item) => item.name === "魂导器研究");
+    const collaborator = game.view.relations.some((item) => /锻造师|设计师|机甲师|魂导师/.test(`${item.name}${item.relation}`));
+    const expertise = (craft?.progress ?? 0) + (design?.progress ?? 0) * .5 + (collaborator ? 24 : 0);
+    const random = actionRandom(game);
+    const success = random() < Math.min(.94, .48 + expertise / 180 + project.compatibility / 300 - tier * .07);
+    game.view.inventory.splice(metalIndex, 1);
+    if (!success) {
+      project.failedPieces += 1;
+      if (craft) craft.failures += 1;
+      return { intent: "斗铠制作", minutes: speedMinutes(game, 480, 1920), ruleSummary: `${project.nextPiece}制作失败，稀有金属胚料已损耗；失败记录 ${project.failedPieces} 次。`, fallbackNarrative: "金属在最后一次收束时出现了肉眼几乎看不见的分层。继续刻阵也能亮，但承受一次全力爆发就可能崩开。我把这块失败件作废，没有把隐患藏进盔甲里。", suggestions: ["分析金属分层原因", "重新准备稀有金属", "请锻造师协作"] };
+    }
+    const piece = project.nextPiece;
+    armor.pieces.push(piece);
+    armor.completion = Math.round(armor.pieces.length / BATTLE_ARMOR_PIECES.length * 100);
+    armor.status = armor.pieces.length >= BATTLE_ARMOR_PIECES.length ? "完整" : "制作中";
+    project.nextPiece = BATTLE_ARMOR_PIECES[armor.pieces.length] ?? "套装共鸣测试";
+    if (armor.status === "完整") {
+      game.view.battleArmorProject = undefined;
+      character.reputation = `${tier}字斗铠师`;
+    }
+    return { intent: "斗铠制作", minutes: speedMinutes(game, 480, 1920), ruleSummary: `${piece}制作成功；${armor.title}完成度 ${armor.completion}%，适配 ${armor.compatibility}%。`, fallbackNarrative: armor.status === "完整" ? `最后一件甲片扣合时，前面五件依次亮起。魂力不再分段停留，整套斗铠沿着武魂的节奏完成了一次呼吸。它没有凭空让我无敌，但每一处增幅都能解释、测试和维护。` : `${piece}第一次启动没有出现过热。我拆下、复测、再装回，确认接口能和已有甲片同时共鸣，才在工程册上划掉这一项。`, suggestions: armor.status === "完整" ? ["测试完整斗铠", "为斗铠命名", "记录维护周期"] : [`制作${tier}字斗铠${project.nextPiece}`, "检查套装共鸣", "补充稀有金属"], systemMessages: [`斗铠 · ${armor.title} · ${piece}`] };
+  }
+  return impossible("需要明确进行斗铠设计、检查进度或制作具体部件。", ["设计一字斗铠", "查看斗铠进度", "制作斗铠部件"]);
+}
+
+function mechaResolution(game: StoredGame, action: string): ActionResolution {
+  if ((game.view.era ?? 1) < 3) return impossible("当前时代没有成熟的现代机甲训练与执照体系。", ["研究当前时代的魂导器", "核对技术年代", "训练武魂实战"]);
+  const mecha = game.view.mecha ??= { license: "无", simulatorProgress: 0, simulatorSessions: 0, practicalPasses: 0 };
+  const licenses = ["无", "白级", "黄级", "紫级", "黑级"] as const;
+  if (/模拟|训练|课程|练习/.test(action) && !/购买|订购/.test(action)) {
+    const perception = game.view.character!.abilityDescriptors.perception === "顶尖" ? 6 : game.view.character!.abilityDescriptors.perception === "优秀" ? 3 : 0;
+    const gain = integer(actionRandom(game), 9, 17) + perception;
+    mecha.simulatorProgress = Math.min(100, mecha.simulatorProgress + gain);
+    mecha.simulatorSessions += 1;
+    game.world.fatiguePoints += 10;
+    return { intent: "机甲模拟训练", minutes: speedMinutes(game, 120, 480), ruleSummary: `完成第 ${mecha.simulatorSessions} 次模拟训练，驾驶进度增加 ${gain}%，当前 ${mecha.simulatorProgress}%。`, fallbackNarrative: "模拟舱把过载、盲区和迟滞都照实还原。第一次转向太急，虚拟机体在建筑边缘擦出整片警告。我重新跑同一段路线，直到手脚动作不再互相抢指令。", suggestions: ["继续机甲模拟训练", "参加白级机甲驾驶考核", "复盘失误记录"] };
+  }
+  if (/考核|执照|认证/.test(action)) {
+    const requested = (["黑级", "紫级", "黄级", "白级"] as const).find((level) => action.includes(level)) ?? "白级";
+    const targetIndex = licenses.indexOf(requested);
+    const currentIndex = licenses.indexOf(mecha.license);
+    if (targetIndex !== currentIndex + 1) return impossible("机甲执照必须按白、黄、紫、黑逐级考核。", [`参加${licenses[currentIndex + 1] ?? "下一等级"}机甲考核`, "继续模拟训练", "查看执照"]);
+    const requiredProgress = targetIndex * 22;
+    const requiredSessions = targetIndex * 3;
+    const institution = game.view.affiliations.some((item) => /学院|联邦|军|机甲|史莱克/.test(item.name));
+    if (!institution) return impossible("正式驾驶考核需要学院、联邦交通或军方训练机构受理。", ["加入有资质的学院", "寻找公开考点", "继续模拟训练"]);
+    if (mecha.simulatorProgress < requiredProgress || mecha.simulatorSessions < requiredSessions) return impossible(`${requested}考核至少需要 ${requiredProgress}% 训练进度和 ${requiredSessions} 次模拟记录。`, ["继续机甲模拟训练", "复盘失误记录", "预约后续考核"]);
+    mecha.license = requested;
+    mecha.practicalPasses += 1;
+    return { intent: "机甲驾驶考核", minutes: speedMinutes(game, 240, 960), ruleSummary: `通过路线、故障处置与紧急制动考核，取得${requested}机甲驾驶执照。`, fallbackNarrative: "考核不是打一场漂亮的模拟战。动力故障、平民避让和强制迫降各来了一次。机体停回黄线内后，考官才把新等级写进驾驶档案。", suggestions: ["查看执照权限", "继续高级模拟训练", mecha.model ? "维护自有机甲" : `购买${requested}训练机甲`], systemMessages: [`执照 · ${requested}机甲驾驶`] };
+  }
+  if (/购买|订购/.test(action)) {
+    if (mecha.license === "无") return impossible("没有机甲驾驶执照，正规渠道不会出售可驾驶机体。", ["参加白级机甲考核", "继续模拟训练", "租用带教训练机"]);
+    const levelIndex = licenses.indexOf(mecha.license);
+    const cost = levelIndex * 5_000;
+    if (game.view.character!.coins < cost) return impossible(`当前许可等级的训练机至少需要${formatSoulCoins(cost)}。`, ["积攒资金", "申请学院训练机", "先租用机甲"]);
+    game.view.character!.coins -= cost;
+    mecha.model = `${mecha.license}通用训练机甲`;
+    mecha.condition = "完好";
+    mecha.energy = 100;
+    return { intent: "购买机甲", minutes: 180, ruleSummary: `支付${formatSoulCoins(cost)}，登记并取得${mecha.model}；所有权与驾驶执照均已核验。`, fallbackNarrative: "机体编号、能源记录和维修历史一项不少。付款后，登记员把所有权转到我的档案名下，我绕着外壳检查一圈，没把展厅灯光当成完好证明。", suggestions: ["进行低速试驾", "检查机甲维护手册", "购买备用能源"] };
+  }
+  if (/驾驶|启动|出击|使用/.test(action)) {
+    if (!mecha.model || mecha.condition === "大修") return impossible("当前没有可安全启动的自有机甲。", ["购买合规机甲", "完成机甲维修", "使用模拟舱训练"]);
+    if ((mecha.energy ?? 0) < 10) return impossible("机甲能源不足，无法安全启动。", ["补充机甲能源", "检查能源泄漏", "改用其他交通方式"]);
+    mecha.energy = Math.max(0, (mecha.energy ?? 0) - 10);
+    return { intent: "驾驶机甲", minutes: 60, ruleSummary: `完成一次许可范围内的机甲驾驶，剩余能源 ${mecha.energy}%。`, fallbackNarrative: "自检灯依次转绿后，我才接通主动力。机体迈出第一步时仍有迟滞，训练里背熟的动作必须按真实重量重新修正。", suggestions: ["记录操控偏差", "补充机甲能源", "进行维护检查"] };
+  }
+  return impossible("需要明确选择机甲训练、考核、购买或驾驶。", ["进行机甲模拟训练", "参加机甲驾驶考核", "查看机甲状态"]);
+}
+
 function factionManagementResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
   let faction = game.view.managedFactions[0];
@@ -1505,6 +1622,8 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   if (guarded) resolution = guarded;
   else if (/切换|换成|改用|主修/.test(action) && /武魂/.test(action)) resolution = switchMartialSoulResolution(game, action);
   else if (/魂灵/.test(action)) resolution = soulSpiritResolution(game, action);
+  else if (/斗铠/.test(action) && !/购买|买|采购/.test(action) && !(game.view.combat && /攻击|防御|格挡|闪避|逃跑|弱点/.test(action))) resolution = battleArmorResolution(game, action);
+  else if (/机甲/.test(action) && (!game.view.combat || !/攻击|防御|格挡|闪避|逃跑|弱点/.test(action) || !game.view.mecha?.model)) resolution = mechaResolution(game, action);
   else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
   else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
   else if (/建立|创建|招募|任命|扩建|领地|外交|情报网|经营势力|管理宗门/.test(action) && /宗门|势力|组织|成员|领地|外交|情报/.test(action)) resolution = factionManagementResolution(game, action);

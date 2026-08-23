@@ -133,4 +133,40 @@ describe("multi-era foundations", () => {
     expect(certification.intent).toBe("魂导师认证");
     expect(profession.level).toBe("1级魂导师");
   });
+
+  it("builds battle armor through design and six persistent pieces", () => {
+    const game = playingGame(3, "battle-armor-loop");
+    game.view.character!.soulRank = 40;
+    game.view.character!.coins = 20_000;
+    game.view.character!.abilityDescriptors.perception = "顶尖";
+    for (let index = 0; index < 6 && (game.view.battleArmorProject?.blueprintProgress ?? 0) < 100; index += 1) {
+      resolveAction(game, "继续设计一字斗铠并做武魂适配测试");
+    }
+    expect(game.view.battleArmorProject?.blueprintProgress).toBe(100);
+
+    for (let attempt = 0; attempt < 24 && game.view.character!.battleArmors?.[0]?.status !== "完整"; attempt += 1) {
+      resolveAction(game, "购买斗铠稀有金属");
+      resolveAction(game, `制作一字斗铠${game.view.battleArmorProject?.nextPiece ?? "部件"}`);
+    }
+    const armor = game.view.character!.battleArmors?.[0];
+    expect(armor?.status).toBe("完整");
+    expect(armor?.pieces).toEqual(["右臂甲", "左臂甲", "胸铠", "双腿甲", "头盔", "双翼"]);
+    expect(armor?.completion).toBe(100);
+    expect(game.view.battleArmorProject).toBeUndefined();
+  });
+
+  it("requires training and a license before buying a mecha", () => {
+    const game = playingGame(3, "mecha-license-loop");
+    game.view.character!.coins = 10_000;
+    game.view.affiliations.push({ id: "federal-school", name: "明都联邦学院", role: "学员", reputation: "在册", joinedAt: "测试" });
+    expect(resolveAction(game, "购买白级训练机甲").intent).toBe("无法完成");
+    for (let index = 0; index < 3; index += 1) resolveAction(game, "进行机甲模拟训练");
+    expect(game.view.mecha?.simulatorSessions).toBe(3);
+    expect(resolveAction(game, "参加白级机甲驾驶考核").intent).toBe("机甲驾驶考核");
+    expect(game.view.mecha?.license).toBe("白级");
+    expect(resolveAction(game, "购买白级训练机甲").intent).toBe("购买机甲");
+    expect(game.view.mecha?.model).toBe("白级通用训练机甲");
+    expect(resolveAction(game, "驾驶机甲进行低速试驾").intent).toBe("驾驶机甲");
+    expect(game.view.mecha?.energy).toBe(90);
+  });
 });

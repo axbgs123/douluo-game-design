@@ -1662,6 +1662,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     activeMartialSoulIndex: 0,
     soulRingSets: [[]],
     soulSpirits: [],
+    battleArmors: [],
     abilityDescriptors: {
       physique: selected.physique,
       spirit: selected.spirit,

@@ -123,6 +123,34 @@ export interface SoulSpiritContractView {
   warning: string;
 }
 
+export interface BattleArmorView {
+  tier: 1 | 2 | 3 | 4;
+  title: string;
+  pieces: string[];
+  completion: number;
+  compatibility: number;
+  status: "设计中" | "制作中" | "完整";
+  maker: string;
+}
+
+export interface BattleArmorProjectView {
+  tier: 1 | 2 | 3 | 4;
+  blueprintProgress: number;
+  compatibility: number;
+  failedPieces: number;
+  nextPiece: string;
+}
+
+export interface MechaProgressView {
+  license: "无" | "白级" | "黄级" | "紫级" | "黑级";
+  simulatorProgress: number;
+  simulatorSessions: number;
+  practicalPasses: number;
+  model?: string;
+  condition?: "完好" | "受损" | "大修";
+  energy?: number;
+}
+
 export interface MartialSoulView {
   name: string;
   category: string;
@@ -150,6 +178,7 @@ export interface CharacterPublic extends CandidatePublic {
   activeMartialSoulIndex: number;
   soulRingSets: SoulRingView[][];
   soulSpirits?: SoulSpiritView[];
+  battleArmors?: BattleArmorView[];
   abilityDescriptors: { physique: string; spirit: string; perception: string };
   personalityTraits: string[];
   revealedGift?: string;
@@ -483,6 +512,8 @@ export interface GameView {
   inventoryLoad: InventoryLoadView;
   professions: ProfessionView[];
   soulSpiritContract?: SoulSpiritContractView;
+  battleArmorProject?: BattleArmorProjectView;
+  mecha?: MechaProgressView;
   managedFactions: ManagedFactionView[];
   economy: EconomyView;
   location?: string;
