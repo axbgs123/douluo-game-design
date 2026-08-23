@@ -17,6 +17,7 @@ export const WORLD_MAP_POINTS: WorldMapPoint[] = [
   { id: "dou-ling-city", name: "斗灵城", x: 68, y: 31, kind: "城市" },
   { id: "shrek-city", name: "史莱克城", x: 48, y: 48, kind: "学院" },
   { id: "star-dou-reserve", name: "星斗保护区", x: 53, y: 57, kind: "森林" },
+  { id: "white-tiger-duke-estate", name: "白虎公爵府", x: 70, y: 72, kind: "宗门" },
   { id: "mingdu-federal", name: "联邦明都", x: 27, y: 42, kind: "城市" },
   { id: "spirit-pagoda-hq", name: "传灵塔总部", x: 45, y: 43, kind: "宗门" },
   { id: "east-sea-city", name: "东海城", x: 82, y: 54, kind: "城市" },
@@ -69,7 +70,7 @@ export const WORLD_MAP_POINTS: WorldMapPoint[] = [
 ];
 
 const LATER_ERA_MAP_IDS: Record<2 | 3 | 4, Set<string>> = {
-  2: new Set(["radiant-city", "evil-forest", "jing-yang-mountains", "heavenly-soul-city", "dou-ling-city", "shrek-city", "star-luo-city", "extreme-north-edge", "extreme-north-core"]),
+  2: new Set(["radiant-city", "evil-forest", "jing-yang-mountains", "heavenly-soul-city", "dou-ling-city", "shrek-city", "star-luo-city", "white-tiger-duke-estate", "star-dou-edge", "star-dou-core", "extreme-north-edge", "extreme-north-core"]),
   3: new Set(["shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city", "aolai-city-d3", "blood-god-camp", "abyss-passage", "d3-star-luo-capital", "d3-dou-spirit-capital", "extreme-north-edge", "extreme-north-core"]),
   4: new Set(["mother-ship-port", "tianluo-planet", "tiandou-planet", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star", "shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
 };

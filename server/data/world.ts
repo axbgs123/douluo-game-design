@@ -63,7 +63,7 @@ export interface LocationDefinition {
 }
 
 const PERSISTENT_LOCATIONS_BY_ERA: Record<2 | 3 | 4, Set<string>> = {
-  2: new Set(["star-luo-city", "extreme-north-edge", "extreme-north-core"]),
+  2: new Set(["star-luo-city", "star-dou-edge", "star-dou-core", "extreme-north-edge", "extreme-north-core"]),
   3: new Set(["shrek-city", "extreme-north-edge", "extreme-north-core"]),
   4: new Set(["shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
 };

@@ -426,7 +426,7 @@ const ORIGINS: OriginTemplate[] = [
 ];
 
 export const ERA_BASE_YEARS: Record<GameEra, number> = { 1: 0, 2: 10000, 3: 20000, 4: 30000 };
-const ERA_PROTAGONISTS: Record<GameEra, string> = { 1: "唐三", 2: "霍雨浩", 3: "唐舞麟", 4: "蓝轩宇" };
+const ERA_ANCHORS: Record<GameEra, string> = { 1: "唐三觉醒", 2: "霍雨浩离府求学", 3: "唐舞麟觉醒", 4: "蓝轩宇觉醒" };
 
 function laterOrigin(id: string, name: string, summary: string, location: string, tier: CandidateRarity, categories: string[], route: string, authority: string, advantage: string, burden: string): OriginTemplate {
   return { id, name, summary, details: [burden, `${authority}保留着这户人家的正式记录。`, `六岁觉醒结果会直接改变${route}的可行性。`], locations: [location], preferredCategories: categories, weight: tier === "平凡" ? 18 : tier === "优秀" ? 12 : tier === "稀有" ? 7 : 3, tier, route, selfKnowledge: "本地人 · 身份记录明确", fixedTraits: tier === "平凡" ? ["务实"] : ["受过教育", "谨慎"], roleTags: [route, authority], authority, advantage, burden, startingCoins: tier === "平凡" ? 20 : tier === "优秀" ? 80 : tier === "稀有" ? 220 : 500, startingItems: [`${authority}签发的身份牌`], startingReputation: `${authority}登记在册`, pressure: tier === "传奇" ? 4 : tier === "稀有" ? 3 : 2 };
@@ -757,10 +757,10 @@ function chooseMartialSouls(random: () => number, origin: OriginTemplate, prefer
 
 function eraRelation(year: number, era: GameEra): string {
   const offset = year - ERA_BASE_YEARS[era];
-  const protagonist = ERA_PROTAGONISTS[era];
-  if (offset === 0) return `与${protagonist}同一基准年参加武魂觉醒`;
-  if (offset < 0) return `比${protagonist}的基准年早约 ${Math.abs(offset)} 年`;
-  return `比${protagonist}的基准年晚约 ${offset} 年`;
+  const anchor = ERA_ANCHORS[era];
+  if (offset === 0) return `在${anchor}的基准年参加武魂觉醒`;
+  if (offset < 0) return `比${anchor}基准年早约 ${Math.abs(offset)} 年`;
+  return `比${anchor}基准年晚约 ${offset} 年`;
 }
 
 function generateName(random: () => number): string {

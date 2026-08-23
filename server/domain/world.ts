@@ -27,10 +27,10 @@ function characterExistsInEra(characterId: string, year: number): boolean {
 }
 
 function eraAtYear(year: number): string {
-  const [base, protagonist] = year >= 25000 ? [30000, "蓝轩宇"] : year >= 15000 ? [20000, "唐舞麟"] : year >= 5000 ? [10000, "霍雨浩"] : [0, "唐三"];
+  const [base, anchor] = year >= 25000 ? [30000, "蓝轩宇觉醒"] : year >= 15000 ? [20000, "唐舞麟觉醒"] : year >= 5000 ? [10000, "霍雨浩离府求学"] : [0, "唐三觉醒"];
   const offset = year - base;
-  if (offset === 0) return `${protagonist}基准年`;
-  return offset < 0 ? `比${protagonist}基准年早约 ${Math.abs(offset)} 年` : `比${protagonist}基准年晚约 ${offset} 年`;
+  if (offset === 0) return `${anchor}基准年`;
+  return offset < 0 ? `比${anchor}基准年早约 ${Math.abs(offset)} 年` : `比${anchor}基准年晚约 ${offset} 年`;
 }
 
 const DYNAMIC_EVENT_TEMPLATES = [
@@ -121,11 +121,11 @@ function powerAtYear(characterId: string, year: number): { soulRank?: number; ti
   return { soulRank: prior.soulRank, tier: prior.tier };
 }
 
-function canonicalLocationAtYear(characterId: string, year: number): string {
+function canonicalLocationAtYear(characterId: string, year: number, day = 360): string {
   const definition = characterById(characterId);
   const latestEvent = CANON_EVENTS
-    .filter((event) => event.year <= year && event.locationId && event.participantIds.includes(characterId))
-    .sort((left, right) => left.year - right.year)
+    .filter((event) => (event.year < year || (event.year === year && (event.day ?? 1) <= day)) && event.locationId && event.participantIds.includes(characterId))
+    .sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1))
     .at(-1);
   return latestEvent?.locationId ?? definition?.initialLocationId ?? "notting-city";
 }
@@ -143,7 +143,7 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
       age: definition.birthYear === undefined ? undefined : Math.max(0, startYear - definition.birthYear),
       soulRank: aliveAtStart ? power.soulRank : undefined,
       powerTier: aliveAtStart ? power.tier : "不在当世活动",
-      locationId: canonicalLocationAtYear(definition.id, startYear),
+      locationId: canonicalLocationAtYear(definition.id, startYear, 1),
       factionIds: definition.factionIds,
       currentGoal: !inCurrentEra ? "不在当前时代活动" : !born ? "尚未出生" : aliveAtStart ? (definition.goals[0] ?? "继续当前生活") : "已死亡",
       dispositionToPlayer: 0,

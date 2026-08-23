@@ -44,6 +44,10 @@ describe("multi-era foundations", () => {
       expect(game.view.map.some((location) => location.current)).toBe(true);
       expect(game.view.map.some((location) => location.id === "holy-soul-village")).toBe(false);
       expect(game.view.map.every((location) => location.id !== "spirit-city")).toBe(true);
+      if (era === 2) {
+        expect(game.view.map.some((location) => location.id === "white-tiger-duke-estate")).toBe(true);
+        expect(game.view.map.some((location) => location.id === "star-dou-edge")).toBe(true);
+      }
     }
   });
 
@@ -52,6 +56,8 @@ describe("multi-era foundations", () => {
     expect(era2.npcs["tang-san"].alive).toBe(false);
     expect(era2.npcs["huo-yuhao"].alive).toBe(true);
     expect(era2.npcs["tang-wulin"].alive).toBe(false);
+    expect(era2.npcs["huo-yuhao"].age).toBe(11);
+    expect(era2.npcs["huo-yuhao"].locationId).toBe("white-tiger-duke-estate");
 
     const era3 = createHiddenWorld(20_000, "east-sea-city");
     expect(era3.npcs["huo-yuhao"].alive).toBe(false);
@@ -155,7 +161,7 @@ describe("multi-era foundations", () => {
 
   it("keeps soul spirits unavailable before their canon invention", () => {
     const game = playingGame(2, "pre-spirit-era");
-    game.view.worldTime = { year: 10_000, day: 1, time: "08:00", season: "春", era: "霍雨浩基准年" };
+    game.view.worldTime = { year: 10_000, day: 1, time: "08:00", season: "春", era: "霍雨浩离府求学基准年" };
     game.view.character!.soulRank = 10;
     expect(resolveAction(game, "申请正规魂灵").intent).toBe("无法完成");
     expect(resolveAction(game, "研究魂兽残魂与魂灵设想").intent).toBe("魂灵前置研究");
