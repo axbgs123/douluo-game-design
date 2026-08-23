@@ -96,6 +96,15 @@ interface ChatCompletionPayload {
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
+let smokeRequestCount = 0;
+
+function positiveEnvironmentInteger(name: string): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
 async function safeRecordModelCall(input: Parameters<(typeof import("../db.js"))["recordModelCall"]>[0]): Promise<void> {
   try {
     const { recordModelCall } = await import("../db.js");
@@ -110,6 +119,11 @@ async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", s
   const serialized = JSON.stringify(body);
   let recorded = false;
   try {
+    const maximumRequestChars = positiveEnvironmentInteger("DOULUO_MODEL_SMOKE_MAX_REQUEST_CHARS");
+    if (maximumRequestChars && serialized.length > maximumRequestChars) throw new Error(`真实模型冒烟请求超过 ${maximumRequestChars} 字符硬上限`);
+    const maximumRequests = positiveEnvironmentInteger("DOULUO_MODEL_SMOKE_MAX_REQUESTS");
+    if (maximumRequests && smokeRequestCount >= maximumRequests) throw new Error(`真实模型冒烟达到 ${maximumRequests} 次调用硬上限`);
+    if (maximumRequests) smokeRequestCount += 1;
     const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${settings.apiKey}`, "Content-Type": "application/json" },
@@ -137,6 +151,8 @@ export async function interpretActionWithDeepSeek(game: StoredGame, playerInput:
   if (!settings.apiKey) return null;
   const payload = await tracedCompletion(game, "intent", settings, {
       model: settings.model,
+      max_tokens: 256,
+      thinking: { type: "disabled" },
       response_format: { type: "json_object" },
       temperature: 0.1,
       messages: [
@@ -175,6 +191,8 @@ export async function narrateWithDeepSeek(
 
   const payload = await tracedCompletion(game, "narrator", settings, {
       model: settings.model,
+      max_tokens: 4096,
+      thinking: { type: "disabled" },
       response_format: { type: "json_object" },
       temperature: 0.8,
       messages: [

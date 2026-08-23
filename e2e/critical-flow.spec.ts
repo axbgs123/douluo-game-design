@@ -97,7 +97,7 @@ test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状�
   await expect(page.getByText(/指挥训练 0% · 真实飞行 0 小时 · 船员 0 · 舰桥协同 0% · 完成任务 0/)).toBeVisible();
 });
 
-test("机构分支与失败代价会从行动规则持久显示到任务界面", async ({ page }) => {
+test("机构分支、失败代价与具名复核人会谈会持久显示到任务界面", async ({ page }) => {
   await createPlayingCharacter(page, 1);
   await submitAction(page, "申请学院入学");
   await page.getByRole("button", { name: "人物", exact: true }).click();
@@ -109,6 +109,12 @@ test("机构分支与失败代价会从行动规则持久显示到任务界面",
   await expect(assignment).toBeVisible();
   await expect(assignment).toContainText(/外勤分支|情报分支|支援分支/);
   await expect(assignment).toContainText("失败代价");
+  const reviewer = page.locator(".player-relation-ledger article").first();
+  await expect(reviewer).toBeVisible();
+  await expect(reviewer).toContainText("复核执事");
+  await reviewer.getByRole("button", { name: "询问异议" }).click();
+  await expect(page.locator("blockquote.player-entry").last()).toContainText("当前验收异议");
+  await expect(reviewer).toContainText("会谈 1");
 });
 
 test("有效结算可以在同一存档开启下一时代并核验累积谱系", async ({ page }) => {

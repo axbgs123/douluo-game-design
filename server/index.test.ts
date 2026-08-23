@@ -17,6 +17,8 @@ const { app } = await import("./index.js");
 let server: Server;
 let modelServer: Server;
 let baseUrl: string;
+const modelRequestBodies: Array<{ max_tokens?: number; thinking?: { type?: string }; messages?: Array<{ content?: string }> }> = [];
+const modelRequestBodyLengths: number[] = [];
 
 beforeAll(async () => {
   await new Promise<void>((resolve) => {
@@ -24,6 +26,8 @@ beforeAll(async () => {
       let body = "";
       request.on("data", (chunk) => { body += String(chunk); });
       request.on("end", () => {
+        modelRequestBodies.push(JSON.parse(body) as { max_tokens?: number; thinking?: { type?: string }; messages?: Array<{ content?: string }> });
+        modelRequestBodyLengths.push(body.length);
         const semanticRequest = body.includes("行动语义整理器");
         const content = semanticRequest
           ? JSON.stringify({ ruleAction: "等待一天" })
@@ -146,6 +150,12 @@ describe("HTTP 状态机", () => {
     expect(afterFirst.actionIndex).toBe(1);
     expect(afterSecond.actionIndex).toBe(1);
     expect(afterSecond.revision).toBe(afterFirst.revision);
+    const [intentRequest, narratorRequest] = modelRequestBodies.slice(-2);
+    expect(intentRequest.max_tokens).toBe(256);
+    expect(narratorRequest.max_tokens).toBe(4096);
+    expect(intentRequest.thinking?.type).toBe("disabled");
+    expect(narratorRequest.thinking?.type).toBe("disabled");
+    expect(Math.max(...modelRequestBodyLengths.slice(-2))).toBeLessThan(50_000);
     const usageResponse = await fetch(`${baseUrl}/api/settings/deepseek/usage?gameId=${game.view.id}`);
     expect(usageResponse.status).toBe(200);
     expect(await usageResponse.json()).toMatchObject({ calls: 2, failures: 0 });
