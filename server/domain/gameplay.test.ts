@@ -358,7 +358,7 @@ describe("完整游玩规则", () => {
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(13);
+    expect(migrated.schemaVersion).toBe(14);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -949,6 +949,34 @@ describe("第一部世界资料", () => {
     expect(resolveAction(game, "向日月皇家魂导师学院申请晋升").intent).toBe("机构晋升");
     expect(game.view.affiliations[0].role).toBe("正式成员");
     expect(game.view.affiliations[0].rankEvidence).toHaveLength(1);
+  });
+
+  it("宗门事务会按角色能力或明确选择分支，失败尝试保留但不能冒充验收证据", () => {
+    const game = awakened("sect-specialized-assignment");
+    game.view.character!.martialSoul.description = "擅长精神控制、侦察与隐匿";
+    game.view.affiliations = [{ id: "seven-treasure", name: "七宝琉璃宗", role: "外围成员", reputation: "生疏", joinedAt: "测试", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
+    const commit = (action: string, result = resolveAction(game, action)) => {
+      applyActionResult(game, action, result, result.fallbackNarrative, result.suggestions);
+      return result;
+    };
+    const receive = commit("向七宝琉璃宗领取机构事务");
+    expect(receive.ruleSummary).toContain("分支为情报");
+    const task = game.view.tasks.find((item) => item.institutionAssignment)!;
+    expect(task.institutionAssignment).toMatchObject({ specialization: "情报", risk: expect.stringContaining("失败记录"), stageIndex: 0 });
+
+    commit("调查情报目标", { intent: "调查情报", minutes: 60, ruleSummary: "调查失败，目标没有得到核实。", fallbackNarrative: "线索在现场断了。", suggestions: ["重新调查"] });
+    const rejected = resolveAction(game, "向七宝琉璃宗推进机构事务");
+    expect(rejected.intent).toBe("无法完成");
+    expect(rejected.ruleSummary).toContain("消耗和失败记录保留");
+    expect(task.institutionAssignment!.stageIndex).toBe(0);
+
+    commit("重新调查情报目标并核对委托对象", { intent: "调查情报", minutes: 90, ruleSummary: "调查目标完成，委托对象和知识边界已经核对。", fallbackNarrative: "这次记录能与名册对上。", suggestions: [] });
+    expect(resolveAction(game, "向七宝琉璃宗推进机构事务").ruleSummary).toContain("进度 1/4");
+
+    const support = awakened("sect-explicit-support-assignment");
+    support.view.affiliations = [{ id: "clear-sky", name: "昊天宗", role: "外围成员", reputation: "生疏", joinedAt: "测试", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
+    const supportTask = resolveAction(support, "向昊天宗领取后勤救护分支机构事务");
+    expect(supportTask.ruleSummary).toContain("分支为支援");
   });
 
   it("连续世代档案需要分步核验且不会把历史权益变成当前资产", () => {

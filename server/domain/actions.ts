@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { CompanionRole, ConditionLabel, HuntingStage, NarrativeEntry, SoulRingView, TaskView } from "../../shared/game.js";
+import type { CompanionRole, ConditionLabel, HuntingStage, InstitutionAssignmentView, NarrativeEntry, SoulRingView, TaskView } from "../../shared/game.js";
 import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, factionActiveAtYear, locationById, soulBeastById } from "../data/world.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
@@ -1399,7 +1399,7 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
   return { intent: "加入势力", minutes: 360, ruleSummary: `通过初步审核，成为${target.name}${activeFleet ? "列兵" : "外围成员"}。`, fallbackNarrative: `负责登记的人问得很细，连家里做什么都记了。我拿到的牌子只够进外院，背面还有一行小字，损坏要赔。`, suggestions: ["领取第一件事务", "打听内部规矩", "认识同批成员"], systemMessages: [`身份 · ${target.name} · ${activeFleet ? "列兵" : "外围成员"}`] };
 }
 
-function institutionAssignmentFor(game: StoredGame, affiliationName: string) {
+function institutionAssignmentFor(game: StoredGame, affiliationName: string, request = ""): Pick<InstitutionAssignmentView, "route" | "specialization" | "risk" | "stages"> {
   const era = game.view.era ?? 1;
   if (era === 2 && /魂导|日月/.test(affiliationName)) return { route: "魂导器合规研制", stages: [
     { title: "登记核心阵法方案", detail: "学习并记录与当前等级匹配的核心阵法。", evidenceKeywords: ["核心阵法", "魂导理论"] },
@@ -1433,10 +1433,25 @@ function institutionAssignmentFor(game: StoredGame, affiliationName: string) {
     { title: "完成团队协同", detail: "留下船员岗位协同记录。", evidenceKeywords: ["船员协同", "舰员协同", "招募星舰船员"] },
     { title: "提交课程报告", detail: "复核课程、风险与下一阶段资格。", evidenceKeywords: ["课程报告", "训练复盘", "资格复核"] },
   ] };
-  return { route: `${affiliationName}在册综合事务`, stages: [
-    { title: "调查事务需求", detail: "通过调查或询问确认对象与验收条件。", evidenceKeywords: ["调查", "询问"] },
-    { title: "实际执行事务", detail: "留下工作、训练、护送或处理记录。", evidenceKeywords: ["工作", "训练", "护送", "处理"] },
-    { title: "复核并形成报告", detail: "检查结果并明确未完成风险。", evidenceKeywords: ["复核", "检查", "报告"] },
+  const soulProfile = `${game.view.character?.martialSoul.name ?? ""}${game.view.character?.martialSoul.category ?? ""}${game.view.character?.martialSoul.description ?? ""}`;
+  const specialization = /支援|后勤|救护|治疗/.test(request) ? "支援" : /情报|侦察|调查/.test(request) ? "情报" : /外勤|护送|战斗|巡防/.test(request) ? "外勤" : /辅助|治疗|食物|琉璃|恢复/.test(soulProfile) ? "支援" : /精神|控制|敏攻|速度|侦察|隐匿/.test(soulProfile) ? "情报" : "外勤";
+  if (specialization === "支援") return { route: `${affiliationName}后勤救护线`, specialization, risk: "物资损耗与救护疏漏会保留在事务记录中", stages: [
+    { title: "核对支援需求", detail: "调查人员、补给和治疗需求，不能只按名册估算。", evidenceKeywords: ["调查补给", "询问伤员", "救护需求", "后勤需求"] },
+    { title: "取得可追踪物资", detail: "采购、制作或领取有来源记录的补给。", evidenceKeywords: ["购买", "制作", "领取补给", "药材"] },
+    { title: "完成现场支援", detail: "实际治疗、补给或掩护任务对象。", evidenceKeywords: ["治疗", "救助", "补给", "掩护"] },
+    { title: "复核消耗与遗漏", detail: "检查物资去向、伤情变化和未解决风险。", evidenceKeywords: ["复核救护", "检查物资", "后勤报告", "伤情复盘"] },
+  ] };
+  if (specialization === "情报") return { route: `${affiliationName}情报与风险核验线`, specialization, risk: "错误判断不会转化为贡献，失败记录仍保留", stages: [
+    { title: "明确情报问题", detail: "调查委托对象、信息时效和知识边界。", evidenceKeywords: ["调查目标", "调查情报", "询问线索", "核对传闻"] },
+    { title: "取得第一来源", detail: "亲自观察、询问或查阅一项可追踪来源。", evidenceKeywords: ["观察", "询问", "查阅", "取得证据"] },
+    { title: "完成独立复核", detail: "用不同见证者或档案交叉核对，不能重复使用上一来源。", evidenceKeywords: ["独立复核", "第二来源", "交叉核验", "调查现场记录"] },
+    { title: "提交限知报告", detail: "区分已证实、推测和未知内容。", evidenceKeywords: ["情报报告", "风险报告", "限知报告", "复核报告"] },
+  ] };
+  return { route: `${affiliationName}外勤守护线`, specialization: "外勤" as const, risk: "伤势、疲劳和任务失败不会因组织验收而撤销", stages: [
+    { title: "调查外勤环境", detail: "核对路线、对象和公开风险。", evidenceKeywords: ["调查路线", "调查环境", "巡防路线", "询问风险"] },
+    { title: "完成针对性训练", detail: "根据风险留下防守、控制、协同或战斗训练记录。", evidenceKeywords: ["战术训练", "防守训练", "协同训练", "战斗训练"] },
+    { title: "执行现场任务", detail: "实际护送、巡防、救助或介入事件。", evidenceKeywords: ["护送", "巡防", "救助", "介入世界事件"] },
+    { title: "复盘代价与余患", detail: "记录伤势、损失和仍未排除的风险。", evidenceKeywords: ["外勤复盘", "战斗复盘", "检查伤势", "风险报告"] },
   ] };
 }
 
@@ -1449,17 +1464,18 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
   const active = game.view.tasks.find((task) => task.id?.startsWith(`institution-${affiliation.id}-`) && task.status === "进行中");
   if (/领取|申请.*任务|申请.*事务/.test(action) && !/晋升/.test(action)) {
     if (active) return impossible(`${affiliation.name}已有一项未交付事务：${active.title}。`, [`处理${active.title}`, `核对${active.title}的验收条件`, "放弃或说明失败原因"]);
-    const assignment = institutionAssignmentFor(game, affiliation.name);
-    ensureTask(game, { id: `institution-${affiliation.id}-${game.actionIndex}`, title: assignment.route, kind: "计划", detail: `当前阶段 1/${assignment.stages.length}：${assignment.stages[0].title}；${assignment.stages[0].detail}`, status: "进行中", ownerId: affiliation.id, institutionAssignment: { route: assignment.route, stageIndex: 0, stageStartedActionIndex: game.actionIndex, stages: assignment.stages } });
-    return { intent: "领取机构事务", minutes: 30, ruleSummary: `从${affiliation.name}领取“${assignment.route}”共 ${assignment.stages.length} 个阶段；当前为“${assignment.stages[0].title}”，尚未获得贡献或报酬。`, fallbackNarrative: `事务牌不再只有一句结果。每一段都有开始时间、验收关键词和签字人，前一页没盖章，后一页就不能假装已经做完。`, suggestions: [assignment.stages[0].detail, `向${affiliation.name}推进机构事务`, "准备所需资源"] };
+    const assignment = institutionAssignmentFor(game, affiliation.name, action);
+    ensureTask(game, { id: `institution-${affiliation.id}-${game.actionIndex}`, title: assignment.route, kind: "计划", detail: `当前阶段 1/${assignment.stages.length}：${assignment.stages[0].title}；${assignment.stages[0].detail}`, status: "进行中", ownerId: affiliation.id, institutionAssignment: { route: assignment.route, specialization: assignment.specialization, risk: assignment.risk, stageIndex: 0, stageStartedActionIndex: game.actionIndex, stages: assignment.stages } });
+    return { intent: "领取机构事务", minutes: 30, ruleSummary: `从${affiliation.name}领取“${assignment.route}”共 ${assignment.stages.length} 个阶段${assignment.specialization ? `；分支为${assignment.specialization}` : ""}${assignment.risk ? `；失败代价：${assignment.risk}` : ""}。当前为“${assignment.stages[0].title}”，尚未获得贡献或报酬。`, fallbackNarrative: `事务牌不再只有一句结果。每一段都有开始时间、验收关键词和签字人，前一页没盖章，后一页就不能假装已经做完。`, suggestions: [assignment.stages[0].detail, `向${affiliation.name}推进机构事务`, "准备所需资源"] };
   }
   if (/推进|登记.*阶段|提交.*阶段/.test(action) && !/晋升/.test(action)) {
     if (!active?.institutionAssignment) return impossible(`${affiliation.name}没有可以逐阶段推进的在册事务链。`, ["领取机构事务", "查看当前任务", "核对所属机构"]);
     const chain = active.institutionAssignment;
     const stage = chain.stages[chain.stageIndex];
     if (!stage) return impossible("所有阶段已经登记完成，应进入最终交付而不是重复推进。", [`向${affiliation.name}交付机构事务`, "核对全部阶段证据", "查看报酬条件"]);
-    const evidence = game.world.actionLedger.filter((entry) => entry.index > chain.stageStartedActionIndex && !["领取机构事务", "推进机构事务", "交付机构事务", "一般行动", "无法完成", "规则阻止"].includes(entry.intent) && !/失败|无法完成|缺少/.test(entry.result) && stage.evidenceKeywords.some((keyword) => `${entry.action}${entry.intent}${entry.result}`.includes(keyword)));
-    if (!evidence.length) return impossible(`阶段“${stage.title}”缺少领取该阶段后的真实行动记录；需要：${stage.evidenceKeywords.join("、")}。`, [stage.detail, "完成要求后再登记阶段", "核对行动收据"]);
+    const attempts = game.world.actionLedger.filter((entry) => entry.index > chain.stageStartedActionIndex && stage.evidenceKeywords.some((keyword) => `${entry.action}${entry.intent}${entry.result}`.includes(keyword)));
+    const evidence = attempts.filter((entry) => !["领取机构事务", "推进机构事务", "交付机构事务", "一般行动", "无法完成", "规则阻止"].includes(entry.intent) && !/失败|无法完成|缺少/.test(entry.result));
+    if (!evidence.length) return impossible(attempts.length ? `阶段“${stage.title}”已有行动尝试，但结果失败或不满足验收；消耗和失败记录保留，阶段不会推进。` : `阶段“${stage.title}”缺少领取该阶段后的真实行动记录；需要：${stage.evidenceKeywords.join("、")}。`, [stage.detail, "完成要求后再登记阶段", "核对行动收据"]);
     const proof = evidence.at(-1)!;
     active.progressEvidence ??= [];
     active.progressEvidence.push(`${stage.title}：${proof.action}（${proof.intent}）`);

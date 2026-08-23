@@ -388,6 +388,8 @@ export interface TaskView {
 
 export interface InstitutionAssignmentView {
   route: string;
+  specialization?: "外勤" | "情报" | "支援" | "专业";
+  risk?: string;
   stageIndex: number;
   stageStartedActionIndex: number;
   stages: Array<{ title: string; detail: string; evidenceKeywords: string[] }>;
