@@ -4,6 +4,7 @@ import { resolveAction } from "./actions.js";
 import { settleRun } from "./endings.js";
 import { awakenCharacter, createGame, selectCandidate } from "./generator.js";
 import { advanceWorldTime, ensureGameState } from "./world.js";
+import { applyNarrativeMemory } from "../services/deepseek.js";
 
 const personality = {
   keywords: ["谨慎", "好奇", "重情"],
@@ -27,6 +28,15 @@ describe("完整游玩规则", () => {
     expect(game.world.trainingPoints).toBeGreaterThan(0);
     expect(game.world.fatiguePoints).toBeGreaterThan(beforeFatigue);
     expect(game.view.worldTime?.time).not.toBe(beforeTime);
+  });
+
+  it("长程修炼可以一次推演到下个魂环瓶颈", () => {
+    const game = awakened("long-training");
+    game.view.character!.soulRank = 3;
+    game.world.trainingPoints = 0;
+    resolveAction(game, "闭关修炼到下个瓶颈");
+    expect(game.view.character!.soulRank).toBe(10);
+    expect(game.view.hunting?.stage).toBe("需求");
   });
 
   it("可从十级瓶颈进入调查、选目标和准备阶段", () => {
@@ -86,18 +96,75 @@ describe("完整游玩规则", () => {
     delete (game as unknown as { schemaVersion?: number }).schemaVersion;
     delete (game.view as Partial<typeof game.view>).map;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.schemaVersion).toBe(3);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.world.npcs["tang-san"]).toBeDefined();
+  });
+
+  it("重要人物互动会留下记忆并推动世界偏差", () => {
+    const game = awakened("canon-contact");
+    game.world.npcs["tang-san"].locationId = game.view.locationId!;
+    const before = game.world.deviation;
+    resolveAction(game, "询问唐三最近在做什么");
+    expect(game.world.deviation).toBeGreaterThan(before);
+    expect(game.world.npcs["tang-san"].memoryOfPlayer.length).toBeGreaterThan(0);
+    expect(game.view.relations.some((relation) => relation.name === "唐三")).toBe(true);
+  });
+
+  it("地方事件可以被玩家介入并改写世界指标", () => {
+    const game = awakened("dynamic-event");
+    game.world.dynamicEvents.push({ id: "test-event", title: "失踪的采药队", kind: "地方", locationId: game.view.locationId!, participantIds: [], detail: "有人没有回来。", stakes: 3, status: "可介入", createdYear: 0, createdDay: 1, expiresOrdinal: 60 });
+    resolveAction(game, "帮助处理失踪的采药队");
+    expect(game.world.dynamicEvents[0].status).toBe("已解决");
+    expect(game.world.deviation).toBeGreaterThan(0);
+    expect(game.world.metrics.historicalImpact).toBeGreaterThan(0);
+  });
+
+  it("NPC在玩家视野外会形成关系并自主行动", () => {
+    const game = awakened("npc-autonomy");
+    advanceWorldTime(game, 360 * 1440);
+    expect(game.world.npcRelations.length).toBeGreaterThan(0);
+    expect(game.world.dynamicEvents.length).toBeGreaterThan(0);
+    expect(game.view.activeEvents.length).toBeGreaterThan(0);
+    expect(game.world.lastAutonomyOrdinal).toBeGreaterThan(0);
+  });
+
+  it("隐藏传承会被调查发现并能够独立成长", () => {
+    const game = awakened("special-system");
+    const selected = game.hiddenCandidates.find((candidate) => candidate.public.id === game.view.selectedCandidateId)!;
+    selected.hiddenGift = "残缺丹道传承";
+    resolveAction(game, "调查自己的身世"); resolveAction(game, "调查自己的身世"); resolveAction(game, "调查自己的身世");
+    expect(game.view.character?.specialSystem?.name).toBe("残缺丹道传承");
+    resolveAction(game, "参悟特殊体系");
+    expect(Number(game.world.flags.specialSystemProgress)).toBeGreaterThan(0);
+  });
+
+  it("玩家可以加入学院并完成基础课程", () => {
+    const game = awakened("academy-life");
+    game.view.character!.innateSoulPower = Math.max(1, game.view.character!.innateSoulPower);
+    resolveAction(game, "申请学院入学");
+    expect(game.view.affiliations.some((item) => /学院/.test(item.name))).toBe(true);
+    resolveAction(game, "参加课程"); resolveAction(game, "参加课程"); resolveAction(game, "参加课程");
+    expect(game.view.tasks.find((task) => task.id === "academy-foundation")?.status).toBe("完成");
+  });
+
+  it("AI长期记忆补丁会更新章节、线索和NPC记忆", () => {
+    const game = awakened("story-memory");
+    game.world.npcs["tang-san"].knownToPlayer = true;
+    applyNarrativeMemory(game, { narrative: "", suggestions: [], memory: { summary: "我在诺丁城认识了唐三。", openThreads: ["学院名额"], keyChoice: "答应帮助工读生", npcNotes: { 唐三: "记得我替他保守过秘密" }, chapterTitle: "学院后街" } });
+    expect(game.storyMemory.summary).toContain("唐三");
+    expect(game.storyMemory.openThreads).toContain("学院名额");
+    expect(game.view.chapter.title).toBe("学院后街");
+    expect(game.world.npcs["tang-san"].memoryOfPlayer.at(-1)).toContain("保守");
   });
 });
 
 describe("第一部世界资料", () => {
   it("包含人物、势力、地点、事件和魂兽", () => {
-    expect(CANON_CHARACTERS.length).toBeGreaterThanOrEqual(15);
+    expect(CANON_CHARACTERS.length).toBeGreaterThanOrEqual(30);
     expect(FACTIONS.length).toBeGreaterThanOrEqual(8);
     expect(LOCATIONS.length).toBeGreaterThanOrEqual(15);
-    expect(CANON_EVENTS.length).toBeGreaterThanOrEqual(5);
-    expect(SOUL_BEASTS.length).toBeGreaterThanOrEqual(10);
+    expect(CANON_EVENTS.length).toBeGreaterThanOrEqual(10);
+    expect(SOUL_BEASTS.length).toBeGreaterThanOrEqual(20);
   });
 });

@@ -14,7 +14,7 @@ import type {
   StoredGame,
 } from "./model.js";
 import { createRandom, integer, pick, weightedPick } from "./random.js";
-import { buildKnownFigures, buildMapView, createHiddenWorld, inferLocationId } from "./world.js";
+import { buildActiveEvents, buildKnownFigures, buildMapView, createHiddenWorld, inferLocationId, revealNpc } from "./world.js";
 
 interface OriginTemplate {
   id: string;
@@ -276,6 +276,18 @@ const MARTIAL_SOULS: MartialSoulTemplate[] = [
     soulPowerRange: [5, 10],
     omens: ["你反复梦见一页写不出文字的书", "晴夜里，你总能很快找到方向"],
   },
+  { id: "copper-coin", name: "方孔铜钱", category: "器武魂", description: "一枚边缘磨损的铜钱，可能向判断、交换或轨迹干扰成长。", rarity: 10, soulPowerRange: [1, 6], omens: ["你抛出的铜钱落地时很少弹远", "你对价钱和数量记得格外牢"] },
+  { id: "silk-thread", name: "缚魂丝", category: "器武魂", description: "肉眼很难看清的细丝，韧性会随魂力提高。", rarity: 7, soulPowerRange: [3, 8], omens: ["你打的绳结很少自行松开", "手指能察觉极轻的拉扯"] },
+  { id: "blackwood-bow", name: "黑木弓", category: "器武魂", description: "弓身朴素，擅长蓄力、远射和标记目标。", rarity: 10, soulPowerRange: [2, 7], omens: ["你能估准石子落下的位置", "拉紧的绳弦声会让你立刻安静"] },
+  { id: "medicine-cauldron", name: "青纹药鼎", category: "器武魂", description: "带有浅青纹路的小鼎，对药性与火候十分敏感。", rarity: 4, soulPowerRange: [4, 9], omens: ["草药煮开前你就能闻出变化", "靠近炉火时掌心会微微发热"] },
+  { id: "moon-wolf", name: "灰月狼", category: "兽武魂", description: "耐力和群体配合出色的狼类武魂，夜间感知较强。", rarity: 9, soulPowerRange: [2, 8], omens: ["夜路上你很少走错方向", "远处犬吠里细小的变化瞒不过你"] },
+  { id: "cloud-deer", name: "踏云鹿", category: "兽武魂", description: "体态轻盈的鹿类武魂，适合移动、辅助与危险感知。", rarity: 7, soulPowerRange: [3, 8], omens: ["你落脚时很少踩断枯枝", "陌生动物通常不太排斥你"] },
+  { id: "iron-mantis", name: "铁臂螳螂", category: "兽武魂", description: "前肢锋利，短距离爆发强，持续作战能力普通。", rarity: 8, soulPowerRange: [2, 8], omens: ["你挥动短棍时总爱走最短路线", "手臂被划伤后恢复得比别处快"] },
+  { id: "sand-fox", name: "沙耳狐", category: "兽武魂", description: "擅长听觉、隐匿与制造误判的小型兽武魂。", rarity: 11, soulPowerRange: [1, 7], omens: ["隔墙说话也很难瞒过你", "你在松软地面上留下的脚印很浅"] },
+  { id: "blood-thorn", name: "赤棘藤", category: "植物", description: "带有细刺的藤蔓，能从受伤与压力中加快生长。", rarity: 8, soulPowerRange: [2, 8], omens: ["带刺植物很少真正扎伤你", "沾过你血的野草会短暂变红"] },
+  { id: "sleeping-lotus", name: "眠心莲", category: "植物", description: "气息安静的莲花武魂，可能影响精神、睡眠与恢复。", rarity: 5, soulPowerRange: [4, 9], omens: ["哭闹的婴儿在你身边容易睡着", "你能清楚记住醒来前最后一个梦"] },
+  { id: "bone-mark", name: "骨纹", category: "本体武魂", description: "浮现在骨骼上的纹路，强化方向取决于长期承受的训练。", rarity: 5, soulPowerRange: [3, 9], omens: ["重活之后你的骨头会微微发热", "旧伤处偶尔浮出浅色纹路"] },
+  { id: "spirit-voice", name: "灵音", category: "本体武魂", description: "以声音和呼吸为核心的本体武魂，适合控制、辅助或精神震荡。", rarity: 6, soulPowerRange: [3, 8], omens: ["你很容易模仿只听过一次的声音", "压低嗓音时周围人会不自觉安静"] },
 ];
 
 const TRAIT_LABELS: Record<string, [string, string]> = {
@@ -376,6 +388,7 @@ export function generateCandidates(
   rerollIndex: number,
   gender: "男" | "女",
   preferences?: WeightPreferences,
+  giftBonus = 0,
 ): HiddenCandidate[] {
   const random = createRandom(`${seed}:candidates:${rerollIndex}`);
   const usedOrigins = new Set<string>();
@@ -411,10 +424,10 @@ export function generateCandidates(
 
     const giftRoll = random();
     const giftPreference = preferences?.gift ?? "均衡";
-    const giftChance = giftPreference === "朴素" ? 0.008 : giftPreference === "奇遇" ? 0.055 : giftPreference === "异界体系" ? 0.04 : 0.025;
+    const giftChance = (giftPreference === "朴素" ? 0.008 : giftPreference === "奇遇" ? 0.055 : giftPreference === "异界体系" ? 0.04 : 0.025) + giftBonus;
     const giftPool = giftPreference === "异界体系"
-      ? ["残缺丹道传承", "无名剑典残页", "未激活的因果印记", "受压制的修行法门"]
-      : ["残缺丹道传承", "至尊骨雏形", "无名剑典残页", "未激活的因果印记"];
+      ? ["残缺丹道传承", "无名剑典残页", "未激活的因果印记", "受压制的修行法门", "炼器宗残卷", "残缺阵道传承", "沉睡的山海血脉", "一缕受损剑魂"]
+      : ["残缺丹道传承", "至尊骨雏形", "无名剑典残页", "未激活的因果印记", "武魂二次觉醒线索", "先祖残魂的记忆", "异常魂力回路", "可成长的精神空间"];
     const hiddenGift = origin.id === "mystery-arrival" || giftRoll < giftChance
       ? pick(random, giftPool)
       : undefined;
@@ -431,21 +444,31 @@ export function generateCandidates(
   });
 }
 
-export function createGame(input: CreateGameInput, preferences?: WeightPreferences): StoredGame {
+export function createGame(input: CreateGameInput, meta?: MetaProgressionView): StoredGame {
   const id = randomUUID();
   const seed = input.seed?.trim() || randomUUID();
   const now = new Date().toISOString();
   const profile = derivePersonality(input.personality);
-  const hiddenCandidates = generateCandidates(seed, 0, input.gender, preferences);
+  const hiddenCandidates = generateCandidates(seed, 0, input.gender, meta?.weightPreferences, (meta?.purchasedUpgrades["命运余量"] ?? 0) * 0.01);
 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     hiddenCandidates,
     personalityProfile: profile,
     actionIndex: 0,
     world,
+    storyMemory: {
+      summary: "六岁的主角即将参加武魂觉醒，人生尚未真正开始。",
+      openThreads: ["武魂觉醒结果", "家人与出身中尚未说清的细节"],
+      keyChoices: [],
+      npcNotes: {},
+      chapterNumber: 1,
+      chapterTitle: "觉醒之日",
+      lastUpdatedAction: 0,
+    },
+    legacy: { upgrades: { ...(meta?.purchasedUpgrades ?? {}) }, equippedHeirloom: meta?.equippedHeirloom },
     view: {
       id,
       seed,
@@ -464,7 +487,10 @@ export function createGame(input: CreateGameInput, preferences?: WeightPreferenc
       inventory: [],
       map: [],
       news: [],
+      activeEvents: [],
       knownFigures: [],
+      affiliations: [],
+      chapter: { number: 1, title: "觉醒之日", summary: "六岁的我正等着武魂觉醒。" },
       runProgress: {
         lifeGoal: input.lifeGoal?.trim() || "成为自己认可的强者",
         highestSoulRank: 0,
@@ -479,6 +505,7 @@ export function createGame(input: CreateGameInput, preferences?: WeightPreferenc
   };
   game.view.map = buildMapView(game);
   game.view.knownFigures = buildKnownFigures(game);
+  game.view.activeEvents = buildActiveEvents(game);
   return game;
 }
 
@@ -489,6 +516,7 @@ export function rerollCandidates(game: StoredGame, preferences?: WeightPreferenc
     nextIndex,
     game.view.candidates[0]?.gender ?? "男",
     preferences,
+    (game.legacy.upgrades["命运余量"] ?? 0) * 0.01,
   );
   game.view.rerollIndex = nextIndex;
   game.view.candidates = game.hiddenCandidates.map((candidate) => candidate.public);
@@ -558,6 +586,18 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   game.view.character = character;
   game.view.status = "playing";
   game.view.inventory = ["旧布包", "半日干粮"];
+  if (game.legacy.equippedHeirloom) game.view.inventory.push(game.legacy.equippedHeirloom);
+  const foundationLevel = game.legacy.upgrades["稳固根基"] ?? 0;
+  if (foundationLevel > 0) {
+    game.world.healthPoints = Math.min(100, game.world.healthPoints + foundationLevel * 5);
+    game.world.flags.legacyFoundation = foundationLevel;
+  }
+  const loreLevel = game.legacy.upgrades["旧世见闻"] ?? 0;
+  if (loreLevel > 0) {
+    const nearby = Object.values(game.world.npcs).filter((npc) => npc.locationId === game.view.locationId).slice(0, loreLevel);
+    for (const npc of nearby) revealNpc(game, npc.id);
+    if (nearby.length) game.view.narrative.push(createEntry("system", `旧世见闻 · 认出了${nearby.map((npc) => npc.name).join("、")}`));
+  }
   game.view.relations = [
     { name: "家人", relation: "亲属", impression: "期待中带着担忧" },
     { name: "觉醒魂师", relation: "初识", impression: selected.innateSoulPower >= 7 ? "明显重视" : "公事公办" },

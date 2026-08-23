@@ -78,6 +78,14 @@ export function saveMetaPreferences(input: MetaProgressionView["weightPreference
   return request("/api/meta/preferences", { method: "POST", body: JSON.stringify(input) });
 }
 
+export function purchaseMetaUpgrade(name: "命运余量" | "稳固根基" | "旧世见闻"): Promise<MetaProgressionView> {
+  return request("/api/meta/purchase", { method: "POST", body: JSON.stringify({ name }) });
+}
+
+export function equipMetaHeirloom(name?: string): Promise<MetaProgressionView> {
+  return request("/api/meta/equip", { method: "POST", body: JSON.stringify({ name }) });
+}
+
 export function getWorldCatalogStats(): Promise<WorldCatalogStatsView> {
   return request("/api/world/catalog/stats");
 }

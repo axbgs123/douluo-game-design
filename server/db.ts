@@ -99,6 +99,7 @@ const defaultMetaProgression: MetaProgressionView = {
   unlockedHeirlooms: [],
   codexEntries: [],
   weightPreferences: { origin: "均衡", martialSoul: "均衡", gift: "均衡" },
+  purchasedUpgrades: {},
   difficultyBudgets: { 爽: 120, 简单: 80, 标准: 50, 困难: 25, 地狱: 10 },
   difficultyMultipliers: { 爽: 0.5, 简单: 0.75, 标准: 1, 困难: 1.5, 地狱: 2.25 },
 };
@@ -179,6 +180,7 @@ export function getMetaProgression(): MetaProgressionView {
     ...defaultMetaProgression,
     ...stored,
     weightPreferences: { ...defaultMetaProgression.weightPreferences, ...stored.weightPreferences },
+    purchasedUpgrades: { ...defaultMetaProgression.purchasedUpgrades, ...stored.purchasedUpgrades },
   };
 }
 
@@ -193,6 +195,31 @@ export function saveMetaProgression(meta: MetaProgressionView): MetaProgressionV
 export function updateMetaPreferences(input: MetaProgressionView["weightPreferences"]): MetaProgressionView {
   const meta = getMetaProgression();
   meta.weightPreferences = input;
+  return saveMetaProgression(meta);
+}
+
+export const LEGACY_UPGRADES = {
+  "命运余量": { cost: 30, maxLevel: 3 },
+  "稳固根基": { cost: 40, maxLevel: 3 },
+  "旧世见闻": { cost: 50, maxLevel: 2 },
+} as const;
+
+export function purchaseLegacyUpgrade(name: keyof typeof LEGACY_UPGRADES): MetaProgressionView {
+  const meta = getMetaProgression();
+  const definition = LEGACY_UPGRADES[name];
+  const level = meta.purchasedUpgrades[name] ?? 0;
+  if (level >= definition.maxLevel) throw new Error(`${name}已经达到最高等级`);
+  const cost = definition.cost * (level + 1);
+  if (meta.legacyPoints < cost) throw new Error(`传承点不足，本次需要 ${cost} 点`);
+  meta.legacyPoints -= cost;
+  meta.purchasedUpgrades[name] = level + 1;
+  return saveMetaProgression(meta);
+}
+
+export function equipLegacyHeirloom(name?: string): MetaProgressionView {
+  const meta = getMetaProgression();
+  if (name && !meta.unlockedHeirlooms.includes(name)) throw new Error("这件遗物尚未解锁");
+  meta.equippedHeirloom = name;
   return saveMetaProgression(meta);
 }
 

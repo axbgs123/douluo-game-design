@@ -57,6 +57,7 @@ function syncCharacterState(game: StoredGame): void {
   if (!character) return;
   game.world.healthPoints = Math.max(0, Math.min(100, game.world.healthPoints));
   game.world.fatiguePoints = Math.max(0, Math.min(100, game.world.fatiguePoints));
+  if (game.world.healthPoints <= 0 && tryResurrection(game)) game.world.healthPoints = Math.max(18, game.world.healthPoints);
   character.condition = conditionLabel(game.world.healthPoints, game.world.fatiguePoints);
   character.fatigue = fatigueLabel(game.world.fatiguePoints);
   character.cultivationProgress = cultivationLabel(game);
@@ -65,6 +66,7 @@ function syncCharacterState(game: StoredGame): void {
   game.view.runProgress.relationshipsBuilt = game.world.metrics.relationshipsBuilt;
   game.view.runProgress.historicalImpact = game.world.metrics.historicalImpact;
   game.view.runProgress.completedHunts = game.world.metrics.completedHunts;
+  character.personalityTraits = currentPersonalityTraits(game);
   if (character.condition === "死亡") {
     game.view.status = "ended";
     game.view.runProgress.ending = "死亡";
@@ -72,6 +74,41 @@ function syncCharacterState(game: StoredGame): void {
     game.view.status = "ended";
     game.view.runProgress.ending = "走到百级门前";
   }
+}
+
+function currentPersonalityTraits(game: StoredGame): string[] {
+  const scores = game.personalityProfile.scores;
+  const traits = [
+    scores.courage >= 2 ? "敢于冒险" : scores.courage <= -2 ? "谨慎避险" : "审慎",
+    scores.empathy >= 2 ? "重情" : scores.empathy <= -2 ? "冷硬" : "克制",
+    scores.integrity >= 2 ? "守诺" : scores.integrity <= -2 ? "结果优先" : "务实",
+    scores.patience >= 2 ? "谋定后动" : scores.patience <= -2 ? "行动急切" : "耐心尚可",
+    scores.ambition >= 2 ? "求强" : scores.ambition <= -2 ? "安于稳健" : "有所追求",
+  ];
+  return [...new Set(traits)].slice(0, 4);
+}
+
+function tryResurrection(game: StoredGame): boolean {
+  if (game.world.resurrectionCount >= 2) return false;
+  const character = game.view.character;
+  if (!character) return false;
+  const strongAffiliation = game.view.affiliations.some((item) => /宗|武魂殿|学院/.test(item.name) && item.reputation !== "生疏");
+  const closeRelations = game.view.relations.filter((item) => /信任|亲近|师徒|生死/.test(`${item.relation}${item.impression}`)).length;
+  const special = character.specialSystem && /因果|至尊骨|残魂/.test(character.specialSystem.name);
+  const support = (strongAffiliation ? 3 : 0) + Math.min(3, closeRelations) + (special ? 3 : 0) + Math.floor(character.soulRank / 30) + Number(game.world.flags.legacyFoundation ?? 0);
+  if (support < 3) return false;
+  const random = actionRandom(game);
+  const chance = Math.min(0.82, 0.18 + support * 0.08 - game.world.resurrectionCount * 0.18);
+  if (random() >= chance) return false;
+  game.world.resurrectionCount += 1;
+  game.world.healthPoints = 22;
+  game.world.fatiguePoints = 95;
+  character.injuries.push(strongAffiliation ? "复生代价造成的根基损伤" : "濒死后遗留的魂魄裂伤");
+  character.coins = Math.max(0, character.coins - 20);
+  game.world.deviation += 8;
+  game.world.metrics.historicalImpact += 3;
+  game.view.narrative.push(entry("system", `复生 · 第 ${game.world.resurrectionCount} 次 · 已付出永久代价`));
+  return true;
 }
 
 function cultivationThreshold(rank: number): number {
@@ -93,7 +130,7 @@ function ensureTask(game: StoredGame, task: TaskView): void {
   if (!game.view.tasks.some((item) => (item.id ?? item.title) === id && item.status !== "完成")) game.view.tasks.push(task);
 }
 
-function trainingResolution(game: StoredGame): ActionResolution {
+function trainingResolution(game: StoredGame, action = ""): ActionResolution {
   const character = game.view.character;
   if (!character) return impossible("还没有可修炼的角色状态。");
   const expectedRings = Math.floor(character.soulRank / 10);
@@ -110,13 +147,19 @@ function trainingResolution(game: StoredGame): ActionResolution {
 
   const random = actionRandom(game);
   const rules = DIFFICULTY_RULES[game.view.difficulty];
-  const minutes = speedMinutes(game, 180, 10080);
-  const baseGain = game.view.speed === "高速" ? integer(random, 34, 52) : integer(random, 8, 15);
+  const longYear = /闭关.*年|修炼.*年/.test(action);
+  const longMonth = /闭关.*月|修炼.*月/.test(action);
+  const toBottleneck = /直到.*瓶颈|到下个瓶颈|修炼到.*级/.test(action);
+  const nextBottleneck = character.soulRank >= 90 ? 99 : Math.ceil((character.soulRank + 1) / 10) * 10;
+  const requiredToBottleneck = Array.from({ length: Math.max(0, nextBottleneck - character.soulRank) }, (_, index) => cultivationThreshold(character.soulRank + index)).reduce((sum, value) => sum + value, 0) - game.world.trainingPoints + 8;
+  const minutes = toBottleneck ? (game.view.speed === "高速" ? 30 : 180) * 1440 : longYear ? 360 * 1440 : longMonth ? 30 * 1440 : speedMinutes(game, 180, 10080);
+  const baseGain = toBottleneck ? Math.max(30, requiredToBottleneck) : longYear ? integer(random, 900, 1250) : longMonth ? integer(random, 110, 180) : game.view.speed === "高速" ? integer(random, 34, 52) : integer(random, 8, 15);
   const personalityBonus = game.personalityProfile.scores.patience > 1 ? 1.12 : 1;
   const fatiguePenalty = game.world.fatiguePoints >= 70 ? 0.55 : game.world.fatiguePoints >= 45 ? 0.78 : 1;
-  const gain = Math.max(1, Math.round(baseGain * rules.training * personalityBonus * fatiguePenalty));
+  const specialBonus = 1 + (character.specialSystem?.abilities.length ?? 0) * 0.04;
+  const gain = Math.max(1, Math.round(baseGain * rules.training * personalityBonus * fatiguePenalty * specialBonus));
   game.world.trainingPoints += gain;
-  game.world.fatiguePoints += game.view.speed === "高速" ? 32 : 12;
+  game.world.fatiguePoints += toBottleneck || longYear || longMonth ? 45 : game.view.speed === "高速" ? 32 : 12;
 
   const before = character.soulRank;
   let levels = 0;
@@ -140,7 +183,7 @@ function trainingResolution(game: StoredGame): ActionResolution {
     fallbackNarrative: levels > 0
       ? `窗外换过几次光。我把最后一轮魂力运完，堵了许久的地方忽然松开，呼吸也跟着顺了。再测时，魂力已经到了 ${character.soulRank} 级。腿麻得厉害，我扶着墙才站稳。`
       : `我坐到腿脚发麻，魂力一遍遍从胸口沉到掌心。中途散过几次，只好重新来。结束时等级没变，控制倒比开始时稳了一些。`,
-    suggestions: character.soulRank % 10 === 0 ? ["调查魂兽", "找导师商量", "整理猎魂物资"] : ["休息", "记录修炼问题", "继续修炼"],
+    suggestions: character.soulRank % 10 === 0 ? ["调查魂兽", "找导师商量", "整理猎魂物资"] : ["休息", "记录修炼问题", "修炼到下个瓶颈"],
     systemMessages,
   };
 }
@@ -481,7 +524,7 @@ function absorbRing(game: StoredGame): ActionResolution {
   const years = hunting.targetYears ?? beast.ageRange[0];
   const ringIndex = hunting.ringIndex;
   const baseLimit = RING_LIMITS[Math.min(ringIndex, RING_LIMITS.length - 1)] ?? 423;
-  const physique = PHYSIQUE_BONUS[character.abilityDescriptors.physique] ?? 0;
+  const physique = (PHYSIQUE_BONUS[character.abilityDescriptors.physique] ?? 0) + Number(game.world.flags.legacyFoundation ?? 0) * 45;
   const healthFactor = game.world.healthPoints / 100;
   const fatigueFactor = 1 - game.world.fatiguePoints / 180;
   const effectiveLimit = Math.max(80, (baseLimit + physique) * healthFactor * fatigueFactor);
@@ -574,11 +617,19 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
     if (npc?.locationId === game.view.locationId) {
       revealNpc(game, mentioned.id);
       npc.dispositionToPlayer += 2;
+      npc.memoryOfPlayer.push(`${game.view.worldTime?.year ?? 0}年在${game.view.location ?? "此地"}与玩家交谈`);
+      npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12);
       if (!game.view.relations.some((relation) => relation.id === npc.id)) {
         const factionName = FACTIONS.find((faction) => mentioned.factionIds.includes(faction.id))?.name;
         game.view.relations.push({ id: npc.id, name: npc.name, relation: "初识", impression: "仍在观察我", faction: factionName, lastSeen: game.view.location });
         game.world.metrics.relationshipsBuilt += 1;
+      } else {
+        const relation = game.view.relations.find((item) => item.id === npc.id)!;
+        relation.impression = npc.dispositionToPlayer >= 20 ? "愿意信任我处理一些私事" : npc.dispositionToPlayer >= 10 ? "记得我，也愿意多说几句" : "仍在观察我";
+        relation.relation = npc.dispositionToPlayer >= 20 ? "信任" : npc.dispositionToPlayer >= 10 ? "熟识" : relation.relation;
+        relation.lastSeen = game.view.location;
       }
+      game.world.deviation += Math.max(1, Math.floor(mentioned.importance / 2));
       detail = `与 ${mentioned.name} 当面交谈，建立初步关系。`;
       systemMessages.push(`人物记录 · ${mentioned.name}`);
     } else {
@@ -612,6 +663,7 @@ function investigateResolution(game: StoredGame, action: string): ActionResoluti
   const giftRevealed = Boolean(selected?.hiddenGift && !game.view.character?.revealedGift && investigationCount >= 3 && /身世|梦|征兆|胎记|异象|武魂|自己|传承/.test(action));
   if (giftRevealed && game.view.character && selected?.hiddenGift) {
     game.view.character.revealedGift = selected.hiddenGift;
+    game.view.character.specialSystem = createSpecialSystem(selected.hiddenGift);
     game.world.metrics.discoveries += 2;
     systemMessages.push(`隐秘传承 · ${selected.hiddenGift}`);
   }
@@ -628,6 +680,185 @@ function investigateResolution(game: StoredGame, action: string): ActionResoluti
     suggestions: giftRevealed ? ["尝试感应这份传承", "记录触发条件", "暂时保守秘密"] : localNpc ? [`打听${localNpc.name}`, "核对线索日期", "查看世界记录"] : ["换个地点调查", "找当地老人", "检查地图"],
     systemMessages,
   };
+}
+
+function createSpecialSystem(name: string) {
+  const resourceHint = /丹|炼/.test(name) ? "需要药材、矿料与反复试错" : /剑/.test(name) ? "需要实战、兵器与安静参悟" : /因果/.test(name) ? "需要经历关键选择并承担反噬" : "需要在魂力成长中逐步唤醒";
+  return { name, stage: "初次感应", progress: "刚刚起步", abilities: [] as string[], resourceHint };
+}
+
+function specialSystemResolution(game: StoredGame, action: string): ActionResolution {
+  const character = game.view.character!;
+  if (!character.specialSystem) return impossible("我还没有确认任何独立修行体系。", ["调查自己的身世", "研究武魂异象", "继续魂力修炼"]);
+  const random = actionRandom(game);
+  const system = character.specialSystem;
+  const key = "specialSystemProgress";
+  let progress = Number(game.world.flags[key] ?? 0);
+  const resourceReady = /炼丹|炼器/.test(action) ? game.view.inventory.some((item) => /药|矿|铁|草/.test(item)) : true;
+  const gain = resourceReady ? integer(random, 7, 14) : integer(random, 2, 5);
+  progress = Math.min(100, progress + gain);
+  game.world.flags[key] = progress;
+  const unlocks: string[] = [];
+  const stages = progress >= 100 ? ["融入自身", "圆满"] : progress >= 70 ? ["稳定运转", "精深"] : progress >= 35 ? ["掌握门径", "熟练"] : ["初次感应", "刚刚起步"];
+  system.stage = stages[0]; system.progress = `${stages[1]} · ${progress}%`;
+  const possible = /丹/.test(system.name) ? ["辨药", "基础炼制", "药性调和"] : /剑/.test(system.name) ? ["剑势感应", "基础剑诀", "以魂御剑"] : /因果/.test(system.name) ? ["危险预感", "因果留痕", "代价转移"] : /至尊骨/.test(system.name) ? ["骨纹感应", "体魄淬炼", "魂力增幅"] : ["异界吐纳", "力量转化", "双体系协调"];
+  for (const [threshold, ability] of [[20, possible[0]], [50, possible[1]], [85, possible[2]]] as Array<[number, string]>) {
+    if (progress >= threshold && !system.abilities.includes(ability)) { system.abilities.push(ability); unlocks.push(ability); }
+  }
+  if (/炼丹/.test(action) && resourceReady && progress >= 35) {
+    const materialIndex = game.view.inventory.findIndex((item) => /药|草/.test(item));
+    if (materialIndex >= 0) game.view.inventory.splice(materialIndex, 1);
+    game.view.inventory.push(random() < 0.7 ? "粗制回气丹" : "炼坏的药渣");
+  }
+  game.world.fatiguePoints += 14;
+  return {
+    intent: "特殊体系修行", minutes: speedMinutes(game, 240, 4320),
+    ruleSummary: `${system.name}进度增加 ${gain}，当前 ${progress}%。${unlocks.length ? `领悟${unlocks.join("、")}。` : "没有越过新的领悟节点。"}`,
+    fallbackNarrative: `那股与魂力不太一样的力量又动了一次。我照着已经摸清的路线慢慢推，走到一半还是散了。停下来时手心全是汗，至少有几处脉络比上次清楚。`,
+    suggestions: unlocks.length ? ["试用新能力", "记录力量变化", "检查两套体系是否冲突"] : ["寻找需要的材料", "继续参悟", "请可信的人护法"],
+    systemMessages: unlocks.map((item) => `特殊能力 · ${item}`),
+  };
+}
+
+function academyResolution(game: StoredGame): ActionResolution {
+  const character = game.view.character!;
+  if (character.innateSoulPower <= 0) return impossible("学院要求至少能够稳定感应魂力。", ["申请重新检测", "寻找其他修行道路", "打听理论研究者"]);
+  const academyName = /史莱克/.test(game.view.location ?? "") ? "史莱克学院" : /索托/.test(game.view.location ?? "") ? "索托初级魂师学院" : "诺丁初级魂师学院";
+  if (game.view.affiliations.some((item) => item.name === academyName)) return impossible(`我已经是${academyName}的学员。`, ["参加课程", "寻找导师", "认识同学"]);
+  const joinedAt = `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`;
+  game.view.affiliations.push({ id: `academy-${game.view.locationId}`, name: academyName, role: character.coins < 20 ? "工读生" : "学员", reputation: "新入学", joinedAt });
+  game.view.relations.push({ id: `academy-${game.view.locationId}`, name: academyName, relation: "所属学院", impression: "档案刚刚登记" });
+  ensureTask(game, { id: "academy-foundation", title: "完成学院基础课程", kind: "计划", detail: "学习魂兽、魂环、冥想和实战基础。", status: "进行中" });
+  game.world.deviation += 1;
+  return { intent: "加入学院", minutes: 240, ruleSummary: `通过基础审核，成为${academyName}${character.coins < 20 ? "工读生" : "学员"}。`, fallbackNarrative: `登记老师把我的名字抄进册子，又让我按了一次手印。宿舍钥匙比想象中旧，边角磨得发白。今天起，我得按这里的钟声过日子了。`, suggestions: ["去宿舍放下行李", "查看第一堂课", "认识同届学员"], systemMessages: [`身份 · ${academyName} · ${character.coins < 20 ? "工读生" : "学员"}`] };
+}
+
+function factionResolution(game: StoredGame, action: string): ActionResolution {
+  const character = game.view.character!;
+  const choices = [
+    { pattern: /武魂殿/, id: "spirit-hall", name: "武魂殿", rank: 1 }, { pattern: /七宝/, id: "seven-treasure", name: "七宝琉璃宗", rank: 20 },
+    { pattern: /蓝电/, id: "blue-lightning", name: "蓝电霸王龙宗", rank: 20 }, { pattern: /昊天/, id: "clear-sky", name: "昊天宗", rank: 40 },
+    { pattern: /史莱克/, id: "shrek", name: "史莱克学院", rank: 20 }, { pattern: /宗门|势力/, id: `local-${game.view.locationId}`, name: "当地魂师组织", rank: 10 },
+  ];
+  const target = choices.find((item) => item.pattern.test(action)) ?? choices.at(-1)!;
+  if (game.view.affiliations.some((item) => item.id === target.id)) return impossible(`我已经加入${target.name}。`, ["申请内部任务", "拜访组织成员", "提升组织声望"]);
+  if (character.soulRank < target.rank) return impossible(`${target.name}的公开门槛约为 ${target.rank} 级，我当前的实力还不够。`, ["继续修炼", "寻找举荐人", "先完成外围委托"]);
+  game.view.affiliations.push({ id: target.id, name: target.name, role: "外围成员", reputation: "生疏", joinedAt: `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日` });
+  game.view.relations.push({ id: target.id, name: target.name, relation: "所属势力", impression: "尚未建立功劳" });
+  game.world.deviation += target.rank >= 40 ? 8 : target.rank >= 20 ? 4 : 2;
+  ensureTask(game, { id: `faction-${target.id}`, title: `在${target.name}站稳脚跟`, kind: "计划", detail: "完成组织事务，观察内部关系与规矩。", status: "进行中" });
+  return { intent: "加入势力", minutes: 360, ruleSummary: `通过初步审核，成为${target.name}外围成员。`, fallbackNarrative: `负责登记的人问得很细，连家里做什么都记了。我拿到的牌子只够进外院，背面还有一行小字，损坏要赔。`, suggestions: ["领取第一件事务", "打听内部规矩", "认识同批成员"], systemMessages: [`身份 · ${target.name} · 外围成员`] };
+}
+
+function mentorResolution(game: StoredGame, action: string): ActionResolution {
+  const mentioned = CANON_CHARACTERS.find((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)));
+  const npc = mentioned ? game.world.npcs[mentioned.id] : undefined;
+  if (mentioned && npc?.locationId !== game.view.locationId) return impossible(`${mentioned.name}目前不在这里，连当面提出请求的机会都没有。`, [`打听${mentioned.name}的行踪`, "寻找当地导师", "先证明自己的能力"]);
+  const mentorName = mentioned?.name ?? "当地魂师导师";
+  const existing = game.view.relations.find((item) => item.name === mentorName);
+  const trust = npc?.dispositionToPlayer ?? (existing ? 8 : 0);
+  if (mentioned && trust < 6) {
+    npc!.memoryOfPlayer.push("曾经提出拜师，但彼此了解不足");
+    return impossible(`${mentorName}没有立刻答应，只让我先证明耐心和判断。`, [`完成${mentorName}关心的事情`, `继续向${mentorName}请教`, "寻找其他导师"]);
+  }
+  if (existing) { existing.relation = "师徒"; existing.impression = "愿意认真指导我，但仍会考察选择"; }
+  else game.view.relations.push({ id: mentioned?.id ?? "local-mentor", name: mentorName, relation: "师徒", impression: "愿意先教基础，再看我的品性" });
+  game.world.metrics.relationshipsBuilt += 1;
+  game.world.deviation += mentioned ? (mentioned.importance ?? 3) * 2 : 1;
+  ensureTask(game, { id: `mentor-${mentioned?.id ?? "local"}`, title: `完成${mentorName}布置的修行`, kind: "承诺", detail: "按要求练习，并在下次见面时交代结果。", status: "进行中" });
+  return { intent: "拜师", minutes: 120, ruleSummary: `${mentorName}接受了师徒关系，并留下第一项修行要求。`, fallbackNarrative: `他没有让我跪太久，伸手把我拉了起来。第一句话也不玄，只让我把每天修炼的时间和失败处一笔笔记清。`, suggestions: ["询问修炼要求", "了解导师的规矩", "开始第一项练习"], systemMessages: [`关系 · ${mentorName} · 师徒`] };
+}
+
+function promiseResolution(game: StoredGame, action: string): ActionResolution {
+  const title = action.replace(/^(我)?(答应|承诺|保证)/, "").trim().slice(0, 32) || "履行刚刚作出的承诺";
+  const id = `promise-${game.actionIndex}`;
+  ensureTask(game, { id, title, kind: "承诺", detail: `我亲口答应了这件事。违背承诺会影响人格与关系。`, status: "进行中" });
+  return { intent: "作出承诺", minutes: 10, ruleSummary: `记录新承诺：${title}。`, fallbackNarrative: `话出口后，对面安静了一下。我没再补条件，只把答应的事重复了一遍。`, suggestions: ["立刻准备履约", "确认时间和地点", "记下可能的阻碍"], systemMessages: [`承诺 · ${title}`] };
+}
+
+function fulfillPromiseResolution(game: StoredGame, action: string): ActionResolution {
+  const promise = game.view.tasks.find((task) => task.kind === "承诺" && task.status === "进行中" && (action.includes(task.title) || /完成承诺|履行承诺/.test(action)));
+  if (!promise) return impossible("没有找到与这次行动对应的未完成承诺。", ["查看任务", "说明要履行哪项承诺", "先完成必要准备"]);
+  promise.status = "完成";
+  game.world.metrics.promisesKept += 1;
+  game.personalityProfile.scores.integrity = (game.personalityProfile.scores.integrity ?? 0) + 2;
+  for (const relation of game.view.relations) if (/委托|师徒|同伴|亲属/.test(relation.relation)) relation.impression = "知道我会把答应的事做完";
+  return { intent: "履行承诺", minutes: 180, ruleSummary: `完成承诺：${promise.title}。守诺记录增加。`, fallbackNarrative: `该交的东西、该说的话，我一样没落下。对方接过去后重新数了一遍，才把那张写着约定的纸撕掉。`, suggestions: ["确认有没有后续", "休息", "检查其他计划"], systemMessages: [`承诺完成 · ${promise.title}`] };
+}
+
+function academyStudyResolution(game: StoredGame): ActionResolution {
+  const academy = game.view.affiliations.find((item) => /学院/.test(item.name));
+  if (!academy) return impossible("我还没有正式进入魂师学院。", ["申请入学", "找私人导师", "自己研究基础知识"]);
+  const key = "academyCourseProgress";
+  const progress = Number(game.world.flags[key] ?? 0) + 1;
+  game.world.flags[key] = progress;
+  game.world.trainingPoints += 10 + progress * 2;
+  game.world.fatiguePoints += 10;
+  if (progress >= 3) {
+    const task = game.view.tasks.find((item) => item.id === "academy-foundation"); if (task) task.status = "完成";
+    academy.role = academy.role === "工读生" ? "正式工读生" : "正式学员";
+    academy.reputation = "老师记得名字";
+  }
+  return { intent: "学院课程", minutes: 240, ruleSummary: `完成第 ${progress} 次基础课程，获得修炼与魂兽知识积累。`, fallbackNarrative: `黑板上的魂兽骨骼画得有点歪，老师讲到年限判断时敲了三次桌子。我把最容易认错的几处抄在页角，墨水蹭到了袖口。`, suggestions: progress >= 3 ? ["参加实战课", "找老师问问题", "认识同学"] : ["复习课堂笔记", "参加下一堂课", "去图书室核对"] };
+}
+
+function dynamicEventResolution(game: StoredGame, action: string): ActionResolution {
+  const event = game.world.dynamicEvents.find((item) => item.status === "可介入" && (item.locationId === game.view.locationId || action.includes(item.title)));
+  if (!event) return impossible("眼下没有我能直接介入的公开事件。", ["查看世界消息", "调查本地传闻", "前往事件地点"]);
+  if (/调查|打听|观察|查看/.test(action) && !/介入|帮助|阻止|解决/.test(action)) {
+    return { intent: "调查世界事件", minutes: 90, ruleSummary: `确认${event.title}的地点、期限和主要风险。`, fallbackNarrative: `我把几种说法分开问了一遍。有人夸大，也有人故意漏话。能互相对上的部分不多，至少地点和最后期限是真的。`, suggestions: [`帮助处理${event.title}`, `阻止${event.title}继续恶化`, "寻找参与者核对"] };
+  }
+  const random = actionRandom(game);
+  const power = (game.view.character?.soulRank ?? 0) + game.view.relations.length * 2 + game.view.affiliations.length * 3;
+  const success = random() < Math.min(0.9, 0.42 + power / 120 + (game.personalityProfile.scores.patience ?? 0) * 0.025);
+  event.status = "已解决";
+  event.outcome = success ? "玩家的介入改变了结果。" : "介入失败，事情以更糟的方式收场。";
+  const task = game.view.tasks.find((item) => item.id === event.id); if (task) task.status = success ? "完成" : "失败";
+  const impact = event.stakes * (success ? 3 : 2);
+  game.world.deviation += impact;
+  game.world.metrics.historicalImpact += impact;
+  if (!success) { game.world.healthPoints -= event.stakes * 4; game.view.character!.reputation = "惹上麻烦"; }
+  else game.view.character!.reputation = event.stakes >= 4 ? "当地知名" : "略有名声";
+  for (const id of event.participantIds) {
+    const npc = game.world.npcs[id]; if (!npc) continue;
+    npc.dispositionToPlayer += success ? event.stakes * 2 : -event.stakes;
+    npc.memoryOfPlayer.push(`${game.view.worldTime?.year ?? 0}年，玩家介入${event.title}，结果${success ? "成功" : "失败"}`);
+    npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12);
+  }
+  if (success) for (const affiliation of game.view.affiliations) affiliation.reputation = event.stakes >= 4 ? "受到重视" : "有过贡献";
+  return { intent: "介入世界事件", minutes: 360, ruleSummary: `${event.title}${success ? "处理成功" : "处理失败"}，世界偏差增加 ${impact}。`, fallbackNarrative: success ? `事情收尾时，天已经暗了。没人鼓掌，几个当事人只是反复清点损失。原先要发生的结果被我硬生生推开了一截。` : `我没能兜住局面。人群散开后，地上还留着踩烂的纸和一只断扣子。该担的后果没有因为我的好心少半分。`, suggestions: success ? ["检查事件留下的线索", "与当事人谈谈", "留意后续影响"] : ["处理伤势和损失", "向受影响的人解释", "调查失败原因"], systemMessages: [`世界偏差 · +${impact}`, `事件${success ? "解决" : "失败"} · ${event.title}`] };
+}
+
+function npcConflictResolution(game: StoredGame, action: string): ActionResolution {
+  const definition = CANON_CHARACTERS.find((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)));
+  if (!definition) return impossible("没有确认攻击目标。", ["观察目标", "调查对方实力", "暂时退开"]);
+  const npc = game.world.npcs[definition.id];
+  if (!npc?.alive) return impossible(`${definition.name}已经不在可战斗状态。`, ["确认消息", "调查遗留影响", "离开"]);
+  if (npc.locationId !== game.view.locationId) return impossible(`${definition.name}不在这里。`, [`打听${definition.name}的行踪`, "放弃攻击", "寻找其他办法"]);
+  const estimatedNpcPower = npc.soulRank ?? (/封号|超级|绝世/.test(npc.powerTier) ? 92 : /魂斗罗/.test(npc.powerTier) ? 82 : /魂圣/.test(npc.powerTier) ? 72 : 45);
+  const playerPower = (game.view.character?.soulRank ?? 0) + (game.view.character?.soulRings.length ?? 0) * 2 + game.view.affiliations.length;
+  const random = actionRandom(game);
+  const prepared = /偷袭|下毒|埋伏|准备/.test(action) ? 10 : 0;
+  const successChance = Math.max(0.01, Math.min(0.9, 0.42 + (playerPower + prepared - estimatedNpcPower) / 55));
+  const success = random() < successChance;
+  const lethal = /杀|刺杀|致命|不留活口/.test(action);
+  if (success && lethal) {
+    npc.alive = false;
+    npc.currentGoal = "死亡后留下的事务尚未结束";
+    npc.memoryOfPlayer.push("玩家直接造成了这次死亡");
+    const impact = definition.importance * 20;
+    game.world.deviation += impact;
+    game.world.metrics.historicalImpact += impact;
+    game.view.character!.reputation = "被多方追查";
+    return { intent: "袭击重要人物", minutes: 40, ruleSummary: `${definition.name}死亡，世界偏差增加 ${impact}，所属势力将作出反应。`, fallbackNarrative: `最后一下落下去后，周围反而安静了。我没时间确认第二遍，远处已经有人喊他的名字。撤离路线还能用，原先的生活大概回不去了。`, suggestions: ["立刻撤离", "清理能够追查的线索", "观察相关势力反应"], systemMessages: [`重要人物死亡 · ${definition.name}`, `世界偏差 · +${impact}`] };
+  }
+  const harm = Math.max(8, Math.round((estimatedNpcPower - playerPower) * 0.9) + integer(random, 5, 18));
+  game.world.healthPoints -= harm;
+  npc.dispositionToPlayer -= 35;
+  npc.memoryOfPlayer.push("玩家曾经主动袭击自己");
+  game.view.character!.injuries.push(harm >= 40 ? "强者反击造成的重伤" : "冲突中留下的外伤");
+  game.world.deviation += definition.importance * 2;
+  return { intent: "袭击重要人物", minutes: 20, ruleSummary: `袭击${definition.name}失败，受到 ${harm} 点内部伤害，对方已经记住这次敌意。`, fallbackNarrative: `我才动，他就已经转过身。下一瞬胸口像被重锤砸中，脚底擦着地面退了很远。想好的后手只来得及用一半，他看我的眼神已经彻底变了。`, suggestions: ["设法脱身", "处理伤势", "准备面对追查"] };
 }
 
 function workResolution(game: StoredGame): ActionResolution {
@@ -728,7 +959,15 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   let resolution: ActionResolution;
   const huntingActive = game.view.hunting && game.view.hunting.stage !== "完成";
   if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
-  else if (/修炼|冥想|运转|练功/.test(action)) resolution = trainingResolution(game);
+  else if (/参悟|修炼传承|修行剑|炼丹|炼器|特殊体系|异界功法/.test(action)) resolution = specialSystemResolution(game, action);
+  else if (/处理|介入|参与|帮助处理|阻止.*恶化|查看新事件/.test(action) && game.world.dynamicEvents.some((item) => item.status === "可介入")) resolution = dynamicEventResolution(game, action);
+  else if (/完成承诺|履行承诺/.test(action)) resolution = fulfillPromiseResolution(game, action);
+  else if (/上课|课程|学院学习|参加实战课/.test(action)) resolution = academyStudyResolution(game);
+  else if (/入学|报名.*学院|申请.*学院|成为工读生/.test(action)) resolution = academyResolution(game);
+  else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克/.test(action)) resolution = factionResolution(game, action);
+  else if (/拜师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
+  else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);
+  else if (/修炼|冥想|运转|练功|闭关/.test(action)) resolution = trainingResolution(game, action);
   else if (/休息|睡觉|疗伤|恢复/.test(action)) resolution = restResolution(game);
   else if (/使用|服用|吃下|吃掉/.test(action)) resolution = useItemResolution(game, action);
   else if (/购买|买|采购/.test(action)) resolution = buyResolution(game, action);
@@ -739,11 +978,13 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/调查|搜索|观察周围|查找|研究/.test(action)) resolution = investigateResolution(game, action);
   else if (/等待|快进|过去一天|过去一月|过去一年|休整一/.test(action)) resolution = waitResolution(game, action);
   else if (/攻击|战斗|防御|闪避|逃跑|弱点/.test(action) && game.view.combat) resolution = combatResolution(game, action);
+  else if (/攻击|杀|刺杀|偷袭/.test(action) && CANON_CHARACTERS.some((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)))) resolution = npcConflictResolution(game, action);
   else if (/攻击|杀|抢|闯入/.test(action)) resolution = impossible("当前缺少明确目标或足够条件，强行行动只会引来警惕。", ["观察目标", "先做准备", "暂时退开"]);
   else resolution = generalResolution(game);
 
   const worldMessages = advanceWorldTime(game, resolution.minutes);
   resolution.systemMessages = [...(resolution.systemMessages ?? []), ...worldMessages];
+  if (worldMessages.some((message) => /事件|异响|失踪|招募|挑战/.test(message))) resolution.suggestions = ["查看新事件", ...resolution.suggestions].slice(0, 3);
   updatePersonality(game, action);
   syncCharacterState(game);
   game.view.updatedAt = new Date().toISOString();

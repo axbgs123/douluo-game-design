@@ -13,6 +13,15 @@ interface StoryScreenProps {
 type Panel = "人物" | "武魂" | "背包" | "地图" | "关系" | "任务" | "猎魂" | "世界";
 const PANELS: Panel[] = ["人物", "武魂", "背包", "地图", "关系", "任务", "猎魂", "世界"];
 
+function panelBadge(game: GameView, panel: Panel): string | undefined {
+  if (panel === "人物" && game.character?.injuries.length) return String(game.character.injuries.length);
+  if (panel === "关系" && game.relations.length > 2) return String(game.relations.length);
+  if (panel === "任务") return String(game.tasks.filter((task) => task.status === "进行中").length || "");
+  if (panel === "猎魂" && game.hunting && game.hunting.stage !== "完成") return "!";
+  if (panel === "世界" && (game.activeEvents.length || game.news.length)) return game.activeEvents.length ? "!" : String(Math.min(9, game.news.length));
+  return undefined;
+}
+
 export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd }: StoryScreenProps) {
   const [input, setInput] = useState("");
   const [panel, setPanel] = useState<Panel>("人物");
@@ -38,13 +47,13 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd }: 
           <div className="speed-switch" aria-label="游戏速度">
             {(["标准", "高速"] as GameSpeed[]).map((speed) => <button key={speed} type="button" disabled={busy || game.status === "ended"} className={game.speed === speed ? "active" : ""} onClick={() => void onSpeed(speed)}>{speed}</button>)}
           </div>
-          <div className="world-clock"><span>{game.worldTime?.era}</span><strong>{game.worldTime ? `${game.worldTime.season} · 第 ${game.worldTime.day} 日 · ${game.worldTime.time}` : "觉醒日前"}</strong></div>
+          <div className="world-clock"><span>{game.worldTime?.era}{game.character ? ` · ${game.character.age} 岁` : ""}</span><strong>{game.worldTime ? `${game.worldTime.season} · 原作 ${game.worldTime.year >= 0 ? "+" : ""}${game.worldTime.year} 年 · 第 ${game.worldTime.day} 日 · ${game.worldTime.time}` : "觉醒日前"}</strong></div>
         </div>
       </header>
 
       <div className="story-layout">
         <section className="story-column">
-          <div className="chapter-rule"><span>第一部</span><i /><span>{game.status === "ended" ? "此生已定" : "斗罗大陆"}</span></div>
+          <div className="chapter-rule"><span>第 {game.chapter.number} 章</span><i /><span>{game.status === "ended" ? "此生已定" : game.chapter.title}</span></div>
           <div className="narrative-stream" aria-live="polite">
             {game.narrative.map((entry) => entry.kind === "player"
               ? <blockquote key={entry.id} className="player-entry">{entry.text}</blockquote>
@@ -64,7 +73,7 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd }: 
         </section>
 
         <aside className="side-panel">
-          <nav className="panel-tabs">{PANELS.map((item) => <button key={item} type="button" className={panel === item ? "active" : ""} onClick={() => setPanel(item)}>{item}</button>)}</nav>
+          <nav className="panel-tabs">{PANELS.map((item) => { const badge = panelBadge(game, item); return <button key={item} type="button" className={panel === item ? "active" : ""} onClick={() => setPanel(item)}><span>{item}</span>{badge && <b>{badge}</b>}</button>; })}</nav>
           <div className="panel-content">
             {panel === "人物" && <CharacterPanel game={game} />}
             {panel === "武魂" && <SoulPanel game={game} />}
@@ -73,7 +82,7 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd }: 
             {panel === "关系" && <RelationPanel game={game} />}
             {panel === "任务" && <TaskPanel game={game} />}
             {panel === "猎魂" && <HuntPanel game={game} submit={submit} busy={busy} />}
-            {panel === "世界" && <WorldPanel game={game} />}
+            {panel === "世界" && <WorldPanel game={game} submit={submit} busy={busy} />}
           </div>
           <footer className="panel-footer"><span>{game.difficulty}</span><span>{game.speed}</span></footer>
         </aside>
@@ -94,6 +103,7 @@ function CharacterPanel({ game }: { game: GameView }) {
     </dl>
     {character.injuries.length > 0 && <SimpleList title="伤势" values={character.injuries} empty="" />}
     <p className="panel-label">人生目标</p><p className="panel-copy">{game.lifeGoal}</p>
+    {game.affiliations.length > 0 && <><p className="panel-label">身份</p><div className="affiliation-list">{game.affiliations.map((item) => <article key={item.id}><strong>{item.name}</strong><span>{item.role} · {item.reputation}</span></article>)}</div></>}
     <div className="trait-cloud">{character.personalityTraits.map((trait) => <span key={trait}>{trait}</span>)}</div>
   </div>;
 }
@@ -105,6 +115,7 @@ function SoulPanel({ game }: { game: GameView }) {
     <div className="identity-block"><small>{character.martialSoul.category}</small><strong>{character.martialSoul.name}</strong></div><p className="panel-copy">{character.martialSoul.description}</p>
     <dl className="stat-list"><div><dt>先天魂力</dt><dd>{character.innateSoulPower} 级</dd></div><div><dt>魂环</dt><dd>{character.soulRings.length} 枚</dd></div></dl>
     {character.revealedGift && <article className="gift-card"><span>已发现</span><strong>{character.revealedGift}</strong></article>}
+    {character.specialSystem && <article className="special-system-card"><header><span>独立体系</span><strong>{character.specialSystem.name}</strong></header><p>{character.specialSystem.stage} · {character.specialSystem.progress}</p><div className="trait-cloud">{character.specialSystem.abilities.map((ability) => <span key={ability}>{ability}</span>)}</div><small>{character.specialSystem.resourceHint}</small></article>}
     <div className="ring-list">{character.soulRings.map((ring) => <article key={ring.index}><i className={`ring-dot ring-${ring.color}`} /><div><strong>第 {ring.index} 环 · {ring.beastName}</strong><span>{ring.years} 年 · {ring.skillName}</span><p>{ring.skillDescription}</p></div></article>)}</div>
     {!character.soulRings.length && <LockedPanel text="达到瓶颈后可猎取魂环" />}
   </div>;
@@ -144,8 +155,8 @@ function HuntPanel({ game, submit, busy }: { game: GameView; submit: (value: str
   </div>;
 }
 
-function WorldPanel({ game }: { game: GameView }) {
-  return <div className="world-panel"><h3 className="panel-title">近日消息</h3>{game.news.length ? <div className="news-list">{game.news.map((item) => <article key={item.id}><span>{item.date}</span><strong>{item.title}</strong><p>{item.detail}</p></article>)}</div> : <p className="panel-copy">暂时没有传到你耳中的大事。</p>}<h3 className="panel-title">已知人物</h3>{game.knownFigures.length ? <div className="figure-list">{game.knownFigures.map((figure) => <article key={figure.id}><header><strong>{figure.name}</strong><span>{figure.knownPower}</span></header><p>{figure.title ?? figure.faction ?? "身份不详"}</p><small>{figure.location} · {figure.status}</small></article>)}</div> : <p className="panel-copy">你还没有接触到重要人物。</p>}</div>;
+function WorldPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
+  return <div className="world-panel">{game.activeEvents.length > 0 && <><h3 className="panel-title">眼前事件</h3><div className="world-event-list">{game.activeEvents.map((event) => <article key={event.id}><header><span>{event.kind} · {event.remaining}</span><strong>{event.title}</strong></header><p>{event.detail}</p><small>{event.location}</small><div><button type="button" disabled={busy} onClick={() => submit(`调查${event.title}`)}>调查</button><button type="button" disabled={busy} onClick={() => submit(`帮助处理${event.title}`)}>介入</button></div></article>)}</div></>}<h3 className="panel-title">近日消息</h3>{game.news.length ? <div className="news-list">{game.news.map((item) => <article key={item.id}><span>{item.date}</span><strong>{item.title}</strong><p>{item.detail}</p></article>)}</div> : <p className="panel-copy">暂时没有传到你耳中的大事。</p>}<h3 className="panel-title">已知人物</h3>{game.knownFigures.length ? <div className="figure-list">{game.knownFigures.map((figure) => <article key={figure.id}><header><strong>{figure.name}</strong><span>{figure.knownPower}</span></header><p>{figure.title ?? figure.faction ?? "身份不详"}</p><small>{figure.location} · {figure.status}</small></article>)}</div> : <p className="panel-copy">你还没有接触到重要人物。</p>}</div>;
 }
 
 function EndingPanel({ game }: { game: GameView }) {

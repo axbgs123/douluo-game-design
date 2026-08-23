@@ -49,6 +49,29 @@ export interface CharacterPublic extends CandidatePublic {
   abilityDescriptors: { physique: string; spirit: string; perception: string };
   personalityTraits: string[];
   revealedGift?: string;
+  specialSystem?: SpecialSystemView;
+}
+
+export interface SpecialSystemView {
+  name: string;
+  stage: string;
+  progress: string;
+  abilities: string[];
+  resourceHint: string;
+}
+
+export interface AffiliationView {
+  id: string;
+  name: string;
+  role: string;
+  reputation: string;
+  joinedAt: string;
+}
+
+export interface StoryChapterView {
+  number: number;
+  title: string;
+  summary: string;
 }
 
 export interface NarrativeEntry {
@@ -96,6 +119,16 @@ export interface MapLocationView {
 }
 
 export interface WorldNewsView { id: string; title: string; detail: string; date: string }
+
+export interface WorldEventView {
+  id: string;
+  title: string;
+  kind: string;
+  detail: string;
+  location: string;
+  status: string;
+  remaining: string;
+}
 
 export interface HuntRecommendationView {
   beastId: string;
@@ -183,7 +216,10 @@ export interface GameView {
   locationId?: string;
   map: MapLocationView[];
   news: WorldNewsView[];
+  activeEvents: WorldEventView[];
   knownFigures: KnownFigureView[];
+  affiliations: AffiliationView[];
+  chapter: StoryChapterView;
   hunting?: HuntingView;
   combat?: CombatView;
   runProgress: RunProgressView;
@@ -214,6 +250,8 @@ export interface MetaProgressionView {
   unlockedHeirlooms: string[];
   codexEntries: string[];
   weightPreferences: { origin: string; martialSoul: string; gift: string };
+  purchasedUpgrades: Record<string, number>;
+  equippedHeirloom?: string;
   difficultyBudgets: Record<Difficulty, number>;
   difficultyMultipliers: Record<Difficulty, number>;
 }

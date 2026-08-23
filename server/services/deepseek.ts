@@ -1,10 +1,17 @@
-import type { GameView } from "../../shared/game.js";
-import type { ActionResolution } from "../domain/model.js";
+import type { ActionResolution, StoredGame } from "../domain/model.js";
+import { characterById } from "../data/world.js";
 import { readDeepSeekSettings } from "./settings.js";
 
-interface NarrationResult {
+export interface NarrationResult {
   narrative: string;
   suggestions: string[];
+  memory?: {
+    summary?: string;
+    openThreads?: string[];
+    keyChoice?: string;
+    npcNotes?: Record<string, string>;
+    chapterTitle?: string;
+  };
 }
 
 function extractJson(text: string): unknown {
@@ -12,8 +19,38 @@ function extractJson(text: string): unknown {
   return JSON.parse(trimmed);
 }
 
+export async function interpretActionWithDeepSeek(game: StoredGame, playerInput: string): Promise<string | null> {
+  const settings = readDeepSeekSettings();
+  if (!settings.apiKey) return null;
+  const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${settings.apiKey}`, "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(20_000),
+    body: JSON.stringify({
+      model: settings.model,
+      response_format: { type: "json_object" },
+      temperature: 0.1,
+      messages: [
+        { role: "system", content: [
+          "你是文字RPG的行动语义整理器，只把玩家原话整理成规则程序容易识别的一句话。",
+          "不能决定成功失败，不能增加物品、能力、地点、人物或前提。保留玩家的具体目标、方法、谨慎程度和退路。",
+          "可用动作词包括修炼、休息、前往、询问、调查、购买、使用、工作、等待、攻击、防御、逃跑、猎魂、追踪、吸收、入学、加入势力、拜师、承诺、履行承诺、参悟特殊体系、介入事件。",
+          "输出 JSON：{\"ruleAction\":\"整理后的一句话\"}。",
+        ].join("\n") },
+        { role: "user", content: JSON.stringify({ playerInput, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), currentHunt: game.view.hunting, currentEvents: game.world.dynamicEvents.filter((item) => item.status === "可介入").map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
+      ],
+    }),
+  });
+  if (!response.ok) throw new Error(`DeepSeek 行动理解失败：${response.status}`);
+  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const content = payload.choices?.[0]?.message?.content;
+  if (!content) return null;
+  const parsed = extractJson(content) as { ruleAction?: unknown };
+  return typeof parsed.ruleAction === "string" && parsed.ruleAction.trim() ? parsed.ruleAction.trim().slice(0, 1200) : null;
+}
+
 export async function narrateWithDeepSeek(
-  game: GameView,
+  game: StoredGame,
   playerInput: string,
   resolution: ActionResolution,
 ): Promise<NarrationResult | null> {
@@ -44,24 +81,33 @@ export async function narrateWithDeepSeek(
             "不要为了文艺感把普通行动写成命运、时代、道路或宏大回响。每次只抓一两个有效细节，不要堆满五感。",
             "战斗时写清站位、试探、失误和代价；交谈时保留对方的私心与信息边界；赶路和修炼可以简写，但要留下具体变化。",
             "建议必须是角色眼下做得到的动作。若程序给出了建议，优先沿用其含义。",
-            "输出 JSON：{\"narrative\":\"1至4段第一人称正文\",\"suggestions\":[\"建议1\",\"建议2\",\"建议3\"]}。",
+            "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
+            "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
+            "输出 JSON：{\"narrative\":\"1至4段第一人称正文\",\"suggestions\":[\"建议1\",\"建议2\",\"建议3\"],\"memory\":{\"summary\":\"长期摘要\",\"openThreads\":[\"未决事项\"],\"keyChoice\":\"本次关键选择，无则空字符串\",\"npcNotes\":{\"人名\":\"应记住的互动\"},\"chapterTitle\":\"章节名\"}}。",
           ].join("\n"),
         },
         {
           role: "user",
           content: JSON.stringify({
-            character: game.character,
-            personality: game.personalitySummary,
-            location: game.location,
-            worldTime: game.worldTime,
-            lifeGoal: game.lifeGoal,
-            currentTaskRecords: game.tasks.filter((task) => task.status !== "完成").slice(0, 6),
-            hunting: game.hunting,
-            combat: game.combat,
-            knownFigures: game.knownFigures.slice(0, 8),
-            recentNews: game.news.slice(-5),
-            visibleMap: game.map.filter((location) => location.discovered).map(({ name, danger, current }) => ({ name, danger, current })),
-            recentNarrative: game.narrative.slice(-4),
+            character: game.view.character,
+            personality: game.view.personalitySummary,
+            personalityEvidence: game.personalityProfile.evidence?.slice(-12),
+            location: game.view.location,
+            worldTime: game.view.worldTime,
+            lifeGoal: game.view.lifeGoal,
+            affiliations: game.view.affiliations,
+            relationships: game.view.relations.slice(0, 16),
+            currentTaskRecords: game.view.tasks.filter((task) => task.status !== "完成").slice(0, 10),
+            hunting: game.view.hunting,
+            combat: game.view.combat,
+            knownFigures: game.view.knownFigures.slice(0, 12),
+            knownNpcMemories: Object.fromEntries(Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer && npc.memoryOfPlayer.length).map((npc) => [npc.name, npc.memoryOfPlayer.slice(-6)])),
+            sceneNpcProfiles: Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => { const definition = characterById(npc.id); return { name: npc.name, personality: definition?.personality, currentGoal: npc.currentGoal, attitude: npc.dispositionToPlayer, rememberedInteractions: npc.memoryOfPlayer.slice(-6), knownPower: game.view.knownFigures.find((item) => item.id === npc.id)?.knownPower }; }),
+            recentNews: game.view.news.slice(0, 8),
+            currentWorldEvents: game.world.dynamicEvents.filter((event) => event.status === "可介入" && (event.locationId === game.view.locationId || event.participantIds.some((id) => game.world.npcs[id]?.knownToPlayer))).map(({ title, detail, kind }) => ({ title, detail, kind })),
+            visibleMap: game.view.map.filter((location) => location.discovered).map(({ name, danger, current }) => ({ name, danger, current })),
+            longTermMemory: game.storyMemory,
+            recentNarrative: game.view.narrative.slice(-12),
             playerInput,
             fixedRuleResult: resolution.ruleSummary,
             fixedSuggestions: resolution.suggestions,
@@ -88,5 +134,27 @@ export async function narrateWithDeepSeek(
   return {
     narrative: parsed.narrative,
     suggestions: parsed.suggestions.filter((item): item is string => typeof item === "string").slice(0, 3),
+    memory: parsed.memory && typeof parsed.memory === "object" ? parsed.memory : undefined,
   };
+}
+
+export function applyNarrativeMemory(game: StoredGame, generated: NarrationResult): void {
+  const memory = generated.memory;
+  if (!memory) return;
+  if (typeof memory.summary === "string" && memory.summary.trim()) game.storyMemory.summary = memory.summary.trim().slice(0, 4000);
+  if (Array.isArray(memory.openThreads)) game.storyMemory.openThreads = memory.openThreads.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.slice(0, 120)).slice(0, 12);
+  if (typeof memory.keyChoice === "string" && memory.keyChoice.trim()) game.storyMemory.keyChoices = [...game.storyMemory.keyChoices, memory.keyChoice.trim().slice(0, 160)].slice(-20);
+  if (memory.npcNotes && typeof memory.npcNotes === "object") {
+    for (const [name, note] of Object.entries(memory.npcNotes)) if (typeof note === "string" && note.trim()) {
+      game.storyMemory.npcNotes[name.slice(0, 30)] = note.trim().slice(0, 400);
+      const npc = Object.values(game.world.npcs).find((item) => item.name === name && item.knownToPlayer);
+      if (npc) { npc.memoryOfPlayer.push(note.trim().slice(0, 220)); npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12); }
+    }
+  }
+  if (typeof memory.chapterTitle === "string" && memory.chapterTitle.trim() && memory.chapterTitle.trim() !== game.storyMemory.chapterTitle) {
+    game.storyMemory.chapterNumber += 1;
+    game.storyMemory.chapterTitle = memory.chapterTitle.trim().slice(0, 24);
+  }
+  game.storyMemory.lastUpdatedAction = game.actionIndex;
+  game.view.chapter = { number: game.storyMemory.chapterNumber, title: game.storyMemory.chapterTitle, summary: game.storyMemory.summary.slice(0, 220) };
 }

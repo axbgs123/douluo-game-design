@@ -14,13 +14,15 @@ import {
 import {
   getMetaProgression,
   getWorldCatalogStats,
+  equipLegacyHeirloom,
   listSaves,
   loadGame,
   recordRunSettlement,
+  purchaseLegacyUpgrade,
   saveGame,
   updateMetaPreferences,
 } from "./db.js";
-import { narrateWithDeepSeek } from "./services/deepseek.js";
+import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithDeepSeek } from "./services/deepseek.js";
 import { settingsView, writeDeepSeekSettings } from "./services/settings.js";
 import { settleRun } from "./domain/endings.js";
 
@@ -49,6 +51,8 @@ const metaPreferencesSchema = z.object({
   martialSoul: z.string().trim().min(1).max(40),
   gift: z.string().trim().min(1).max(40),
 });
+const metaPurchaseSchema = z.object({ name: z.enum(["命运余量", "稳固根基", "旧世见闻"]) });
+const metaEquipSchema = z.object({ name: z.string().trim().max(60).optional() });
 const settingsSchema = z.object({
   apiKey: z.string().trim().min(1),
   baseUrl: z.string().url(),
@@ -71,6 +75,16 @@ app.post("/api/meta/preferences", (request, response) => {
   response.json(updateMetaPreferences(metaPreferencesSchema.parse(request.body)));
 });
 
+app.post("/api/meta/purchase", (request, response) => {
+  const input = metaPurchaseSchema.parse(request.body);
+  response.json(purchaseLegacyUpgrade(input.name));
+});
+
+app.post("/api/meta/equip", (request, response) => {
+  const input = metaEquipSchema.parse(request.body);
+  response.json(equipLegacyHeirloom(input.name));
+});
+
 app.get("/api/world/catalog/stats", (_request, response) => {
   response.json(getWorldCatalogStats());
 });
@@ -83,7 +97,7 @@ app.get("/api/games/:id", (request, response) => {
 
 app.post("/api/games", (request, response) => {
   const input = createGameSchema.parse(request.body);
-  const game = createGame(input, getMetaProgression().weightPreferences);
+  const game = createGame(input, getMetaProgression());
   saveGame(game, "game.created", { difficulty: input.difficulty });
   response.status(201).json(publicView(game));
 });
@@ -130,10 +144,13 @@ app.post("/api/games/:id/action", async (request, response) => {
     return response.status(409).json({ error: "当前阶段还不能自由行动" });
   }
 
-  const resolution = resolveAction(game, input.input);
+  let ruleAction = input.input;
+  try { ruleAction = await interpretActionWithDeepSeek(game, input.input) ?? input.input; }
+  catch (error) { console.warn(error instanceof Error ? error.message : error); }
+  const resolution = resolveAction(game, ruleAction);
   let generated = null;
   try {
-    generated = await narrateWithDeepSeek(game.view, input.input, resolution);
+    generated = await narrateWithDeepSeek(game, input.input, resolution);
   } catch (error) {
     console.warn(error instanceof Error ? error.message : error);
   }
@@ -144,12 +161,14 @@ app.post("/api/games/:id/action", async (request, response) => {
     generated?.narrative ?? resolution.fallbackNarrative,
     generated?.suggestions.length === 3 ? generated.suggestions : resolution.suggestions,
   );
+  if (generated) applyNarrativeMemory(game, generated);
   if (game.view.runProgress.ending && !game.view.runProgress.settlement) {
     const settlement = settleRun(game, game.view.runProgress.ending);
     recordRunSettlement(game, settlement);
   }
   saveGame(game, "action.resolved", {
     input: input.input,
+    ruleAction,
     minutes: resolution.minutes,
     usedAiNarrator: Boolean(generated),
   });

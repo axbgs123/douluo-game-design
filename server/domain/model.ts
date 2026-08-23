@@ -39,6 +39,40 @@ export interface WorldNpcState {
   dispositionToPlayer: number;
   knownToPlayer: boolean;
   lastSimulatedYear: number;
+  memoryOfPlayer: string[];
+}
+
+export interface NpcRelationState {
+  leftId: string;
+  rightId: string;
+  bond: number;
+  kind: "亲近" | "合作" | "竞争" | "敌对" | "陌生";
+  lastChangedYear: number;
+}
+
+export interface DynamicWorldEvent {
+  id: string;
+  title: string;
+  kind: "地方" | "势力" | "人物" | "历史前兆";
+  locationId: string;
+  participantIds: string[];
+  detail: string;
+  stakes: number;
+  status: "可介入" | "已解决" | "错过";
+  createdYear: number;
+  createdDay: number;
+  expiresOrdinal: number;
+  outcome?: string;
+}
+
+export interface StoryMemory {
+  summary: string;
+  openThreads: string[];
+  keyChoices: string[];
+  npcNotes: Record<string, string>;
+  chapterNumber: number;
+  chapterTitle: string;
+  lastUpdatedAction: number;
 }
 
 export interface HiddenWorldState {
@@ -46,6 +80,10 @@ export interface HiddenWorldState {
   firedCanonEvents: string[];
   suppressedCanonEvents: string[];
   deviation: number;
+  npcRelations: NpcRelationState[];
+  dynamicEvents: DynamicWorldEvent[];
+  lastAutonomyOrdinal: number;
+  resurrectionCount: number;
   discoveredLocations: string[];
   flags: Record<string, boolean | number | string>;
   trainingPoints: number;
@@ -68,6 +106,11 @@ export interface StoredGame {
   personalityProfile: PersonalityProfile;
   actionIndex: number;
   world: HiddenWorldState;
+  storyMemory: StoryMemory;
+  legacy: {
+    upgrades: Record<string, number>;
+    equippedHeirloom?: string;
+  };
 }
 
 export interface ActionResolution {

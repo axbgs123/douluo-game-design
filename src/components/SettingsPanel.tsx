@@ -30,6 +30,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       <p className="eyebrow">本地模型</p>
       <h2>DeepSeek 设置</h2>
       <p className="settings-copy">API Key 仅保存在本机 <code>.data</code>。</p>
+      <p className="settings-copy">复杂行动会先整理语义，再生成正文并更新长期记忆。</p>
       <form onSubmit={(event) => {
         event.preventDefault();
         if (!apiKey.trim()) return;
