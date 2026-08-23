@@ -89,7 +89,7 @@ test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状�
   await expect(page.locator(".world-clock strong")).not.toContainText("唐三");
   await clickEraAction(page, "舰桥模拟", "进行星舰指挥模拟训练");
   await expect(page.getByText("星舰资格 · 无", { exact: true })).toBeVisible();
-  await expect(page.getByText(/指挥训练 0% · 船员 0 · 完成任务 0/)).toBeVisible();
+  await expect(page.getByText(/指挥训练 0% · 真实飞行 0 小时 · 船员 0 · 完成任务 0/)).toBeVisible();
 });
 
 test("有效结算可以在同一存档开启下一时代并核验累积谱系", async ({ page }) => {

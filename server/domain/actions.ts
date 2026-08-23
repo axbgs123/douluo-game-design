@@ -1091,6 +1091,8 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
   const localChoice = { pattern: /宗门|势力|组织|行会|武馆/, id: `local-${game.view.locationId}`, name: localOrganizations[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}自由魂师互助队`, rank: 10 };
   const choices = [...eraChoices[game.view.era ?? 1], localChoice];
   const target = choices.find((item) => item.pattern.test(action)) ?? choices.at(-1)!;
+  const activeFleet = (game.view.era ?? 1) === 4 && target.id === "d4-federal-fleet";
+  if (activeFleet && character.age < 18) return impossible("联邦舰队现役军籍至少要求十八岁；未成年人只能走星际学院、少年训练与受监护模拟课程。", ["申请联邦星际学院", "继续星舰基础训练", "等待达到现役年龄"]);
   const faction = FACTIONS.find((item) => item.id === target.id);
   const year = game.view.worldTime?.year ?? 0;
   if (faction && !factionActiveAtYear(faction, year)) {
@@ -1098,13 +1100,13 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
   }
   if (game.view.affiliations.some((item) => item.id === target.id)) return impossible(`我已经加入${target.name}。`, ["申请内部任务", "拜访组织成员", "提升组织声望"]);
   if (character.soulRank < target.rank) return impossible(`${target.name}的公开门槛约为 ${target.rank} 级，我当前的实力还不够。`, ["继续修炼", "寻找举荐人", "先完成外围委托"]);
-  game.view.affiliations.push({ id: target.id, name: target.name, role: "外围成员", reputation: "生疏", joinedAt: `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, contribution: 0, completedAssignments: 0, rankEvidence: [] });
+  game.view.affiliations.push({ id: target.id, name: target.name, role: activeFleet ? "现役士兵" : "外围成员", reputation: "生疏", joinedAt: `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, contribution: 0, completedAssignments: 0, rankEvidence: [], ...(activeFleet ? { militaryRank: "列兵" as const, militaryMerit: 0, flightHours: 0 } : {}) });
   game.view.economy.salary = Math.max(game.view.economy.salary, target.rank >= 40 ? 18 : target.rank >= 20 ? 10 : 5);
   game.view.relations.push({ id: target.id, name: target.name, relation: "所属势力", impression: "尚未建立功劳", strength: 10, category: "势力" });
   game.world.deviation += target.rank >= 40 ? 8 : target.rank >= 20 ? 4 : 2;
   if (!target.id.startsWith("local-")) recordCanonInfluence(game, { source: "加入势力", description: `加入${target.name}`, affectedFactionIds: [target.id], strength: target.rank >= 40 ? 8 : target.rank >= 20 ? 5 : 2 });
   ensureTask(game, { id: `faction-${target.id}`, title: `在${target.name}站稳脚跟`, kind: "计划", detail: "完成组织事务，观察内部关系与规矩。", status: "进行中" });
-  return { intent: "加入势力", minutes: 360, ruleSummary: `通过初步审核，成为${target.name}外围成员。`, fallbackNarrative: `负责登记的人问得很细，连家里做什么都记了。我拿到的牌子只够进外院，背面还有一行小字，损坏要赔。`, suggestions: ["领取第一件事务", "打听内部规矩", "认识同批成员"], systemMessages: [`身份 · ${target.name} · 外围成员`] };
+  return { intent: "加入势力", minutes: 360, ruleSummary: `通过初步审核，成为${target.name}${activeFleet ? "列兵" : "外围成员"}。`, fallbackNarrative: `负责登记的人问得很细，连家里做什么都记了。我拿到的牌子只够进外院，背面还有一行小字，损坏要赔。`, suggestions: ["领取第一件事务", "打听内部规矩", "认识同批成员"], systemMessages: [`身份 · ${target.name} · ${activeFleet ? "列兵" : "外围成员"}`] };
 }
 
 function institutionResolution(game: StoredGame, action: string): ActionResolution {
@@ -1134,6 +1136,7 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
     const contribution = Math.min(20, 8 + evidence.length * 2);
     affiliation.contribution += contribution;
     affiliation.completedAssignments += 1;
+    if (affiliation.militaryRank) affiliation.militaryMerit = (affiliation.militaryMerit ?? 0) + contribution;
     affiliation.reputation = affiliation.contribution >= 50 ? "有稳定功绩" : affiliation.contribution >= 20 ? "受到认可" : "完成过事务";
     const reward = Math.max(3, Math.round((game.view.era ?? 1) * 4 + contribution / 2));
     game.view.character!.coins += reward;
@@ -1141,6 +1144,24 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
     return { intent: "交付机构事务", minutes: 60, ruleSummary: `${affiliation.name}依据${evidence.length}条行动证据验收“${active.title}”，贡献 +${contribution}，获得${formatSoulCoins(reward)}。`, fallbackNarrative: `验收人没有听我复述结果，而是把行动记录、成品或值勤签名逐项对过。最后一个章落下，报酬和贡献分别记进两本账。`, suggestions: ["申请下一项事务", "查看贡献与岗位", "申请晋升"] };
   }
   if (/晋升|升职|转正/.test(action)) {
+    if (affiliation.militaryRank) {
+      const ranks = [
+        { rank: "列兵", next: "下士", merit: 20, assignments: 2, hours: 50 }, { rank: "下士", next: "中士", merit: 50, assignments: 4, hours: 150 },
+        { rank: "中士", next: "少尉", merit: 100, assignments: 7, hours: 400 }, { rank: "少尉", next: "中尉", merit: 180, assignments: 10, hours: 800 },
+        { rank: "中尉", next: "上尉", merit: 280, assignments: 14, hours: 1_400 }, { rank: "上尉", next: "少校", merit: 420, assignments: 20, hours: 2_200 },
+        { rank: "少校", next: "中校", merit: 650, assignments: 28, hours: 3_500 }, { rank: "中校", next: "上校", merit: 950, assignments: 38, hours: 5_000 },
+        { rank: "上校", next: "大校", merit: 1_350, assignments: 50, hours: 7_000 }, { rank: "大校", next: "少将", merit: 2_000, assignments: 70, hours: 10_000 },
+      ] as const;
+      const rankStep = ranks.find((item) => item.rank === affiliation.militaryRank);
+      if (!rankStep) return impossible("少将以上晋升不属于普通机构事务自动结算范围，需要舰队级任命与战略军功。", ["承担舰队级任务", "维持当前军衔职责", "申请指挥岗位评审"]);
+      const merit = affiliation.militaryMerit ?? 0;
+      const hours = affiliation.flightHours ?? 0;
+      if (merit < rankStep.merit || affiliation.completedAssignments < rankStep.assignments || hours < rankStep.hours) return impossible(`晋升${rankStep.next}需要军功 ${rankStep.merit}、验收任务 ${rankStep.assignments} 项、真实飞行 ${rankStep.hours} 小时；当前 ${merit} / ${affiliation.completedAssignments} / ${hours}。`, ["领取舰队事务", "参加随舰训练航次", "积累真实飞行时间"]);
+      affiliation.militaryRank = rankStep.next;
+      affiliation.role = ["下士", "中士"].includes(rankStep.next) ? "现役士官" : "现役军官";
+      affiliation.rankEvidence.push(`${game.view.worldTime?.year ?? 0}年第${game.view.worldTime?.day ?? 1}日：凭${merit}军功、${affiliation.completedAssignments}项任务与${hours}小时飞行晋升${rankStep.next}`);
+      return { intent: "军衔晋升", minutes: 180, ruleSummary: `${affiliation.name}核验能力、军功、任务与真实飞行时长后，军衔晋升为${rankStep.next}。`, fallbackNarrative: `模拟成绩没有被算成真实航时，普通贡献也没有冒充军功。四本记录逐项核完，新军衔才写进军籍。`, suggestions: ["查看新岗位权限", "领取舰队事务", "继续积累飞行时长"], systemMessages: [`军衔 · ${rankStep.next}`] };
+    }
     const steps = [{ role: "外围成员", next: "正式成员", need: 20, assignments: 2 }, { role: "正式成员", next: "骨干成员", need: 50, assignments: 4 }, { role: "骨干成员", next: "核心成员", need: 90, assignments: 7 }] as const;
     const step = steps.find((item) => item.role === affiliation.role);
     if (!step) return impossible(`${affiliation.role}没有可由日常事务自动取得的更高公开岗位。`, ["承担关键机构任务", "申请专业岗位", "维持现有职责"]);
@@ -1783,7 +1804,18 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
   const character = game.view.character!;
   if (/模拟|训练|课程|推演/.test(action) && character.age < 7) return impossible("七岁前只能接触星舰常识和安全启蒙，不能把儿童娱乐模拟算作战舰驾驶训练记录。", ["学习星舰基础常识", "参观民用飞船", "等待进入基础驾驶课程"]);
   const starship = game.view.starship ??= { license: "无", simulatorProgress: 0, simulatorSessions: 0, crew: [], missionsCompleted: 0 };
+  starship.loggedFlightHours ??= 0;
   const licenses = ["无", "见习指挥", "三级指挥", "二级指挥", "一级指挥"] as const;
+
+  if (/带教航次|实习航次|随舰训练|真实飞行/.test(action)) {
+    if (licenses.indexOf(starship.license) < 1) return impossible("真实随舰训练至少需要见习指挥资格，兴趣课和娱乐模拟不能登记为飞行时长。", ["参加见习指挥考核", "继续基础模拟训练", "申请星际学院课程"]);
+    const institution = game.view.affiliations.find((item) => /舰队|星际|史莱克|联邦|学院/.test(item.name));
+    if (!institution) return impossible("随舰航次必须由星际学院或舰队安排并签署值勤记录。", ["加入星际学院", "申请舰队岗位", "继续模拟训练"]);
+    const hours = integer(actionRandom(game), 8, 18);
+    starship.loggedFlightHours += hours;
+    if (institution.militaryRank) institution.flightHours = (institution.flightHours ?? 0) + hours;
+    return { intent: "随舰训练航次", minutes: hours * 60, ruleSummary: `完成 ${hours} 小时真实随舰轮值；累计真实飞行 ${starship.loggedFlightHours} 小时。模拟时长未计入。`, fallbackNarrative: `离开模拟舱以后，每一次换班都有人签字。航向偏差、轮机警报和交接遗漏写进值勤表，靠港后才汇总成真正的飞行时长。`, suggestions: ["复盘随舰记录", "申请下一次航次", "领取舰队事务"] };
+  }
 
   if (/模拟|训练|课程|推演/.test(action) && !/购买|招募/.test(action)) {
     starship.trainingStartedAge ??= character.age;
@@ -1876,11 +1908,17 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
     game.view.mapHierarchy = buildMapHierarchy(game);
     game.world.metrics.discoveries += 1;
     const travelMinutes = hostileRoute ? speedMinutes(game, 30_240, 60_480) : speedMinutes(game, 10_080, 20_160);
+    const loggedHours = Math.round(travelMinutes / 60);
+    starship.loggedFlightHours += loggedHours;
+    const military = game.view.affiliations.find((item) => item.militaryRank);
+    if (military) military.flightHours = (military.flightHours ?? 0) + loggedHours;
     return { intent: "星际航行", minutes: travelMinutes, ruleSummary: `${starship.shipName}抵达${destination.name}；航程约 ${Math.round(travelMinutes / 1_440)} 天，消耗燃料 ${fuelCost}%、物资 ${supplyCost}%${hazard ? `，途中故障使舰体降至 ${starship.hull}%` : "，航行未发生需要维修的事故"}。`, fallbackNarrative: hazard ? `航程中段，舰体警报突然从尾部一路亮到轮机舱。船员没有等我喊口号，各自按演练封舱、切断故障回路。抵达${destination.name}时没有少人，但外壳留下了必须进坞处理的伤。` : `离港以后，星图上的距离很久都没有明显缩短。驾驶、导航和轮机按班次交接，真正抵达${destination.name}时，最先被检查的是剩余燃料和返航余量，而不是窗外景色。`, suggestions: ["检查舰体与船员", "开展当地调查", "规划返航补给"], systemMessages: [`抵达 · ${destination.name}`] };
   }
   if (/调查|扫描|探索任务|采样/.test(action)) {
     if (!starship.shipName || !/森罗星|精灵星|天龙星|天马星/.test(game.view.location ?? "")) return impossible("需要驾驶已登记星舰抵达目标星球后才能执行星际调查。", ["规划星际航线", "组建船员组", "取得探索舰"]);
     starship.missionsCompleted += 1;
+    const military = game.view.affiliations.find((item) => item.militaryRank);
+    if (military) military.militaryMerit = (military.militaryMerit ?? 0) + 6;
     if (starship.missionsCompleted >= 3) {
       const projectTask = game.view.tasks.find((task) => task.id?.startsWith("starship-project-") && task.status === "进行中");
       if (projectTask) projectTask.status = "完成";
@@ -2030,7 +2068,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/魂灵/.test(action)) resolution = soulSpiritResolution(game, action);
   else if (/斗铠/.test(action) && !/购买|买|采购/.test(action) && !(game.view.combat && /攻击|防御|格挡|闪避|逃跑|弱点/.test(action))) resolution = battleArmorResolution(game, action);
   else if (/机甲/.test(action) && (!game.view.combat || !/攻击|防御|格挡|闪避|逃跑|弱点/.test(action) || !game.view.mecha?.model)) resolution = mechaResolution(game, action);
-  else if (/星舰|舰桥|船员|舰员|星际航行|探索舰|项目舰|星球探索|星球调查|指挥考核|指挥资格/.test(action)) resolution = starshipResolution(game, action);
+  else if (/星舰|舰桥|随舰|航次|真实飞行|船员|舰员|星际航行|探索舰|项目舰|星球探索|星球调查|指挥考核|指挥资格/.test(action)) resolution = starshipResolution(game, action);
   else if (/前往|去往|出发去|旅行到/.test(action) && /船票|客运|航班|民航|搭乘/.test(action)) resolution = travelResolution(game, action);
   else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
   else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
@@ -2047,7 +2085,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/上课|课程|学院学习|参加实战课/.test(action)) resolution = academyStudyResolution(game);
   else if (/入学|报名.*学院|申请.*学院|成为工读生/.test(action)) resolution = academyResolution(game);
   else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正/.test(action)) resolution = institutionResolution(game, action);
-  else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克/.test(action)) resolution = factionResolution(game, action);
+  else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克|舰队|联邦|传灵塔|战神/.test(action)) resolution = factionResolution(game, action);
   else if (/拜师|拜.*为师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);
   else if (/修炼|冥想|运转|练功|闭关/.test(action)) resolution = trainingResolution(game, action);

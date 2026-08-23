@@ -343,4 +343,38 @@ describe("multi-era foundations", () => {
     expect(resolveAction(game, "参加见习指挥考核").intent).toBe("星舰指挥考核");
     expect(resolveAction(game, "参加三级指挥考核").intent).toBe("无法完成");
   });
+
+  it("separates fleet enlistment, simulator time, logged flight hours and military promotion", () => {
+    const minor = playingGame(4, "underage-fleet-enlistment");
+    minor.view.character!.soulRank = 20;
+    expect(minor.view.character!.age).toBeLessThan(18);
+    expect(resolveAction(minor, "加入斗罗联邦舰队").intent).toBe("无法完成");
+    expect(minor.view.affiliations.some((item) => item.id === "d4-federal-fleet")).toBe(false);
+
+    const game = playingGame(4, "military-career-progression");
+    game.view.character!.age = 18;
+    game.view.character!.soulRank = 20;
+    expect(resolveAction(game, "加入斗罗联邦舰队").intent).toBe("加入势力");
+    const fleet = game.view.affiliations.find((item) => item.id === "d4-federal-fleet")!;
+    expect(fleet).toMatchObject({ role: "现役士兵", militaryRank: "列兵", militaryMerit: 0, flightHours: 0 });
+
+    resolveAction(game, "进行星舰指挥模拟训练");
+    expect(game.view.starship?.loggedFlightHours).toBe(0);
+    expect(fleet.flightHours).toBe(0);
+
+    game.view.starship!.license = "见习指挥";
+    expect(resolveAction(game, "申请随舰训练航次").intent).toBe("随舰训练航次");
+    expect(game.view.starship!.loggedFlightHours).toBeGreaterThan(0);
+    expect(fleet.flightHours).toBe(game.view.starship!.loggedFlightHours);
+
+    fleet.contribution = 999;
+    expect(resolveAction(game, "向斗罗联邦舰队申请晋升").intent).toBe("无法完成");
+    fleet.militaryMerit = 20;
+    fleet.completedAssignments = 2;
+    fleet.flightHours = 50;
+    const promotion = resolveAction(game, "向斗罗联邦舰队申请晋升");
+    expect(promotion.intent).toBe("军衔晋升");
+    expect(fleet.militaryRank).toBe("下士");
+    expect(fleet.rankEvidence?.at(-1)).toContain("50小时飞行晋升下士");
+  });
 });

@@ -156,6 +156,7 @@ export interface StarshipProgressView {
   simulatorProgress: number;
   simulatorSessions: number;
   trainingStartedAge?: number;
+  loggedFlightHours?: number;
   crew: Array<{ relationId: string; name: string; role: "驾驶员" | "导航员" | "轮机师" | "战术员" | "医疗员"; readiness: number }>;
   shipName?: string;
   shipClass?: "民用穿梭艇" | "陨星级侦察舰" | "流星级攻击舰" | "饕餮级运输舰" | "辉煌级补给舰" | "龙王级护卫舰" | "战神级战列舰" | "行星级母舰";
@@ -216,7 +217,12 @@ export interface AffiliationView {
   contribution?: number;
   completedAssignments?: number;
   rankEvidence?: string[];
+  militaryRank?: MilitaryRank;
+  militaryMerit?: number;
+  flightHours?: number;
 }
+
+export type MilitaryRank = "列兵" | "下士" | "中士" | "少尉" | "中尉" | "上尉" | "少校" | "中校" | "上校" | "大校" | "少将";
 
 export interface StoryChapterView {
   number: number;

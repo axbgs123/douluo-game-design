@@ -825,6 +825,10 @@ export function ensureGameState(game: StoredGame): StoredGame {
     affiliation.contribution ??= 0;
     affiliation.completedAssignments ??= 0;
     affiliation.rankEvidence ??= [];
+    if (affiliation.militaryRank) {
+      affiliation.militaryMerit ??= 0;
+      affiliation.flightHours ??= 0;
+    }
   }
   game.view.inventoryLoad ??= { used: game.view.inventory?.length ?? 0, capacity: 18, state: "轻便", storage: [] };
   game.view.professions ??= [];
