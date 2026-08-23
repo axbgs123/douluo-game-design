@@ -200,7 +200,7 @@ function cultivationLabel(game: StoredGame): string {
 
 function ensureTask(game: StoredGame, task: TaskView): void {
   const id = task.id ?? task.title;
-  if (!game.view.tasks.some((item) => (item.id ?? item.title) === id && item.status !== "完成")) game.view.tasks.push(task);
+  if (!game.view.tasks.some((item) => (item.id ?? item.title) === id && item.status !== "完成")) game.view.tasks.push({ ...task, createdActionIndex: task.createdActionIndex ?? game.actionIndex, progressEvidence: task.progressEvidence ?? [] });
 }
 
 function trainingResolution(game: StoredGame, action = ""): ActionResolution {
@@ -904,24 +904,34 @@ function mentorResolution(game: StoredGame, action: string): ActionResolution {
   game.world.metrics.relationshipsBuilt += 1;
   game.world.deviation += mentioned ? (mentioned.importance ?? 3) * 2 : 1;
   if (mentioned) recordCanonInfluence(game, { source: "建立师徒关系", description: `拜${mentioned.name}为师`, affectedNpcIds: [mentioned.id], affectedFactionIds: mentioned.factionIds, strength: mentioned.importance * 5 });
-  ensureTask(game, { id: `mentor-${mentioned?.id ?? "local"}`, title: `完成${mentorName}布置的修行`, kind: "承诺", detail: "按要求练习，并在下次见面时交代结果。", status: "进行中" });
+  ensureTask(game, { id: `mentor-${mentioned?.id ?? "local"}`, title: `完成${mentorName}布置的修行`, kind: "承诺", detail: "按要求练习，并在下次见面时交代结果。", status: "进行中", ownerId: mentioned?.id });
   return { intent: "拜师", minutes: 120, ruleSummary: `${mentorName}接受了师徒关系，并留下第一项修行要求。`, fallbackNarrative: `他没有让我跪太久，伸手把我拉了起来。第一句话也不玄，只让我把每天修炼的时间和失败处一笔笔记清。`, suggestions: ["询问修炼要求", "了解导师的规矩", "开始第一项练习"], systemMessages: [`关系 · ${mentorName} · 师徒`] };
 }
 
 function promiseResolution(game: StoredGame, action: string): ActionResolution {
   const title = action.replace(/^(我)?(答应|承诺|保证)/, "").trim().slice(0, 32) || "履行刚刚作出的承诺";
   const id = `promise-${game.actionIndex}`;
-  ensureTask(game, { id, title, kind: "承诺", detail: `角色亲口答应了这件事。违背承诺会影响人格与关系。`, status: "进行中" });
+  const mentioned = CANON_CHARACTERS.find((character) => action.includes(character.name) && game.world.npcs[character.id]?.knownToPlayer);
+  ensureTask(game, { id, title, kind: "承诺", detail: `角色亲口答应了这件事。违背承诺会影响人格与关系。`, status: "进行中", ownerId: mentioned?.id });
   return { intent: "作出承诺", minutes: 10, ruleSummary: `记录新承诺：${title}。`, fallbackNarrative: `话出口后，对面安静了一下。我没再补条件，只把答应的事重复了一遍。`, suggestions: ["立刻准备履约", "确认时间和地点", "记下可能的阻碍"], systemMessages: [`承诺 · ${title}`] };
 }
 
 function fulfillPromiseResolution(game: StoredGame, action: string): ActionResolution {
-  const promise = game.view.tasks.find((task) => task.kind === "承诺" && task.status === "进行中" && (action.includes(task.title) || /完成承诺|履行承诺/.test(action)));
+  const active = game.view.tasks.filter((task) => task.kind === "承诺" && task.status === "进行中" && !task.id?.startsWith("debt-"));
+  const exact = active.filter((task) => action.includes(task.title));
+  if (!exact.length && active.length > 1) return impossible("有多项未完成承诺，需要明确说明要履行哪一项。", active.slice(0, 3).map((task) => `履行承诺：${task.title}`));
+  const promise = exact[0] ?? active[0];
   if (!promise) return impossible("没有找到与这次行动对应的未完成承诺。", ["查看任务", "说明要履行哪项承诺", "先完成必要准备"]);
+  const createdIndex = promise.createdActionIndex ?? Number(promise.id?.match(/(?:promise|mentor)-(?:[^-]+-)?(\d+)$/)?.[1] ?? game.actionIndex);
+  const evidence = game.world.actionLedger.filter((entry) => entry.index > createdIndex && !["作出承诺", "履行承诺", "快进", "休息", "一般行动", "无法完成"].includes(entry.intent));
+  const relevantEvidence = promise.id?.startsWith("mentor-") ? evidence.filter((entry) => /修炼|课程|研究|训练/.test(`${entry.intent}${entry.action}`)) : evidence;
+  if (!relevantEvidence.length) return impossible(`还没有完成足以证明“${promise.title}”的实际行动。`, ["先执行承诺内容", "收集可核验的结果", "查看承诺详情"]);
+  promise.progressEvidence = relevantEvidence.slice(-5).map((entry) => `${entry.action}（${entry.result}）`);
   promise.status = "完成";
   game.world.metrics.promisesKept += 1;
   game.personalityProfile.scores.integrity = (game.personalityProfile.scores.integrity ?? 0) + 2;
-  for (const relation of game.view.relations) if (/委托|师徒|同伴|亲属/.test(relation.relation)) { relation.impression = "知道主角会把答应的事做完"; recordPlayerRelation(game, relation, `主角完成了承诺“${promise.title}”`, { trust: 8, respect: 3, favorDebt: 1 }); }
+  const beneficiaries = promise.ownerId ? game.view.relations.filter((relation) => relation.id === promise.ownerId) : [];
+  for (const relation of beneficiaries) { relation.impression = "知道主角会把答应的事做完"; recordPlayerRelation(game, relation, `主角完成了承诺“${promise.title}”`, { trust: 8, respect: 3, favorDebt: 1 }); }
   return { intent: "履行承诺", minutes: 180, ruleSummary: `完成承诺：${promise.title}。守诺记录增加。`, fallbackNarrative: `该交的东西、该说的话，我一样没落下。对方接过去后重新数了一遍，才把那张写着约定的纸撕掉。`, suggestions: ["确认有没有后续", "休息", "检查其他计划"], systemMessages: [`承诺完成 · ${promise.title}`] };
 }
 

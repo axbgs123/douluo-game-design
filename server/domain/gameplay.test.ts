@@ -45,6 +45,32 @@ describe("完整游玩规则", () => {
     expect(game.world.npcs["qian-renxue"].knownToPlayer).toBe(true);
   });
 
+  it("承诺必须有后续行动证据，不能用一句完成承诺直接结算", () => {
+    const game = awakened("promise-evidence");
+    const promise = resolveAction(game, "承诺调查村口失踪线索");
+    applyActionResult(game, "承诺调查村口失踪线索", promise, promise.fallbackNarrative, promise.suggestions);
+    expect(resolveAction(game, "完成承诺").intent).toBe("无法完成");
+
+    const investigation = resolveAction(game, "调查村口失踪线索");
+    applyActionResult(game, "调查村口失踪线索", investigation, investigation.fallbackNarrative, investigation.suggestions);
+    const fulfilled = resolveAction(game, "完成承诺");
+    expect(fulfilled.intent).toBe("履行承诺");
+    const task = game.view.tasks.find((item) => item.title === "调查村口失踪线索");
+    expect(task?.status).toBe("完成");
+    expect(task?.progressEvidence?.[0]).toContain("调查村口失踪线索");
+  });
+
+  it("多项承诺需要明确指定目标", () => {
+    const game = awakened("promise-choice");
+    for (const text of ["承诺整理学院笔记", "承诺采购猎魂干粮"]) {
+      const result = resolveAction(game, text);
+      applyActionResult(game, text, result, result.fallbackNarrative, result.suggestions);
+    }
+    const study = resolveAction(game, "研究学院的基础课程");
+    applyActionResult(game, "研究学院的基础课程", study, study.fallbackNarrative, study.suggestions);
+    expect(resolveAction(game, "完成承诺").ruleSummary).toContain("明确说明");
+  });
+
   it("修炼会推进时间、疲劳和内部成长", () => {
     const game = awakened("training");
     game.view.character!.soulRank = 3;

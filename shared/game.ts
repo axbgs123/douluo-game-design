@@ -241,6 +241,9 @@ export interface TaskView {
   status?: "进行中" | "完成" | "失败";
   deadline?: string;
   destinationId?: string;
+  ownerId?: string;
+  createdActionIndex?: number;
+  progressEvidence?: string[];
 }
 
 export interface WorldTimeView {

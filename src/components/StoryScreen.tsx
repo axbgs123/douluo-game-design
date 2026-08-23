@@ -212,7 +212,7 @@ function RelationPanel({ game }: { game: GameView }) {
 
 function TaskPanel({ game }: { game: GameView }) {
   if (!game.tasks.length) return <LockedPanel text="暂无记录" />;
-  return <div className="task-timeline">{game.tasks.map((task, index) => { const destination = task.destinationId ? game.map.find((location) => location.id === task.destinationId)?.name : undefined; return <article key={task.id ?? `${task.title}-${index}`} className={`task-${task.status ?? "进行中"}`}><i>{task.status === "完成" ? "✓" : task.status === "失败" ? "×" : index + 1}</i><div><span>{task.kind} · {task.status ?? "进行中"}</span><strong>{task.title}</strong><p>{task.detail}</p>{destination && <small>目的地 · {destination}</small>}{task.deadline && <small>{task.deadline}</small>}</div></article>; })}</div>;
+  return <div className="task-timeline">{game.tasks.map((task, index) => { const destination = task.destinationId ? game.map.find((location) => location.id === task.destinationId)?.name : undefined; return <article key={task.id ?? `${task.title}-${index}`} className={`task-${task.status ?? "进行中"}`}><i>{task.status === "完成" ? "✓" : task.status === "失败" ? "×" : index + 1}</i><div><span>{task.kind} · {task.status ?? "进行中"}</span><strong>{task.title}</strong><p>{task.detail}</p>{destination && <small>目的地 · {destination}</small>}{task.deadline && <small>{task.deadline}</small>}{task.progressEvidence?.length ? <small>履约依据 · {task.progressEvidence.at(-1)}</small> : null}</div></article>; })}</div>;
 }
 
 function IntelligencePanel({ game }: { game: GameView }) {

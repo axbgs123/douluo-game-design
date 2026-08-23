@@ -713,6 +713,10 @@ export function ensureGameState(game: StoredGame): StoredGame {
   legacy.world.intelligenceRecords ??= [];
   legacy.world.actionLedger ??= [];
   game.view.npcRelations ??= [];
+  for (const task of game.view.tasks ?? []) {
+    task.createdActionIndex ??= 0;
+    task.progressEvidence ??= [];
+  }
   game.view.reputations ??= [];
   game.view.inventoryLoad ??= { used: game.view.inventory?.length ?? 0, capacity: 18, state: "轻便", storage: [] };
   game.view.professions ??= [];
