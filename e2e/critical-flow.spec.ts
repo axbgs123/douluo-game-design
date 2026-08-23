@@ -92,8 +92,8 @@ test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状�
   await expect(page.getByText(/指挥训练 0% · 船员 0 · 完成任务 0/)).toBeVisible();
 });
 
-test("有效结算可以在同一存档开启下一时代并显示旧世回声", async ({ page }) => {
-  test.setTimeout(60_000);
+test("有效结算可以在同一存档开启下一时代并核验累积谱系", async ({ page }) => {
+  test.setTimeout(90_000);
   await createPlayingCharacter(page, 1);
   for (let day = 1; day <= 8; day += 1) await submitAction(page, `在住处训练并记录第${day}天的变化`);
   await page.getByRole("button", { name: "申请结算" }).click();
@@ -103,4 +103,19 @@ test("有效结算可以在同一存档开启下一时代并显示旧世回声",
   await expect(page.getByRole("heading", { name: "选择角色" })).toBeVisible();
   await expect(page.getByText("旧世回声", { exact: true }).first()).toBeVisible();
   await expect(page.locator(".candidate-meta").first()).toContainText("霍雨浩");
+  await page.locator(".select-button").first().click();
+  await expect(page.getByRole("heading", { name: "性格底色" })).toBeVisible();
+  for (const question of await page.locator(".question-card").all()) await question.locator("label").first().click();
+  await page.getByRole("button", { name: "确认性格，进入觉醒" }).click();
+  await expect(page.getByRole("button", { name: "觉醒武魂" })).toBeVisible();
+  await page.getByRole("button", { name: "觉醒武魂" }).click();
+  await expect(page.getByRole("heading", { name: "看清武魂后，再定此生所求" })).toBeVisible();
+  await page.getByRole("button", { name: "确定目标，开始故事" }).click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: /^世界/ }).click();
+  await expect(page.getByText("连续世代谱系", { exact: true })).toBeVisible();
+  await expect(page.locator(".lineage-list").first()).toContainText("第 1 代");
+  await page.locator(".lineage-list").first().getByRole("button", { name: "核验" }).click();
+  await expect(page.locator("blockquote.player-entry").last()).toContainText("旧世档案");
+  await expect(page.locator(".lineage-list").first()).toContainText("部分核验");
 });

@@ -293,11 +293,17 @@ describe("candidate generation", () => {
     parent.view.status = "ended";
     parent.view.runProgress.ending = "守住旧日宗门";
     parent.view.runProgress.settlement = { ending: "守住旧日宗门", baseScore: 80, multiplier: 1, legacyPoints: 80, highlights: [], qualified: true };
+    parent.view.managedFactions.push({ id: "old-sect", name: "远山门", role: "宗主", members: 48, resources: 130, territory: ["远山谷"], departments: ["外务堂"], internalIssues: [] });
+    parent.view.economy.business = "远山药材行";
 
     const successor = createEraSuccessor(parent);
     expect(successor.view.id).toBe(parent.view.id);
     expect(successor.view.era).toBe(2);
     expect(successor.view.worldInheritance).toMatchObject({ ancestorName: "顾远", sourceEra: 1, targetEra: 2, highestSoulRank: 72 });
+    expect(successor.view.worldInheritance?.lineage.map((item) => item.name)).toEqual(["顾远"]);
+    expect(successor.view.worldInheritance?.institutions.map((item) => item.name)).toEqual(["远山门", "远山药材行"]);
+    expect(successor.view.managedFactions).toHaveLength(0);
+    expect(successor.view.economy.business).toBeUndefined();
     expect(successor.view.candidates.every((candidate) => candidate.originFacts.some((fact) => fact.label === "旧世回声"))).toBe(true);
     selectCandidate(successor, successor.view.candidates[0].id);
     finalizeCharacterShaping(successor, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
@@ -307,5 +313,14 @@ describe("candidate generation", () => {
     expect(successor.view.inventory).toContain("旧世档案 · 顾远");
     expect(successor.view.tasks.some((task) => task.id === "inherited-worldline")).toBe(true);
     expect(successor.view.intelligence.some((item) => item.title.includes("顾远"))).toBe(true);
+
+    successor.view.status = "ended";
+    successor.view.runProgress.ending = "第二代完成远行";
+    successor.view.runProgress.settlement = { ending: "第二代完成远行", baseScore: 60, multiplier: 1, legacyPoints: 60, highlights: [], qualified: true };
+    const thirdEra = createEraSuccessor(successor);
+    expect(thirdEra.view.worldInheritance?.lineage).toHaveLength(2);
+    expect(thirdEra.view.worldInheritance?.lineage[0].name).toBe("顾远");
+    expect(thirdEra.view.worldInheritance?.lineage[1].name).toBe(successor.view.character!.name);
+    expect(thirdEra.view.worldInheritance?.institutions.find((item) => item.name === "远山门")?.state).toBe("碎片传承");
   });
 });

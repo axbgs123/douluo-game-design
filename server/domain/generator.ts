@@ -1509,6 +1509,27 @@ export function createEraSuccessor(parent: StoredGame, meta?: MetaProgressionVie
     `旧世最高魂力${parent.view.runProgress.highestSoulRank}级，历史影响${parent.world.metrics.historicalImpact}`,
     ...parent.world.canonCausalFootprints.slice(-2).map((footprint) => footprint.description),
   ].slice(0, 4);
+  const previousLineage = parent.view.worldInheritance?.lineage ?? [];
+  const lineage = [...previousLineage, {
+    generation: priorGeneration + 1,
+    era: sourceEra,
+    name: ancestor.name,
+    ending: parent.view.runProgress.settlement.ending,
+    highestSoulRank: parent.view.runProgress.highestSoulRank,
+    historicalImpact: parent.world.metrics.historicalImpact,
+    verification: "传闻" as const,
+    evidence: [`${legacyArtifact}保存了这一代的结算摘要`],
+  }];
+  const carriedInstitutions = (parent.view.worldInheritance?.institutions ?? []).map((institution) => ({
+    ...institution,
+    state: institution.state === "有据可查" ? "碎片传承" as const : institution.state === "碎片传承" ? "仅存传闻" as const : institution.state,
+    verification: institution.verification === "已核验" ? "部分核验" as const : institution.verification,
+  }));
+  const newInstitutions = [
+    ...parent.view.managedFactions.map((faction) => ({ id: `legacy-faction-${faction.id}`, name: faction.name, sourceEra, formerRole: faction.role, state: faction.members >= 30 && faction.resources >= 100 ? "有据可查" as const : "碎片传承" as const, verification: "传闻" as const, evidence: [`旧世档案记载其曾有${faction.members}名成员，并控制${faction.territory.join("、") || "一处据点"}`] })),
+    ...(parent.view.economy.business ? [{ id: `legacy-business-${sourceEra}-${parent.view.economy.business}`, name: parent.view.economy.business, sourceEra, formerRole: "祖辈经营产业", state: "仅存传闻" as const, verification: "传闻" as const, evidence: ["旧账末页留下了产业名称，但没有可直接兑现的产权凭据"] }] : []),
+  ];
+  const institutions = [...carriedInstitutions, ...newInstitutions].filter((institution, index, all) => all.findIndex((item) => item.name === institution.name) === index);
   const worldInheritance = {
     generation: priorGeneration + 1,
     sourceEra,
@@ -1519,6 +1540,8 @@ export function createEraSuccessor(parent: StoredGame, meta?: MetaProgressionVie
     historicalImpact: parent.world.metrics.historicalImpact,
     legacyArtifact,
     echoes: inheritedEchoes,
+    lineage,
+    institutions,
   } as const;
   const successor = createGame({ era: targetEra, gender: ancestor.gender, difficulty: parent.view.difficulty, seed: `${parent.view.seed}:generation:${targetEra}:${parent.revision}` }, meta);
   successor.view.id = parent.view.id;

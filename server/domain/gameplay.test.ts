@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "../data/world.js";
 import { applyActionResult, resolveAction } from "./actions.js";
 import { settleRun } from "./endings.js";
-import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
+import { awakenCharacter, createEraSuccessor, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { advanceWorldTime, canDiscoverNpc, createHiddenWorld, ensureGameState, recordCanonInfluence, recordIntelligence, revealNpc } from "./world.js";
 import { applyNarrativeMemory, violatesCanonChronology } from "../services/deepseek.js";
 import { rulebookStats } from "../data/fanfiction-rules.js";
@@ -651,6 +651,28 @@ describe("第一部世界资料", () => {
     expect(game.view.inventory).toContain("止血散");
     expect(game.view.economy.transactions.at(-1)).toMatchObject({ kind: "支出", counterparty: expect.stringContaining("商铺") });
     expect(game.view.economy.transactions.at(-1)?.balance).toBe(game.view.character!.coins);
+  });
+
+  it("连续世代档案需要分步核验且不会把历史权益变成当前资产", () => {
+    const parent = awakened("inheritance-verification");
+    parent.view.managedFactions.push({ id: "archive-sect", name: "青册门", role: "门主", members: 36, resources: 120, territory: ["青册谷"], departments: ["档案堂"], internalIssues: [] });
+    parent.view.status = "ended";
+    parent.view.runProgress.ending = "留下青册档案";
+    parent.view.runProgress.settlement = { ending: "留下青册档案", baseScore: 70, multiplier: 1, legacyPoints: 70, highlights: [], qualified: true };
+    const successor = createEraSuccessor(parent);
+    selectCandidate(successor, successor.view.candidates[0].id);
+    finalizeCharacterShaping(successor, { keywords: ["谨慎", "好学"], answers: {} });
+    awakenCharacter(successor);
+
+    expect(successor.view.managedFactions).toHaveLength(0);
+    const ancestor = successor.view.worldInheritance!.lineage[0];
+    expect(ancestor.verification).toBe("传闻");
+    expect(resolveAction(successor, `核验祖先${ancestor.name}的旧世档案`).intent).toBe("核验旧世档案");
+    expect(ancestor.verification).toBe("部分核验");
+    resolveAction(successor, `继续查证祖先${ancestor.name}的家谱`);
+    expect(ancestor.verification).toBe("已核验");
+    expect(successor.view.tasks.find((item) => item.id === "inherited-worldline")?.status).toBe("完成");
+    expect(successor.view.worldInheritance!.institutions[0].verification).toBe("传闻");
   });
 
   it("随身物品超载会阻止长途旅行，但住处仓储不计负重", () => {

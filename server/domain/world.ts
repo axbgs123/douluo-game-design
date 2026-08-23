@@ -826,6 +826,11 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.managedFactions ??= [];
   game.view.economy ??= { cash: game.view.character?.coins ?? 0, bankBalance: 0, debt: 0, salary: 0, bounty: 0, blackMarketAccess: false, transactions: [] };
   game.view.economy.transactions ??= [];
+  if (game.view.worldInheritance) {
+    game.view.worldInheritance.lineage ??= [{ generation: game.view.worldInheritance.generation, era: game.view.worldInheritance.sourceEra, name: game.view.worldInheritance.ancestorName, ending: game.view.worldInheritance.ending, highestSoulRank: game.view.worldInheritance.highestSoulRank, historicalImpact: game.view.worldInheritance.historicalImpact, verification: "传闻", evidence: [`${game.view.worldInheritance.legacyArtifact}保存了旧世摘要`] }];
+    game.view.worldInheritance.institutions ??= [];
+    game.legacy.worldInheritance = game.view.worldInheritance;
+  }
   game.view.intelligence ??= buildIntelligenceView(game);
   game.view.mapHierarchy ??= { continentName: "斗罗大陆", settlementName: game.view.location ?? "当前位置", buildingName: "当前住处", nodes: [] };
   for (const relation of legacy.world.npcRelations) {

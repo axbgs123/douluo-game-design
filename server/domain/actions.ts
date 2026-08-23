@@ -1238,6 +1238,43 @@ function workResolution(game: StoredGame, action: string): ActionResolution {
   };
 }
 
+function inheritanceResolution(game: StoredGame, action: string): ActionResolution {
+  const inheritance = game.view.worldInheritance!;
+  const institution = inheritance.institutions.find((item) => action.includes(item.name));
+  const lineageSubject = inheritance.lineage.find((item) => action.includes(item.name)) ?? inheritance.lineage.at(-1)!;
+  const subject = institution ?? lineageSubject;
+  const subjectName = institution?.name ?? `${subject.name}的生平记录`;
+  const evidenceSteps = institution
+    ? [`在当前时代的机构目录中找到“${institution.name}”的异名或残卷索引`, `地方账册、谱牒或遗址记录与旧世档案出现两处可交叉对应的细节`]
+    : [`当前时代的地方谱牒记录了${lineageSubject.name}档案的转交链`, `一份独立年代记录与旧世结算摘要中的地点、身份和后果能够互相印证`];
+  const nextEvidence = evidenceSteps.find((item) => !subject.evidence.includes(item));
+  if (!nextEvidence) return {
+    intent: "核验旧世档案",
+    minutes: 30,
+    ruleSummary: `${subjectName}现有证据已经完成当前可达范围的交叉核验；这不等于自动拥有旧时代的权力或财产。`,
+    fallbackNarrative: `能找到的记录都摊在桌上，出处、年代和互相矛盾的地方已经标清。再重复翻同一批纸，不会让历史多出新的证据。`,
+    suggestions: ["调查其他旧世机构", "询问当地档案保管人", "继续当前人生"],
+  };
+  subject.evidence.push(nextEvidence);
+  subject.verification = subject.evidence.length >= 3 ? "已核验" : "部分核验";
+  const task = game.view.tasks.find((item) => item.id === "inherited-worldline");
+  if (task) {
+    task.progressEvidence ??= [];
+    task.progressEvidence.push(`${subjectName}：${nextEvidence}`);
+    task.progressEvidence = task.progressEvidence.slice(-8);
+    if (!institution && lineageSubject.name === inheritance.ancestorName && subject.verification === "已核验") task.status = "完成";
+  }
+  game.world.metrics.discoveries += 1;
+  return {
+    intent: "核验旧世档案",
+    minutes: speedMinutes(game, 180, 720),
+    ruleSummary: `${subjectName}新增一条独立证据，可信状态更新为“${subject.verification}”；未复制旧世战力、成员、领地或产权。`,
+    fallbackNarrative: `旧纸上的说法没有被直接当成真相。我把年代目录、转交印记和另一处记录逐项对齐，终于有一条细节能脱离家族自己的叙述站住脚。它证明历史确实留下过痕迹，却还不能替我拿回任何东西。`,
+    suggestions: subject.verification === "已核验" ? ["调查其他旧世机构", "追查历史影响", "保存核验副本"] : [`继续核验${subjectName}`, "寻找独立记录", "询问档案保管人"],
+    systemMessages: [`旧世核验 · ${subjectName} · ${subject.verification}`],
+  };
+}
+
 function buyResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
   const item = /斗铠/.test(action) && /天锻|神锻|四字/.test(action) ? "天锻斗铠金属胚料"
@@ -1908,6 +1945,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/使用|服用|吃下|吃掉/.test(action)) resolution = useItemResolution(game, action);
   else if (/购买|买|采购/.test(action)) resolution = buyResolution(game, action);
   else if (/打工|工作|赚钱|干活/.test(action)) resolution = workResolution(game, action);
+  else if (game.view.worldInheritance && (/旧世|祖先|档案|家谱|谱牒|旧产业|历史权益/.test(action) || game.view.worldInheritance.institutions.some((item) => action.includes(item.name))) && /核验|查证|调查|追查|验证/.test(action)) resolution = inheritanceResolution(game, action);
   else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);

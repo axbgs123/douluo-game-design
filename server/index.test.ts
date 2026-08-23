@@ -71,6 +71,16 @@ describe("HTTP 状态机", () => {
     expect(successor.era).toBe(2);
     expect(successor.worldInheritance?.ancestorName).toBe("顾遥");
     expect(database.listCheckpoints(parent.view.id).some((checkpoint) => checkpoint.label.includes("世代终章"))).toBe(true);
+
+    const selection = await fetch(`${baseUrl}/api/games/${parent.view.id}/select`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidateId: successor.candidates[0].id, customName: successor.candidates[0].name }),
+    });
+    expect(selection.status).toBe(200);
+    const shaped = await selection.json() as GameView;
+    expect(shaped.status).toBe("character_shaping");
+    expect(shaped.worldInheritance?.lineage[0].name).toBe("顾遥");
   });
 
   it("creates a requested later era through the public API", async () => {

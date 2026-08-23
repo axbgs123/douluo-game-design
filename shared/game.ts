@@ -521,6 +521,29 @@ export interface WorldInheritanceView {
   historicalImpact: number;
   legacyArtifact: string;
   echoes: string[];
+  lineage: LineageRecordView[];
+  institutions: InheritedInstitutionView[];
+}
+
+export interface LineageRecordView {
+  generation: number;
+  era: GameEra;
+  name: string;
+  ending: string;
+  highestSoulRank: number;
+  historicalImpact: number;
+  verification: "传闻" | "部分核验" | "已核验";
+  evidence: string[];
+}
+
+export interface InheritedInstitutionView {
+  id: string;
+  name: string;
+  sourceEra: GameEra;
+  formerRole: string;
+  state: "有据可查" | "碎片传承" | "仅存传闻" | "已知断绝";
+  verification: "传闻" | "部分核验" | "已核验";
+  evidence: string[];
 }
 
 export interface GameView {
