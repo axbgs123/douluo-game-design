@@ -124,6 +124,23 @@ async function seedStarshipCrewGame() {
   database.saveGame(game, "e2e.starship-crew-fixture");
 }
 
+async function seedFleetOnboardingGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 4, gender: "男", difficulty: "标准", seed: "e2e-fleet-onboarding" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "入舰验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.character!.age = 18;
+  game.view.character!.abilityDescriptors.perception = "优秀";
+  game.view.affiliations.push({ id: "e2e-federal-fleet", name: "斗罗联邦舰队", role: "现役士兵", reputation: "生疏", joinedAt: "验收军籍", contribution: 0, completedAssignments: 0, rankEvidence: [], militaryRank: "列兵", militaryMerit: 0, flightHours: 0 });
+  game.view.starship = { license: "三级指挥", simulatorProgress: 60, simulatorSessions: 6, loggedFlightHours: 0, crew: [], missionsCompleted: 0, crewDrills: 0, crewCoordination: 0, crewEvidence: [] };
+  database.saveGame(game, "e2e.fleet-onboarding-fixture");
+}
+
 async function createPlayingCharacter(page: import("@playwright/test").Page, era: 1 | 2 | 3 | 4) {
   await page.goto("/");
   if (era > 1) await page.getByRole("button", { name: `斗${era === 2 ? "二" : era === 3 ? "三" : "四"}` }).click();
@@ -384,6 +401,26 @@ test("斗四星舰必须按岗位招募船员后才能协同并登记真实航�
   await starship.getByRole("button", { name: "随舰航次" }).click();
   await expect(starship).toContainText(/真实飞行 [1-9][0-9]? 小时/);
   await expect(page.getByText(/舰桥协同 · [1-9][0-9]?%/, { exact: true })).toBeVisible();
+});
+
+test("斗四现役人员必须述职并完成一个月多模块培训后才能分岗", async ({ page }) => {
+  await seedFleetOnboardingGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "入舰验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  const starship = page.locator(".special-system-card").filter({ hasText: "星舰资格" });
+  await starship.getByRole("button", { name: "航线培训" }).click();
+  await expect(starship).not.toContainText("入舰档案");
+  await starship.getByRole("button", { name: "参谋部述职" }).click();
+  await expect(starship).toContainText("入舰档案 · 培训中 · 培训 0/30 天");
+  for (const button of ["航线培训", "损管培训", "作战培训", "军纪培训", "航线培训"]) await starship.getByRole("button", { name: button, exact: true }).click();
+  await expect(starship).toContainText("入舰档案 · 待分配 · 培训 35/30 天");
+  await expect(starship).toContainText("真实飞行 0 小时");
+  await starship.getByRole("button", { name: "参谋部分岗" }).click();
+  await expect(starship).toContainText("入舰档案 · 已分配 · 培训 35/30 天 · 舰队参谋部 · 航线与情报见习参谋");
 });
 
 test("有效结算可以在同一存档开启下一时代并核验累积谱系", async ({ page }) => {
