@@ -101,7 +101,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
           <nav className="panel-tabs">{PANELS.map((item) => { const badge = panelBadge(game, item); return <button key={item} type="button" className={panel === item ? "active" : ""} onClick={() => setPanel(item)}><span>{item}</span>{badge && <b>{badge}</b>}</button>; })}</nav>
           <div className="panel-content">
             {panel === "人物" && <CharacterPanel game={game} />}
-            {panel === "武魂" && <SoulPanel game={game} />}
+            {panel === "武魂" && <SoulPanel game={game} submit={submit} busy={busy} />}
             {panel === "背包" && <InventoryPanel game={game} submit={submit} busy={busy} />}
             {panel === "地图" && <MapPanel game={game} submit={submit} busy={busy} onMapPin={onMapPin} onMapPinRemove={onMapPinRemove} />}
             {panel === "关系" && <RelationPanel game={game} />}
@@ -142,13 +142,13 @@ function CharacterPanel({ game }: { game: GameView }) {
   </div>;
 }
 
-function SoulPanel({ game }: { game: GameView }) {
+function SoulPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
   if (!game.character) return <LockedPanel text="尚未觉醒" />;
   const character = game.character;
   const souls = character.martialSouls?.length ? character.martialSouls : [character.martialSoul];
   return <div className="detail-stack">
-    {souls.map((soul, index) => <section key={`${soul.name}-${index}`} className="soul-entry"><div className={`identity-block ${soul.rarity ? `soul-panel-${soul.rarity}` : ""} ${soul.grade ? `soul-grade-${soul.grade}` : ""}`}><small>{index === 0 ? "主武魂" : `第 ${index + 1} 武魂 · 尚未修炼`} · {soul.rarity ? `${soul.rarity} · ` : ""}{soul.grade ? `潜质 ${soul.grade} · ` : ""}{soul.category}</small><strong>{soul.name}</strong></div><p className="panel-copy">{soul.description}</p></section>)}
-    <dl className="stat-list"><div><dt>先天魂力</dt><dd>{character.innateSoulPower} 级</dd></div><div><dt>魂环</dt><dd>{character.soulRings.length} 枚</dd></div></dl>
+    {souls.map((soul, index) => { const rings = character.soulRingSets?.[index] ?? (index === (character.activeMartialSoulIndex ?? 0) ? character.soulRings : []); const active = index === (character.activeMartialSoulIndex ?? 0); return <section key={`${soul.name}-${index}`} className="soul-entry"><div className={`identity-block ${soul.rarity ? `soul-panel-${soul.rarity}` : ""} ${soul.grade ? `soul-grade-${soul.grade}` : ""}`}><small>{active ? "当前主修" : `第 ${index + 1} 武魂`} · {rings.length} 枚魂环 · {soul.rarity ? `${soul.rarity} · ` : ""}{soul.grade ? `潜质 ${soul.grade} · ` : ""}{soul.category}</small><strong>{soul.name}</strong></div><p className="panel-copy">{soul.description}</p>{!active && <button type="button" disabled={busy || Boolean(game.combat)} onClick={() => submit(`切换主修武魂为${soul.name}`)}>切换主修</button>}</section>; })}
+    <dl className="stat-list"><div><dt>先天魂力</dt><dd>{character.innateSoulPower} 级</dd></div><div><dt>当前魂环</dt><dd>{character.soulRings.length} 枚</dd></div></dl>
     {character.revealedGift && <article className="gift-card"><span>已发现</span><strong>{character.revealedGift}</strong></article>}
     {character.specialSystem && <article className="special-system-card"><header><span>独立体系</span><strong>{character.specialSystem.name}</strong></header><p>{character.specialSystem.stage} · {character.specialSystem.progress}</p><div className="trait-cloud">{character.specialSystem.abilities.map((ability) => <span key={ability}>{ability}</span>)}</div><small>{character.specialSystem.resourceHint}</small></article>}
     <div className="ring-list">{character.soulRings.map((ring) => <article key={ring.index}><i className={`ring-dot ring-${ring.color}`} /><div><strong>第 {ring.index} 环 · {ring.beastName}</strong><span>{ring.years} 年 · {ring.skillName}</span><p>{ring.skillDescription}</p></div></article>)}</div>
@@ -239,7 +239,7 @@ function radialPoint(index: number, total: number, radius: number): { x: number;
 function HuntPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
   const hunting: HuntingView | undefined = game.hunting;
   const rank = game.character?.soulRank ?? 0;
-  const canHunt = rank > 0 && rank % 10 === 0 && (game.character?.soulRings.length ?? 0) < Math.floor(rank / 10);
+  const canHunt = rank > 0 && (game.character?.soulRings.length ?? 0) < Math.floor(rank / 10);
   if (!hunting) return <div className="hunt-start"><p>{canHunt ? "魂力已经到达瓶颈，可以开始调查目标。" : `当前 ${rank} 级，达到下一个十级瓶颈后才能吸收魂环。`}</p><button type="button" disabled={busy || !canHunt} onClick={() => submit("开始调查适合当前武魂的魂兽")}>调查魂兽</button></div>;
   return <div className="hunt-panel">
     <div className="hunt-stage"><span>第 {hunting.ringIndex} 魂环</span><strong>{hunting.stage}</strong><small>{hunting.trailProgress}</small></div>

@@ -858,8 +858,13 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.view.character.martialSoul.grade ??= martialSoulGrade(game.view.character.martialSoul.name, game.view.character.martialSoul.rarity, game.view.character.innateSoulPower);
     game.view.character.martialSoul.sourceEra ??= game.view.character.martialSoul.rarity ? "局外" : "原创";
     game.view.character.martialSouls ??= [game.view.character.martialSoul];
-    game.view.character.martialSouls = game.view.character.martialSouls.map((soul, index) => ({ ...soul, name: normalizeMartialSoulName(soul.name), grade: soul.grade ?? martialSoulGrade(soul.name, soul.rarity, game.view.character!.innateSoulPower), sourceEra: soul.sourceEra ?? (soul.rarity ? "局外" : "原创"), cultivationState: index === 0 ? "主修" : soul.cultivationState ?? "未修炼" }));
-    game.view.character.martialSoul = game.view.character.martialSouls[0];
+    game.view.character.activeMartialSoulIndex ??= 0;
+    game.view.character.activeMartialSoulIndex = Math.max(0, Math.min(game.view.character.activeMartialSoulIndex, game.view.character.martialSouls.length - 1));
+    game.view.character.soulRingSets ??= [game.view.character.soulRings];
+    while (game.view.character.soulRingSets.length < game.view.character.martialSouls.length) game.view.character.soulRingSets.push([]);
+    game.view.character.martialSouls = game.view.character.martialSouls.map((soul, index) => ({ ...soul, name: normalizeMartialSoulName(soul.name), grade: soul.grade ?? martialSoulGrade(soul.name, soul.rarity, game.view.character!.innateSoulPower), sourceEra: soul.sourceEra ?? (soul.rarity ? "局外" : "原创"), cultivationState: index === game.view.character!.activeMartialSoulIndex ? "主修" : game.view.character!.soulRingSets[index].length ? "主修" : "未修炼" }));
+    game.view.character.martialSoul = game.view.character.martialSouls[game.view.character.activeMartialSoulIndex];
+    game.view.character.soulRings = game.view.character.soulRingSets[game.view.character.activeMartialSoulIndex];
     for (const relation of game.view.relations) {
       relation.strength ??= /亲属|父亲|母亲/.test(relation.relation) ? 75 : /师徒/.test(relation.relation) ? 45 : 12;
       relation.category ??= /亲属|父亲|母亲/.test(relation.relation) ? "亲属" : /势力|学院/.test(relation.relation) ? "势力" : /敌|仇/.test(relation.relation) ? "敌对" : "师友";

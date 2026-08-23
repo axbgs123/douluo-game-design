@@ -483,10 +483,11 @@ function applyRunReward(game: StoredGame, settlement: RunSettlementView): boolea
   const character = game.view.character;
   if (character) {
     const souls = character.martialSouls?.length ? character.martialSouls : [character.martialSoul];
+    const ringSets = character.soulRingSets?.length ? character.soulRingSets : [character.soulRings];
     for (const soul of souls) if (!meta.unlockedMartialSouls.includes(soul.name)) meta.unlockedMartialSouls.push(soul.name);
     if (!meta.unlockedOrigins.includes(character.originName)) meta.unlockedOrigins.push(character.originName);
     meta.discoveredOrigins = Math.max(meta.discoveredOrigins, meta.unlockedOrigins.length - 1);
-    for (const ring of character.soulRings) {
+    for (const ring of ringSets.flat()) {
       const entry = `${ring.beastName} · ${ring.years}年`;
       if (!meta.codexEntries.includes(entry)) meta.codexEntries.push(entry);
     }
@@ -505,9 +506,8 @@ function applyRunReward(game: StoredGame, settlement: RunSettlementView): boolea
       }
       codex.completedRuns += 1;
       if (!codex.initialSoulPowers.includes(character.innateSoulPower)) codex.initialSoulPowers.push(character.innateSoulPower);
-      const route = index === 0
-        ? character.soulRings.length ? character.soulRings.map((ring) => `${ring.skillName}（${ring.years}年）`).join(" → ") : "无魂环通关路线"
-        : "本局作为副武魂觉醒，尚未开始附加魂环";
+      const rings = ringSets[index] ?? [];
+      const route = rings.length ? rings.map((ring) => `${ring.skillName}（${ring.years}年）`).join(" → ") : index === 0 ? "无魂环通关路线" : "本局作为副武魂觉醒，尚未开始附加魂环";
       if (!codex.growthRoutes.includes(route)) codex.growthRoutes.push(route);
     }
     meta.discoveredMartialSouls = meta.martialSoulCodex.length;

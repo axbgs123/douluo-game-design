@@ -40,7 +40,8 @@ export function settleRun(game: StoredGame, reason?: string): RunSettlementView 
   if (game.view.runProgress.settlement) return game.view.runProgress.settlement;
   const character = game.view.character;
   const metrics = game.world.metrics;
-  const growth = Math.min(25, Math.round((character?.soulRank ?? 0) / 4) + Math.min(5, character?.soulRings.length ?? 0));
+  const totalRings = character ? (character.soulRingSets?.length ? character.soulRingSets.flat().length : character.soulRings.length) : 0;
+  const growth = Math.min(25, Math.round((character?.soulRank ?? 0) / 4) + Math.min(5, totalRings));
   const verifiedGoal = goalIsVerified(game);
   const goal = verifiedGoal || (character?.soulRank ?? 0) >= 99 ? 25 : Math.min(12, metrics.completedHunts * 3 + metrics.promisesKept * 2);
   const survival = character?.condition === "死亡" ? 4 : character?.condition === "濒死" ? 8 : character?.condition === "重伤" ? 12 : 18;

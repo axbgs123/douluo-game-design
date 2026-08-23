@@ -139,13 +139,13 @@ function syncInventoryAndEconomy(game: StoredGame): void {
 function tryResurrection(game: StoredGame): boolean {
   const character = game.view.character;
   if (!character) return false;
-  const soulText = [...(character.martialSouls?.length ? character.martialSouls : [character.martialSoul]).flatMap((soul) => [soul.name, soul.description]), ...character.soulRings.flatMap((ring) => [ring.skillName, ring.skillDescription])].join(" ");
+  const activeSoulText = [character.martialSoul.name, character.martialSoul.description, ...character.soulRings.flatMap((ring) => [ring.skillName, ring.skillDescription])].join(" ");
   const systemText = character.specialSystem ? [character.specialSystem.name, ...character.specialSystem.abilities].join(" ") : "";
   const closeExecutor = game.view.relations.find((item) => (item.strength ?? 0) >= 70 && /亲属|师友|同伴/.test(item.category ?? "") && /信任|亲近|生死|挚爱|师徒/.test(`${item.relation}${item.impression}`));
   const strongFaction = game.view.affiliations.find((item) => /昊天宗|七宝琉璃宗|武魂殿|蓝电霸王龙宗|海神岛|隐世/.test(item.name) && /重视|核心|长老|亲传|继承/.test(`${item.role}${item.reputation}`));
   const hasBodyMedium = character.injuries.some((item) => /魂魄|灵魂/.test(item)) || game.view.inventory.some((item) => /相思断肠红|生命之水|生灵之金|完整躯体/.test(item));
   const requiredRelics = game.view.inventory.filter((item) => /万年圣魂草|九品参王|水晶血龙参|上古灵兽内丹|十万年魂骨|神级生命/.test(item));
-  const selfRevival = character.soulRank >= 70 && character.soulRings.length >= 7 && /涅槃|不死|九命|轮回|重生/.test(soulText);
+  const selfRevival = character.soulRank >= 70 && character.soulRings.length >= 7 && /涅槃|不死|九命|轮回|重生/.test(activeSoulText);
   const systemRevival = character.soulRank >= 50 && /复活|涅槃|回魂|重生|不死/.test(systemText) && (Number(character.specialSystem?.progress.match(/\d+/)?.[0] ?? 0) >= 70);
   const assistedRevival = Boolean(closeExecutor && strongFaction && hasBodyMedium && requiredRelics.length >= 3 && character.soulRank >= 60);
   if (!selfRevival && !systemRevival && !assistedRevival) return false;
@@ -197,7 +197,7 @@ function cultivationThreshold(rank: number): number {
 
 function cultivationLabel(game: StoredGame): string {
   const rank = game.view.character?.soulRank ?? 0;
-  if (rank > 0 && rank % 10 === 0 && (game.view.character?.soulRings.length ?? 0) < Math.floor(rank / 10)) return "等待魂环";
+  if (rank > 0 && (game.view.character?.soulRings.length ?? 0) < Math.floor(rank / 10)) return "等待魂环";
   const ratio = game.world.trainingPoints / cultivationThreshold(rank);
   if (ratio < 0.2) return "刚刚起步";
   if (ratio < 0.5) return "稳步积累";
@@ -210,11 +210,40 @@ function ensureTask(game: StoredGame, task: TaskView): void {
   if (!game.view.tasks.some((item) => (item.id ?? item.title) === id && item.status !== "完成")) game.view.tasks.push({ ...task, createdActionIndex: task.createdActionIndex ?? game.actionIndex, progressEvidence: task.progressEvidence ?? [] });
 }
 
+function ensureMartialSoulAccounts(game: StoredGame): void {
+  const character = game.view.character;
+  if (!character) return;
+  character.martialSouls ??= [character.martialSoul];
+  character.activeMartialSoulIndex ??= 0;
+  character.activeMartialSoulIndex = Math.max(0, Math.min(character.activeMartialSoulIndex, character.martialSouls.length - 1));
+  character.soulRingSets ??= [character.soulRings ?? []];
+  while (character.soulRingSets.length < character.martialSouls.length) character.soulRingSets.push([]);
+  character.martialSoul = character.martialSouls[character.activeMartialSoulIndex];
+  character.soulRings = character.soulRingSets[character.activeMartialSoulIndex];
+  character.martialSouls.forEach((soul, index) => { soul.cultivationState = index === character.activeMartialSoulIndex ? "主修" : character.soulRingSets[index].length ? "主修" : "未修炼"; });
+}
+
+function switchMartialSoulResolution(game: StoredGame, action: string): ActionResolution {
+  const character = game.view.character!;
+  ensureMartialSoulAccounts(game);
+  if (character.martialSouls.length < 2) return impossible("当前只有一个可用武魂，不需要切换。", ["继续修炼", "查看武魂", "研究魂技"]);
+  if (game.view.combat || (game.view.hunting && !["需求", "调查", "完成"].includes(game.view.hunting.stage))) return impossible("猎魂或战斗流程尚未结束，不能在结算中途更换主修武魂。", ["完成当前猎魂", "先撤离战斗", "保持当前武魂"]);
+  const requested = character.martialSouls.findIndex((soul, index) => index !== character.activeMartialSoulIndex && action.includes(soul.name));
+  const nextIndex = requested >= 0 ? requested : (character.activeMartialSoulIndex + 1) % character.martialSouls.length;
+  character.activeMartialSoulIndex = nextIndex;
+  character.martialSoul = character.martialSouls[nextIndex];
+  character.soulRings = character.soulRingSets[nextIndex];
+  character.martialSouls.forEach((soul, index) => { soul.cultivationState = index === nextIndex ? "主修" : character.soulRingSets[index].length ? "主修" : "未修炼"; });
+  game.view.hunting = undefined;
+  return { intent: "切换武魂", minutes: 5, ruleSummary: `当前主修武魂切换为${character.martialSoul.name}；该武魂独立记录${character.soulRings.length}枚魂环。`, fallbackNarrative: `魂力的运行方向慢慢换了。原先显露的武魂收回体内，${character.martialSoul.name}在掌心重新成形；属于它的魂环与魂技没有和另一武魂混在一起。`, suggestions: character.soulRings.length < Math.floor(character.soulRank / 10) ? ["调查适合当前武魂的魂兽", "请导师评估双生武魂风险", "查看当前武魂魂环"] : ["测试当前武魂", "继续修炼", "切换其他武魂"] };
+}
+
 function trainingResolution(game: StoredGame, action = ""): ActionResolution {
   const character = game.view.character;
   if (!character) return impossible("还没有可修炼的角色状态。");
+  ensureMartialSoulAccounts(game);
   const expectedRings = Math.floor(character.soulRank / 10);
-  if (character.soulRank > 0 && character.soulRank % 10 === 0 && character.soulRings.length < expectedRings) {
+  if (character.soulRank > 0 && character.soulRings.length < expectedRings) {
     startHuntNeed(game);
     return {
       intent: "修炼",
@@ -328,8 +357,10 @@ function travelResolution(game: StoredGame, action: string): ActionResolution {
 function generateRecommendations(game: StoredGame): void {
   const character = game.view.character;
   if (!character) return;
-  const ringIndex = Math.floor(character.soulRank / 10);
-  const limit = RING_LIMITS[Math.min(ringIndex, RING_LIMITS.length - 1)] ?? 423;
+  ensureMartialSoulAccounts(game);
+  const ringIndex = character.soulRings.length + 1;
+  const capacityTier = Math.floor(character.soulRank / 10);
+  const limit = RING_LIMITS[Math.min(capacityTier, RING_LIMITS.length - 1)] ?? 423;
   const random = actionRandom(game);
   const category = character.martialSoul.category;
   const currentId = game.view.hunting?.locationId ?? game.view.locationId ?? "notting-city";
@@ -370,12 +401,15 @@ function generateRecommendations(game: StoredGame): void {
 }
 
 function startHuntNeed(game: StoredGame): void {
-  const ringIndex = Math.floor((game.view.character?.soulRank ?? 10) / 10);
+  ensureMartialSoulAccounts(game);
+  const ringIndex = (game.view.character?.soulRings.length ?? 0) + 1;
   if (!game.view.hunting || game.view.hunting.stage === "完成") {
     game.view.hunting = { stage: "需求", ringIndex, recommendations: [], preparation: [], trailProgress: "尚未调查" };
     game.world.flags.huntOriginLocation = game.view.locationId ?? "notting-city";
   }
-  ensureTask(game, { id: `ring-${ringIndex}`, title: `获得第 ${ringIndex} 魂环`, kind: "修炼需求", detail: "完成调查、准备、旅行、追踪、战斗、吸收和后果。", status: "进行中" });
+  const soulIndex = game.view.character?.activeMartialSoulIndex ?? 0;
+  const soulName = game.view.character?.martialSoul.name ?? "当前武魂";
+  ensureTask(game, { id: `ring-${soulIndex}-${ringIndex}`, title: `${soulName}获得第 ${ringIndex} 魂环`, kind: "修炼需求", detail: "完成调查、准备、旅行、追踪、战斗、吸收和后果。", status: "进行中" });
 }
 
 function selectRecommendedBeast(game: StoredGame, action: string): boolean {
@@ -391,12 +425,13 @@ function selectRecommendedBeast(game: StoredGame, action: string): boolean {
   const beast = soulBeastById(recommendation.beastId);
   if (!beast) return false;
   const random = actionRandom(game);
-  const limit = RING_LIMITS[Math.min(hunting.ringIndex, RING_LIMITS.length - 1)] ?? 423;
+  const capacityTier = Math.floor((game.view.character?.soulRank ?? 10) / 10);
+  const limit = RING_LIMITS[Math.min(capacityTier, RING_LIMITS.length - 1)] ?? 423;
   hunting.targetBeastId = beast.id;
   hunting.targetName = beast.name;
   hunting.targetYears = Math.max(beast.ageRange[0], Math.min(beast.ageRange[1], Math.round(limit * (0.72 + random() * 0.38))));
   hunting.locationId = beast.habitats[0];
-  const huntTask = game.view.tasks.find((task) => task.id === `ring-${hunting.ringIndex}`);
+  const huntTask = game.view.tasks.find((task) => task.id === `ring-${game.view.character?.activeMartialSoulIndex ?? 0}-${hunting.ringIndex}`);
   if (huntTask) huntTask.destinationId = hunting.locationId;
   hunting.stage = "准备";
   hunting.trailProgress = "目标已确定";
@@ -430,10 +465,11 @@ function nonLethalRingResolution(game: StoredGame, action: string): ActionResolu
 function huntResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character;
   if (!character) return impossible("角色尚未觉醒。");
+  ensureMartialSoulAccounts(game);
   const activeHunt = game.view.hunting && game.view.hunting.stage !== "完成";
   const requiredRingIndex = Math.floor(character.soulRank / 10);
-  if (!activeHunt && (character.soulRank === 0 || character.soulRank % 10 !== 0 || character.soulRings.length >= requiredRingIndex)) {
-    return impossible(`当前魂力 ${character.soulRank} 级，还没有新的魂环瓶颈。`, ["继续修炼", "研究魂兽资料", "检查当前魂环"]);
+  if (!activeHunt && (character.soulRank === 0 || character.soulRings.length >= requiredRingIndex)) {
+    return impossible(`当前${character.martialSoul.name}已有 ${character.soulRings.length} 枚魂环，魂力 ${character.soulRank} 级，没有空余魂环槽。`, ["继续修炼", "切换其他武魂", "检查当前魂环"]);
   }
   startHuntNeed(game);
   const hunting = game.view.hunting!;
@@ -738,7 +774,7 @@ function finishHunt(game: StoredGame): ActionResolution {
   const hunting = game.view.hunting!;
   hunting.stage = "完成";
   game.world.metrics.completedHunts += 1;
-  const task = game.view.tasks.find((item) => item.id === `ring-${hunting.ringIndex}` || item.id === "first-ring");
+  const task = game.view.tasks.find((item) => item.id === `ring-${game.view.character?.activeMartialSoulIndex ?? 0}-${hunting.ringIndex}` || item.id === `ring-${hunting.ringIndex}` || item.id === "first-ring");
   if (task) task.status = "完成";
   const returnLocationId = String(game.world.flags.huntOriginLocation ?? "notting-city");
   const returnLocation = locationById(returnLocationId) ?? locationById("notting-city")!;
@@ -1308,11 +1344,13 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   const action = input.trim();
   if (!game.view.character) return impossible("角色尚未完成觉醒。");
   if (game.view.status === "ended") return impossible("这一局已经结束。");
+  ensureMartialSoulAccounts(game);
 
   let resolution: ActionResolution;
   const guarded = guardActionByStoryRules(game, action);
   const huntingActive = game.view.hunting && game.view.hunting.stage !== "完成";
   if (guarded) resolution = guarded;
+  else if (/切换|换成|改用|主修/.test(action) && /武魂/.test(action)) resolution = switchMartialSoulResolution(game, action);
   else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
   else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
   else if (/建立|创建|招募|任命|扩建|领地|外交|情报网|经营势力|管理宗门/.test(action) && /宗门|势力|组织|成员|领地|外交|情报/.test(action)) resolution = factionManagementResolution(game, action);
@@ -1334,7 +1372,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/使用|服用|吃下|吃掉/.test(action)) resolution = useItemResolution(game, action);
   else if (/购买|买|采购/.test(action)) resolution = buyResolution(game, action);
   else if (/打工|工作|赚钱|干活/.test(action)) resolution = workResolution(game);
-  else if (/猎魂|猎取魂环|调查魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
+  else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);
   else if (/调查|搜索|观察周围|查找|研究/.test(action)) resolution = investigateResolution(game, action);

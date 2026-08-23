@@ -1606,6 +1606,8 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     reputation: selected.originStart?.reputation ?? "默默无闻",
     injuries: [],
     soulRings: [],
+    activeMartialSoulIndex: 0,
+    soulRingSets: [[]],
     abilityDescriptors: {
       physique: selected.physique,
       spirit: selected.spirit,

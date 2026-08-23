@@ -122,6 +122,8 @@ export interface CharacterPublic extends CandidatePublic {
   reputation: string;
   injuries: string[];
   soulRings: SoulRingView[];
+  activeMartialSoulIndex: number;
+  soulRingSets: SoulRingView[][];
   abilityDescriptors: { physique: string; spirit: string; perception: string };
   personalityTraits: string[];
   revealedGift?: string;

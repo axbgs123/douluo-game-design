@@ -89,6 +89,7 @@ describe("完整游玩规则", () => {
     character.martialSoul.name = "不死凤凰";
     character.martialSouls[0].name = "不死凤凰";
     character.soulRings = Array.from({ length: 7 }, (_, index) => ({ index: index + 1, beastId: "datura-snake", beastName: "测试魂兽", years: 100, color: "黄", skillName: `测试魂技${index + 1}`, skillDescription: "用于验证复生结算" }));
+    character.soulRingSets = [character.soulRings];
     game.world.healthPoints = 1;
     game.view.hunting = { stage: "战斗", ringIndex: 8, targetBeastId: "titan-giant-ape", targetName: "泰坦巨猿", targetYears: 100000, locationId: game.view.locationId, recommendations: [], preparation: [], trailProgress: "已锁定目标" };
     game.view.combat = { id: "combat-revival", enemyName: "泰坦巨猿", enemyPower: "十万年", round: 0, playerCondition: "良好", enemyCondition: "完好", distance: "近距离", escaped: false };
@@ -99,6 +100,30 @@ describe("完整游玩规则", () => {
     expect(game.view.combat).toBeUndefined();
     expect(game.view.hunting.stage).toBe("追踪");
     expect(character.soulRings).toHaveLength(6);
+  });
+
+  it("双生武魂可以切换主修并独立保存魂环槽", () => {
+    const game = awakened("twin-soul-ledger");
+    const character = game.view.character!;
+    const main = character.martialSouls[0];
+    const secondary = { ...main, name: "副生测试锤", cultivationState: "未修炼" as const };
+    const mainRings = Array.from({ length: 2 }, (_, index) => ({ index: index + 1, beastId: "datura-snake", beastName: "曼陀罗蛇", years: 100, color: "黄", skillName: `主武魂魂技${index + 1}`, skillDescription: "主武魂独立魂技" }));
+    character.soulRank = 21;
+    character.martialSouls = [main, secondary];
+    character.activeMartialSoulIndex = 0;
+    character.soulRingSets = [mainRings, []];
+    character.soulRings = mainRings;
+
+    const switched = resolveAction(game, "切换主修武魂为副生测试锤");
+    expect(switched.intent).toBe("切换武魂");
+    expect(character.martialSoul.name).toBe("副生测试锤");
+    expect(character.soulRings).toHaveLength(0);
+    expect(resolveAction(game, "开始调查适合当前武魂的魂兽").intent).toBe("猎魂调查");
+
+    game.view.hunting = undefined;
+    resolveAction(game, `切换主修武魂为${main.name}`);
+    expect(character.soulRings).toHaveLength(2);
+    expect(character.soulRings[0].skillName).toBe("主武魂魂技1");
   });
 
   it("修炼会推进时间、疲劳和内部成长", () => {
