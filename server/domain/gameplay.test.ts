@@ -102,6 +102,28 @@ describe("完整游玩规则", () => {
     expect(game.view.hunting.preparation.some((item) => item.includes("同行者：林岳") && item.includes("协同"))).toBe(true);
   });
 
+  it("小队岗位必须有能力证据并在战斗中产生不同贡献", () => {
+    const game = awakened("hunt-companion-roles");
+    game.view.hunting = { stage: "准备", ringIndex: 2, targetBeastId: "datura-snake", targetName: "曼陀罗蛇", targetYears: 400, locationId: game.view.locationId, recommendations: [], preparation: [], trailProgress: "待准备" };
+    game.view.relations = [
+      { id: "guard", name: "石岳", relation: "可靠同伴", impression: "防御系盾武魂魂师", strength: 70, category: "同伴" },
+      { id: "healer", name: "苏叶", relation: "可靠同伴", impression: "治疗系魂师，擅长治愈外伤", strength: 70, category: "同伴" },
+    ];
+    expect(resolveAction(game, "邀请石岳担任治疗岗位同行猎魂").intent).toBe("无法完成");
+    expect(resolveAction(game, "邀请石岳担任防护岗位同行猎魂").ruleSummary).toContain("防护·协同");
+    game.view.hunting.stage = "准备";
+    expect(resolveAction(game, "邀请苏叶担任治疗岗位同行猎魂").ruleSummary).toContain("治疗·协同");
+
+    game.view.hunting.stage = "战斗";
+    game.view.combat = { id: "combat-roles", enemyName: "曼陀罗蛇", enemyPower: "400 年", round: 0, playerCondition: "轻伤", enemyCondition: "完好", distance: "中距离", escaped: false, allies: [{ name: "石岳", role: "防护", readiness: 56, condition: "完好" }, { name: "苏叶", role: "治疗", readiness: 56, condition: "完好" }] };
+    game.world.healthPoints = 60;
+    game.world.flags.combatEnemyHp = 1_000;
+    const result = resolveAction(game, "让石岳掩护，苏叶治疗，全队协同攻击");
+    expect(result.ruleSummary).toContain("苏叶治疗恢复");
+    expect(result.ruleSummary).toContain("石岳（防护");
+    expect(result.ruleSummary).toContain("苏叶（治疗");
+  });
+
   it("控制魂技有可累积抗性且战斗会保存同行者状态", () => {
     const game = awakened("combat-control-resistance");
     game.view.character!.soulRank = 30;

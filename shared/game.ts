@@ -473,11 +473,13 @@ export interface CombatView {
   escaped: boolean;
   insight?: number;
   guard?: number;
-  allies?: Array<{ name: string; readiness: number; condition: "完好" | "疲惫" | "受伤" }>;
+  allies?: Array<{ name: string; role?: CompanionRole; readiness: number; condition: "完好" | "疲惫" | "受伤" }>;
   controlResistance?: number;
   controlStatus?: string;
   lastExchange?: string;
 }
+
+export type CompanionRole = "强攻" | "防护" | "控制" | "治疗" | "侦察" | "协同";
 
 export interface KnownFigureView {
   id: string;
