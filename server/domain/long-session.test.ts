@@ -80,7 +80,7 @@ describe("二十回合长局回归", () => {
         expect(game.view.era).toBe(era);
       }
       const restored = ensureGameState(JSON.parse(JSON.stringify(game)));
-      expect(restored.schemaVersion).toBe(11);
+      expect(restored.schemaVersion).toBe(12);
       expect(restored.actionIndex).toBe(30);
       expect(restored.view.map.some((location) => location.current)).toBe(true);
       expect(restored.world.actionLedger).toHaveLength(30);

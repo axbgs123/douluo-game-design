@@ -875,7 +875,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 11;
+  legacy.schemaVersion = 12;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -916,6 +916,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.inventoryLoad ??= { used: game.view.inventory?.length ?? 0, capacity: 18, state: "轻便", storage: [] };
   game.view.professions ??= [];
   game.view.managedFactions ??= [];
+  game.view.comboTrainings ??= [];
   game.view.economy ??= { cash: game.view.character?.coins ?? 0, bankBalance: 0, debt: 0, salary: 0, bounty: 0, blackMarketAccess: false, transactions: [], marketReports: [] };
   game.view.economy.transactions ??= [];
   game.view.economy.marketReports ??= [];

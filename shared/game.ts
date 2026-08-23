@@ -561,6 +561,8 @@ export interface CombatView {
     allyNames: [string, string];
     preparedAtRound: number;
     expiresAfterRound: number;
+    mastery?: number;
+    branch?: string;
   };
   comboCooldownUntilRound?: number;
   comboHistory?: string[];
@@ -568,6 +570,18 @@ export interface CombatView {
 }
 
 export type CompanionRole = "强攻" | "防护" | "控制" | "治疗" | "侦察" | "协同";
+
+export interface ComboTrainingView {
+  id: string;
+  name: string;
+  roles: [CompanionRole, CompanionRole];
+  companionNames: [string, string];
+  sessions: number;
+  failures: number;
+  mastery: number;
+  branch?: string;
+  evidence: Array<{ date: string; result: string }>;
+}
 
 export interface KnownFigureView {
   id: string;
@@ -689,6 +703,7 @@ export interface GameView {
   chapterObjective?: ChapterObjectiveView;
   hunting?: HuntingView;
   combat?: CombatView;
+  comboTrainings: ComboTrainingView[];
   runProgress: RunProgressView;
   worldInheritance?: WorldInheritanceView;
   createdAt: string;

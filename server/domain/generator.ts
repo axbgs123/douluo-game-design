@@ -1415,7 +1415,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 11,
+    schemaVersion: 12,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1457,6 +1457,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       inventoryLoad: { used: 0, capacity: 18, state: "轻便", storage: [] },
       professions: [],
       managedFactions: [],
+      comboTrainings: [],
       economy: { cash: 0, bankBalance: 0, debt: 0, salary: 0, bounty: 0, blackMarketAccess: false, transactions: [], marketReports: [] },
       map: [],
       mapHierarchy: { continentName: "斗罗大陆", settlementName: "尚未选定", buildingName: "尚未选定", nodes: [] },

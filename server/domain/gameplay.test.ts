@@ -158,6 +158,31 @@ describe("完整游玩规则", () => {
     expect(game.view.combat.round).toBe(roundAfterCombo);
   });
 
+  it("固定搭档连携训练会跨战斗积累熟练度、失败复盘与战术分支", () => {
+    const game = awakened("persistent-combo-training");
+    game.view.relations.push(
+      { id: "combo-guard", name: "石岳", relation: "防御系护卫", impression: "擅长盾牌守护", strength: 70, category: "同伴", dimensions: { closeness: 60, trust: 70, respect: 60, sharedInterest: 40, vigilance: 0, hostility: 0, favorDebt: 0, identityKnowledge: 80 }, history: [] },
+      { id: "combo-healer", name: "苏叶", relation: "治疗系医师", impression: "擅长治愈与救护", strength: 70, category: "同伴", dimensions: { closeness: 60, trust: 70, respect: 60, sharedInterest: 40, vigilance: 0, hostility: 0, favorDebt: 0, identityKnowledge: 80 }, history: [] },
+    );
+    for (let index = 0; index < 4; index += 1) expect(resolveAction(game, "与石岳和苏叶共同训练生命防线连携").intent).toBe("连携训练");
+    const training = game.view.comboTrainings[0];
+    expect(training).toMatchObject({ name: "生命防线", companionNames: ["石岳", "苏叶"], sessions: 4, failures: 0, branch: "轮换救护" });
+    expect(training.mastery).toBeGreaterThanOrEqual(35);
+    expect(game.view.relations.filter((relation) => ["石岳", "苏叶"].includes(relation.name)).every((relation) => relation.history?.some((item) => item.reason.includes("共同训练生命防线")))).toBe(true);
+    game.world.fatiguePoints = 80;
+    const masteryBefore = training.mastery;
+    expect(resolveAction(game, "与石岳和苏叶复盘生命防线连携").intent).toBe("连携训练复盘");
+    expect(training).toMatchObject({ sessions: 5, failures: 1, mastery: masteryBefore });
+    game.world.fatiguePoints = 0;
+    game.view.hunting = { stage: "战斗", ringIndex: 1, recommendations: [], preparation: [], trailProgress: "测试" };
+    game.view.combat = { id: "trained-combo", enemyName: "测试魂兽", enemyPower: "500年", round: 0, playerCondition: "良好", enemyCondition: "完好", distance: "中距离", escaped: false, allies: [{ name: "石岳", role: "防护", readiness: 70, condition: "完好" }, { name: "苏叶", role: "治疗", readiness: 70, condition: "完好" }] };
+    game.world.flags.combatEnemyHp = 300;
+    expect(resolveAction(game, "让石岳和苏叶准备生命防线连携").intent).toBe("战斗");
+    expect(game.view.combat.comboPreparation).toMatchObject({ mastery: training.mastery, branch: "轮换救护" });
+    expect(resolveAction(game, "发动生命防线连携").intent).toBe("战斗");
+    expect(game.view.combat.comboCooldownUntilRound).toBe(4);
+  });
+
   it("控制魂技有可累积抗性且战斗会保存同行者状态", () => {
     const game = awakened("combat-control-resistance");
     game.view.character!.soulRank = 30;
@@ -333,7 +358,7 @@ describe("完整游玩规则", () => {
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(11);
+    expect(migrated.schemaVersion).toBe(12);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
