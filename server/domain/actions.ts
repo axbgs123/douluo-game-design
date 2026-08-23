@@ -1178,6 +1178,36 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
   };
 }
 
+function mediaResolution(game: StoredGame, action: string): ActionResolution {
+  const locationId = game.view.locationId ?? "local";
+  const alias = game.world.flags.activeAliasLocationId === locationId ? String(game.world.flags.activeAlias ?? "") : "";
+  const publicName = alias || game.view.character!.name;
+  const rumor = [...game.world.socialRumors].reverse().find((item) => item.publicName === publicName && item.valence < 0 && item.status === "已传播" && item.mediaStatus !== "已更正");
+  if (!rumor) return impossible(`当前没有以“${publicName}”传播且可核验的负面消息。`, ["查看近日消息", "检查本地口碑", "调查其他事件"]);
+  if (/申请核验|开始核验|登记核验|核查传闻/.test(action)) {
+    rumor.auditStartedActionIndex = game.actionIndex;
+    rumor.correctionEvidence ??= [];
+    return { intent: "登记传闻核验", minutes: 60, ruleSummary: `登记对“${rumor.summary}”的来源核验；尚未形成足以更正的证据。`, fallbackNarrative: `我先把消息最早出现的日期、地点和说法逐项抄下来。登记处只收下核验申请，没有因为我的否认就撤掉记录。`, suggestions: ["调查消息来源和现场记录", "寻找独立见证者", "取得公开凭据后提交澄清"], systemMessages: [`舆情核验 · ${publicName} · 待取证`] };
+  }
+  if (/提交.*(?:证据|凭据).*(?:澄清|更正)|公开澄清|申请更正/.test(action)) {
+    if (rumor.auditStartedActionIndex === undefined) return impossible("尚未登记针对这条消息的来源核验。", ["申请核验负面传闻", "调查消息来源", "暂不回应"]);
+    const evidence = game.world.actionLedger.filter((entry) => entry.index > rumor.auditStartedActionIndex! && /调查|取得证据/.test(entry.intent) && !/登记|无法完成|规则阻止/.test(entry.intent));
+    if (evidence.length < 1) return impossible("登记后还没有完成独立调查，单方面否认不能作为媒体更正依据。", ["调查消息来源和现场记录", "寻找独立见证者", "取得公开凭据"]);
+    rumor.mediaStatus = "已更正";
+    rumor.correctionEvidence = evidence.slice(-3).map((entry) => `行动${entry.index}：${entry.action}`);
+    rumor.confidence = Math.max(10, (rumor.confidence ?? 50) - 35);
+    for (const reputation of game.view.reputations.filter((item) => item.publicName === publicName)) {
+      reputation.heat = Math.max(0, reputation.heat - 15);
+      reputation.reputation = "负面说法已被证据质疑";
+      reputation.source = `${rumor.mediaChannel ?? "本地渠道"}更正与${rumor.correctionEvidence.length}条调查证据`;
+    }
+    game.view.news.unshift({ id: `${rumor.id}-correction`, title: `${rumor.mediaChannel ?? "本地公报"} · 更正说明`, detail: `关于${publicName}的旧消息已附加更正：${rumor.correctionEvidence.join("；")}。更正降低原消息可信度，但不会抹除已经发生的传播。`, date: relationshipDate(game) });
+    game.view.news = game.view.news.slice(0, 30);
+    return { intent: "证据化媒体更正", minutes: 180, ruleSummary: `以${rumor.correctionEvidence.length}条后续调查证据发布更正；既有传播记录保留。`, fallbackNarrative: `更正没有把旧纸页烧掉。新公告把调查日期和凭据列在原消息旁边，读者能看见前后两份记录，再决定相信哪一边。`, suggestions: ["查看更正公告", "继续补充独立证据", "观察外地口碑变化"], systemMessages: [`媒体更正 · ${publicName} · 有据可查`] };
+  }
+  return impossible("需要明确申请核验，或在完成调查后提交证据申请更正。", ["申请核验负面传闻", "调查消息来源", "提交证据公开澄清"]);
+}
+
 function investigateResolution(game: StoredGame, action: string): ActionResolution {
   const random = actionRandom(game);
   const localNpc = Object.values(game.world.npcs).find((npc) => npc.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId && !npc.knownToPlayer && canDiscoverNpc(game, npc.id) && random() < 0.45);
@@ -2427,6 +2457,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);
+  else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验/.test(action)) resolution = mediaResolution(game, action);
   else if (/调查|搜索|观察周围|查找|研究/.test(action)) resolution = investigateResolution(game, action);
   else if (/等待|快进|过去一天|过去一月|过去一年|休整一/.test(action)) resolution = waitResolution(game, action);
   else if (/攻击|战斗|防御|闪避|逃跑|弱点|连携|合击|组合技/.test(action) && game.view.combat) resolution = combatResolution(game, action);

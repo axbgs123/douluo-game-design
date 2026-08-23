@@ -82,6 +82,13 @@ export interface SocialRumorState {
   createdOrdinal: number;
   spreadsAtOrdinal: number;
   status: "待传播" | "已传播";
+  confidence?: number;
+  sourceKind?: "现场目击" | "公开登记";
+  mediaChannel?: string;
+  mediaSpreadsAtOrdinal?: number;
+  mediaStatus?: "不刊发" | "待刊发" | "已刊发" | "已更正";
+  auditStartedActionIndex?: number;
+  correctionEvidence?: string[];
 }
 
 export interface NpcRelationState {

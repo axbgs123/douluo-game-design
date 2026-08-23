@@ -674,6 +674,65 @@ describe("第一部世界资料", () => {
     expect(resolveAction(aliasGame, "恢复真名").intent).toBe("恢复真名");
   });
 
+  it("地方口碑与跨地区媒体分阶段传播，并保留来源和可信度", () => {
+    const game = awakened("media-propagation-delay");
+    for (const npc of Object.values(game.world.npcs).slice(0, 3)) {
+      npc.alive = true;
+      npc.currentGoal = "为亲历事件作证";
+      npc.locationId = game.view.locationId!;
+      npc.factionIds = ["shrek"];
+    }
+    const crime = { intent: "违法行动", minutes: 30, ruleSummary: "行动失败，现场留下可辨认痕迹。", fallbackNarrative: "守卫记录了现场。", suggestions: ["离开"] };
+    applyActionResult(game, "在街口公开抢劫", crime, crime.fallbackNarrative, crime.suggestions);
+    const rumor = game.world.socialRumors[0];
+    expect(rumor).toMatchObject({ sourceKind: "现场目击", mediaStatus: "待刊发", mediaChannel: "城市告示与商会公报" });
+
+    advanceWorldTime(game, 4 * 1_440);
+    expect(rumor.status).toBe("已传播");
+    expect(rumor.mediaStatus).toBe("待刊发");
+    expect(game.view.news.some((item) => item.id === `${rumor.id}-media`)).toBe(false);
+    advanceWorldTime(game, 14 * 1_440);
+    expect(rumor.mediaStatus).toBe("已刊发");
+    expect(game.view.news.find((item) => item.id === `${rumor.id}-media`)?.detail).toMatch(/来源：现场目击；可信度 \d+%；覆盖：/);
+  });
+
+  it("四个时代使用各自可用的公共传播渠道", () => {
+    const channels = { 1: "城市告示与商会公报", 2: "报刊与魂导广播", 3: "大陆魂导传媒", 4: "联邦公共信息网" } as const;
+    for (const era of [1, 2, 3, 4] as const) {
+      const game = createGame({ era, gender: "男", difficulty: "标准", personality, seed: `media-era-${era}` });
+      selectCandidate(game, game.view.candidates[0].id);
+      finalizeCharacterShaping(game, { keywords: personality.keywords, answers: personality.answers });
+      awakenCharacter(game);
+      const delivery = { intent: "交付悬赏", minutes: 30, ruleSummary: "公开登记并完成悬赏。", fallbackNarrative: "登记处签发回单。", suggestions: [] };
+      applyActionResult(game, "公开交付悬赏", delivery, delivery.fallbackNarrative, delivery.suggestions);
+      expect(game.world.socialRumors[0]).toMatchObject({ mediaChannel: channels[era], sourceKind: "公开登记", confidence: 92, mediaStatus: "待刊发" });
+    }
+  });
+
+  it("公开澄清必须先登记核验并提交后续调查证据，且不会抹除旧消息", () => {
+    const game = awakened("media-correction-evidence");
+    const witness = game.world.npcs["tang-san"];
+    witness.alive = true;
+    witness.locationId = game.view.locationId!;
+    const crime = { intent: "违法行动", minutes: 30, ruleSummary: "行动受到质疑。", fallbackNarrative: "有人留下了说法。", suggestions: [] };
+    applyActionResult(game, "在街口公开抢劫", crime, crime.fallbackNarrative, crime.suggestions);
+    advanceWorldTime(game, 4 * 1_440);
+    const rumor = game.world.socialRumors[0];
+    expect(resolveAction(game, "提交证据公开澄清负面传闻").intent).toBe("无法完成");
+
+    const audit = resolveAction(game, "申请核验负面传闻");
+    applyActionResult(game, "申请核验负面传闻", audit, audit.fallbackNarrative, audit.suggestions);
+    expect(resolveAction(game, "提交证据公开澄清负面传闻").intent).toBe("无法完成");
+    const investigation = resolveAction(game, "调查消息来源和现场记录");
+    applyActionResult(game, "调查消息来源和现场记录", investigation, investigation.fallbackNarrative, investigation.suggestions);
+    const correction = resolveAction(game, "提交调查证据公开澄清负面传闻");
+    expect(correction.intent).toBe("证据化媒体更正");
+    expect(rumor.mediaStatus).toBe("已更正");
+    expect(rumor.correctionEvidence).toHaveLength(1);
+    expect(game.view.news.some((item) => item.id === `${rumor.id}-correction`)).toBe(true);
+    expect(game.view.news.some((item) => item.id === rumor.id)).toBe(true);
+  });
+
   it("死亡的重要NPC不会在年度模拟中随机复活", () => {
     const game = awakened("no-random-revival");
     const npc = game.world.npcs["tang-san"];

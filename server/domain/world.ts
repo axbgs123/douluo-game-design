@@ -496,7 +496,12 @@ export function queueSocialRumor(game: StoredGame, input: string, intent: string
   const valence: -1 | 1 = negative ? -1 : 1;
   const factionIds = [...new Set(witnesses.flatMap((npc) => npc.factionIds))];
   const createdOrdinal = ordinal(game.view.worldTime?.year ?? 0, game.view.worldTime?.day ?? 1);
-  game.world.socialRumors.push({ id: `rumor-${game.actionIndex}-${game.world.socialRumors.length}`, publicName, locationId, summary: valence > 0 ? `${publicName}完成了有公开凭据的${intent}` : `${publicName}卷入了受到质疑的${intent}`, valence, witnessNpcIds: witnesses.map((npc) => npc.id), factionIds, createdOrdinal, spreadsAtOrdinal: createdOrdinal + 1 + (game.actionIndex % 3), status: "待传播" });
+  const era = game.view.era ?? 1;
+  const mediaChannel = era === 1 ? "城市告示与商会公报" : era === 2 ? "报刊与魂导广播" : era === 3 ? "大陆魂导传媒" : "联邦公共信息网";
+  const mediaEligible = publicRegistry || (witnesses.length >= 3 && factionIds.length > 0);
+  const localDelay = 1 + (game.actionIndex % 3);
+  const mediaDelay = ({ 1: 14, 2: 7, 3: 3, 4: 2 } as const)[era];
+  game.world.socialRumors.push({ id: `rumor-${game.actionIndex}-${game.world.socialRumors.length}`, publicName, locationId, summary: valence > 0 ? `${publicName}完成了有公开凭据的${intent}` : `${publicName}卷入了受到质疑的${intent}`, valence, witnessNpcIds: witnesses.map((npc) => npc.id), factionIds, createdOrdinal, spreadsAtOrdinal: createdOrdinal + localDelay, status: "待传播", confidence: publicRegistry ? 92 : Math.min(85, 35 + witnesses.length * 7), sourceKind: publicRegistry ? "公开登记" : "现场目击", mediaChannel, mediaSpreadsAtOrdinal: createdOrdinal + localDelay + mediaDelay, mediaStatus: mediaEligible ? "待刊发" : "不刊发", correctionEvidence: [] });
   game.world.socialRumors = game.world.socialRumors.slice(-60);
 }
 
@@ -528,6 +533,22 @@ function propagateSocialRumors(game: StoredGame, currentOrdinal: number): string
     }
     addNews(game, rumor.id, `${scope}口碑变化`, `${rumor.summary}；消息经${rumor.witnessNpcIds.length ? "现场见证者" : "公开登记"}传播，未自动扩散到无关系地区。`);
     messages.push(`口碑 · ${rumor.publicName} · ${scope}`);
+  }
+  for (const rumor of game.world.socialRumors.filter((item) => item.status === "已传播" && item.mediaStatus === "待刊发" && (item.mediaSpreadsAtOrdinal ?? Number.POSITIVE_INFINITY) <= currentOrdinal)) {
+    rumor.mediaStatus = "已刊发";
+    const origin = locationById(rumor.locationId)?.name ?? "来源地不明";
+    const factionNames = rumor.factionIds.map((id) => FACTIONS.find((faction) => faction.id === id)?.name).filter(Boolean);
+    const coverage = factionNames.length ? `${factionNames.join("、")}关系网` : game.view.era === 1 ? `${origin}周边商路` : "公开信息覆盖区";
+    addNews(game, `${rumor.id}-media`, `${rumor.mediaChannel} · ${rumor.publicName}`, `${rumor.summary}。来源：${rumor.sourceKind ?? "来源未标明"}；可信度 ${rumor.confidence ?? 50}%；覆盖：${coverage}。刊发不等于事实已最终核验。`);
+    const recipients = Object.values(game.world.npcs).filter((npc) => npc.alive && !rumor.witnessNpcIds.includes(npc.id) && (rumor.factionIds.length === 0 ? npc.knownToPlayer : npc.factionIds.some((id) => rumor.factionIds.includes(id)))).slice(0, 20);
+    for (const npc of recipients) {
+      const text = `从${rumor.mediaChannel}获知（可信度${rumor.confidence ?? 50}%）：${rumor.summary}`;
+      npc.memoryOfPlayer.push(text);
+      npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12);
+      npc.episodicMemory.push({ id: randomUUID(), text, year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1, actionIndex: game.actionIndex, significance: 1, source: "传闻传播", witnessed: false });
+      npc.episodicMemory = npc.episodicMemory.slice(-24);
+    }
+    messages.push(`媒体 · ${rumor.mediaChannel} · ${rumor.publicName}`);
   }
   return messages;
 }
@@ -863,6 +884,12 @@ export function ensureGameState(game: StoredGame): StoredGame {
   legacy.world.suppressedCanonEvents ??= [];
   legacy.world.dynamicEvents ??= [];
   legacy.world.socialRumors ??= [];
+  for (const rumor of legacy.world.socialRumors) {
+    rumor.confidence ??= rumor.witnessNpcIds.length ? Math.min(85, 35 + rumor.witnessNpcIds.length * 7) : 92;
+    rumor.sourceKind ??= rumor.witnessNpcIds.length ? "现场目击" : "公开登记";
+    rumor.mediaStatus ??= "不刊发";
+    rumor.correctionEvidence ??= [];
+  }
   legacy.world.lastAutonomyOrdinal ??= ordinal(startYear, game.view.worldTime?.day ?? 1);
   legacy.world.resurrectionCount ??= 0;
   legacy.world.resurrectionRecords ??= [];
