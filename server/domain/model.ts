@@ -56,7 +56,19 @@ export interface WorldNpcState {
   knownToPlayer: boolean;
   lastSimulatedYear: number;
   memoryOfPlayer: string[];
+  episodicMemory: NpcMemoryEntry[];
   autonomyLog: Array<{ year: number; day: number; action: string; reason: string }>;
+}
+
+export interface NpcMemoryEntry {
+  id: string;
+  text: string;
+  year: number;
+  day: number;
+  actionIndex: number;
+  significance: 1 | 2 | 3;
+  source: "规则结算" | "叙事提取" | "旧存档";
+  witnessed: true;
 }
 
 export interface NpcRelationState {

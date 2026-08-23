@@ -1,9 +1,11 @@
 import type { ActionResolution, StoredGame } from "../domain/model.js";
-import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, characterById } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, characterById } from "../data/world.js";
 import { toThirdPersonNarrative } from "../domain/narrative.js";
 import { auditNarrative, refreshStoryArchive, sanitizeNarrativeSuggestions, selectNarrativeRules, violatesCanonChronology } from "../domain/story-rules.js";
 import { readDeepSeekSettings } from "./settings.js";
 import { auditNovelEngineNarrative, buildNovelEnginePack } from "../domain/novel-engine.js";
+import { rememberNpcInteraction } from "../domain/world.js";
+import { buildSceneKnowledgePack } from "../domain/scene-knowledge.js";
 
 export { violatesCanonChronology } from "../domain/story-rules.js";
 
@@ -132,6 +134,7 @@ export async function narrateWithDeepSeek(
   const activeRules = selectNarrativeRules(game, playerInput, resolution);
   const novelEngine = buildNovelEnginePack(game, playerInput, resolution, settings.novelEngineEnabled);
   const pacing = narrativePacing(game, playerInput, resolution);
+  const sceneKnowledge = buildSceneKnowledgePack(game, playerInput);
   const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
 
   const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
@@ -182,7 +185,7 @@ export async function narrateWithDeepSeek(
             occurredCanonEvents: CANON_EVENTS.filter((event) => game.world.firedCanonEvents.includes(event.id)).sort((left, right) => left.year - right.year).slice(-24).map(({ year, title, publicSummary }) => ({ year, title, publicSummary })),
             futureCanonLocks: CANON_EVENTS.filter((event) => event.year > (game.view.worldTime?.year ?? 0) && event.year <= (game.view.worldTime?.year ?? 0) + 50).slice(0, 36).map(({ year, title, participantIds }) => ({ notBeforeYear: year, title, participants: participantIds.map((id) => characterById(id)?.name ?? id) })),
             playerCausalFootprints: game.world.canonCausalFootprints.slice(-16),
-            knownInstitutions: FACTIONS.filter((faction) => (faction.activeFromYear === undefined || (game.view.worldTime?.year ?? 0) >= faction.activeFromYear) && (faction.activeUntilYear === undefined || (game.view.worldTime?.year ?? 0) <= faction.activeUntilYear) && !faction.hidden && (faction.id !== "tang-sect" || (game.view.worldTime?.year ?? 0) >= 12)).map(({ name, kind, description }) => ({ name, kind, description })),
+            sceneKnowledge,
             lifeGoal: game.view.lifeGoal,
             affiliations: game.view.affiliations,
             relationships: game.view.relations.slice(0, 16),
@@ -197,11 +200,9 @@ export async function narrateWithDeepSeek(
             combat: game.view.combat,
             knownFigures: game.view.knownFigures.slice(0, 12),
             intelligenceWithSources: game.view.intelligence.slice(0, 20),
-            knownNpcMemories: Object.fromEntries(Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer && npc.memoryOfPlayer.length).map((npc) => [npc.name, npc.memoryOfPlayer.slice(-6)])),
-            sceneNpcProfiles: Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => { const definition = characterById(npc.id); return { name: npc.name, personality: definition?.personality, currentGoal: npc.currentGoal, attitude: npc.dispositionToPlayer, rememberedInteractions: npc.memoryOfPlayer.slice(-6), knownPower: game.view.knownFigures.find((item) => item.id === npc.id)?.knownPower }; }),
+            knownNpcMemories: Object.fromEntries(Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer && npc.episodicMemory.length).map((npc) => [npc.name, npc.episodicMemory.slice(-8).map(({ text, year, day, significance }) => ({ text, year, day, significance }))])),
+            sceneNpcProfiles: Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => { const definition = characterById(npc.id); return { name: npc.name, personality: definition?.personality, currentGoal: npc.currentGoal, attitude: npc.dispositionToPlayer, rememberedInteractions: npc.episodicMemory.slice(-8).map(({ text, year, day, significance }) => ({ text, year, day, significance })), knownPower: game.view.knownFigures.find((item) => item.id === npc.id)?.knownPower }; }),
             recentNews: game.view.news.slice(0, 8),
-            currentWorldEvents: game.world.dynamicEvents.filter((event) => event.status === "可介入" && (event.locationId === game.view.locationId || event.participantIds.some((id) => game.world.npcs[id]?.knownToPlayer))).map(({ title, detail, kind }) => ({ title, detail, kind })),
-            visibleMap: game.view.map.filter((location) => location.discovered).map(({ name, danger, current }) => ({ name, danger, current })),
             longTermMemory: game.storyMemory,
             recentNarrative: game.view.narrative.slice(-12),
             playerInput,
@@ -278,7 +279,7 @@ export function applyNarrativeMemory(game: StoredGame, generated: NarrationResul
       const normalizedNote = normalize(note.trim());
       game.storyMemory.npcNotes[name.slice(0, 30)] = normalizedNote.slice(0, 400);
       const npc = Object.values(game.world.npcs).find((item) => item.name === name && item.knownToPlayer);
-      if (npc) { npc.memoryOfPlayer.push(normalizedNote.slice(0, 220)); npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12); }
+      if (npc) rememberNpcInteraction(game, npc, normalizedNote, "叙事提取");
     }
   }
   if (typeof memory.chapterTitle === "string" && memory.chapterTitle.trim() && memory.chapterTitle.trim() !== game.storyMemory.chapterTitle) {

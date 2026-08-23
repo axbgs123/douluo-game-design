@@ -134,6 +134,12 @@ describe("完整游玩规则", () => {
     resolveAction(game, "询问唐三最近在做什么");
     expect(game.world.deviation).toBeGreaterThan(before);
     expect(game.world.npcs["tang-san"].memoryOfPlayer.length).toBeGreaterThan(0);
+    expect(game.world.npcs["tang-san"].episodicMemory.at(-1)).toMatchObject({
+      source: "规则结算",
+      witnessed: true,
+      significance: 2,
+      actionIndex: game.actionIndex,
+    });
     expect(game.view.relations.some((relation) => relation.name === "唐三")).toBe(true);
   });
 
@@ -182,6 +188,7 @@ describe("完整游玩规则", () => {
     expect(game.storyMemory.openThreads).toContain("学院名额");
     expect(game.view.chapter.title).toBe("学院后街");
     expect(game.world.npcs["tang-san"].memoryOfPlayer.at(-1)).toContain("保守");
+    expect(game.world.npcs["tang-san"].episodicMemory.at(-1)).toMatchObject({ source: "叙事提取", significance: 3 });
   });
 
   it("unrelated deviation cannot rewrite a canon event", () => {

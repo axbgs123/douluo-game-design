@@ -102,7 +102,7 @@ export const LOCATIONS: LocationDefinition[] = [
   { id: "star-dou-core", name: "星斗大森林核心区", region: "大陆中部", danger: "禁区", description: "高年限魂兽活动区域，普通魂师不应进入。", connections: [{ id: "star-dou-edge", minutes: 720 }] },
   { id: "heaven-dou-city", name: "天斗城", region: "天斗帝国", danger: "安全", description: "帝国首都，学院、宗门和权力机关集中。", connections: [{ id: "suotuo-city", minutes: 4320 }, { id: "sunset-forest", minutes: 720 }, { id: "seven-treasure-fort", minutes: 240 }, { id: "spirit-city", minutes: 5760 }] },
   { id: "sunset-forest", name: "落日森林", region: "天斗城外", danger: "高", description: "野生魂兽森林，内部地形复杂。", connections: [{ id: "heaven-dou-city", minutes: 720 }, { id: "ice-fire-spring", minutes: 360 }] },
-  { id: "ice-fire-spring", name: "冰火两仪眼", region: "落日森林深处", danger: "禁区", description: "被毒阵遮蔽的特殊宝地，默认不对外公开。", connections: [{ id: "sunset-forest", minutes: 360 }] },
+  { id: "ice-fire-spring", name: "冰火两仪眼", region: "落日森林深处", danger: "禁区", description: "被毒阵遮蔽的特殊宝地，默认不对外公开。", connections: [{ id: "sunset-forest", minutes: 360 }], hidden: true },
   { id: "seven-treasure-fort", name: "七宝琉璃宗", region: "天斗城外", danger: "安全", description: "守卫严密的宗门驻地。", connections: [{ id: "heaven-dou-city", minutes: 240 }] },
   { id: "spirit-city", name: "武魂城", region: "两大帝国之间", danger: "低", description: "武魂殿总部所在，魂师秩序严格。", connections: [{ id: "heaven-dou-city", minutes: 5760 }, { id: "star-luo-city", minutes: 5760 }] },
   { id: "star-luo-city", name: "星罗城", region: "星罗帝国", danger: "低", description: "星罗帝国首都，军队与皇室力量集中。", connections: [{ id: "spirit-city", minutes: 5760 }] },
@@ -125,7 +125,7 @@ export const LOCATIONS: LocationDefinition[] = [
   { id: "sea-god-island", name: "海神岛", region: "远海", danger: "禁区", description: "七圣柱环绕的海魂师圣地，考核会按来者情况改变。", connections: [{ id: "purple-pearl-island", minutes: 4320 }, { id: "whale-sea", minutes: 3600 }] },
   { id: "whale-sea", name: "魔鲸海域", region: "远海", danger: "禁区", description: "深海魔鲸王活动的危险海域，普通船只不会靠近。", connections: [{ id: "sea-god-island", minutes: 3600 }] },
   { id: "taixuan-valley", name: "太玄剑宗封山剑谷", region: "星斗大森林西北", danger: "高", description: "原创隐世宗门驻地，山谷阵势能阻隔大部分外来者。", connections: [{ id: "star-dou-edge", minutes: 540 }] },
-  { id: "spirit-hall-prison", name: "武魂城裁决地牢", region: "武魂城", danger: "高", description: "关押重要犯人与禁术魂师的地下设施，资料不对普通魂师公开。", connections: [{ id: "spirit-city", minutes: 30 }] },
+  { id: "spirit-hall-prison", name: "武魂城裁决地牢", region: "武魂城", danger: "高", description: "关押重要犯人与禁术魂师的地下设施，资料不对普通魂师公开。", connections: [{ id: "spirit-city", minutes: 30 }], hidden: true },
 ];
 
 export const CANON_CHARACTERS: CanonCharacterDefinition[] = [

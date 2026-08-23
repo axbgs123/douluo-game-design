@@ -3,7 +3,7 @@ import type { ConditionLabel, HuntingStage, NarrativeEntry, SoulRingView, TaskVi
 import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, locationById, soulBeastById } from "../data/world.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
-import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, inferLocationId, recordCanonInfluence, recordIntelligence, revealNpc } from "./world.js";
+import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, inferLocationId, recordCanonInfluence, recordIntelligence, rememberNpcInteraction, revealNpc } from "./world.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSuggestions, selectNarrativeRules } from "./story-rules.js";
 import { formatSoulCoins } from "../../shared/currency.js";
@@ -733,8 +733,7 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
     if (npc?.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId) {
       revealNpc(game, mentioned.id);
       npc.dispositionToPlayer += 2;
-      npc.memoryOfPlayer.push(`${game.view.worldTime?.year ?? 0}年在${game.view.location ?? "此地"}与玩家交谈`);
-      npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12);
+      rememberNpcInteraction(game, npc, `${game.view.worldTime?.year ?? 0}年在${game.view.location ?? "此地"}与玩家交谈`);
       if (!game.view.relations.some((relation) => relation.id === npc.id)) {
         const factionName = FACTIONS.find((faction) => mentioned.factionIds.includes(faction.id))?.name;
         game.view.relations.push({ id: npc.id, name: npc.name, relation: "初识", impression: "仍在观察主角", faction: factionName, lastSeen: game.view.location, strength: 10, category: "师友", dimensions: relationDimensions(10), history: [{ date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `在${game.view.location ?? "此地"}第一次当面交谈`, changes: "建立初识" }] });
@@ -892,7 +891,7 @@ function mentorResolution(game: StoredGame, action: string): ActionResolution {
   const existing = game.view.relations.find((item) => item.name === mentorName);
   const trust = npc?.dispositionToPlayer ?? (existing ? 8 : 0);
   if (mentioned && trust < 6) {
-    npc!.memoryOfPlayer.push("曾经提出拜师，但彼此了解不足");
+    rememberNpcInteraction(game, npc!, "曾经提出拜师，但彼此了解不足");
     return impossible(`${mentorName}没有立刻答应，只让我先证明耐心和判断。`, [`完成${mentorName}关心的事情`, `继续向${mentorName}请教`, "寻找其他导师"]);
   }
   if (existing) { existing.relation = "师徒"; existing.impression = "愿意认真指导，但仍会考察每次选择"; existing.strength = Math.max(45, existing.strength ?? 0); existing.category = "师友"; recordPlayerRelation(game, existing, `${mentorName}接受拜师请求并承担授业责任`, { trust: 12, closeness: 8, respect: 15, identityKnowledge: 10 }); }
@@ -946,7 +945,7 @@ function dynamicEventResolution(game: StoredGame, action: string): ActionResolut
     const task = game.view.tasks.find((item) => item.id === event.id); if (task) task.status = "失败";
     for (const id of event.participantIds) {
       const npc = game.world.npcs[id]; if (!npc) continue;
-      npc.memoryOfPlayer.push(`玩家明确拒绝了“${event.title}”`);
+      rememberNpcInteraction(game, npc, `玩家明确拒绝了“${event.title}”`);
       const relation = game.view.relations.find((item) => item.id === id);
       if (relation) recordPlayerRelation(game, relation, `主角拒绝${event.title}`, { trust: -2, sharedInterest: -4, vigilance: 2 });
     }
@@ -971,8 +970,7 @@ function dynamicEventResolution(game: StoredGame, action: string): ActionResolut
   for (const id of event.participantIds) {
     const npc = game.world.npcs[id]; if (!npc) continue;
     npc.dispositionToPlayer += success ? event.stakes * 2 : -event.stakes;
-    npc.memoryOfPlayer.push(`${game.view.worldTime?.year ?? 0}年，玩家介入${event.title}，结果${success ? "成功" : "失败"}`);
-    npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12);
+    rememberNpcInteraction(game, npc, `${game.view.worldTime?.year ?? 0}年，玩家介入${event.title}，结果${success ? "成功" : "失败"}`);
   }
   for (const relation of game.view.relations.filter((item) => event.participantIds.includes(item.id ?? ""))) recordPlayerRelation(game, relation, `共同经历${event.title}并看到主角${success ? "承担后果" : "介入失败"}`, success ? { trust: event.stakes * 2, respect: event.stakes, favorDebt: event.stakes } : { trust: -event.stakes, vigilance: event.stakes * 2 });
   if (success) for (const affiliation of game.view.affiliations) affiliation.reputation = event.stakes >= 4 ? "受到重视" : "有过贡献";
@@ -995,7 +993,7 @@ function npcConflictResolution(game: StoredGame, action: string): ActionResoluti
   if (success && lethal) {
     npc.alive = false;
     npc.currentGoal = "死亡后留下的事务尚未结束";
-    npc.memoryOfPlayer.push("玩家直接造成了这次死亡");
+    rememberNpcInteraction(game, npc, "玩家直接造成了这次死亡");
     const impact = definition.importance * 20;
     game.world.deviation += impact;
     game.world.metrics.historicalImpact += impact;
@@ -1006,7 +1004,7 @@ function npcConflictResolution(game: StoredGame, action: string): ActionResoluti
   const harm = Math.max(8, Math.round((estimatedNpcPower - playerPower) * 0.9) + integer(random, 5, 18));
   game.world.healthPoints -= harm;
   npc.dispositionToPlayer -= 35;
-  npc.memoryOfPlayer.push("玩家曾经主动袭击自己");
+  rememberNpcInteraction(game, npc, "玩家曾经主动袭击自己");
   game.view.character!.injuries.push(harm >= 40 ? "强者反击造成的重伤" : "冲突中留下的外伤");
   game.world.deviation += definition.importance * 2;
   recordCanonInfluence(game, { source: "直接冲突", description: `主动袭击${definition.name}`, affectedNpcIds: [definition.id], affectedFactionIds: definition.factionIds, strength: definition.importance * 3 });

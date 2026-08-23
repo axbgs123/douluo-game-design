@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { GameView, IntelligenceView, KnownFigureView, MapHierarchyView, MapLocationView, NpcRelationEvidenceView, WorldEventView, WorldNewsView } from "../../shared/game.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationById } from "../data/world.js";
-import type { HiddenWorldState, StoredGame, WorldNpcState } from "./model.js";
+import type { HiddenWorldState, NpcMemoryEntry, StoredGame, WorldNpcState } from "./model.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { refreshStoryArchive } from "./story-rules.js";
 import { createRandom, integer, pick } from "./random.js";
@@ -121,6 +121,7 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
       knownToPlayer: false,
       lastSimulatedYear: startYear,
       memoryOfPlayer: [],
+      episodicMemory: [],
       autonomyLog: [],
     };
     return [definition.id, state];
@@ -146,6 +147,41 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
     metrics: { discoveries: 0, relationshipsBuilt: 0, historicalImpact: 0, completedHunts: 0, promisesKept: 0, battlesWon: 0 },
     actionLedger: [],
   };
+}
+
+function memorySignificance(text: string): 1 | 2 | 3 {
+  if (/救命|死亡|背叛|承诺|师徒|亲属|袭击|秘密|复生|拒绝|结婚/.test(text)) return 3;
+  if (/成功|失败|介入|帮助|交易|战斗|交谈|拜师/.test(text)) return 2;
+  return 1;
+}
+
+export function rememberNpcInteraction(
+  game: StoredGame,
+  npc: WorldNpcState,
+  text: string,
+  source: NpcMemoryEntry["source"] = "规则结算",
+): void {
+  const normalized = text.trim().slice(0, 220);
+  if (!normalized) return;
+  const time = game.view.worldTime;
+  const memory: NpcMemoryEntry = {
+    id: randomUUID(),
+    text: normalized,
+    year: time?.year ?? 0,
+    day: time?.day ?? 1,
+    actionIndex: game.actionIndex,
+    significance: memorySignificance(normalized),
+    source,
+    witnessed: true,
+  };
+  npc.episodicMemory ??= [];
+  npc.episodicMemory.push(memory);
+  npc.episodicMemory = npc.episodicMemory
+    .sort((left, right) => right.significance - left.significance || right.actionIndex - left.actionIndex)
+    .slice(0, 24)
+    .sort((left, right) => left.actionIndex - right.actionIndex);
+  npc.memoryOfPlayer.push(normalized);
+  npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12);
 }
 
 export function recordCanonInfluence(
@@ -669,7 +705,20 @@ export function ensureGameState(game: StoredGame): StoredGame {
     relation.dimensions ??= { affinity: relation.bond, trust: Math.round(relation.bond * .7), respect: 0, sharedInterest: Math.round(relation.bond * .8), vigilance: relation.bond < 0 ? Math.abs(relation.bond) : 0, hostility: relation.bond < 0 ? Math.abs(relation.bond) : 0 };
     relation.history ??= [{ year: relation.lastChangedYear, day: 1, delta: relation.bond, reason: "旧存档关系记录，具体经过未能完整保留" }];
   }
-  for (const npc of Object.values(legacy.world.npcs)) { npc.memoryOfPlayer ??= []; npc.autonomyLog ??= []; }
+  for (const npc of Object.values(legacy.world.npcs)) {
+    npc.memoryOfPlayer ??= [];
+    npc.episodicMemory ??= npc.memoryOfPlayer.map((text, index) => ({
+      id: `legacy-memory-${npc.id}-${index}`,
+      text,
+      year: npc.lastSimulatedYear ?? startYear,
+      day: 1,
+      actionIndex: Math.max(0, game.actionIndex - npc.memoryOfPlayer.length + index),
+      significance: memorySignificance(text),
+      source: "旧存档" as const,
+      witnessed: true as const,
+    }));
+    npc.autonomyLog ??= [];
+  }
   simulateNpcYears(game, startYear);
   const evidencedNpcIds = new Set([
     ...legacy.world.intelligenceRecords.filter((record) => record.subjectType === "人物").map((record) => record.subjectId),
