@@ -3,6 +3,7 @@ import { CANON_EVENTS, FACTIONS, characterById } from "../data/world.js";
 import { toThirdPersonNarrative } from "../domain/narrative.js";
 import { auditNarrative, refreshStoryArchive, sanitizeNarrativeSuggestions, selectNarrativeRules, violatesCanonChronology } from "../domain/story-rules.js";
 import { readDeepSeekSettings } from "./settings.js";
+import { auditNovelEngineNarrative, buildNovelEnginePack } from "../domain/novel-engine.js";
 
 export { violatesCanonChronology } from "../domain/story-rules.js";
 
@@ -67,6 +68,7 @@ export async function narrateWithDeepSeek(
   const settings = readDeepSeekSettings();
   if (!settings.apiKey) return null;
   const activeRules = selectNarrativeRules(game, playerInput, resolution);
+  const novelEngine = buildNovelEnginePack(game, playerInput, resolution, settings.novelEngineEnabled);
   const importantScene = /战斗|魂环|觉醒|死亡|复生|加入势力|拜师|建立势力|历史|重要人物|结局/.test(`${resolution.intent}${resolution.ruleSummary}`);
   const lengthTarget = importantScene ? "关键场景，约2000至4000字；若事件本身很短，不为凑字数重复" : game.view.speed === "高速" ? "高速模式，约300至600字" : "标准场景，约800至1500字";
 
@@ -101,6 +103,7 @@ export async function narrateWithDeepSeek(
             "activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗一适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。",
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
+            novelEngine.prompt,
             `本次长度要求：${lengthTarget}。按情节自然分段，不固定段数。`,
             "输出 JSON：{\"narrative\":\"第三人称限知正文\",\"suggestions\":[\"建议1\",\"建议2\",\"建议3\"],\"memory\":{\"summary\":\"长期摘要\",\"openThreads\":[\"未决事项\"],\"keyChoice\":\"本次关键选择，无则空字符串\",\"npcNotes\":{\"人名\":\"应记住的互动\"},\"chapterTitle\":\"章节名\"}}。",
           ].join("\n"),
@@ -142,6 +145,7 @@ export async function narrateWithDeepSeek(
             fixedRuleResult: resolution.ruleSummary,
             fixedSuggestions: resolution.suggestions,
             activeFanfictionRules: activeRules.map((rule) => ({ id: rule.id, section: rule.sectionName, rule: rule.text })),
+            activeNarrativeModules: novelEngine.activeModules,
           }),
         },
       ],
@@ -164,7 +168,9 @@ export async function narrateWithDeepSeek(
   const chronologyText = `${parsed.narrative}\n${parsed.suggestions.filter((item): item is string => typeof item === "string").join("\n")}`;
   if (violatesCanonChronology(chronologyText, game.view.worldTime?.year ?? 0)) throw new Error("DeepSeek 生成内容违反当前原作时间线，已改用安全叙事");
   const auditIssues = auditNarrative(game, parsed.narrative);
-  if (auditIssues.length) throw new Error(`DeepSeek 生成内容未通过叙事检查：${auditIssues.join("、")}`);
+  const novelEngineIssues = auditNovelEngineNarrative(game, parsed.narrative, novelEngine);
+  const allAuditIssues = [...auditIssues, ...novelEngineIssues];
+  if (allAuditIssues.length) throw new Error(`DeepSeek 生成内容未通过叙事检查：${allAuditIssues.join("、")}`);
 
   return {
     narrative: parsed.narrative,

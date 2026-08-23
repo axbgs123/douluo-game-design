@@ -478,7 +478,7 @@ export interface CheckpointSummary {
   createdAt: string;
 }
 
-export interface DeepSeekSettingsView { hasKey: boolean; baseUrl: string; model: string }
+export interface DeepSeekSettingsView { hasKey: boolean; baseUrl: string; model: string; novelEngineEnabled: boolean }
 
 export interface MetaProgressionView {
   legacyPoints: number;

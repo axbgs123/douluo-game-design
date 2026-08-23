@@ -13,6 +13,7 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com");
   const [model, setModel] = useState("deepseek-v4-flash");
+  const [novelEngineEnabled, setNovelEngineEnabled] = useState(true);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -21,6 +22,7 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
       setView(settings);
       setBaseUrl(settings.baseUrl);
       setModel(settings.model);
+      setNovelEngineEnabled(settings.novelEngineEnabled);
     }).catch((error: Error) => setMessage(error.message));
   }, [open]);
 
@@ -34,16 +36,17 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
       <p className="settings-copy">复杂行动会先整理语义，再生成正文并更新长期记忆。</p>
       <form onSubmit={(event) => {
         event.preventDefault();
-        if (!apiKey.trim()) return;
-        void saveDeepSeekSettings({ apiKey, baseUrl, model })
+        if (!apiKey.trim() && !view?.hasKey) return;
+        void saveDeepSeekSettings({ apiKey: apiKey.trim() || undefined, baseUrl, model, novelEngineEnabled })
           .then((settings) => { setView(settings); setApiKey(""); setMessage("已保存在本机，可以开始正式推演。"); onSaved?.(settings); })
           .catch((error: Error) => setMessage(error.message));
       }}>
         <label>API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={view?.hasKey ? "已配置；输入新值可覆盖" : "sk-…"} /></label>
         <label>Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} /></label>
         <label>模型<input value={model} onChange={(event) => setModel(event.target.value)} /></label>
+        <label className="engine-toggle"><input type="checkbox" checked={novelEngineEnabled} onChange={(event) => setNovelEngineEnabled(event.target.checked)} /><span><b>增强小说引擎</b><small>按情境启用连续性、世界规则、人物声音与第三人称正文审校。</small></span></label>
         {message && <p className="settings-message">{message}</p>}
-        <button type="submit" className="primary-button" disabled={!apiKey.trim()}>保存设置</button>
+        <button type="submit" className="primary-button" disabled={!apiKey.trim() && !view?.hasKey}>保存设置</button>
       </form>
     </section>
   </div>;

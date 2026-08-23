@@ -6,12 +6,15 @@ interface DeepSeekSettingsFile {
   apiKey: string;
   baseUrl: string;
   model: string;
+  novelEngineEnabled: boolean;
 }
 
-const settingsPath = resolve(process.cwd(), ".data", "deepseek.json");
+const settingsDirectory = process.env.DOULUO_DATA_DIR ? resolve(process.env.DOULUO_DATA_DIR) : resolve(process.cwd(), ".data");
+const settingsPath = resolve(settingsDirectory, "deepseek.json");
 const defaults = {
   baseUrl: "https://api.deepseek.com",
   model: "deepseek-v4-flash",
+  novelEngineEnabled: true,
 };
 
 export function readDeepSeekSettings(): DeepSeekSettingsFile {
@@ -22,6 +25,7 @@ export function readDeepSeekSettings(): DeepSeekSettingsFile {
       apiKey: environmentKey || file.apiKey || "",
       baseUrl: file.baseUrl || defaults.baseUrl,
       model: file.model || defaults.model,
+      novelEngineEnabled: file.novelEngineEnabled !== false,
     };
   } catch {
     return { apiKey: environmentKey || "", ...defaults };
@@ -34,11 +38,13 @@ export function settingsView(): DeepSeekSettingsView {
     hasKey: Boolean(settings.apiKey),
     baseUrl: settings.baseUrl,
     model: settings.model,
+    novelEngineEnabled: settings.novelEngineEnabled,
   };
 }
 
-export function writeDeepSeekSettings(input: DeepSeekSettingsFile): DeepSeekSettingsView {
+export function writeDeepSeekSettings(input: Omit<DeepSeekSettingsFile, "apiKey"> & { apiKey?: string }): DeepSeekSettingsView {
+  const current = readDeepSeekSettings();
   mkdirSync(dirname(settingsPath), { recursive: true });
-  writeFileSync(settingsPath, JSON.stringify(input, null, 2), { encoding: "utf8", mode: 0o600 });
+  writeFileSync(settingsPath, JSON.stringify({ ...input, apiKey: input.apiKey?.trim() || current.apiKey }, null, 2), { encoding: "utf8", mode: 0o600 });
   return settingsView();
 }

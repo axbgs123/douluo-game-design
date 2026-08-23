@@ -189,9 +189,10 @@ export function getDeepSeekSettings(): Promise<DeepSeekSettingsView> {
 }
 
 export function saveDeepSeekSettings(input: {
-  apiKey: string;
+  apiKey?: string;
   baseUrl: string;
   model: string;
+  novelEngineEnabled: boolean;
 }): Promise<DeepSeekSettingsView> {
   return request("/api/settings/deepseek", { method: "POST", body: JSON.stringify(input) });
 }

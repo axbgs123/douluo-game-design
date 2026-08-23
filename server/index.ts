@@ -78,9 +78,10 @@ const metaEquipSchema = z.object({ name: z.string().trim().max(60).optional() })
 const metaSoulEquipSchema = z.object({ id: z.string().trim().min(1).optional() });
 const metaSoulToggleSchema = z.object({ id: z.string().trim().min(1), enabled: z.boolean() });
 const settingsSchema = z.object({
-  apiKey: z.string().trim().min(1),
+  apiKey: z.string().trim().optional(),
   baseUrl: z.string().url(),
   model: z.string().trim().min(1),
+  novelEngineEnabled: z.boolean().default(true),
 });
 
 app.get("/api/health", (_request, response) => {

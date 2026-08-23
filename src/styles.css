@@ -498,6 +498,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .settings-copy { color: var(--muted); font-size: 11px; line-height: 1.8; }
 .settings-copy code { color: var(--gold); }
 .settings-modal label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; margin: 15px 0; }
+.settings-modal .engine-toggle { grid-template-columns: auto 1fr; align-items: start; gap: 11px; padding: 13px; border: 1px solid var(--line); background: rgba(255,255,255,.28); cursor: pointer; }
+.settings-modal .engine-toggle input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--gold); }
+.settings-modal .engine-toggle span, .settings-modal .engine-toggle b, .settings-modal .engine-toggle small { display: block; }
+.settings-modal .engine-toggle b { color: var(--ink); font-size: 12px; margin-bottom: 4px; }
+.settings-modal .engine-toggle small { color: var(--muted); line-height: 1.6; }
 .modal-close { position: absolute; right: 15px; top: 10px; border: 0; background: none; color: var(--muted); font-size: 25px; cursor: pointer; }
 .settings-message { color: var(--gold); font-size: 11px; }
 
