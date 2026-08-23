@@ -67,8 +67,21 @@ export interface NpcMemoryEntry {
   day: number;
   actionIndex: number;
   significance: 1 | 2 | 3;
-  source: "规则结算" | "叙事提取" | "旧存档";
-  witnessed: true;
+  source: "规则结算" | "叙事提取" | "传闻传播" | "旧存档";
+  witnessed: boolean;
+}
+
+export interface SocialRumorState {
+  id: string;
+  publicName: string;
+  locationId: string;
+  summary: string;
+  valence: -1 | 1;
+  witnessNpcIds: string[];
+  factionIds: string[];
+  createdOrdinal: number;
+  spreadsAtOrdinal: number;
+  status: "待传播" | "已传播";
 }
 
 export interface NpcRelationState {
@@ -133,6 +146,7 @@ export interface HiddenWorldState {
   canonCausalFootprints: CanonCausalFootprint[];
   npcRelations: NpcRelationState[];
   dynamicEvents: DynamicWorldEvent[];
+  socialRumors: SocialRumorState[];
   lastAutonomyOrdinal: number;
   resurrectionCount: number;
   resurrectionRecords: Array<{

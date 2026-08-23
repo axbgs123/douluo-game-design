@@ -3,7 +3,7 @@ import type { CompanionRole, ConditionLabel, HuntingStage, NarrativeEntry, SoulR
 import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, factionActiveAtYear, locationById, soulBeastById } from "../data/world.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
-import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, canDiscoverNpc, inferLocationId, recordCanonInfluence, recordIntelligence, rememberNpcInteraction, revealNpc } from "./world.js";
+import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, canDiscoverNpc, inferLocationId, queueSocialRumor, recordCanonInfluence, recordIntelligence, rememberNpcInteraction, revealNpc } from "./world.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSuggestions, selectNarrativeRules } from "./story-rules.js";
 import { formatSoulCoins } from "../../shared/currency.js";
@@ -2093,8 +2093,10 @@ function crimeResolution(game: StoredGame, action: string): ActionResolution {
   const success = random() < Math.max(.05, Math.min(.9, .48 + (skill - guarded) / 100));
   const heat = Math.max(4, guarded - prepared + integer(random, -5, 12));
   const scope = game.view.location ?? "当前地区";
-  let reputation = game.view.reputations.find((item) => item.scope === scope && item.publicName === game.view.character!.name);
-  if (!reputation) { reputation = { scope, publicName: game.view.character!.name, reputation: "陌生人", heat: 0, source: "当地目击与登记" }; game.view.reputations.push(reputation); }
+  const activeAlias = game.world.flags.activeAliasLocationId === (game.view.locationId ?? "local") ? String(game.world.flags.activeAlias ?? "") : "";
+  const publicName = activeAlias || game.view.character!.name;
+  let reputation = game.view.reputations.find((item) => item.scope === scope && item.publicName === publicName);
+  if (!reputation) { reputation = { scope, publicName, reputation: "陌生人", heat: 0, source: "当地目击与登记" }; game.view.reputations.push(reputation); }
   reputation.heat = Math.min(100, reputation.heat + heat);
   reputation.reputation = success && prepared ? "身份尚未暴露，但有案件传闻" : "受到治安机构怀疑";
   reputation.source = success && prepared ? "现场痕迹与地下传闻" : "目击、证据与追查";
@@ -2104,9 +2106,16 @@ function crimeResolution(game: StoredGame, action: string): ActionResolution {
 }
 
 function disguiseResolution(game: StoredGame, action: string): ActionResolution {
+  if (/恢复真名|取消化名/.test(action)) {
+    delete game.world.flags.activeAlias;
+    delete game.world.flags.activeAliasLocationId;
+    return { intent: "恢复真名", minutes: 20, ruleSummary: `停止使用本地化名，后续公开行动重新以${game.view.character!.name}登记；既有化名口碑不会自动合并。`, fallbackNarrative: "我把那套说辞和衣物收了起来。旧化名留下的账不会凭空消失，但从这一刻起，新登记重新写回本名。", suggestions: ["检查本名口碑", "避免接触化名债务", "说明身份变更"] };
+  }
   const alias = action.match(/(?:化名|自称|假名)[为叫作：: ]*([\u4e00-\u9fa5]{2,8})/)?.[1] ?? `无名旅人${game.view.reputations.length + 1}`;
   const existing = game.view.reputations.find((item) => item.publicName === alias && item.scope === game.view.location);
   if (!existing) game.view.reputations.push({ scope: game.view.location ?? "当前地区", publicName: alias, reputation: "新出现的陌生人", heat: 0, source: "化名与外观伪装" });
+  game.world.flags.activeAlias = alias;
+  game.world.flags.activeAliasLocationId = game.view.locationId ?? "local";
   return { intent: "身份伪装", minutes: 45, ruleSummary: `在${game.view.location ?? "当前地区"}启用化名“${alias}”；真实身份与化名声望分别记录，暴露需要证据传播。`, fallbackNarrative: `名字换了，衣服和说话习惯也得一起改。我在门口停了一会儿，把回答籍贯时该说的那套话重新过了一遍。`, suggestions: ["检查伪装破绽", "用化名打听消息", "避免接触认识真身的人"] };
 }
 
@@ -2208,7 +2217,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/建立|创建|招募|任命|扩建|领地|外交|情报网|经营势力|管理宗门/.test(action) && /宗门|势力|组织|成员|领地|外交|情报/.test(action)) resolution = factionManagementResolution(game, action);
   else if (/存入.*(?:魂币|钱)|存钱|取出.*(?:魂币|钱)|取钱|借贷|借钱|贷款|还债|偿还债务|黑市|开店|商铺|经营生意|悬赏|市场行情|调查物价|打听物价|询价|供需|运输合同|货运合同|运货委托/.test(action)) resolution = economyResolution(game, action);
   else if (/存放|收进仓库|放回住处|取回|从.*取出|拿回/.test(action)) resolution = storageResolution(game, action);
-  else if (/化名|伪装身份|假名|自称/.test(action)) resolution = disguiseResolution(game, action);
+  else if (/化名|伪装身份|假名|自称|恢复真名|取消化名/.test(action)) resolution = disguiseResolution(game, action);
   else if (/偷窃|盗窃|抢劫|诈骗|绑架|放火|勒索/.test(action)) resolution = crimeResolution(game, action);
   else if (/魂导师/.test(action) && /认证|考核/.test(action)) resolution = professionResolution(game, action);
   else if (/学习|研究|尝试|实验|制作|改良|炼制|锻造|打造/.test(action) && /炼药|丹药|药剂|锻造|炼器|魂导器|阵法|阵纹|医术|治疗|毒术|制毒|商业|经商|驯兽|驯养|学术|魂兽/.test(action)) resolution = professionResolution(game, action);
@@ -2294,5 +2303,6 @@ export function applyActionResult(
     if (npcIds.length || factionIds.length) recordCanonInfluence(game, { source: "玩家实际行动", description: input.slice(0, 100), affectedNpcIds: npcIds, affectedFactionIds: factionIds, strength: /杀|救下|摧毁|夺取/.test(input) ? 10 : /加入|拜师|保护|阻止/.test(input) ? 5 : 2 });
   }
   recordStoryConsequence(game, input, result);
+  queueSocialRumor(game, input, result.intent, result.ruleSummary);
   game.view.updatedAt = new Date().toISOString();
 }

@@ -225,6 +225,7 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
     canonCausalFootprints: [],
     npcRelations: [],
     dynamicEvents: [],
+    socialRumors: [],
     lastAutonomyOrdinal: ordinal(startYear, 1),
     resurrectionCount: 0,
     resurrectionRecords: [],
@@ -478,6 +479,57 @@ function addNews(game: StoredGame, eventId: string, title: string, detail: strin
   };
   game.view.news.unshift(news);
   game.view.news = game.view.news.slice(0, 30);
+}
+
+export function queueSocialRumor(game: StoredGame, input: string, intent: string, result: string): void {
+  if (/无法完成|规则阻止/.test(intent)) return;
+  const publicRegistry = /交付机构事务|交付悬赏|交付运输合同|机构晋升|军衔晋升/.test(intent);
+  const positive = publicRegistry || (/介入世界事件|救助|加入势力/.test(intent) && /成功|完成|加入/.test(`${intent}${result}`));
+  const negative = /违法行动|袭击重要人物|运输合同失败/.test(intent) || (/介入世界事件/.test(intent) && /失败/.test(result));
+  if (!positive && !negative) return;
+  if (!publicRegistry && /秘密|暗中|无人|私下|潜行/.test(input)) return;
+  const locationId = game.view.locationId ?? "local";
+  const witnesses = Object.values(game.world.npcs).filter((npc) => npc.alive && npc.locationId === locationId && npc.currentGoal !== "尚未出生").slice(0, 8);
+  if (!publicRegistry && !witnesses.length) return;
+  const alias = game.world.flags.activeAliasLocationId === locationId ? String(game.world.flags.activeAlias ?? "") : "";
+  const publicName = alias || game.view.character?.name || "无名魂师";
+  const valence: -1 | 1 = negative ? -1 : 1;
+  const factionIds = [...new Set(witnesses.flatMap((npc) => npc.factionIds))];
+  const createdOrdinal = ordinal(game.view.worldTime?.year ?? 0, game.view.worldTime?.day ?? 1);
+  game.world.socialRumors.push({ id: `rumor-${game.actionIndex}-${game.world.socialRumors.length}`, publicName, locationId, summary: valence > 0 ? `${publicName}完成了有公开凭据的${intent}` : `${publicName}卷入了受到质疑的${intent}`, valence, witnessNpcIds: witnesses.map((npc) => npc.id), factionIds, createdOrdinal, spreadsAtOrdinal: createdOrdinal + 1 + (game.actionIndex % 3), status: "待传播" });
+  game.world.socialRumors = game.world.socialRumors.slice(-60);
+}
+
+function propagateSocialRumors(game: StoredGame, currentOrdinal: number): string[] {
+  const messages: string[] = [];
+  for (const rumor of game.world.socialRumors.filter((item) => item.status === "待传播" && item.spreadsAtOrdinal <= currentOrdinal)) {
+    rumor.status = "已传播";
+    const scope = locationById(rumor.locationId)?.name ?? game.view.location ?? "当前地区";
+    let reputation = game.view.reputations.find((item) => item.scope === scope && item.publicName === rumor.publicName);
+    if (!reputation) {
+      reputation = { scope, publicName: rumor.publicName, reputation: "尚无定论", heat: 0, source: "现场见证与公开凭据" };
+      game.view.reputations.push(reputation);
+    }
+    reputation.heat = Math.min(100, reputation.heat + 6 + rumor.witnessNpcIds.length * 2);
+    reputation.reputation = rumor.valence > 0 ? (reputation.heat >= 30 ? "因可靠履历受到认可" : "出现正面口碑") : (reputation.heat >= 30 ? "负面名声受到关注" : "出现负面传闻");
+    reputation.source = rumor.witnessNpcIds.length ? `${rumor.witnessNpcIds.length}名现场见证者及其关系网` : "公开登记与验收记录";
+    for (const witnessId of rumor.witnessNpcIds) {
+      const witness = game.world.npcs[witnessId];
+      if (witness) witness.dispositionToPlayer = Math.max(-100, Math.min(100, witness.dispositionToPlayer + rumor.valence * 4));
+    }
+    const recipients = Object.values(game.world.npcs).filter((npc) => npc.alive && !rumor.witnessNpcIds.includes(npc.id) && npc.factionIds.some((id) => rumor.factionIds.includes(id))).slice(0, 12);
+    for (const npc of recipients) {
+      const text = `从同一势力的见证者处听闻：${rumor.summary}`;
+      npc.memoryOfPlayer.push(text);
+      npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12);
+      npc.episodicMemory.push({ id: randomUUID(), text, year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1, actionIndex: game.actionIndex, significance: 1, source: "传闻传播", witnessed: false });
+      npc.episodicMemory = npc.episodicMemory.slice(-24);
+      npc.dispositionToPlayer = Math.max(-100, Math.min(100, npc.dispositionToPlayer + rumor.valence * 2));
+    }
+    addNews(game, rumor.id, `${scope}口碑变化`, `${rumor.summary}；消息经${rumor.witnessNpcIds.length ? "现场见证者" : "公开登记"}传播，未自动扩散到无关系地区。`);
+    messages.push(`口碑 · ${rumor.publicName} · ${scope}`);
+  }
+  return messages;
 }
 
 function relationKind(bond: number): "亲近" | "合作" | "竞争" | "敌对" | "陌生" {
@@ -756,7 +808,7 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
   time.era = eraAtYear(time.year);
   simulateNpcYears(game, time.year);
   const currentOrdinal = ordinal(time.year, time.day);
-  const messages = [...simulateNpcAutonomy(game, previousOrdinal, currentOrdinal), ...simulateCanonEvents(game, previousOrdinal, currentOrdinal)];
+  const messages = [...simulateNpcAutonomy(game, previousOrdinal, currentOrdinal), ...simulateCanonEvents(game, previousOrdinal, currentOrdinal), ...propagateSocialRumors(game, currentOrdinal)];
   game.view.map = buildMapView(game);
   game.view.knownFigures = buildKnownFigures(game);
   game.view.npcRelations = buildNpcRelationViews(game);
@@ -810,6 +862,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   legacy.world.firedCanonEvents ??= [];
   legacy.world.suppressedCanonEvents ??= [];
   legacy.world.dynamicEvents ??= [];
+  legacy.world.socialRumors ??= [];
   legacy.world.lastAutonomyOrdinal ??= ordinal(startYear, game.view.worldTime?.day ?? 1);
   legacy.world.resurrectionCount ??= 0;
   legacy.world.resurrectionRecords ??= [];

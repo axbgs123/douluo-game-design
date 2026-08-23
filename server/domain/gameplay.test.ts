@@ -631,6 +631,49 @@ describe("第一部世界资料", () => {
     expect(["确定", "推测", "传闻", "矛盾"]).toContain(game.view.intelligence[0].status);
   });
 
+  it("公开履约会经现场见证者延迟传播到地区口碑和同势力NPC记忆", () => {
+    const game = awakened("social-rumor-propagation");
+    game.view.locationId = "notting-city";
+    game.view.location = "诺丁城";
+    for (const npc of Object.values(game.world.npcs)) if (npc.alive) npc.locationId = "heaven-dou-city";
+    const witness = game.world.npcs["tang-san"];
+    const recipient = game.world.npcs["xiao-wu"];
+    witness.alive = true; witness.locationId = "notting-city"; witness.factionIds = ["test-guild"];
+    recipient.alive = true; recipient.locationId = "suotuo-city"; recipient.factionIds = ["test-guild"];
+    const publicDelivery = { intent: "交付悬赏", minutes: 60, ruleSummary: "凭公开验收记录完成悬赏并成功履约。", fallbackNarrative: "委托方核过证据后盖章。", suggestions: ["查看回单"] };
+
+    applyActionResult(game, "在诺丁城公开交付悬赏", publicDelivery, publicDelivery.fallbackNarrative, publicDelivery.suggestions);
+    expect(game.world.socialRumors).toHaveLength(1);
+    expect(game.world.socialRumors[0]).toMatchObject({ publicName: game.view.character!.name, status: "待传播", witnessNpcIds: ["tang-san"] });
+    expect(recipient.episodicMemory.some((memory) => memory.source === "传闻传播")).toBe(false);
+
+    advanceWorldTime(game, 4 * 1_440);
+    expect(game.world.socialRumors[0].status).toBe("已传播");
+    expect(game.view.reputations.find((item) => item.scope === "诺丁城" && item.publicName === game.view.character!.name)?.reputation).toContain("正面");
+    expect(recipient.episodicMemory.at(-1)).toMatchObject({ source: "传闻传播", witnessed: false });
+    expect(game.view.news.some((item) => item.title === "诺丁城口碑变化")).toBe(true);
+  });
+
+  it("秘密行动不凭空传播，地方化名的公开履历也不会自动合并到真名", () => {
+    const secret = awakened("secret-rumor-boundary");
+    const witness = secret.world.npcs["tang-san"];
+    witness.alive = true; witness.locationId = secret.view.locationId!;
+    const hiddenHelp = { intent: "救助成功", minutes: 30, ruleSummary: "救助成功。", fallbackNarrative: "没有人看见这次救助。", suggestions: ["离开"] };
+    applyActionResult(secret, "暗中无人知晓地救助伤者", hiddenHelp, hiddenHelp.fallbackNarrative, hiddenHelp.suggestions);
+    expect(secret.world.socialRumors).toHaveLength(0);
+
+    const aliasGame = awakened("alias-rumor-boundary");
+    const disguise = resolveAction(aliasGame, "化名为青禾");
+    applyActionResult(aliasGame, "化名为青禾", disguise, disguise.fallbackNarrative, disguise.suggestions);
+    const delivery = { intent: "交付运输合同", minutes: 60, ruleSummary: "公开登记并完成运输合同。", fallbackNarrative: "收货行按化名签发回单。", suggestions: ["查看回单"] };
+    applyActionResult(aliasGame, "公开交付运输合同", delivery, delivery.fallbackNarrative, delivery.suggestions);
+    expect(aliasGame.world.socialRumors.at(-1)?.publicName).toBe("青禾");
+    advanceWorldTime(aliasGame, 4 * 1_440);
+    expect(aliasGame.view.reputations.some((item) => item.publicName === "青禾" && /正面|认可/.test(item.reputation))).toBe(true);
+    expect(aliasGame.view.reputations.some((item) => item.publicName === aliasGame.view.character!.name && /正面|认可/.test(item.reputation))).toBe(false);
+    expect(resolveAction(aliasGame, "恢复真名").intent).toBe("恢复真名");
+  });
+
   it("死亡的重要NPC不会在年度模拟中随机复活", () => {
     const game = awakened("no-random-revival");
     const npc = game.world.npcs["tang-san"];
