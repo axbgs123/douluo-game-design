@@ -134,6 +134,7 @@ export interface ActionResolution {
   suggestions: string[];
   systemMessages?: string[];
   conditionAfter?: ConditionLabel;
+  appliedRuleIds?: number[];
 }
 
 export interface CreateGameInput {

@@ -142,6 +142,22 @@ export interface CanonInfluenceView {
   date: string;
 }
 
+export interface StoryConsequenceView {
+  id: string;
+  action: string;
+  result: string;
+  date: string;
+  tone: "普通" | "转折" | "危险" | "收获";
+}
+
+export interface StoryArchiveView {
+  summary: string;
+  openThreads: string[];
+  keyChoices: string[];
+  recentConsequences: StoryConsequenceView[];
+  continuity: Array<{ label: string; detail: string; status: "稳定" | "留意" | "变化" }>;
+}
+
 export interface HuntRecommendationView {
   beastId: string;
   name: string;
@@ -230,6 +246,7 @@ export interface GameView {
   news: WorldNewsView[];
   activeEvents: WorldEventView[];
   canonInfluences: CanonInfluenceView[];
+  storyArchive: StoryArchiveView;
   knownFigures: KnownFigureView[];
   affiliations: AffiliationView[];
   chapter: StoryChapterView;
@@ -276,4 +293,5 @@ export interface WorldCatalogStatsView {
   locations: number;
   events: number;
   soulBeasts: number;
+  narrativeRules: number;
 }

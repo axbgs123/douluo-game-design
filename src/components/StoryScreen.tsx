@@ -10,13 +10,14 @@ interface StoryScreenProps {
   onEnd: (reason?: string) => Promise<void>;
 }
 
-type Panel = "人物" | "武魂" | "背包" | "地图" | "关系" | "任务" | "猎魂" | "世界";
-const PANELS: Panel[] = ["人物", "武魂", "背包", "地图", "关系", "任务", "猎魂", "世界"];
+type Panel = "人物" | "武魂" | "背包" | "地图" | "关系" | "任务" | "手记" | "猎魂" | "世界";
+const PANELS: Panel[] = ["人物", "武魂", "背包", "地图", "关系", "任务", "手记", "猎魂", "世界"];
 
 function panelBadge(game: GameView, panel: Panel): string | undefined {
   if (panel === "人物" && game.character?.injuries.length) return String(game.character.injuries.length);
   if (panel === "关系" && game.relations.length > 2) return String(game.relations.length);
   if (panel === "任务") return String(game.tasks.filter((task) => task.status === "进行中").length || "");
+  if (panel === "手记" && game.storyArchive.openThreads.length) return String(Math.min(9, game.storyArchive.openThreads.length));
   if (panel === "猎魂" && game.hunting && game.hunting.stage !== "完成") return "!";
   if (panel === "世界" && (game.activeEvents.length || game.news.length)) return game.activeEvents.length ? "!" : String(Math.min(9, game.news.length));
   return undefined;
@@ -81,6 +82,7 @@ export function StoryScreen({ game, busy, onAwaken, onAction, onSpeed, onEnd }: 
             {panel === "地图" && <MapPanel game={game} submit={submit} busy={busy} />}
             {panel === "关系" && <RelationPanel game={game} />}
             {panel === "任务" && <TaskPanel game={game} />}
+            {panel === "手记" && <ArchivePanel game={game} />}
             {panel === "猎魂" && <HuntPanel game={game} submit={submit} busy={busy} />}
             {panel === "世界" && <WorldPanel game={game} submit={submit} busy={busy} />}
           </div>
@@ -156,6 +158,17 @@ function RelationPanel({ game }: { game: GameView }) {
 function TaskPanel({ game }: { game: GameView }) {
   if (!game.tasks.length) return <LockedPanel text="暂无记录" />;
   return <div className="task-timeline">{game.tasks.map((task, index) => <article key={task.id ?? `${task.title}-${index}`} className={`task-${task.status ?? "进行中"}`}><i>{task.status === "完成" ? "✓" : task.status === "失败" ? "×" : index + 1}</i><div><span>{task.kind} · {task.status ?? "进行中"}</span><strong>{task.title}</strong><p>{task.detail}</p>{task.deadline && <small>{task.deadline}</small>}</div></article>)}</div>;
+}
+
+function ArchivePanel({ game }: { game: GameView }) {
+  const archive = game.storyArchive;
+  return <div className="archive-panel">
+    <article className="chapter-card"><small>第 {game.chapter.number} 章</small><strong>{game.chapter.title}</strong><p>{archive.summary}</p></article>
+    <h3 className="panel-title">连续性</h3><div className="continuity-grid">{archive.continuity.map((item) => <article key={item.label} className={`continuity-${item.status}`}><span>{item.label}</span><strong>{item.status}</strong><p>{item.detail}</p></article>)}</div>
+    <h3 className="panel-title">还没解决</h3>{archive.openThreads.length ? <ul className="thread-list">{archive.openThreads.map((thread) => <li key={thread}>{thread}</li>)}</ul> : <p className="panel-copy">眼前没有挂着的线索。</p>}
+    {archive.keyChoices.length > 0 && <><h3 className="panel-title">关键选择</h3><ol className="choice-ledger">{archive.keyChoices.map((choice, index) => <li key={`${choice}-${index}`}>{choice}</li>)}</ol></>}
+    <h3 className="panel-title">最近留下的后果</h3>{archive.recentConsequences.length ? <div className="consequence-list">{archive.recentConsequences.map((item) => <article key={item.id} className={`consequence-${item.tone}`}><header><span>{item.date}</span><strong>{item.action}</strong></header><p>{item.result}</p></article>)}</div> : <p className="panel-copy">故事刚开始，还没有需要回头核对的后果。</p>}
+  </div>;
 }
 
 function radialPoint(index: number, total: number, radius: number): { x: number; y: number } {

@@ -3,6 +3,7 @@ import type { GameView, KnownFigureView, MapLocationView, WorldEventView, WorldN
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationById } from "../data/world.js";
 import type { HiddenWorldState, StoredGame, WorldNpcState } from "./model.js";
 import { toThirdPersonNarrative } from "./narrative.js";
+import { refreshStoryArchive } from "./story-rules.js";
 import { createRandom, integer, pick } from "./random.js";
 
 const DAYS_PER_YEAR = 360;
@@ -422,7 +423,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   const candidate = game.view.candidates[0];
   const startYear = game.view.worldTime?.year ?? candidate?.birthYearOffset ?? 0;
   const locationId = game.view.locationId ?? inferLocationId(game.view.location ?? candidate?.location ?? "诺丁城");
-  legacy.schemaVersion = 4;
+  legacy.schemaVersion = 5;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
   legacy.world.canonCausalFootprints ??= [];
@@ -463,6 +464,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     strength: cause.strength >= 30 ? "足以撼动关键节点" : cause.strength >= 12 ? "可能形成长期偏差" : "轻微影响",
     date: `原作 ${cause.atYear >= 0 ? "+" : ""}${cause.atYear} 年 · 第 ${cause.atDay} 日`,
   }));
+  game.view.storyArchive ??= { summary: game.storyMemory.summary, openThreads: game.storyMemory.openThreads, keyChoices: game.storyMemory.keyChoices, recentConsequences: [], continuity: [] };
   game.view.affiliations ??= [];
   game.view.chapter ??= { number: game.storyMemory.chapterNumber, title: game.storyMemory.chapterTitle, summary: game.storyMemory.summary.slice(0, 160) };
   game.view.runProgress ??= {
@@ -478,6 +480,10 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.view.worldTime.season ??= "春";
   }
   if (game.view.character) {
+    game.storyMemory.openThreads = game.storyMemory.openThreads.filter((thread) => thread !== "武魂觉醒结果");
+    if (/即将参加武魂觉醒|尚未真正开始/.test(game.storyMemory.summary)) {
+      game.storyMemory.summary = `${game.view.character.name}已经完成武魂觉醒，武魂是${game.view.character.martialSoul.name}，先天魂力${game.view.character.innateSoulPower}级。`;
+    }
     game.view.character.age ??= 6;
     game.view.character.cultivationProgress ??= "刚刚起步";
     game.view.character.condition ??= "良好";
@@ -493,7 +499,10 @@ export function ensureGameState(game: StoredGame): StoredGame {
       if (relation.relation === "母亲" && /(?:守义|青禾|岳山|德昌|远林|成业|茂生|长顺)$/.test(relation.name)) relation.name = `${surname}兰芝`;
       if (relation.relation === "父亲" && /(?:兰芝|素琴|秋娘|静娴|春桃|桂香|月娥|秀禾)$/.test(relation.name)) relation.name = `${surname}守义`;
     }
-    game.view.suggestions = game.view.suggestions.map((suggestion) => toThirdPersonNarrative(suggestion, game.view.character!.name, game.view.character!.gender).replaceAll("他的", "自身的").replaceAll("她的", "自身的"));
+    game.view.suggestions = game.view.suggestions.map((suggestion) => toThirdPersonNarrative(suggestion, game.view.character!.name, game.view.character!.gender)
+      .replaceAll("他的", "自身的")
+      .replaceAll("她的", "自身的")
+      .replace(/询问(?:自身的)?先天魂力意味着什么/, "询问先天魂力会影响哪些修炼安排"));
     if (migrateNarrative) {
       for (const narrative of game.view.narrative) if (narrative.kind === "narration") narrative.text = toThirdPersonNarrative(narrative.text, game.view.character.name, game.view.character.gender);
     }
@@ -501,6 +510,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.map = buildMapView(game);
   game.view.knownFigures = buildKnownFigures(game);
   game.view.activeEvents = buildActiveEvents(game);
+  refreshStoryArchive(game);
   return game;
 }
 

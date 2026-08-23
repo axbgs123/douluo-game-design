@@ -15,6 +15,7 @@ import type {
 } from "./model.js";
 import { createRandom, integer, pick, weightedPick } from "./random.js";
 import { buildActiveEvents, buildKnownFigures, buildMapView, createHiddenWorld, inferLocationId, revealNpc } from "./world.js";
+import { refreshStoryArchive } from "./story-rules.js";
 
 interface OriginTemplate {
   id: string;
@@ -550,7 +551,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     hiddenCandidates,
     personalityProfile: profile,
     actionIndex: 0,
@@ -585,6 +586,13 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       news: [],
       activeEvents: [],
       canonInfluences: [],
+      storyArchive: {
+        summary: "六岁的主角即将参加武魂觉醒，人生尚未真正开始。",
+        openThreads: ["武魂觉醒结果", "家人与出身中尚未说清的细节"],
+        keyChoices: [],
+        recentConsequences: [],
+        continuity: [],
+      },
       knownFigures: [],
       affiliations: [],
       chapter: { number: 1, title: "觉醒之日", summary: "六岁的主角正等着武魂觉醒。" },
@@ -603,6 +611,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   game.view.map = buildMapView(game);
   game.view.knownFigures = buildKnownFigures(game);
   game.view.activeEvents = buildActiveEvents(game);
+  refreshStoryArchive(game);
   return game;
 }
 
@@ -619,6 +628,7 @@ export function rerollCandidates(game: StoredGame, preferences?: WeightPreferenc
   game.view.candidates = game.hiddenCandidates.map((candidate) => candidate.public);
   game.view.selectedCandidateId = undefined;
   game.view.updatedAt = new Date().toISOString();
+  refreshStoryArchive(game);
 }
 
 export function selectCandidate(game: StoredGame, candidateId: string, customName?: string): void {
@@ -720,12 +730,17 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
         { id: "first-ring", title: "获得第一魂环", kind: "修炼需求", detail: "魂力达到十级后，完成一次完整猎魂。", status: "进行中" },
       ]
     : [{ title: "理解觉醒结果", kind: "线索", detail: "没有显现先天魂力并不等于所有道路都已断绝。" }];
+  game.storyMemory.openThreads = selected.innateSoulPower > 0
+    ? ["家人与出身中尚未说清的细节", "获得第一魂环"]
+    : ["家人与出身中尚未说清的细节", "理解觉醒结果"];
+  game.storyMemory.summary = `${selected.public.name}在${selected.public.location}完成武魂觉醒，武魂是${selected.martialSoul.name}，先天魂力${selected.innateSoulPower}级。`;
   game.view.narrative.push(createEntry("narration", buildAwakeningResult(selected)));
   game.view.suggestions = selected.innateSoulPower > 0
-    ? ["询问先天魂力意味着什么", "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
+    ? [`询问${selected.innateSoulPower}级先天魂力该怎么修炼`, "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
     : ["追问是否存在重新检测的方法", "观察武魂本身还有没有异常", "先接受结果，回去查找其他道路"];
   game.view.updatedAt = new Date().toISOString();
   game.view.runProgress.highestSoulRank = character.soulRank;
+  refreshStoryArchive(game);
   return character;
 }
 

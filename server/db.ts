@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { MetaProgressionView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "./data/world.js";
+import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
 import { ensureGameState } from "./domain/world.js";
 
@@ -60,6 +61,16 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS canon_locations (id TEXT PRIMARY KEY, name TEXT NOT NULL, data_json TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS canon_events (id TEXT PRIMARY KEY, year INTEGER NOT NULL, title TEXT NOT NULL, data_json TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS canon_soul_beasts (id TEXT PRIMARY KEY, name TEXT NOT NULL, data_json TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS fanfiction_rules (
+    era INTEGER NOT NULL,
+    rule_id INTEGER NOT NULL,
+    section INTEGER NOT NULL,
+    section_name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    conditional INTEGER NOT NULL,
+    rule_text TEXT NOT NULL,
+    PRIMARY KEY (era, rule_id)
+  );
 `);
 
 function seedCanonCatalog(): void {
@@ -69,6 +80,7 @@ function seedCanonCatalog(): void {
   const locationStatement = database.prepare("INSERT OR REPLACE INTO canon_locations (id, name, data_json) VALUES (?, ?, ?)");
   const eventStatement = database.prepare("INSERT OR REPLACE INTO canon_events (id, year, title, data_json) VALUES (?, ?, ?, ?)");
   const beastStatement = database.prepare("INSERT OR REPLACE INTO canon_soul_beasts (id, name, data_json) VALUES (?, ?, ?)");
+  const ruleStatement = database.prepare("INSERT OR REPLACE INTO fanfiction_rules (era, rule_id, section, section_name, kind, conditional, rule_text) VALUES (?, ?, ?, ?, ?, ?, ?)");
   database.exec("BEGIN IMMEDIATE");
   try {
     for (const character of CANON_CHARACTERS) {
@@ -79,6 +91,7 @@ function seedCanonCatalog(): void {
     for (const location of LOCATIONS) locationStatement.run(location.id, location.name, JSON.stringify(location));
     for (const event of CANON_EVENTS) eventStatement.run(event.id, event.year, event.title, JSON.stringify(event));
     for (const beast of SOUL_BEASTS) beastStatement.run(beast.id, beast.name, JSON.stringify(beast));
+    for (const rule of FANFICTION_RULES) ruleStatement.run(rule.era, rule.id, rule.section, rule.sectionName, rule.kind, rule.conditional ? 1 : 0, rule.text);
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
@@ -256,5 +269,6 @@ export function getWorldCatalogStats(): WorldCatalogStatsView {
     locations: tableCount("canon_locations"),
     events: tableCount("canon_events"),
     soulBeasts: tableCount("canon_soul_beasts"),
+    narrativeRules: tableCount("fanfiction_rules"),
   };
 }

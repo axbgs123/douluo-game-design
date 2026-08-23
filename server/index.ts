@@ -25,6 +25,7 @@ import {
 import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithDeepSeek } from "./services/deepseek.js";
 import { settingsView, writeDeepSeekSettings } from "./services/settings.js";
 import { settleRun } from "./domain/endings.js";
+import { guardActionByStoryRules } from "./domain/story-rules.js";
 
 const app = express();
 const port = Number(process.env.PORT ?? 8787);
@@ -145,14 +146,19 @@ app.post("/api/games/:id/action", async (request, response) => {
   }
 
   let ruleAction = input.input;
-  try { ruleAction = await interpretActionWithDeepSeek(game, input.input) ?? input.input; }
-  catch (error) { console.warn(error instanceof Error ? error.message : error); }
+  const blockedBeforeInterpretation = guardActionByStoryRules(game, input.input);
+  if (!blockedBeforeInterpretation) {
+    try { ruleAction = await interpretActionWithDeepSeek(game, input.input) ?? input.input; }
+    catch (error) { console.warn(error instanceof Error ? error.message : error); }
+  }
   const resolution = resolveAction(game, ruleAction);
   let generated = null;
-  try {
-    generated = await narrateWithDeepSeek(game, input.input, resolution);
-  } catch (error) {
-    console.warn(error instanceof Error ? error.message : error);
+  if (!/规则阻止|无法完成/.test(resolution.intent)) {
+    try {
+      generated = await narrateWithDeepSeek(game, input.input, resolution);
+    } catch (error) {
+      console.warn(error instanceof Error ? error.message : error);
+    }
   }
   applyActionResult(
     game,
@@ -171,6 +177,7 @@ app.post("/api/games/:id/action", async (request, response) => {
     ruleAction,
     minutes: resolution.minutes,
     usedAiNarrator: Boolean(generated),
+    appliedRuleIds: resolution.appliedRuleIds,
   });
   return response.json(publicView(game));
 });

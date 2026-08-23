@@ -5,6 +5,8 @@ import { settleRun } from "./endings.js";
 import { awakenCharacter, createGame, selectCandidate } from "./generator.js";
 import { advanceWorldTime, createHiddenWorld, ensureGameState, recordCanonInfluence } from "./world.js";
 import { applyNarrativeMemory, violatesCanonChronology } from "../services/deepseek.js";
+import { rulebookStats } from "../data/fanfiction-rules.js";
+import { auditNarrative, selectNarrativeRules } from "./story-rules.js";
 
 const personality = {
   keywords: ["谨慎", "好奇", "重情"],
@@ -96,7 +98,7 @@ describe("完整游玩规则", () => {
     delete (game as unknown as { schemaVersion?: number }).schemaVersion;
     delete (game.view as Partial<typeof game.view>).map;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.world.npcs["tang-san"]).toBeDefined();
   });
@@ -210,5 +212,36 @@ describe("第一部世界资料", () => {
     expect(LOCATIONS.length).toBeGreaterThanOrEqual(15);
     expect(CANON_EVENTS.length).toBeGreaterThanOrEqual(10);
     expect(SOUL_BEASTS.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it("载入四个时代的完整同人规则库", () => {
+    expect(rulebookStats()).toEqual({ 1: 1000, 2: 1000, 3: 1000, 4: 1000 });
+  });
+
+  it("按当前行动检索适用规则", () => {
+    const game = awakened("rule-retrieval");
+    const rules = selectNarrativeRules(game, "调查适合第一魂环的魂兽", { intent: "猎魂调查", minutes: 30, ruleSummary: "", fallbackNarrative: "", suggestions: [] });
+    expect(rules.some((rule) => [27, 28, 29, 30, 41, 85].includes(rule.section))).toBe(true);
+    expect(rules.some((rule) => rule.section === 93)).toBe(true);
+  });
+
+  it("阻止斗一时代直接使用后世技术和无来源力量", () => {
+    const game = awakened("era-guard");
+    expect(resolveAction(game, "直接驾驶机甲去天斗城").intent).toBe("规则阻止");
+    expect(resolveAction(game, "立即修炼查克拉").intent).toBe("规则阻止");
+    expect(resolveAction(game, "研究附近有没有早期魂导遗物").intent).toBe("调查");
+  });
+
+  it("叙事检查能拦住第一人称、模板句和时代越界", () => {
+    const game = awakened("narrative-audit");
+    expect(auditNarrative(game, "我首先驾驶机甲出发，这意味着未来已经改变。").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("行动后会写入故事手记和连续性状态", () => {
+    const game = awakened("story-archive");
+    const resolution = resolveAction(game, "冥想修炼");
+    applyActionResult(game, "冥想修炼", resolution, resolution.fallbackNarrative, resolution.suggestions);
+    expect(game.view.storyArchive.recentConsequences[0].action).toBe("冥想修炼");
+    expect(game.view.storyArchive.continuity.some((item) => item.label === "原作")).toBe(true);
   });
 });

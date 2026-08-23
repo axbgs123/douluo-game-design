@@ -5,6 +5,7 @@ import type { ActionResolution, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
 import { advanceWorldTime, buildKnownFigures, buildMapView, inferLocationId, recordCanonInfluence, revealNpc } from "./world.js";
 import { toThirdPersonNarrative } from "./narrative.js";
+import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSuggestions, selectNarrativeRules } from "./story-rules.js";
 
 interface DifficultyRules {
   training: number;
@@ -974,8 +975,10 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   if (game.view.status === "ended") return impossible("这一局已经结束。");
 
   let resolution: ActionResolution;
+  const guarded = guardActionByStoryRules(game, action);
   const huntingActive = game.view.hunting && game.view.hunting.stage !== "完成";
-  if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
+  if (guarded) resolution = guarded;
+  else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
   else if (/参悟|修炼传承|修行剑|炼丹|炼器|特殊体系|异界功法/.test(action)) resolution = specialSystemResolution(game, action);
   else if (/处理|介入|参与|帮助处理|阻止.*恶化|查看新事件/.test(action) && game.world.dynamicEvents.some((item) => item.status === "可介入")) resolution = dynamicEventResolution(game, action);
   else if (/完成承诺|履行承诺/.test(action)) resolution = fulfillPromiseResolution(game, action);
@@ -999,6 +1002,8 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/攻击|杀|抢|闯入/.test(action)) resolution = impossible("当前缺少明确目标或足够条件，强行行动只会引来警惕。", ["观察目标", "先做准备", "暂时退开"]);
   else resolution = generalResolution(game);
 
+  resolution.appliedRuleIds ??= selectNarrativeRules(game, action, resolution).map((rule) => rule.id);
+
   const worldMessages = advanceWorldTime(game, resolution.minutes);
   resolution.systemMessages = [...(resolution.systemMessages ?? []), ...worldMessages];
   if (worldMessages.some((message) => /事件|异响|失踪|招募|挑战/.test(message))) resolution.suggestions = ["查看新事件", ...resolution.suggestions].slice(0, 3);
@@ -1019,7 +1024,8 @@ export function applyActionResult(
   const thirdPerson = character ? toThirdPersonNarrative(narrative, character.name, character.gender) : narrative;
   game.view.narrative.push(entry("player", input), entry("narration", thirdPerson));
   for (const message of result.systemMessages ?? []) game.view.narrative.push(entry("system", message));
-  game.view.suggestions = suggestions.slice(0, 3);
+  game.view.suggestions = sanitizeNarrativeSuggestions(game, suggestions, result.suggestions);
   game.actionIndex += 1;
+  recordStoryConsequence(game, input, result);
   game.view.updatedAt = new Date().toISOString();
 }

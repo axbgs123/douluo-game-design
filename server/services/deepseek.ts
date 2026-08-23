@@ -1,7 +1,10 @@
 import type { ActionResolution, StoredGame } from "../domain/model.js";
 import { CANON_EVENTS, FACTIONS, characterById } from "../data/world.js";
 import { toThirdPersonNarrative } from "../domain/narrative.js";
+import { auditNarrative, refreshStoryArchive, sanitizeNarrativeSuggestions, selectNarrativeRules, violatesCanonChronology } from "../domain/story-rules.js";
 import { readDeepSeekSettings } from "./settings.js";
+
+export { violatesCanonChronology } from "../domain/story-rules.js";
 
 export interface NarrationResult {
   narrative: string;
@@ -18,18 +21,6 @@ export interface NarrationResult {
 function extractJson(text: string): unknown {
   const trimmed = text.trim().replace(/^```json\s*/i, "").replace(/\s*```$/, "");
   return JSON.parse(trimmed);
-}
-
-export function violatesCanonChronology(text: string, year: number): boolean {
-  const compact = text.replace(/\s+/g, "");
-  if (year < 6) {
-    const earlyShrekNames = "唐三|小舞|宁荣荣|朱竹清";
-    if (new RegExp(`(${earlyShrekNames}).{0,28}(进入|去了|就读|加入|学员).{0,8}史莱克`).test(compact)) return true;
-    if (new RegExp(`史莱克.{0,28}(${earlyShrekNames}).{0,12}(学员|入学|就读)`).test(compact)) return true;
-  }
-  if (year < 8 && /(全大陆高级魂师学院精英大赛|魂师大赛).{0,20}(已经|夺冠|结束|决赛)/.test(compact)) return true;
-  if (year < 12 && /(唐门).{0,12}(已经建立|成立|宗主|总部|弟子招募)/.test(compact)) return true;
-  return false;
 }
 
 export async function interpretActionWithDeepSeek(game: StoredGame, playerInput: string): Promise<string | null> {
@@ -69,6 +60,7 @@ export async function narrateWithDeepSeek(
 ): Promise<NarrationResult | null> {
   const settings = readDeepSeekSettings();
   if (!settings.apiKey) return null;
+  const activeRules = selectNarrativeRules(game, playerInput, resolution);
 
   const response = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
@@ -97,6 +89,7 @@ export async function narrateWithDeepSeek(
             "不要为了文艺感把普通行动写成命运、时代、道路或宏大回响。每次只抓一两个有效细节，不要堆满五感。",
             "战斗时写清站位、试探、失误和代价；交谈时保留对方的私心与信息边界；赶路和修炼可以简写，但要留下具体变化。",
             "建议必须是角色眼下做得到的动作。若程序给出了建议，优先沿用其含义。",
+            "activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗一适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。",
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
             "输出 JSON：{\"narrative\":\"1至4段第三人称限知正文\",\"suggestions\":[\"建议1\",\"建议2\",\"建议3\"],\"memory\":{\"summary\":\"长期摘要\",\"openThreads\":[\"未决事项\"],\"keyChoice\":\"本次关键选择，无则空字符串\",\"npcNotes\":{\"人名\":\"应记住的互动\"},\"chapterTitle\":\"章节名\"}}。",
@@ -131,6 +124,7 @@ export async function narrateWithDeepSeek(
             playerInput,
             fixedRuleResult: resolution.ruleSummary,
             fixedSuggestions: resolution.suggestions,
+            activeFanfictionRules: activeRules.map((rule) => ({ id: rule.id, section: rule.sectionName, rule: rule.text })),
           }),
         },
       ],
@@ -152,10 +146,12 @@ export async function narrateWithDeepSeek(
   }
   const chronologyText = `${parsed.narrative}\n${parsed.suggestions.filter((item): item is string => typeof item === "string").join("\n")}`;
   if (violatesCanonChronology(chronologyText, game.view.worldTime?.year ?? 0)) throw new Error("DeepSeek 生成内容违反当前原作时间线，已改用安全叙事");
+  const auditIssues = auditNarrative(game, parsed.narrative);
+  if (auditIssues.length) throw new Error(`DeepSeek 生成内容未通过叙事检查：${auditIssues.join("、")}`);
 
   return {
     narrative: parsed.narrative,
-    suggestions: parsed.suggestions.filter((item): item is string => typeof item === "string").slice(0, 3),
+    suggestions: sanitizeNarrativeSuggestions(game, parsed.suggestions.filter((item): item is string => typeof item === "string"), resolution.suggestions),
     memory: parsed.memory && typeof parsed.memory === "object" ? parsed.memory : undefined,
   };
 }
@@ -182,4 +178,5 @@ export function applyNarrativeMemory(game: StoredGame, generated: NarrationResul
   }
   game.storyMemory.lastUpdatedAction = game.actionIndex;
   game.view.chapter = { number: game.storyMemory.chapterNumber, title: game.storyMemory.chapterTitle, summary: game.storyMemory.summary.slice(0, 220) };
+  refreshStoryArchive(game);
 }
