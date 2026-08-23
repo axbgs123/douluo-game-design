@@ -13,6 +13,7 @@
 
 - `docs/world-foundation.md`：从原著素材提炼出的游戏设计基础。
 - `docs/game-concept.md`：当前已确认的产品形态与技术方向。
+- `docs/technical-architecture.md`：规则引擎、AI 权限与 DeepSeek 接入方案。
 - `docs/discovery-log.md`：需求访谈问题与后续决策记录。
 - `scripts/analyze_sources.ps1`：本地素材索引脚本。
 
