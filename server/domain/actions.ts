@@ -2210,6 +2210,74 @@ function soulSpiritResolution(game: StoredGame, action: string): ActionResolutio
   return impossible("需要明确选择调查、评估、签约或放弃魂灵。", ["评估魂灵适配", "签订魂灵契约", "放弃这份魂灵"]);
 }
 
+function spiritAscensionResolution(game: StoredGame, action: string): ActionResolution {
+  if ((game.view.era ?? 1) < 3) return impossible("升灵台尚未在当前时代建成，不能用后世设施提升魂灵或魂环。", ["核对技术年代", "进行当前时代的魂环修炼", "研究魂灵理论"]);
+  const character = game.view.character!;
+  const activeRings = character.soulRingSets[character.activeMartialSoulIndex] ?? character.soulRings;
+  const current = game.view.spiritAscension;
+  if (/申请|预约|购买.*名额|取得.*名额/.test(action)) {
+    if (current && current.status !== "已结算") return impossible(`上一轮升灵台流程仍处于“${current.status}”，必须先完成退出和结算。`, ["进入升灵台", "主动退出升灵台", "结算升灵台灵力"]);
+    if (character.soulRank >= 40) return impossible("初级升灵台只准四环以下魂师进入，当前修为必须申请更高层级。", ["申请中级升灵台", "核对传灵塔准入规则", "选择其他修炼方式"]);
+    if (!activeRings.length && !(character.soulSpirits?.length)) return impossible("当前没有可承接升灵台灵力的魂环或魂灵。", ["先取得第一魂环", "签订正规魂灵", "继续基础修炼"]);
+    const hasChannel = game.view.locationId === "spirit-pagoda-hq" || game.view.affiliations.some((item) => /传灵塔|学院/.test(item.name));
+    if (!hasChannel) return impossible("初级升灵台名额有限，需要在传灵塔受理点或通过在册学院申请。", ["前往传灵塔总部", "加入有合作资格的学院", "寻找合法名额渠道"]);
+    const entryFee = 500_000;
+    if (character.coins < entryFee) return impossible(`初级升灵台一次准入按现有统一账本折算需要${formatSoulCoins(entryFee)}，当前资金不足。`, ["积攒费用", "争取学院奖励名额", "承接传灵塔合规任务"]);
+    character.coins -= entryFee;
+    recordEconomyTransaction(game, "支出", entryFee, "传灵塔升灵台受理处", "初级升灵台单次名额与脑波保护服务");
+    game.view.spiritAscension = { status: "已预约", tier: "初级", entryFee, encounters: 0, virtualDefeats: 0, spiritualEnergy: 0, neuralShock: 0, totalEntries: (current?.totalEntries ?? 0) + 1, bestYearsGained: current?.bestYearsGained ?? 0 };
+    return { intent: "预约升灵台", minutes: 90, ruleSummary: `支付${formatSoulCoins(entryFee)}并取得一次初级升灵台名额；尚未入舱，也尚未获得灵力。`, fallbackNarrative: "身份、修为和名额逐项核验后，费用才从账面划走。工作人员把求救信号和脑波警戒线讲了两遍，最后提醒：进去之后最重要的是活着出来。", suggestions: ["进入初级升灵台", "复核求救信号器", "检查魂环承受上限"] };
+  }
+  if (/进入|入舱|启动/.test(action)) {
+    if (!current || current.status !== "已预约") return impossible("没有可使用的初级升灵台预约名额。", ["申请初级升灵台名额", "核对预约记录", "前往传灵塔受理点"]);
+    current.status = "探索中";
+    game.world.fatiguePoints += 6;
+    return { intent: "进入升灵台", minutes: 30, ruleSummary: "完成脑波接入并进入初级升灵台虚拟森林；现实身体仍在保护舱内。", fallbackNarrative: "舱盖合拢后，金属顶棚被潮湿的树冠替代。求救信号器贴在掌心，风声和泥土气味都逼真得让人忘记身体还躺在外面。", suggestions: ["搜寻升灵台虚拟魂兽", "观察周围环境", "按动求救信号主动退出"] };
+  }
+  if (/搜寻|探索|遭遇|猎杀|击杀|战斗/.test(action) && /魂兽|升灵台/.test(action)) {
+    if (!current || current.status !== "探索中") return impossible("当前并未处于升灵台探索中。", ["申请初级升灵台名额", "进入初级升灵台", "查看升灵台记录"]);
+    const random = actionRandom(game);
+    const beastYears = integer(random, 80, 520);
+    const perception = /优秀|顶尖/.test(character.abilityDescriptors.perception) ? 180 : 80;
+    const combatCapacity = character.soulRank * 35 + activeRings.length * 120 + perception;
+    const success = combatCapacity >= beastYears + integer(random, 0, 280);
+    current.encounters += 1;
+    current.neuralShock = Math.min(100, current.neuralShock + (success ? integer(random, 5, 12) : integer(random, 28, 42)));
+    if (success) {
+      const energy = Math.max(8, Math.round(beastYears * .16));
+      current.virtualDefeats += 1;
+      current.spiritualEnergy += energy;
+    }
+    const forcedExit = current.neuralShock >= 80;
+    if (forcedExit) { current.status = "待结算"; current.exitReason = "脑波保护强制退出"; }
+    game.world.fatiguePoints += success ? 12 : 22;
+    return { intent: "升灵台遭遇", minutes: speedMinutes(game, 45, 120), ruleSummary: `${success ? `击败 ${beastYears} 年虚拟魂兽并吸收灵力` : `未能击败 ${beastYears} 年虚拟魂兽`}；累计灵力 ${current.spiritualEnergy}，脑波冲击 ${current.neuralShock}%。${forcedExit ? "保护系统已强制退出，现实肉体没有被判定死亡。" : "仍可继续探索或主动求救退出。"}`, fallbackNarrative: success ? "虚拟魂兽崩散成细碎光点，灵力没有立刻变成魂环年限，而是沿着武魂暂时沉积。林间又传来动静，我得决定贪下一次机会，还是带着已有收获离开。" : forcedExit ? "最后一次冲击像重锤砸进意识。眼前森林骤然熄灭，保护舱把我强制唤醒；身体没有真实伤口，眩晕和冷汗却一点不少。" : "攻击落空后，疼痛反馈几乎骗过了大脑。我按住求救信号器，没有急着再冲；这里不会轻易伤到肉体，不代表意识能无限承受。", suggestions: forcedExit ? ["结算升灵台灵力", "接受脑波检查", "查看本次记录"] : ["继续搜寻升灵台虚拟魂兽", "按动求救信号主动退出", "观察安全路线"] };
+  }
+  if (/退出|求救|撤离/.test(action)) {
+    if (!current || current.status !== "探索中") return impossible("当前没有正在进行的升灵台探索可退出。", ["查看升灵台记录", "申请初级升灵台名额", "进入初级升灵台"]);
+    current.status = "待结算";
+    current.exitReason = "主动求救";
+    return { intent: "退出升灵台", minutes: 20, ruleSummary: `主动按动求救信号退出；带回 ${current.spiritualEnergy} 点待结算灵力，现实身体没有新增外伤。`, fallbackNarrative: "信号按下后，森林像被从中撕开。舱盖升起时我先确认自己的手脚，再听工作人员复述脑波数据；主动离开保住了已经吸收的灵力，也终止了继续冒险。", suggestions: ["结算升灵台灵力", "接受脑波检查", "复盘虚拟魂兽遭遇"] };
+  }
+  if (/结算|吸收.*灵力|转化.*灵力/.test(action)) {
+    if (!current || current.status !== "待结算") return impossible("当前没有已经退出且等待结算的升灵台灵力。", ["完成升灵台探索", "主动退出升灵台", "查看升灵台记录"]);
+    const targets = [...activeRings, ...(character.soulSpirits ?? [])];
+    if (!targets.length) return impossible("没有可承接灵力的魂环或魂灵，结算已暂停。", ["核对武魂档案", "联系传灵塔技术员", "不要丢弃本次记录"]);
+    const perTarget = Math.floor(current.spiritualEnergy / targets.length);
+    let gained = 0;
+    if (perTarget > 0) {
+      for (const ring of activeRings) { ring.years += perTarget; ring.color = ringColor(ring.years); gained += perTarget; }
+      for (const spirit of character.soulSpirits ?? []) { spirit.years += perTarget; spirit.grade = soulSpiritGrade(spirit.years); gained += perTarget; }
+      character.soulRings = activeRings;
+    }
+    current.status = "已结算";
+    current.lastYearsGained = gained;
+    current.bestYearsGained = Math.max(current.bestYearsGained, gained);
+    return { intent: "结算升灵台", minutes: 120, ruleSummary: `将 ${current.spiritualEnergy} 点升灵台灵力按当前 ${targets.length} 个魂环/魂灵载体结算，累计增加 ${gained} 年；未把虚拟猎杀伪装成真实魂兽死亡。`, fallbackNarrative: gained > 0 ? "暂存的灵力被引导进魂灵与魂环，原有颜色和气息一点点加深。增长不算凭空跳级，每一段都能在传灵塔记录里追到这次遭遇。" : "带回的灵力太少，没能形成可登记的年限增长。工作人员仍保存了本次数据，没有把一次进入包装成必然变强。", suggestions: ["查看魂环年限", "复盘本次升灵台记录", "准备下一次合法名额"] };
+  }
+  return impossible("需要明确申请、进入、探索、退出或结算升灵台。", ["申请初级升灵台名额", "进入初级升灵台", "查看升灵台记录"]);
+}
+
 const BATTLE_ARMOR_PIECES = ["右手前臂甲", "左手前臂甲", "右肩大臂甲", "左肩大臂甲", "胸铠", "腰铠与战裙", "右腿足甲", "左腿足甲", "头盔"];
 const BATTLE_ARMOR_MATERIALS: Record<1 | 2 | 3 | 4, { name: string; pattern: RegExp }> = {
   1: { name: "千锻斗铠金属胚料", pattern: /千锻斗铠金属胚料/ },
@@ -2714,6 +2782,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   const huntingActive = game.view.hunting && game.view.hunting.stage !== "完成";
   if (guarded) resolution = guarded;
   else if (/切换|换成|改用|主修/.test(action) && /武魂/.test(action)) resolution = switchMartialSoulResolution(game, action);
+  else if (/升灵台/.test(action)) resolution = spiritAscensionResolution(game, action);
   else if (/魂灵/.test(action)) resolution = soulSpiritResolution(game, action);
   else if (/斗铠/.test(action) && !/购买|买|采购/.test(action) && !(game.view.combat && /攻击|防御|格挡|闪避|逃跑|弱点/.test(action))) resolution = battleArmorResolution(game, action);
   else if (/机甲/.test(action) && (!game.view.combat || !/攻击|防御|格挡|闪避|逃跑|弱点/.test(action) || !game.view.mecha?.model)) resolution = mechaResolution(game, action);

@@ -161,6 +161,20 @@ export interface MechaProgressView {
   ownerName?: string;
 }
 
+export interface SpiritAscensionView {
+  status: "已预约" | "探索中" | "待结算" | "已结算";
+  tier: "初级";
+  entryFee: number;
+  encounters: number;
+  virtualDefeats: number;
+  spiritualEnergy: number;
+  neuralShock: number;
+  totalEntries: number;
+  bestYearsGained: number;
+  exitReason?: "主动求救" | "脑波保护强制退出";
+  lastYearsGained?: number;
+}
+
 export interface StarshipProgressView {
   license: "无" | "见习指挥" | "三级指挥" | "二级指挥" | "一级指挥";
   simulatorProgress: number;
@@ -737,6 +751,7 @@ export interface GameView {
   soulSpiritContract?: SoulSpiritContractView;
   battleArmorProject?: BattleArmorProjectView;
   mecha?: MechaProgressView;
+  spiritAscension?: SpiritAscensionView;
   starship?: StarshipProgressView;
   managedFactions: ManagedFactionView[];
   economy: EconomyView;

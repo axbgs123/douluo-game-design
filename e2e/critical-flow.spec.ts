@@ -140,6 +140,26 @@ async function seedBlackMechaDesignGame() {
   database.saveGame(game, "e2e.black-mecha-design-fixture");
 }
 
+async function seedSpiritAscensionGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 3, gender: "女", difficulty: "标准", seed: "e2e-spirit-ascension" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "升灵台验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.character!.soulRank = 30;
+  game.view.character!.coins = 600_000;
+  game.view.character!.abilityDescriptors.perception = "顶尖";
+  const ring = { index: 1, beastId: "e2e-ascension-ring", beastName: "百年青影狼", years: 900, color: "黄", skillName: "青影突袭", skillDescription: "用于核验升灵台灵力结算的既有魂环。" };
+  game.view.character!.soulRingSets[game.view.character!.activeMartialSoulIndex] = [ring];
+  game.view.character!.soulRings = game.view.character!.soulRingSets[game.view.character!.activeMartialSoulIndex];
+  game.view.affiliations.push({ id: "e2e-east-sea-academy", name: "东海学院", role: "在册学员", reputation: "合格", joinedAt: "验收学籍" });
+  database.saveGame(game, "e2e.spirit-ascension-fixture");
+}
+
 async function seedStarshipCrewGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -463,6 +483,31 @@ test("斗三黑级机甲必须完成武魂专属设计并绑定唯一所有者",
   const registeredModel = await mecha.locator("strong").textContent();
   await submitAction(page, "把黑级机甲过户转让给林工");
   await expect(mecha.locator("strong")).toHaveText(registeredModel ?? "");
+});
+
+test("斗三初级升灵台必须付费入场、虚拟遭遇、主动退出后再结算", async ({ page }) => {
+  await seedSpiritAscensionGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "升灵台验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  const ascension = page.locator(".special-system-card").filter({ hasText: "升灵台" });
+  await ascension.getByRole("button", { name: "申请名额" }).click();
+  await expect(ascension).toContainText("升灵台 · 已预约");
+  await ascension.getByRole("button", { name: "进入升灵台" }).click();
+  await expect(ascension).toContainText("升灵台 · 探索中");
+  await ascension.getByRole("button", { name: "搜寻魂兽" }).click();
+  await expect(ascension).toContainText("虚拟击败 1");
+  await expect(ascension).toContainText(/灵力 [1-9][0-9]*/);
+  await ascension.getByRole("button", { name: "主动退出" }).click();
+  await expect(ascension).toContainText("升灵台 · 待结算");
+  await ascension.getByRole("button", { name: "结算灵力" }).click();
+  await expect(ascension).toContainText("升灵台 · 已结算");
+  await expect(ascension).toContainText(/上次结算增加 [1-9][0-9]* 年/);
+  await page.getByRole("button", { name: "武魂", exact: true }).click();
+  await expect(page.locator(".ring-list")).toContainText(/9[1-9][0-9] 年/);
 });
 
 test("斗四星舰必须按岗位招募船员后才能协同并登记真实航时", async ({ page }) => {

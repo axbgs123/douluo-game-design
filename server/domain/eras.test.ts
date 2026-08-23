@@ -359,6 +359,32 @@ describe("multi-era foundations", () => {
     expect(game.view.mecha?.ownerName).toBe(ownerName);
   });
 
+  it("runs a paid initial spirit ascension visit through entry, virtual encounter, safe exit, and settlement", () => {
+    const game = playingGame(3, "spirit-ascension-loop");
+    const character = game.view.character!;
+    character.soulRank = 30;
+    character.coins = 600_000;
+    character.abilityDescriptors.perception = "顶尖";
+    const ring = { index: 1, beastId: "ascension-test", beastName: "百年测试魂兽", years: 900, color: "黄", skillName: "测试魂技", skillDescription: "升灵台规则测试" };
+    character.soulRingSets[character.activeMartialSoulIndex] = [ring];
+    character.soulRings = character.soulRingSets[character.activeMartialSoulIndex];
+    expect(resolveAction(game, "申请初级升灵台名额").intent).toBe("无法完成");
+    game.view.affiliations.push({ id: "ascension-school", name: "东海学院", role: "在册学员", reputation: "合格", joinedAt: "测试" });
+    expect(resolveAction(game, "申请初级升灵台名额").intent).toBe("预约升灵台");
+    expect(character.coins).toBe(100_000);
+    expect(resolveAction(game, "再次申请初级升灵台名额").intent).toBe("无法完成");
+    expect(character.coins).toBe(100_000);
+    expect(resolveAction(game, "进入初级升灵台").intent).toBe("进入升灵台");
+    const healthBefore = game.world.healthPoints;
+    expect(resolveAction(game, "搜寻升灵台虚拟魂兽").intent).toBe("升灵台遭遇");
+    expect(game.view.spiritAscension?.spiritualEnergy).toBeGreaterThan(0);
+    expect(resolveAction(game, "按动求救信号主动退出升灵台").intent).toBe("退出升灵台");
+    expect(game.world.healthPoints).toBe(healthBefore);
+    expect(resolveAction(game, "结算升灵台灵力").intent).toBe("结算升灵台");
+    expect(character.soulRings[0].years).toBeGreaterThan(900);
+    expect(game.view.spiritAscension?.status).toBe("已结算");
+  });
+
   it("requires a licensed command crew and resources for interplanetary travel", () => {
     const game = playingGame(4, "starship-command-loop");
     game.view.character!.age = 7;

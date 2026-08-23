@@ -87,7 +87,8 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
     );
   }
 
-  if (EXTERNAL_POWER.test(action) && !game.view.character?.specialSystem && !/调查|研究|寻找|追查|验证|回忆/.test(action)) {
+  const canonSpiritAscensionEnergy = (game.view.era ?? 1) >= 3 && /升灵台.{0,10}灵力|灵力.{0,10}升灵台/.test(action);
+  if (EXTERNAL_POWER.test(action) && !canonSpiritAscensionEnergy && !game.view.character?.specialSystem && !/调查|研究|寻找|追查|验证|回忆/.test(action)) {
     return impossible(game,
       `${name}目前没有对应传承，不能凭一句行动直接获得外来力量。先寻找来源，才能判断它会被压制、转化还是彻底失效。`,
       ["调查自己的异常征兆", "寻找可能的传承线索", "先修炼现有武魂"],
