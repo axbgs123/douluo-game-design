@@ -389,6 +389,9 @@ export interface CombatView {
   enemyCondition: string;
   distance: string;
   escaped: boolean;
+  insight?: number;
+  guard?: number;
+  lastExchange?: string;
 }
 
 export interface KnownFigureView {

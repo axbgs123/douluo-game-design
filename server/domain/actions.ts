@@ -62,7 +62,14 @@ function syncCharacterState(game: StoredGame): void {
   if (!character) return;
   game.world.healthPoints = Math.max(0, Math.min(100, game.world.healthPoints));
   game.world.fatiguePoints = Math.max(0, Math.min(100, game.world.fatiguePoints));
-  if (game.world.healthPoints <= 0 && tryResurrection(game)) game.world.healthPoints = Math.max(18, game.world.healthPoints);
+  if (game.world.healthPoints <= 0 && tryResurrection(game)) {
+    game.world.healthPoints = Math.max(18, game.world.healthPoints);
+    game.view.combat = undefined;
+    if (game.view.hunting && game.view.hunting.stage === "战斗") {
+      game.view.hunting.stage = "追踪";
+      game.view.hunting.trailProgress = "复生后脱离战斗，原目标需要重新追踪";
+    }
+  }
   character.condition = conditionLabel(game.world.healthPoints, game.world.fatiguePoints);
   character.fatigue = fatigueLabel(game.world.fatiguePoints);
   character.cultivationProgress = cultivationLabel(game);
@@ -542,6 +549,9 @@ function trackBeast(game: StoredGame): ActionResolution {
       enemyCondition: "完好",
       distance: "中距离",
       escaped: false,
+      insight: 0,
+      guard: 0,
+      lastExchange: "刚刚锁定目标，双方都在判断距离。",
     };
     game.world.flags.combatEnemyHp = 65 + (beast?.danger ?? 2) * 12;
   }
@@ -568,12 +578,19 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
   const playerPower = character.soulRank * 2 + character.soulRings.length * 12 + (character.abilityDescriptors.physique === "顶尖" ? 12 : character.abilityDescriptors.physique === "优秀" ? 6 : 0);
   const prepared = hunting.preparation.length * 5;
-  const defend = /防御|闪避|拉开|退/.test(action);
   const observe = /观察|试探|弱点/.test(action);
   const flee = /逃|撤|离开战斗/.test(action);
+  const defend = /防御|格挡|闪避/.test(action);
+  const closeDistance = /近身|逼近|贴近/.test(action);
+  const openDistance = /拉开|远程|后退/.test(action);
+  const reckless = /全力|拼命|不顾防御/.test(action);
+  combat.insight ??= 0;
+  combat.guard ??= 0;
+  if (closeDistance) combat.distance = "近距离";
+  if (openDistance) combat.distance = "远距离";
 
   if (flee) {
-    const escaped = random() < 0.55 + (observe ? 0.15 : 0);
+    const escaped = random() < Math.min(.92, .32 + (combat.distance === "远距离" ? .28 : 0) + combat.insight * .1 + (observe ? .08 : 0));
     if (escaped) {
       combat.escaped = true;
       game.view.combat = undefined;
@@ -590,19 +607,30 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   }
 
   const attackBase = integer(random, 10, 22) + Math.round(playerPower * 0.32) + prepared;
-  const damage = observe ? Math.round(attackBase * 0.55) : defend ? Math.round(attackBase * 0.7) : attackBase;
+  if (observe) combat.insight = Math.min(3, combat.insight + 1);
+  combat.guard = defend ? Math.min(3, combat.guard + 1) : Math.max(0, combat.guard - 1);
+  const usedSoulSkill = character.soulRings.some((ring) => action.includes(ring.skillName));
+  const tacticalBonus = combat.insight * 5 + (usedSoulSkill ? 10 : 0);
+  const damage = flee || observe ? 0 : defend ? Math.round((attackBase + tacticalBonus) * .35) : Math.round((attackBase + tacticalBonus) * (reckless ? 1.3 : 1));
   enemyHp -= damage;
-  const enemyAttack = Math.max(2, integer(random, 5, 15) + danger * 4 + Math.round((hunting.targetYears ?? 100) / 180) - Math.round(playerPower * 0.14) - (defend ? 12 : 0));
+  const distanceReduction = combat.distance === "远距离" ? 6 : combat.distance === "近距离" ? -4 : 0;
+  const observationReduction = observe ? 8 + combat.insight * 2 : 0;
+  const guardReduction = defend ? 12 + combat.guard * 3 : 0;
+  const enemyAttack = Math.max(2, integer(random, 5, 15) + danger * 4 + Math.round((hunting.targetYears ?? 100) / 180) - Math.round(playerPower * 0.14) - distanceReduction - observationReduction - guardReduction + (reckless ? 8 : 0));
   if (enemyHp > 0) game.world.healthPoints -= enemyAttack;
-  game.world.fatiguePoints += 8 + danger;
+  game.world.fatiguePoints += 8 + danger + (reckless ? 5 : 0);
   game.world.flags.combatEnemyHp = enemyHp;
   combat.enemyCondition = enemyHp <= 0 ? "失去战斗能力" : enemyHp < 30 ? "重伤" : enemyHp < 60 ? "受伤" : "完好";
   combat.playerCondition = conditionLabel(game.world.healthPoints, game.world.fatiguePoints);
+  combat.lastExchange = flee
+    ? `撤离失败，承受${enemyAttack}点伤害。`
+    : observe
+      ? `完成第${combat.insight}层观察，没有冒险出手，承受${enemyAttack}点伤害。`
+      : defend
+        ? `以防守反击造成${damage}点伤害，承受${enemyAttack}点伤害。`
+        : `${usedSoulSkill ? "魂技命中" : "攻击命中"}造成${damage}点伤害，承受${enemyHp > 0 ? enemyAttack : 0}点伤害。`;
 
-  if (game.world.healthPoints <= 0) {
-    game.view.status = "ended";
-    game.view.runProgress.ending = `死于${combat.enemyName}的猎魂战斗`;
-  } else if (enemyHp <= 0) {
+  if (enemyHp <= 0 && game.world.healthPoints > 0) {
     hunting.stage = "吸收";
     hunting.trailProgress = "目标已被击败";
     game.view.combat = undefined;
@@ -615,8 +643,12 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
     ruleSummary: `第 ${combat.round} 回合，玩家造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。敌方状态 ${combat.enemyCondition}，玩家状态 ${combat.playerCondition}。`,
     fallbackNarrative: enemyHp <= 0
       ? `我抓住它转身的空当，把最后一下送了进去。${combat.enemyName}撞断一根矮树，挣了几下，不再起来。魂环从尸身上浮出时，我的手还在抖。`
+      : flee
+      ? `我转身找退路时，它已经封住了最短的方向。撤离没成，这一轮只能先扛住追击，再重新判断距离。`
+      : observe
+      ? `我没有急着出手，只盯着它发力前肩背和脚步的变化。代价是必须在它的攻击下继续保持视线，记下来的规律要下一击才有用。`
       : `我这一击打中了，反震也顺着手臂顶回来。${combat.enemyName}吃痛后更凶，爪风擦过肩头，衣料当场裂开。我往后退了两步，没敢低头看伤口。`,
-    suggestions: enemyHp <= 0 ? ["检查自身状态", "开始吸收魂环", "让同行者警戒"] : ["观察它的下一步", "集中攻击弱点", "防御并拉开距离"],
+    suggestions: enemyHp <= 0 ? ["检查自身状态", "开始吸收魂环", "让同行者警戒"] : combat.insight >= 2 ? ["使用魂技攻击已确认弱点", "防御并拉开距离", "寻找机会撤退"] : ["观察它的下一步", "集中攻击弱点", "防御并拉开距离"],
     conditionAfter: combat.playerCondition,
   };
 }

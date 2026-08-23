@@ -71,6 +71,36 @@ describe("完整游玩规则", () => {
     expect(resolveAction(game, "完成承诺").ruleSummary).toContain("明确说明");
   });
 
+  it("猎魂战斗的观察回合积累洞察但不会凭空造成伤害", () => {
+    const game = awakened("combat-observe");
+    game.view.hunting = { stage: "战斗", ringIndex: 1, targetBeastId: "datura-snake", targetName: "曼陀罗蛇", targetYears: 120, locationId: game.view.locationId, recommendations: [], preparation: [], trailProgress: "已锁定目标" };
+    game.view.combat = { id: "combat-observe", enemyName: "曼陀罗蛇", enemyPower: "120 年", round: 0, playerCondition: "良好", enemyCondition: "完好", distance: "中距离", escaped: false };
+    game.world.flags.combatEnemyHp = 90;
+    const result = resolveAction(game, "观察敌人的发力与弱点");
+    expect(game.world.flags.combatEnemyHp).toBe(90);
+    expect(game.view.combat?.insight).toBe(1);
+    expect(result.ruleSummary).toContain("造成 0 点");
+  });
+
+  it("战斗触发合规复生后会脱离战斗而不是保留已结束状态", () => {
+    const game = awakened("combat-revival");
+    const character = game.view.character!;
+    character.soulRank = 70;
+    character.martialSoul.name = "不死凤凰";
+    character.martialSouls[0].name = "不死凤凰";
+    character.soulRings = Array.from({ length: 7 }, (_, index) => ({ index: index + 1, beastId: "datura-snake", beastName: "测试魂兽", years: 100, color: "黄", skillName: `测试魂技${index + 1}`, skillDescription: "用于验证复生结算" }));
+    game.world.healthPoints = 1;
+    game.view.hunting = { stage: "战斗", ringIndex: 8, targetBeastId: "titan-giant-ape", targetName: "泰坦巨猿", targetYears: 100000, locationId: game.view.locationId, recommendations: [], preparation: [], trailProgress: "已锁定目标" };
+    game.view.combat = { id: "combat-revival", enemyName: "泰坦巨猿", enemyPower: "十万年", round: 0, playerCondition: "良好", enemyCondition: "完好", distance: "近距离", escaped: false };
+    game.world.flags.combatEnemyHp = 10000;
+    resolveAction(game, "防御并格挡");
+    expect(game.world.resurrectionCount).toBe(1);
+    expect(game.view.status).toBe("playing");
+    expect(game.view.combat).toBeUndefined();
+    expect(game.view.hunting.stage).toBe("追踪");
+    expect(character.soulRings).toHaveLength(6);
+  });
+
   it("修炼会推进时间、疲劳和内部成长", () => {
     const game = awakened("training");
     game.view.character!.soulRank = 3;
