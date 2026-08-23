@@ -295,6 +295,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .action-tools > button, .action-tools summary { border: 0; background: transparent; color: #73591f; cursor: pointer; padding: 4px; }
 .action-tools details { position: relative; }
 .action-tools details p { position: absolute; z-index: 5; bottom: 25px; left: 0; width: 330px; padding: 12px; border: 1px solid var(--line); background: var(--paper-raised); box-shadow: var(--shadow); color: var(--ink); }
+.action-tools .action-receipt { position: absolute; z-index: 5; bottom: 25px; left: 0; width: 350px; padding: 12px; border: 1px solid var(--line); background: var(--paper-raised); box-shadow: var(--shadow); color: var(--ink); }
+.action-tools .action-receipt strong, .action-tools .action-receipt small { display: block; }.action-tools .action-receipt p { position: static; width: auto; margin: 7px 0; padding: 0; border: 0; background: none; box-shadow: none; line-height: 1.65; }.action-tools .action-receipt small { color: var(--muted); }
 .action-tools .checkpoint-menu > div { position: absolute; z-index: 6; bottom: 26px; left: 0; width: 380px; display: grid; gap: 5px; padding: 8px; border: 1px solid var(--line); background: var(--paper-raised); box-shadow: var(--shadow); }
 .checkpoint-menu div button { display: grid; gap: 3px; border: 1px solid var(--line); background: rgba(255,255,255,.4); padding: 9px; text-align: left; cursor: pointer; }
 .checkpoint-menu div small { color: var(--muted); }

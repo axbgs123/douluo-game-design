@@ -337,6 +337,15 @@ export interface StoryConsequenceView {
   tone: "普通" | "转折" | "危险" | "收获";
 }
 
+export interface ActionReceiptView {
+  action: string;
+  intent: string;
+  summary: string;
+  elapsedMinutes: number;
+  appliedRuleIds: number[];
+  actionIndex: number;
+}
+
 export interface StoryArchiveView {
   summary: string;
   openThreads: string[];
@@ -449,6 +458,7 @@ export interface GameView {
   activeEvents: WorldEventView[];
   canonInfluences: CanonInfluenceView[];
   storyArchive: StoryArchiveView;
+  lastActionReceipt?: ActionReceiptView;
   knownFigures: KnownFigureView[];
   intelligence: IntelligenceView[];
   affiliations: AffiliationView[];

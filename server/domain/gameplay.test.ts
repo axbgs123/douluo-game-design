@@ -36,6 +36,19 @@ describe("完整游玩规则", () => {
     expect(game.view.worldTime?.time).not.toBe(beforeTime);
   });
 
+  it("行动提交后保留可重载的规则判定收据", () => {
+    const game = awakened("action-receipt");
+    const result = resolveAction(game, "安静冥想修炼");
+    applyActionResult(game, "安静冥想修炼", result, result.fallbackNarrative, result.suggestions);
+    expect(game.view.lastActionReceipt).toMatchObject({
+      action: "安静冥想修炼",
+      intent: "修炼",
+      elapsedMinutes: result.minutes,
+      actionIndex: 1,
+    });
+    expect(game.view.lastActionReceipt?.appliedRuleIds.length).toBeGreaterThan(0);
+  });
+
   it("长程修炼可以一次推演到下个魂环瓶颈", () => {
     const game = awakened("long-training");
     game.view.character!.soulRank = 3;

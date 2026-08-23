@@ -28,6 +28,8 @@ test("玩家可以完成角色创建、推进故事并管理存档", async ({ pa
   await action.fill("在住处等待一天，留意附近动静");
   await page.getByRole("button", { name: "行动", exact: true }).click();
   await expect(page.getByText("晨光沿着窗纸落进屋里", { exact: false })).toBeVisible();
+  await page.getByText("查看判定", { exact: true }).click();
+  await expect(page.locator(".action-receipt small")).toContainText("世界时间推进");
 
   await page.getByRole("button", { name: "返回书架" }).click();
   await expect(page.getByRole("heading", { name: "存档" })).toBeVisible();

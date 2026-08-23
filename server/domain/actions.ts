@@ -1325,6 +1325,14 @@ export function applyActionResult(
   game.actionIndex += 1;
   game.world.actionLedger.push({ index: game.actionIndex, requestId, action: input.slice(0, 180), intent: result.intent, result: result.ruleSummary.slice(0, 220), year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1 });
   game.world.actionLedger = game.world.actionLedger.slice(-400);
+  game.view.lastActionReceipt = {
+    action: input.slice(0, 180),
+    intent: result.intent,
+    summary: result.ruleSummary.slice(0, 220),
+    elapsedMinutes: result.minutes,
+    appliedRuleIds: result.appliedRuleIds ?? [],
+    actionIndex: game.actionIndex,
+  };
   const objective = game.view.chapterObjective;
   if (objective && !/无法完成|规则阻止/.test(result.intent)) {
     const current = objective.steps.find((step) => step.status === "进行中") ?? objective.steps.find((step) => step.status === "未开始");
