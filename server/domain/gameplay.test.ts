@@ -389,7 +389,7 @@ describe("完整游玩规则", () => {
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(14);
+    expect(migrated.schemaVersion).toBe(15);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -751,6 +751,10 @@ describe("第一部世界资料", () => {
     advanceWorldTime(game, 14 * 1_440);
     expect(rumor.mediaStatus).toBe("已刊发");
     expect(game.view.news.find((item) => item.id === `${rumor.id}-media`)?.detail).toMatch(/机构立场：地方治安与可核验风险；选稿依据：.+；来源：现场目击；交叉核验：跨关系网交叉核验（6项）；可信度 \d+%；覆盖：/);
+    expect(rumor.mediaVersions).toHaveLength(0);
+    advanceWorldTime(game, 3 * 1_440);
+    expect(rumor.mediaVersions?.[0]).toMatchObject({ outlet: "行旅商讯抄报", stance: "商路影响与交易风险", verificationStatus: "关联转载核验" });
+    expect(game.view.news.find((item) => item.id === `${rumor.id}-secondary`)?.detail).toContain("本版本没有新增未公开事实");
   });
 
   it("媒体会记录拒稿原因，不把单一无组织来源自动扩散到跨地区", () => {
@@ -787,14 +791,20 @@ describe("第一部世界资料", () => {
 
   it("公开澄清必须先登记核验并提交后续调查证据，且不会抹除旧消息", () => {
     const game = awakened("media-correction-evidence");
-    const witness = game.world.npcs["tang-san"];
-    witness.alive = true;
-    witness.locationId = game.view.locationId!;
+    for (const npc of Object.values(game.world.npcs)) npc.locationId = "offscreen-test";
+    for (const [index, witness] of Object.values(game.world.npcs).slice(0, 6).entries()) {
+      witness.alive = true;
+      witness.currentGoal = "保留现场证词";
+      witness.locationId = game.view.locationId!;
+      witness.factionIds = [index % 2 ? "spirit-hall" : "shrek"];
+    }
     const crime = { intent: "违法行动", minutes: 30, ruleSummary: "行动受到质疑。", fallbackNarrative: "有人留下了说法。", suggestions: [] };
     applyActionResult(game, "在街口公开抢劫", crime, crime.fallbackNarrative, crime.suggestions);
     advanceWorldTime(game, 4 * 1_440);
     const rumor = game.world.socialRumors[0];
     expect(resolveAction(game, "提交证据公开澄清负面传闻").intent).toBe("无法完成");
+    advanceWorldTime(game, 20 * 1_440);
+    expect(rumor.mediaVersions).toHaveLength(1);
 
     const audit = resolveAction(game, "申请核验负面传闻");
     applyActionResult(game, "申请核验负面传闻", audit, audit.fallbackNarrative, audit.suggestions);
@@ -806,6 +816,7 @@ describe("第一部世界资料", () => {
     expect(rumor.mediaStatus).toBe("已更正");
     expect(rumor.correctionEvidence).toHaveLength(1);
     expect(rumor.verificationStatus).toBe("更正证据已核验");
+    expect(rumor.mediaVersions?.[0]).toMatchObject({ verificationStatus: "更正证据已核验" });
     expect(game.view.news.some((item) => item.id === `${rumor.id}-correction`)).toBe(true);
     expect(game.view.news.some((item) => item.id === rumor.id)).toBe(true);
   });

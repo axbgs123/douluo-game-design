@@ -496,6 +496,13 @@ function mediaProfile(era: 1 | 2 | 3 | 4, publicRegistry: boolean, valence: -1 |
     : { channel: "联邦公共信息网", outlet: "星域安全通报频道", stance: "星际交通与公共安全" };
 }
 
+function secondaryMediaProfile(era: 1 | 2 | 3 | 4): { outlet: string; stance: string } {
+  if (era === 1) return { outlet: "行旅商讯抄报", stance: "商路影响与交易风险" };
+  if (era === 2) return { outlet: "城市公共广播栏", stance: "听众安全与事件时效" };
+  if (era === 3) return { outlet: "地方民生频道", stance: "居民影响与公共问责" };
+  return { outlet: "星域民生观察频道", stance: "公共服务影响与跨星区问责" };
+}
+
 export function queueSocialRumor(game: StoredGame, input: string, intent: string, result: string): void {
   if (/无法完成|规则阻止/.test(intent)) return;
   const publicRegistry = /交付机构事务|交付悬赏|交付运输合同|机构晋升|军衔晋升/.test(intent);
@@ -523,7 +530,8 @@ export function queueSocialRumor(game: StoredGame, input: string, intent: string
       : `仅有${witnesses.length}名现场见证者，缺少公开登记或可追踪组织关系，暂不跨地区刊发`;
   const localDelay = 1 + (game.actionIndex % 3);
   const mediaDelay = ({ 1: 14, 2: 7, 3: 3, 4: 2 } as const)[era];
-  game.world.socialRumors.push({ id: `rumor-${game.actionIndex}-${game.world.socialRumors.length}`, publicName, locationId, summary: valence > 0 ? `${publicName}完成了有公开凭据的${intent}` : `${publicName}卷入了受到质疑的${intent}`, valence, witnessNpcIds: witnesses.map((npc) => npc.id), factionIds, createdOrdinal, spreadsAtOrdinal: createdOrdinal + localDelay, status: "待传播", confidence: publicRegistry ? 92 : Math.min(85, 35 + witnesses.length * 7), sourceKind: publicRegistry ? "公开登记" : "现场目击", mediaChannel: media.channel, mediaOutlet: media.outlet, editorialStance: media.stance, editorialDecision, corroborationCount, verificationStatus, mediaSpreadsAtOrdinal: createdOrdinal + localDelay + mediaDelay, mediaStatus: mediaEligible ? "待刊发" : "不刊发", correctionEvidence: [] });
+  const mediaSpreadsAtOrdinal = createdOrdinal + localDelay + mediaDelay;
+  game.world.socialRumors.push({ id: `rumor-${game.actionIndex}-${game.world.socialRumors.length}`, publicName, locationId, summary: valence > 0 ? `${publicName}完成了有公开凭据的${intent}` : `${publicName}卷入了受到质疑的${intent}`, valence, witnessNpcIds: witnesses.map((npc) => npc.id), factionIds, createdOrdinal, spreadsAtOrdinal: createdOrdinal + localDelay, status: "待传播", confidence: publicRegistry ? 92 : Math.min(85, 35 + witnesses.length * 7), sourceKind: publicRegistry ? "公开登记" : "现场目击", mediaChannel: media.channel, mediaOutlet: media.outlet, editorialStance: media.stance, editorialDecision, corroborationCount, verificationStatus, mediaSpreadsAtOrdinal, secondaryMediaSpreadsAtOrdinal: mediaEligible && verificationStatus !== "同源多证待复核" ? mediaSpreadsAtOrdinal + ({ 1: 3, 2: 2, 3: 1, 4: 1 } as const)[era] : undefined, mediaStatus: mediaEligible ? "待刊发" : "不刊发", mediaVersions: [], correctionEvidence: [] });
   game.world.socialRumors = game.world.socialRumors.slice(-60);
 }
 
@@ -571,6 +579,17 @@ function propagateSocialRumors(game: StoredGame, currentOrdinal: number): string
       npc.episodicMemory = npc.episodicMemory.slice(-24);
     }
     messages.push(`媒体 · ${rumor.mediaOutlet ?? rumor.mediaChannel} · ${rumor.publicName}`);
+  }
+  for (const rumor of game.world.socialRumors.filter((item) => item.mediaStatus === "已刊发" && item.secondaryMediaSpreadsAtOrdinal !== undefined && item.secondaryMediaSpreadsAtOrdinal <= currentOrdinal && !(item.mediaVersions?.length))) {
+    const secondary = secondaryMediaProfile(game.view.era ?? 1);
+    const framing = rumor.valence > 0
+      ? "转载原始登记与核验等级，不扩写未公开细节；重点追问履历对普通成员和当地资源的实际影响"
+      : "保留原报道的质疑措辞，不把转述改写成定论；重点区分亲历证词、组织转述与仍未知部分";
+    const version = { id: `${rumor.id}-secondary`, outlet: secondary.outlet, stance: secondary.stance, framing, confidence: Math.max(10, (rumor.confidence ?? 50) - 8), verificationStatus: "关联转载核验" as const, publishedOrdinal: currentOrdinal };
+    rumor.mediaVersions ??= [];
+    rumor.mediaVersions.push(version);
+    addNews(game, version.id, `${version.outlet} · 关联报道`, `关联原报道：${rumor.mediaOutlet ?? rumor.mediaChannel}。${rumor.summary}。机构立场：${version.stance}；编辑框架：${version.framing}；核验：${version.verificationStatus}；可信度 ${version.confidence}%。本版本没有新增未公开事实。`);
+    messages.push(`媒体转载 · ${version.outlet} · ${rumor.publicName}`);
   }
   return messages;
 }
@@ -897,7 +916,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 14;
+  legacy.schemaVersion = 15;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -917,6 +936,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     rumor.corroborationCount ??= rumor.sourceKind === "公开登记" ? 2 : rumor.witnessNpcIds.length;
     rumor.verificationStatus ??= rumor.sourceKind === "公开登记" ? "双记录核验" : rumor.witnessNpcIds.length >= 5 && rumor.factionIds.length >= 2 ? "跨关系网交叉核验" : rumor.mediaStatus === "不刊发" ? "来源不足" : "同源多证待复核";
     rumor.editorialDecision ??= rumor.mediaStatus === "不刊发" ? "旧记录缺少跨地区刊发所需来源" : "旧记录按当时已有来源刊发";
+    rumor.mediaVersions ??= [];
     rumor.correctionEvidence ??= [];
   }
   legacy.world.lastAutonomyOrdinal ??= ordinal(startYear, game.view.worldTime?.day ?? 1);

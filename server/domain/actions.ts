@@ -1260,6 +1260,10 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     rumor.corroborationCount = (rumor.corroborationCount ?? 0) + rumor.correctionEvidence.length;
     rumor.verificationStatus = "更正证据已核验";
     rumor.confidence = Math.max(10, (rumor.confidence ?? 50) - 35);
+    for (const version of rumor.mediaVersions ?? []) {
+      version.verificationStatus = "更正证据已核验";
+      version.confidence = Math.max(10, version.confidence - 35);
+    }
     for (const reputation of game.view.reputations.filter((item) => item.publicName === publicName)) {
       reputation.heat = Math.max(0, reputation.heat - 15);
       reputation.reputation = "负面说法已被证据质疑";
