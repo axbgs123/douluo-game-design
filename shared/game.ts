@@ -158,7 +158,7 @@ export interface StarshipProgressView {
   trainingStartedAge?: number;
   crew: Array<{ relationId: string; name: string; role: "驾驶员" | "导航员" | "轮机师" | "战术员" | "医疗员"; readiness: number }>;
   shipName?: string;
-  shipClass?: "穿梭艇" | "小型探索舰" | "护卫舰";
+  shipClass?: "民用穿梭艇" | "陨星级侦察舰" | "流星级攻击舰" | "饕餮级运输舰" | "辉煌级补给舰" | "龙王级护卫舰" | "战神级战列舰" | "行星级母舰";
   hull?: number;
   fuel?: number;
   supplies?: number;

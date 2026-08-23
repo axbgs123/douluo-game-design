@@ -1828,25 +1828,25 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
     return { intent: "招募星舰船员", minutes: 90, ruleSummary: `${relation.name}接受${role}岗位；职责、风险与分配已记录。`, fallbackNarrative: `我没有只问${relation.name}愿不愿意冒险。值班表、报酬、撤退权限和谁能否决危险命令都摆在桌上。${relation.name}看完才在${role}一栏签名。`, suggestions: ["招募下一名船员", "进行船员协同训练", "检查远航准备"] };
   }
   if (/购买|申请配发|取得.*(?:星舰|探索舰)|购置/.test(action)) {
-    if (licenses.indexOf(starship.license) < 2) return impossible("至少取得三级指挥资格，才可登记小型探索舰。", ["参加见习指挥考核", "继续指挥训练", "申请舰队带教航次"]);
+    if (licenses.indexOf(starship.license) < 2) return impossible("至少取得三级指挥资格，才可登记陨星级侦察舰。", ["参加见习指挥考核", "继续指挥训练", "申请舰队带教航次"]);
     const requiredRoles = ["驾驶员", "导航员", "轮机师"];
     const missing = requiredRoles.filter((role) => !starship.crew.some((member) => member.role === role));
     if (missing.length) return impossible(`基础船员组仍缺少：${missing.join("、")}。`, missing.map((role) => `招募${role}`));
     const sponsored = /申请配发|项目舰|任务舰/.test(action);
     if (sponsored && !game.view.affiliations.some((item) => /舰队|星际|史莱克|联邦/.test(item.name) && /学员|成员|军|指挥|核心/.test(item.role))) return impossible("项目舰只向承担正式任务的在册成员开放。", ["加入舰队或星际学院", "取得正式岗位", "购买自有探索舰"]);
     const cost = sponsored ? 0 : 50_000;
-    if (game.view.character!.coins < cost) return impossible(`一艘合规小型探索舰需要${formatSoulCoins(cost)}及持续维护能力。`, ["完成舰队任务积累资金", "申请学院项目舰", "缩小为穿梭艇计划"]);
+    if (game.view.character!.coins < cost) return impossible(`一艘合规陨星级侦察舰需要${formatSoulCoins(cost)}及持续维护能力。`, ["完成舰队任务积累资金", "申请学院项目舰", "缩小为民用穿梭艇计划"]);
     game.view.character!.coins -= cost;
     starship.shipName = sponsored ? `${game.view.character!.name}项目组任务舰` : `${game.view.character!.name}号`;
-    starship.shipClass = "小型探索舰";
+    starship.shipClass = "陨星级侦察舰";
     starship.hull = 100;
     starship.fuel = 100;
     starship.supplies = 100;
     if (sponsored) ensureTask(game, { id: `starship-project-${game.actionIndex}`, title: "完成三次项目舰探索任务", kind: "计划", detail: "项目舰只有任务使用权；三次可复核调查完成前不得转卖、私用或拒绝审计。", status: "进行中" });
-    return { intent: "取得星舰", minutes: 360, ruleSummary: `${sponsored ? "签署项目使用与审计责任" : `支付${formatSoulCoins(cost)}并完成登记`}，取得小型探索舰“${starship.shipName}”。`, fallbackNarrative: `舰名写上船壳以前，验船师先拆了三块检修盖板。动力、维生、逃生舱和旧事故记录全部签字后，这艘船才真正交到我们手中。${sponsored ? "它仍属于项目，航线和样本都必须接受审计。" : "拥有它也意味着往后的燃料、维修和每个船员的命都进入同一本账。"}`, suggestions: ["补满燃料与物资", "进行船员协同训练", "申请第一次探索任务"], systemMessages: [`星舰 · ${starship.shipName} · 小型探索舰`] };
+    return { intent: "取得星舰", minutes: 360, ruleSummary: `${sponsored ? "签署项目使用与审计责任" : `支付${formatSoulCoins(cost)}并完成登记`}，取得陨星级侦察舰“${starship.shipName}”。`, fallbackNarrative: `舰名写上船壳以前，验船师先拆了三块检修盖板。动力、维生、逃生舱和旧事故记录全部签字后，这艘船才真正交到我们手中。${sponsored ? "它仍属于项目，航线和样本都必须接受审计。" : "拥有它也意味着往后的燃料、维修和每个船员的命都进入同一本账。"}`, suggestions: ["补满燃料与物资", "进行船员协同训练", "申请第一次探索任务"], systemMessages: [`星舰 · ${starship.shipName} · 陨星级侦察舰`] };
   }
   if (/补给|加注|补充燃料|维修星舰/.test(action)) {
-    if (!starship.shipName) return impossible("当前没有需要补给维护的自有星舰。", ["取得小型探索舰", "申请训练航次", "继续指挥训练"]);
+    if (!starship.shipName) return impossible("当前没有需要补给维护的自有星舰。", ["取得陨星级侦察舰", "申请训练航次", "继续指挥训练"]);
     const missing = (100 - (starship.fuel ?? 0)) + (100 - (starship.supplies ?? 0)) + (100 - (starship.hull ?? 0)) * 2;
     const cost = Math.ceil(missing * 8);
     if (game.view.character!.coins < cost) return impossible(`补给与维修需要${formatSoulCoins(cost)}。`, ["筹措维护费", "只补充关键物资", "申请舰队保障"]);
@@ -1855,11 +1855,11 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
     return { intent: "星舰补给维护", minutes: 360, ruleSummary: `支付${formatSoulCoins(cost)}，燃料、物资与舰体恢复到可出航状态。`, fallbackNarrative: "补给单不是一个总数。氧、水、食品、医疗、反应堆介质和备用密封件逐项入库，轮机师复查舰体后才签下可出航。", suggestions: ["检查航线", "确认船员状态", "开始远航"] };
   }
   if (/前往|航行|跃迁|出发/.test(action)) {
-    if (!starship.shipName) return impossible("没有完成登记、补给与船员配置的星舰。", ["取得小型探索舰", "组建基础船员组", "申请舰队航次"]);
+    if (!starship.shipName) return impossible("没有完成登记、补给与船员配置的星舰。", ["取得陨星级侦察舰", "组建基础船员组", "申请舰队航次"]);
     const destination = ["mother-ship-port", "tianluo-planet", "tiandou-planet", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star"].map((id) => locationById(id)!).find((location) => action.includes(location.name));
     if (!destination) return impossible("没有识别出航线终点。", ["前往森罗星", "前往精灵星", "返回联邦母舰港"]);
     const hostileRoute = /天龙星|天马星/.test(destination.name);
-    if (hostileRoute && starship.shipClass !== "护卫舰") return impossible(`${destination.name}位于龙马星系敌对控制区，小型探索舰不能脱离舰队、穿越封锁并自行靠港。`, ["申请加入联邦舰队任务", "取得护卫舰级任务平台", "先调查龙马星系军事情报"]);
+    if (hostileRoute && starship.shipClass !== "龙王级护卫舰") return impossible(`${destination.name}位于龙马星系敌对控制区，陨星级侦察舰不能脱离舰队、穿越封锁并自行靠港。`, ["申请加入联邦舰队任务", "取得龙王级护卫舰任务平台", "先调查龙马星系军事情报"]);
     if (hostileRoute && (starship.license !== "一级指挥" || !game.view.affiliations.some((item) => /舰队|军/.test(`${item.name}${item.role}`)))) return impossible("进入龙马星系战区需要一级指挥资格与现役舰队任务授权。", ["完成高级指挥考核", "取得舰队正式岗位", "申请编队护航任务"]);
     const fuelCost = hostileRoute ? 45 : 18;
     const supplyCost = Math.max(8, starship.crew.length * 3);

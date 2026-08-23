@@ -832,6 +832,12 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.economy ??= { cash: game.view.character?.coins ?? 0, bankBalance: 0, debt: 0, salary: 0, bounty: 0, blackMarketAccess: false, transactions: [], marketReports: [] };
   game.view.economy.transactions ??= [];
   game.view.economy.marketReports ??= [];
+  if (game.view.starship?.shipClass) {
+    const legacyShipClass = game.view.starship.shipClass as string;
+    if (legacyShipClass === "穿梭艇") game.view.starship.shipClass = "民用穿梭艇";
+    if (legacyShipClass === "小型探索舰") game.view.starship.shipClass = "陨星级侦察舰";
+    if (legacyShipClass === "护卫舰") game.view.starship.shipClass = "龙王级护卫舰";
+  }
   if (game.view.worldInheritance) {
     game.view.worldInheritance.lineage ??= [{ generation: game.view.worldInheritance.generation, era: game.view.worldInheritance.sourceEra, name: game.view.worldInheritance.ancestorName, ending: game.view.worldInheritance.ending, highestSoulRank: game.view.worldInheritance.highestSoulRank, historicalImpact: game.view.worldInheritance.historicalImpact, verification: "传闻", evidence: [`${game.view.worldInheritance.legacyArtifact}保存了旧世摘要`] }];
     game.view.worldInheritance.institutions ??= [];
