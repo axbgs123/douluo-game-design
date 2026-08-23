@@ -1135,8 +1135,9 @@ function workResolution(game: StoredGame): ActionResolution {
 
 function buyResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
-  const item = /药/.test(action) ? "止血散" : /食|干粮/.test(action) ? "两日干粮" : /绳/.test(action) ? "猎魂绳" : "基础补给包";
-  const cost = Math.max(1, Math.round((item === "基础补给包" ? 10 : 5) * DIFFICULTY_RULES[game.view.difficulty].resourceCost));
+  const item = /稀有金属|魂导金属/.test(action) ? "魂导器用稀有金属" : /魂导核心|核心阵法材料|魂导晶体/.test(action) ? "魂导核心晶体" : /魂导图纸|空白图纸/.test(action) ? "魂导器空白图纸" : /药/.test(action) ? "止血散" : /食|干粮/.test(action) ? "两日干粮" : /绳/.test(action) ? "猎魂绳" : "基础补给包";
+  const baseCost = item === "魂导器用稀有金属" ? 80 : item === "魂导核心晶体" ? 60 : item === "魂导器空白图纸" ? 15 : item === "基础补给包" ? 10 : 5;
+  const cost = Math.max(1, Math.round(baseCost * DIFFICULTY_RULES[game.view.difficulty].resourceCost));
   if (character.coins < cost) return impossible(`购买${item}需要${formatSoulCoins(cost)}，当前只有${formatSoulCoins(character.coins)}。`, ["找临时工作", "换便宜的东西", "离开商店"]);
   character.coins -= cost;
   game.view.inventory.push(item);
@@ -1216,11 +1217,58 @@ function economyResolution(game: StoredGame, action: string): ActionResolution {
 
 function professionResolution(game: StoredGame, action: string): ActionResolution {
   const routes = [
-    [/炼药|丹药|药剂/, "炼药"], [/锻造|炼器|打造/, "锻造与炼器"], [/魂导器/, "魂导器研究"], [/阵法|阵纹/, "阵法"], [/医术|治疗/, "医术"], [/毒术|制毒/, "毒术"], [/商业|经商/, "商业"], [/驯兽|驯养/, "驯兽"], [/学术|理论|研究魂兽/, "魂师学术"],
+    [/炼药|丹药|药剂/, "炼药"], [/锻造|炼器|打造/, "锻造与炼器"], [/魂导器|魂导师/, "魂导器研究"], [/阵法|阵纹/, "阵法"], [/医术|治疗/, "医术"], [/毒术|制毒/, "毒术"], [/商业|经商/, "商业"], [/驯兽|驯养/, "驯兽"], [/学术|理论|研究魂兽/, "魂师学术"],
   ] as const;
   const name = routes.find(([pattern]) => pattern.test(action))?.[1] ?? "综合研究";
   let profession = game.view.professions.find((item) => item.name === name);
   if (!profession) { profession = { id: name, name, level: "学徒", progress: 0, experiments: 0, failures: 0, knownMethods: [] }; game.view.professions.push(profession); }
+  if (name === "魂导器研究" && (game.view.era ?? 1) >= 2) {
+    profession.experiments += 1;
+    const requestedGrade = Math.max(1, Math.min(9, Number(action.match(/([一二三四五六七八九1-9])级/)?.[1]?.replace(/[一二三四五六七八九]/, (value) => String("一二三四五六七八九".indexOf(value) + 1)) ?? 1)));
+    const certifiedGrade = Number(profession.level.match(/(\d+)级魂导师/)?.[1] ?? 0);
+    if (/认证|考核/.test(action)) {
+      const nextGrade = Math.max(1, certifiedGrade + 1);
+      const requiredProgress = nextGrade * 18;
+      const hasInstitution = game.view.affiliations.some((item) => /学院|魂导|日月|唐门|传灵塔/.test(item.name)) || game.view.relations.some((item) => /魂导师|魂导老师/.test(`${item.name}${item.relation}`));
+      if (!hasInstitution) return impossible("魂导师等级需要有认证资格的学院、宗门或协会监考。", ["加入魂导师学院", "寻找认证魂导师", "继续积累作品"]);
+      if (profession.progress < requiredProgress || profession.knownMethods.length < nextGrade) return impossible(`申请 ${nextGrade} 级认证至少需要 ${requiredProgress}% 熟练度和 ${nextGrade} 项可复核方法。`, ["学习核心阵法", "制作低阶魂导器", "复盘失败记录"]);
+      profession.level = `${nextGrade}级魂导师`;
+      return { intent: "魂导师认证", minutes: speedMinutes(game, 360, 1440), ruleSummary: `通过理论、刻阵与成品复核，取得 ${nextGrade} 级魂导师认证。`, fallbackNarrative: "考官把成品拆开检查，没有因为能启动就给分。最后一处阵纹复测结束，他才在证书上盖下等级印。", suggestions: ["学习更高阶核心阵法", "承接对应等级委托", "检查认证记录"], systemMessages: [`职业 · ${nextGrade}级魂导师`] };
+    }
+    if (/学习|研究|临摹|练习|推演/.test(action) && !/制作|打造|组装/.test(action)) {
+      const gain = integer(actionRandom(game), 5, 10);
+      profession.progress = Math.min(100, profession.progress + gain);
+      const methodGrade = Math.max(1, Math.min(9, Math.floor(profession.progress / 18) + 1));
+      const method = `${methodGrade}级核心阵法识读`;
+      if (!profession.knownMethods.includes(method)) profession.knownMethods.push(method);
+      game.world.fatiguePoints += 10;
+      return { intent: "魂导理论学习", minutes: speedMinutes(game, 180, 720), ruleSummary: `完成一次核心阵法临摹与误差检查，熟练度增加 ${gain}%。`, fallbackNarrative: "刻刀没有碰金属。我先把阵线放大临摹，再逐段标出魂力流向。三处看似对称的节点实际负载不同，抄错一笔，成品就会在启动时烧毁。", suggestions: ["购买稀有金属与核心晶体", "制作一级魂导器", "请魂导师检查图纸"] };
+    }
+    const maxCraftGrade = Math.max(1, Math.min(9, Math.floor(profession.progress / 18) + 1, certifiedGrade + 1));
+    if (requestedGrade > maxCraftGrade) return impossible(`当前只能尝试 ${maxCraftGrade} 级及以下魂导器，不能跳过阵法与认证基础。`, [`制作${maxCraftGrade}级魂导器`, "学习核心阵法", "申请魂导师认证"]);
+    const metalIndex = game.view.inventory.findIndex((item) => /稀有金属|魂导器用.*金属/.test(item));
+    const coreIndex = game.view.inventory.findIndex((item) => /魂导核心|核心晶体|核心阵法材料/.test(item));
+    if (metalIndex < 0 || coreIndex < 0) return impossible("制作实体魂导器同时需要可刻阵金属与魂导核心晶体。", ["购买魂导器用稀有金属", "购买魂导核心晶体", "先学习核心阵法"]);
+    const consume = [metalIndex, coreIndex].sort((a, b) => b - a);
+    for (const index of consume) game.view.inventory.splice(index, 1);
+    const taught = game.view.relations.some((item) => /魂导师|魂导老师|师父|导师/.test(`${item.name}${item.relation}`));
+    const random = actionRandom(game);
+    const successChance = Math.min(.92, .32 + profession.progress / 140 + (taught ? .15 : 0) - Math.max(0, requestedGrade - certifiedGrade) * .06);
+    const success = random() < successChance;
+    const gain = integer(random, success ? 8 : 4, success ? 14 : 9);
+    profession.progress = Math.min(100, profession.progress + gain);
+    game.world.fatiguePoints += 18 + requestedGrade * 2;
+    if (!success) {
+      profession.failures += 1;
+      return { intent: "魂导器制作", minutes: speedMinutes(game, 360, 1440), ruleSummary: `${requestedGrade}级魂导器制作失败；两类材料已消耗，熟练度增加 ${gain}%。`, fallbackNarrative: "核心阵纹亮到第三段时突然偏色。我立刻切断魂力，金属没炸开，晶体却从内部裂了。失败点被我圈在图纸上，材料已经不能恢复。", suggestions: ["复盘阵纹误差", "重新购买材料", "请魂导师检查失败件"] };
+    }
+    const toolKind = /储物/.test(action) ? "储物魂导器" : /护盾|防御/.test(action) ? "防御魂导器" : /照明/.test(action) ? "照明魂导器" : "训练用魂导器";
+    const product = `${requestedGrade}级${toolKind}`;
+    game.view.inventory.push(product);
+    const method = `${requestedGrade}级${toolKind}制作记录`;
+    if (!profession.knownMethods.includes(method)) profession.knownMethods.push(method);
+    return { intent: "魂导器制作", minutes: speedMinutes(game, 360, 1440), ruleSummary: `${requestedGrade}级魂导器制作成功，获得${product}；熟练度增加 ${gain}%。`, fallbackNarrative: `最后一段阵纹接通后，核心晶体的光没有乱跳。我连续启停三次，又测了外壳温度，才把${product}从工作台上取下来。它能用，但还远没到可以省略复检的程度。`, suggestions: ["测试成品负载", "记录完整图纸", "申请魂导师认证"], systemMessages: [`制成 · ${product}`] };
+  }
   profession.experiments += 1;
   const materialIndex = game.view.inventory.findIndex((item) => /药|草|矿|铁|木|兽皮|毒|魂兽材料|残片/.test(item));
   const hasMaterial = materialIndex >= 0;
@@ -1238,6 +1286,71 @@ function professionResolution(game: StoredGame, action: string): ActionResolutio
   if (success) game.view.inventory.push(name === "炼药" ? "自制恢复药散" : name === "锻造与炼器" ? "试制魂力工具" : `${name}实验成果`);
   game.world.fatiguePoints += 14;
   return { intent: "生活职业研究", minutes: speedMinutes(game, 240, 1440), ruleSummary: `${name}${success ? "实验成功" : hasMaterial ? "实验失败并记录原因" : "因缺少材料只完成纸面推演"}；熟练进度增加${gain}，材料适配与失败记录均已保存。`, fallbackNarrative: success ? `这一次材料没有在中途失控。成品算不上精致，至少每一步都能在斗罗大陆现有的工具和魂力条件下重做。` : `做到中段时结果就偏了。我没把失败归给运气，把火候、魂力和材料变化逐项记下，剩下的残料已经不能再用。`, suggestions: success ? ["测试成品效果", "记录完整步骤", "请专业人士复核"] : ["寻找合适材料", "请教专业人士", "根据失败记录修改步骤"] };
+}
+
+function soulSpiritGrade(years: number): "十年" | "百年" | "千年" | "万年" {
+  if (years < 100) return "十年";
+  if (years < 1_000) return "百年";
+  if (years < 10_000) return "千年";
+  return "万年";
+}
+
+function soulSpiritResolution(game: StoredGame, action: string): ActionResolution {
+  const era = game.view.era ?? 1;
+  const character = game.view.character!;
+  if (era === 1) return impossible("魂灵体系在这个时代尚未形成，只能研究灵魂残留与契约设想。", ["研究魂兽残魂", "调查魂环中的精神残留", "按传统方式准备猎魂"]);
+  ensureMartialSoulAccounts(game);
+  const activeRings = character.soulRingSets[character.activeMartialSoulIndex];
+  const ringIndex = activeRings.length + 1;
+  if (character.soulRank < ringIndex * 10) return impossible(`当前主修武魂还没有到第 ${ringIndex} 环瓶颈。`, ["继续修炼", "研究魂灵资料", "检查当前魂环"]);
+
+  if (/寻找|申请|咨询|购买|挑选|调查/.test(action) && !/评估/.test(action)) {
+    const limit = RING_LIMITS[Math.min(ringIndex, RING_LIMITS.length - 1)] ?? 423;
+    const candidates = SOUL_BEASTS.filter((beast) => beast.ageRange[0] <= limit && beast.danger <= Math.max(2, ringIndex + 1));
+    if (!candidates.length) return impossible("当地登记库没有适合当前魂环槽位的合规魂灵。", ["前往更大的城市", "申请调取其他分塔库存", "按传统路线调查魂兽"]);
+    const beast = pick(actionRandom(game), candidates);
+    const years = Math.min(limit, Math.max(beast.ageRange[0], Math.round(Math.min(beast.ageRange[1], limit) * .72)));
+    const provider = era === 2 ? "魂灵研究机构的试点窗口" : "传灵塔正规服务窗口";
+    game.view.soulSpiritContract = { stage: "调查", provider, beastId: beast.id, beastName: beast.name, years, compatibility: 0, cost: Math.max(120, Math.round(years * .7)), warning: "尚未完成精神适配评估，不能签约。" };
+    return { intent: "调查魂灵", minutes: 90, ruleSummary: `找到一份${beast.name}魂灵档案，标称${years}年；价格、精神负担和适配性尚待评估。`, fallbackNarrative: `工作人员没有先说“最强”，而是把死亡记录、退契案例和一叠检测表推到桌上。玻璃后的${beast.name}魂灵只显出模糊轮廓，偶尔朝这边转一下头。`, suggestions: ["评估魂灵适配", "核对魂灵来源", "放弃这份魂灵"] };
+  }
+
+  const contract = game.view.soulSpiritContract;
+  if (!contract) return impossible("还没有选定可评估的魂灵档案。", ["寻找正规魂灵", "调查当地魂灵机构", "查看当前魂环需求"]);
+  if (/放弃|取消/.test(action)) {
+    game.view.soulSpiritContract = undefined;
+    return { intent: "放弃魂灵", minutes: 10, ruleSummary: `放弃${contract.beastName}魂灵方案，没有形成契约。`, fallbackNarrative: "我把确认页推了回去。窗口人员收走档案，没有劝我赌一次，只在登记上写了“本人放弃”。", suggestions: ["寻找其他魂灵", "准备传统猎魂", "继续修炼"] };
+  }
+  if (/评估|检测|适配/.test(action)) {
+    const spirit = character.abilityDescriptors.spirit === "顶尖" ? 24 : character.abilityDescriptors.spirit === "优秀" ? 14 : 5;
+    const soulAffinity = /精神|本体/.test(character.martialSoul.category) ? 12 : 4;
+    contract.compatibility = Math.min(96, 48 + spirit + soulAffinity + integer(actionRandom(game), -7, 8));
+    contract.stage = "可签约";
+    contract.warning = contract.compatibility >= 75 ? "适配良好，仍需承担契约磨合与魂力冲击。" : contract.compatibility >= 60 ? "适配一般，初期磨合会增加疲劳。" : "适配偏低，不建议直接签约。";
+    return { intent: "魂灵适配评估", minutes: 120, ruleSummary: `${contract.beastName}魂灵适配度 ${contract.compatibility}%；${contract.warning}`, fallbackNarrative: `精神检测持续了三轮。每次光纹收束，${contract.beastName}的轮廓都会更清楚一点。工作人员把最终数字圈出来，又让我把风险说明从头读了一遍。`, suggestions: contract.compatibility >= 60 ? ["签订魂灵契约", "核对费用与风险", "放弃这份魂灵"] : ["放弃这份魂灵", "寻找其他魂灵", "提升精神力后复测"] };
+  }
+  if (/签订|签约|融合|契约/.test(action)) {
+    if (contract.stage !== "可签约" || contract.compatibility <= 0) return impossible("必须先完成精神适配评估。", ["评估魂灵适配", "核对魂灵来源", "放弃这份魂灵"]);
+    if (contract.compatibility < 60) return impossible(`适配度只有 ${contract.compatibility}%，当前机构拒绝执行高风险签约。`, ["寻找其他魂灵", "提升精神力", "放弃这份魂灵"]);
+    if (character.coins < contract.cost) return impossible(`签约与承载材料需要${formatSoulCoins(contract.cost)}，当前资金不足。`, ["合法工作筹款", "申请学院补助", "放弃这份魂灵"]);
+    character.coins -= contract.cost;
+    const beast = soulBeastById(contract.beastId);
+    const ability = beast?.possibleSkills[0] ?? "魂力共鸣";
+    const skillName = `${character.martialSoul.name}·${ability}`;
+    const ring: SoulRingView = { index: ringIndex, beastId: contract.beastId, beastName: `魂灵·${contract.beastName}`, years: contract.years, color: ringColor(contract.years), skillName, skillDescription: `${contract.beastName}魂灵与${character.martialSoul.name}完成契约后形成的${ability}能力；契约来源与磨合状态会持续记录。` };
+    activeRings.push(ring);
+    character.soulRings = activeRings;
+    character.soulSpirits ??= [];
+    character.soulSpirits.push({ id: `spirit-${game.actionIndex}-${contract.beastId}`, name: `${contract.beastName}魂灵`, beastId: contract.beastId, beastName: contract.beastName, years: contract.years, grade: soulSpiritGrade(contract.years), bond: Math.round(contract.compatibility / 4), status: "磨合", abilities: [ability], source: era === 2 ? "人工魂灵" : "人工魂灵" });
+    if (character.soulRank === ringIndex * 10) character.soulRank += 1;
+    game.world.fatiguePoints += contract.compatibility >= 75 ? 22 : 34;
+    game.world.metrics.discoveries += 1;
+    game.view.soulSpiritContract = undefined;
+    const task = game.view.tasks.find((item) => item.id === `ring-${character.activeMartialSoulIndex}-${ringIndex}` || item.id === `ring-${ringIndex}` || item.id === "first-ring");
+    if (task) task.status = "完成";
+    return { intent: "签订魂灵契约", minutes: speedMinutes(game, 180, 480), ruleSummary: `支付${formatSoulCoins(contract.cost)}，与${contract.years}年${contract.beastName}魂灵完成契约，获得魂技${skillName}。`, fallbackNarrative: `契约压进精神世界时，最先来的不是力量，而是一阵不属于我的惊惧。等呼吸重新稳住，${contract.beastName}的意识仍在，没有被魂环抹平。脚下魂环亮起，它也第一次回应了我的念头。`, suggestions: ["与魂灵进行第一次沟通", "测试新魂技", "休息适应契约"], systemMessages: [`魂灵 · ${contract.beastName} · ${contract.years} 年`, `魂技 · ${skillName}`] };
+  }
+  return impossible("需要明确选择调查、评估、签约或放弃魂灵。", ["评估魂灵适配", "签订魂灵契约", "放弃这份魂灵"]);
 }
 
 function factionManagementResolution(game: StoredGame, action: string): ActionResolution {
@@ -1376,6 +1489,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   const huntingActive = game.view.hunting && game.view.hunting.stage !== "完成";
   if (guarded) resolution = guarded;
   else if (/切换|换成|改用|主修/.test(action) && /武魂/.test(action)) resolution = switchMartialSoulResolution(game, action);
+  else if (/魂灵/.test(action)) resolution = soulSpiritResolution(game, action);
   else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
   else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
   else if (/建立|创建|招募|任命|扩建|领地|外交|情报网|经营势力|管理宗门/.test(action) && /宗门|势力|组织|成员|领地|外交|情报/.test(action)) resolution = factionManagementResolution(game, action);
@@ -1383,6 +1497,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/存放|收进仓库|放回住处|取回|从.*取出|拿回/.test(action)) resolution = storageResolution(game, action);
   else if (/化名|伪装身份|假名|自称/.test(action)) resolution = disguiseResolution(game, action);
   else if (/偷窃|盗窃|抢劫|诈骗|绑架|放火|勒索/.test(action)) resolution = crimeResolution(game, action);
+  else if (/魂导师/.test(action) && /认证|考核/.test(action)) resolution = professionResolution(game, action);
   else if (/学习|研究|尝试|实验|制作|改良|炼制|锻造|打造/.test(action) && /炼药|丹药|药剂|锻造|炼器|魂导器|阵法|阵纹|医术|治疗|毒术|制毒|商业|经商|驯兽|驯养|学术|魂兽/.test(action)) resolution = professionResolution(game, action);
   else if (/参悟|修炼传承|修行剑|炼丹|炼器|特殊体系|异界功法/.test(action)) resolution = specialSystemResolution(game, action);
   else if (/处理|介入|参与|帮助处理|阻止.*恶化|查看新事件|拒绝|不接受|回绝/.test(action) && game.world.dynamicEvents.some((item) => item.status === "可介入" && (action.includes(item.title) || item.participantIds.some((id) => action.includes(game.world.npcs[id]?.name ?? "")) || /查看新事件/.test(action)))) resolution = dynamicEventResolution(game, action);

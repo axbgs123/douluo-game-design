@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { GameEra } from "../../shared/game.js";
-import { createGame, ERA_BASE_YEARS, generateCandidates, selectCandidate } from "./generator.js";
+import { awakenCharacter, createGame, ERA_BASE_YEARS, finalizeCharacterShaping, generateCandidates, selectCandidate, selectLifeGoal } from "./generator.js";
 import { settleRun } from "./endings.js";
 import { guardActionByStoryRules, selectNarrativeRules } from "./story-rules.js";
+import { resolveAction } from "./actions.js";
+
+function playingGame(era: GameEra, seed: string) {
+  const game = createGame({ gender: "男", difficulty: "标准", seed, era });
+  selectCandidate(game, game.view.candidates[0].id);
+  finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+  awakenCharacter(game);
+  selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  return game;
+}
 
 describe("multi-era foundations", () => {
   it("creates era-specific lives within the correct absolute-year window", () => {
@@ -60,5 +70,54 @@ describe("multi-era foundations", () => {
     const era4 = createGame({ gender: "男", difficulty: "标准", seed: "era-4-rules", era: 4 });
     era4.view.worldTime = { year: 30_000, day: 1, time: "08:00", season: "春", era: "终极斗罗时代" };
     expect(guardActionByStoryRules(era4, "学习星舰驾驶")).toBeUndefined();
+  });
+
+  it("makes a later-era soul spirit require selection, assessment and payment", () => {
+    const game = playingGame(2, "soul-spirit-contract");
+    game.view.character!.soulRank = 10;
+    game.view.character!.coins = 1_000;
+    game.view.character!.abilityDescriptors.spirit = "顶尖";
+
+    const selected = resolveAction(game, "申请一份适合第一魂环的正规魂灵");
+    expect(selected.intent).toBe("调查魂灵");
+    expect(game.view.soulSpiritContract?.stage).toBe("调查");
+
+    const premature = resolveAction(game, "签订魂灵契约");
+    expect(premature.intent).toBe("无法完成");
+    const assessed = resolveAction(game, "评估魂灵适配");
+    expect(assessed.intent).toBe("魂灵适配评估");
+    expect(game.view.soulSpiritContract?.compatibility).toBeGreaterThanOrEqual(60);
+    const beforeCoins = game.view.character!.coins;
+    const signed = resolveAction(game, "签订魂灵契约");
+    expect(signed.intent).toBe("签订魂灵契约");
+    expect(game.view.character!.coins).toBeLessThan(beforeCoins);
+    expect(game.view.character!.soulRings).toHaveLength(1);
+    expect(game.view.character!.soulSpirits).toHaveLength(1);
+    expect(game.view.character!.soulRank).toBe(11);
+    expect(game.view.soulSpiritContract).toBeUndefined();
+  });
+
+  it("makes soul-tool crafting consume two material classes and supports certification", () => {
+    const game = playingGame(2, "soul-tool-loop");
+    game.view.character!.coins = 5_000;
+    game.view.affiliations.push({ id: "test-academy", name: "日月皇家魂导师学院", role: "学员", reputation: "在册", joinedAt: "测试" });
+    for (let index = 0; index < 3; index += 1) resolveAction(game, "学习一级魂导器核心阵法");
+    const profession = game.view.professions.find((item) => item.name === "魂导器研究")!;
+    expect(profession.progress).toBeGreaterThanOrEqual(18);
+    expect(profession.knownMethods.length).toBeGreaterThanOrEqual(1);
+
+    let crafted = false;
+    for (let attempt = 0; attempt < 6 && !crafted; attempt += 1) {
+      resolveAction(game, "购买魂导器用稀有金属");
+      resolveAction(game, "购买魂导核心晶体");
+      resolveAction(game, "制作一级储物魂导器");
+      crafted = game.view.inventory.some((item) => item === "1级储物魂导器");
+    }
+    expect(crafted).toBe(true);
+    expect(game.view.inventory.some((item) => /稀有金属|核心晶体/.test(item))).toBe(false);
+
+    const certification = resolveAction(game, "申请一级魂导师认证");
+    expect(certification.intent).toBe("魂导师认证");
+    expect(profession.level).toBe("1级魂导师");
   });
 });

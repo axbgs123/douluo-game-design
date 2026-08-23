@@ -99,6 +99,30 @@ export interface SoulRingView {
   skillDescription: string;
 }
 
+export interface SoulSpiritView {
+  id: string;
+  name: string;
+  beastId: string;
+  beastName: string;
+  years: number;
+  grade: "十年" | "百年" | "千年" | "万年";
+  bond: number;
+  status: "磨合" | "稳定" | "共鸣";
+  abilities: string[];
+  source: "人工魂灵" | "自愿契约";
+}
+
+export interface SoulSpiritContractView {
+  stage: "调查" | "评估" | "可签约";
+  provider: string;
+  beastId: string;
+  beastName: string;
+  years: number;
+  compatibility: number;
+  cost: number;
+  warning: string;
+}
+
 export interface MartialSoulView {
   name: string;
   category: string;
@@ -125,6 +149,7 @@ export interface CharacterPublic extends CandidatePublic {
   soulRings: SoulRingView[];
   activeMartialSoulIndex: number;
   soulRingSets: SoulRingView[][];
+  soulSpirits?: SoulSpiritView[];
   abilityDescriptors: { physique: string; spirit: string; perception: string };
   personalityTraits: string[];
   revealedGift?: string;
@@ -457,6 +482,7 @@ export interface GameView {
   inventory: string[];
   inventoryLoad: InventoryLoadView;
   professions: ProfessionView[];
+  soulSpiritContract?: SoulSpiritContractView;
   managedFactions: ManagedFactionView[];
   economy: EconomyView;
   location?: string;

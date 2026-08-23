@@ -881,6 +881,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.view.character.reputation ??= "默默无闻";
     game.view.character.injuries ??= [];
     game.view.character.soulRings ??= [];
+    game.view.character.soulSpirits ??= [];
     game.view.character.martialSoul.name = normalizeMartialSoulName(game.view.character.martialSoul.name);
     game.view.character.martialSoul.grade ??= martialSoulGrade(game.view.character.martialSoul.name, game.view.character.martialSoul.rarity, game.view.character.innateSoulPower);
     game.view.character.martialSoul.sourceEra ??= game.view.character.martialSoul.rarity ? "局外" : "原创";
