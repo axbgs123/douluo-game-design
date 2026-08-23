@@ -7,6 +7,7 @@ import { refreshStoryArchive } from "./story-rules.js";
 import { createRandom, integer, pick } from "./random.js";
 import { worldMapPoint } from "../../shared/world-map.js";
 import { martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
+import { fixedTraitEffect } from "./traits.js";
 
 const DAYS_PER_YEAR = 360;
 
@@ -29,6 +30,8 @@ const DYNAMIC_EVENT_TEMPLATES = [
 function ordinal(year: number, day: number): number { return year * DAYS_PER_YEAR + day; }
 
 export function inferLocationId(location: string): string {
+  if (/极北.*核心|冰天雪女|冰碧帝皇蝎/.test(location)) return "extreme-north-core";
+  if (/极北|北境冰原/.test(location)) return "extreme-north-edge";
   if (/圣魂村/.test(location)) return "holy-soul-village";
   if (/诺丁.*学院/.test(location)) return "notting-academy";
   if (/诺丁/.test(location)) return "notting-city";
@@ -634,7 +637,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 7;
+  legacy.schemaVersion = 8;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
   legacy.world.canonCausalFootprints ??= [];
@@ -704,8 +707,13 @@ export function ensureGameState(game: StoredGame): StoredGame {
   for (const hidden of game.hiddenCandidates) {
     hidden.originId ??= "legacy-origin";
     hidden.roleTags ??= ["本地人"];
-    hidden.martialSoul.name = normalizeMartialSoulName(hidden.martialSoul.name);
-    hidden.martialSoul.grade ??= martialSoulGrade(hidden.martialSoul.name, hidden.martialSoul.metaRarity, hidden.martialSoul.soulPowerRange[1]);
+    hidden.martialSouls ??= [hidden.martialSoul];
+    for (const soul of hidden.martialSouls) {
+      soul.name = normalizeMartialSoulName(soul.name);
+      soul.grade ??= martialSoulGrade(soul.name, soul.metaRarity, soul.soulPowerRange[1]);
+      soul.sourceEra ??= soul.metaRarity ? "局外" : "原创";
+    }
+    hidden.martialSoul = hidden.martialSouls[0];
     hidden.originStart ??= { coins: 12, items: [], reputation: "默默无闻", advantage: hidden.public.originAdvantage, burden: hidden.public.originBurden, pressure: 1 };
   }
   game.view.lifeGoal ??= "成为自己认可的强者";
@@ -716,6 +724,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.view.shaping.goalRerollsUsed ??= game.view.shaping.goalRerollIndex ?? 0;
     game.view.shaping.goalLocks ??= [false, false, false];
     game.view.shaping.lifeGoalDifficulties ??= game.view.shaping.lifeGoalOptions.map(() => "困难");
+    game.view.shaping.fixedTraitEffects ??= game.view.shaping.fixedTraits.map((trait) => ({ trait, effect: fixedTraitEffect(trait) }));
   }
   game.view.locationId ??= locationId;
   game.view.map ??= [];
@@ -762,6 +771,10 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.view.character.soulRings ??= [];
     game.view.character.martialSoul.name = normalizeMartialSoulName(game.view.character.martialSoul.name);
     game.view.character.martialSoul.grade ??= martialSoulGrade(game.view.character.martialSoul.name, game.view.character.martialSoul.rarity, game.view.character.innateSoulPower);
+    game.view.character.martialSoul.sourceEra ??= game.view.character.martialSoul.rarity ? "局外" : "原创";
+    game.view.character.martialSouls ??= [game.view.character.martialSoul];
+    game.view.character.martialSouls = game.view.character.martialSouls.map((soul, index) => ({ ...soul, name: normalizeMartialSoulName(soul.name), grade: soul.grade ?? martialSoulGrade(soul.name, soul.rarity, game.view.character!.innateSoulPower), sourceEra: soul.sourceEra ?? (soul.rarity ? "局外" : "原创"), cultivationState: index === 0 ? "主修" : soul.cultivationState ?? "未修炼" }));
+    game.view.character.martialSoul = game.view.character.martialSouls[0];
     for (const relation of game.view.relations) {
       relation.strength ??= /亲属|父亲|母亲/.test(relation.relation) ? 75 : /师徒/.test(relation.relation) ? 45 : 12;
       relation.category ??= /亲属|父亲|母亲/.test(relation.relation) ? "亲属" : /势力|学院/.test(relation.relation) ? "势力" : /敌|仇/.test(relation.relation) ? "敌对" : "师友";

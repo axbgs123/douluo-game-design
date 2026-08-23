@@ -351,6 +351,23 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .mini-floor-plan { margin-top: 10px; display: grid; grid-template-columns: repeat(2, 1fr); border: 1px solid var(--line); }
 .mini-floor-plan i { min-height: 34px; padding: 8px; border: 1px solid var(--line); font-style: normal; font-size: 12px; }
 .mini-floor-plan .current-room { background: #e2c98f; }
+.fixed-trait-effects { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin: 14px 0; }
+.fixed-trait-effects > small { grid-column: 1 / -1; color: var(--gold); }
+.fixed-trait-effects article { padding: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.26); }
+.fixed-trait-effects b, .fixed-trait-effects p { display: block; }
+.fixed-trait-effects p { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.life-goal-page { max-width: 1180px; margin: 0 auto; padding: 64px 32px 120px; }
+.awakening-reveal-header { text-align: center; margin-bottom: 28px; }
+.awakening-reveal-header h1 { margin: 4px 0 8px; font: 46px var(--display-font); }
+.awakening-reveal-header > p:last-child { color: var(--gold); }
+.awakened-soul-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 12px; }
+.awakened-soul-card { padding: 22px; border: 1px solid var(--line); border-top: 4px solid var(--line); background: var(--paper); box-shadow: var(--shadow); }
+.awakened-soul-card.rarity-优秀 { border-top-color: #5f86ae; }.awakened-soul-card.rarity-稀有 { border-top-color: #7956a8; }.awakened-soul-card.rarity-传奇 { border-top-color: #b48829; }.awakened-soul-card.rarity-神话 { border-top-color: #a43c35; }
+.awakened-soul-card > span, .awakened-soul-card > strong, .awakened-soul-card > small { display: block; }
+.awakened-soul-card > span { color: var(--faint); font-size: 10px; }.awakened-soul-card h2 { margin: 10px 0 6px; font: 28px var(--display-font); }.awakened-soul-card > strong { color: var(--gold); font-size: 11px; }.awakened-soul-card p { min-height: 3.4em; color: var(--muted); line-height: 1.7; }.awakened-soul-card small { color: var(--faint); }
+.awakened-soul-card .soul-origin-fit { min-height: 0; padding-top: 10px; border-top: 1px solid var(--line); color: var(--ink); font-size: 11px; }
+.awakening-prose { max-width: 850px; margin: 28px auto; padding: 24px 30px; border-left: 2px solid var(--gold); background: rgba(255,255,255,.25); font-family: var(--display-font); font-size: 17px; line-height: 2; }
+.post-awakening-goals { margin-top: 34px; }.life-goal-submit { width: 100%; margin-top: 18px; padding: 17px; }
 .awakening-action { text-align: center; }
 .awakening-action p { color: var(--muted); font-size: 11px; }
 .suggestion-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }

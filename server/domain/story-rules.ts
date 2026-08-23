@@ -80,7 +80,7 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
     );
   }
 
-  if (/瞬移|传送到|撕开空间|一步跨越/.test(action) && !/空间|虚空/.test(`${game.view.character?.martialSoul.name ?? ""}${game.view.character?.specialSystem?.abilities.join("、") ?? ""}`)) {
+  if (/瞬移|传送到|撕开空间|一步跨越/.test(action) && !/空间|虚空/.test(`${game.view.character?.martialSouls?.map((soul) => `${soul.name}${soul.description}`).join("、") ?? game.view.character?.martialSoul.name ?? ""}${game.view.character?.specialSystem?.abilities.join("、") ?? ""}`)) {
     return impossible(game,
       `${name}没有空间类能力，远距离移动仍要经过路线、时间和途中风险。`,
       ["查看地图", "准备旅费和干粮", "寻找可靠的车队"],

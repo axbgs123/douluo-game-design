@@ -12,6 +12,7 @@ const soul = (
   description: string, soulPowerRange: [number, number], growthRoutes: string[], drawWeight: number,
 ): MetaMartialSoulDefinition => ({
   id, name, category, metaRarity, description, soulPowerRange, growthRoutes, drawWeight,
+  sourceEra: "局外",
   rarity: drawWeight,
   omens: [`靠近与${name}相合的环境时，魂力会出现轻微共鸣`, `梦中曾短暂看见${name}的轮廓`],
 });
@@ -54,4 +55,3 @@ export const META_MARTIAL_SOULS: MetaMartialSoulDefinition[] = [
 export function metaSoulById(id: string): MetaMartialSoulDefinition | undefined {
   return META_MARTIAL_SOULS.find((item) => item.id === id);
 }
-

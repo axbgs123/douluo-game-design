@@ -4,16 +4,20 @@ import {
   CORE_ORIGIN_COUNT,
   CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT,
   CORE_ORIGIN_UNIQUE_NAME_COUNT,
+  MARTIAL_SOUL_CATALOG_STATS,
   awakenCharacter,
   createGame,
   finalizeCharacterShaping,
   generateCandidates,
+  martialSoulMultiplicity,
   rerollCandidates,
   rerollCharacterShaping,
   selectCandidate,
+  selectLifeGoal,
 } from "./generator.js";
 import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 import type { MetaProgressionView } from "../../shared/game.js";
+import { fixedTraitEffect } from "./traits.js";
 
 const personality = {
   keywords: ["谨慎", "重情", "好学", "坚韧", "自由"],
@@ -139,12 +143,14 @@ describe("candidate generation", () => {
     expect(game.view.narrative[0].text).not.toMatch(/你熟悉|你认识|你见过|你从小/);
 
     const draft = game.view.shaping!.personalityOptions[0];
-    finalizeCharacterShaping(game, { keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])), lifeGoal: game.view.shaping!.lifeGoalOptions[0] });
+    finalizeCharacterShaping(game, { keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])) });
     expect(game.view.status).toBe("awakening");
 
     const character = awakenCharacter(game);
-    expect(game.view.status).toBe("playing");
+    expect(game.view.status).toBe("life_goal_selection");
     expect(game.view.character?.martialSoul.name).toBe(character.martialSoul.name);
+    selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+    expect(game.view.status).toBe("playing");
   });
 
   it("supports a custom name and keeps candidate prose in third person", () => {
@@ -175,11 +181,18 @@ describe("candidate generation", () => {
   it("draws concrete goals, dark personalities and identity-based questions after selection", () => {
     const game = createGame({ gender: "男", difficulty: "标准", seed: "personality-impact" });
     selectCandidate(game, game.view.candidates[2].id);
+    expect(game.view.shaping?.lifeGoalOptions).toEqual([]);
+    expect(game.view.lifeGoal).toBe("尚未决定");
+    expect(game.view.shaping?.personalityOptions.some((option) => /野心|利己|复仇|危险|投机|谋士/.test(`${option.title}${option.keywords.join("")}`))).toBe(true);
+    expect(game.view.shaping?.personalityOptions.every((option) => option.questions.length === 6)).toBe(true);
+
+    const draft = game.view.shaping!.personalityOptions[0];
+    finalizeCharacterShaping(game, { keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])) });
+    awakenCharacter(game);
+    expect(game.view.status).toBe("life_goal_selection");
     expect(game.view.shaping?.lifeGoalOptions).toHaveLength(3);
     expect(game.view.shaping?.lifeGoalDifficulties).toHaveLength(3);
     expect(game.view.shaping?.lifeGoalOptions.every((goal) => goal.length >= 18)).toBe(true);
-    expect(game.view.shaping?.personalityOptions.some((option) => /野心|利己|复仇|危险|投机|谋士/.test(`${option.title}${option.keywords.join("")}`))).toBe(true);
-    expect(game.view.shaping?.personalityOptions.every((option) => option.questions.length === 6)).toBe(true);
 
     const previousGoals = game.view.shaping!.lifeGoalOptions;
     rerollCharacterShaping(game, "goals");
@@ -192,16 +205,55 @@ describe("candidate generation", () => {
     for (let index = 0; index < 80; index += 1) {
       const weak = createGame({ gender: "男", difficulty: "标准", seed: `goal-power-${index}` });
       weak.hiddenCandidates[0].martialSoul = { id: "weak-test", name: "细木棍", category: "器武魂", description: "测试", rarity: 20, soulPowerRange: [0, 3], omens: [] };
+      weak.hiddenCandidates[0].martialSouls = [weak.hiddenCandidates[0].martialSoul];
       weak.hiddenCandidates[0].innateSoulPower = 1;
       selectCandidate(weak, weak.view.candidates[0].id);
+      finalizeCharacterShaping(weak, { keywords: ["谨慎", "耐心", "好学"], answers: {} });
+      awakenCharacter(weak);
       weakExtreme += weak.view.shaping!.lifeGoalDifficulties.filter((item) => item === "极难").length;
 
       const strong = createGame({ gender: "男", difficulty: "标准", seed: `goal-power-${index}` });
       strong.hiddenCandidates[0].martialSoul = { id: "strong-test", name: "祖龙", category: "兽武魂", description: "测试", rarity: 1, soulPowerRange: [9, 10], omens: [], metaRarity: "七彩" };
+      strong.hiddenCandidates[0].martialSouls = [strong.hiddenCandidates[0].martialSoul];
       strong.hiddenCandidates[0].innateSoulPower = 10;
       selectCandidate(strong, strong.view.candidates[0].id);
+      finalizeCharacterShaping(strong, { keywords: ["勇敢", "野心", "好胜"], answers: {} });
+      awakenCharacter(strong);
       strongExtreme += strong.view.shaping!.lifeGoalDifficulties.filter((item) => item === "极难").length;
     }
     expect(strongExtreme).toBeGreaterThan(weakExtreme * 2);
+  });
+
+  it("loads martial souls recorded across all four eras", () => {
+    expect(MARTIAL_SOUL_CATALOG_STATS.total).toBeGreaterThanOrEqual(110);
+    for (const era of [1, 2, 3, 4]) expect(MARTIAL_SOUL_CATALOG_STATS.bySource[era]).toBeGreaterThanOrEqual(12);
+  });
+
+  it("keeps twin souls rare and triple souls extremely rare, with identity exceptions", () => {
+    expect(martialSoulMultiplicity(0.5, "神话", false)).toBe(1);
+    expect(martialSoulMultiplicity(0.02, "神话", false)).toBe(2);
+    expect(martialSoulMultiplicity(0.0005, "神话", false)).toBe(3);
+    expect(martialSoulMultiplicity(0.1, "神话", true)).toBe(2);
+    expect(martialSoulMultiplicity(0.005, "神话", true)).toBe(3);
+  });
+
+  it("reveals every awakened soul type before life-goal selection", () => {
+    const game = createGame({ gender: "女", difficulty: "标准", seed: "multi-awakening-view" });
+    const hidden = game.hiddenCandidates[0];
+    hidden.martialSouls = [hidden.martialSoul, { ...hidden.martialSoul, id: "second-test-soul", name: "测试副武魂", category: "本体武魂" }];
+    selectCandidate(game, game.view.candidates[0].id);
+    finalizeCharacterShaping(game, { keywords: ["谨慎", "好奇", "坚韧"], answers: {} });
+    awakenCharacter(game);
+    expect(game.view.character?.martialSouls).toHaveLength(2);
+    expect(game.view.narrative.at(-1)?.text).toContain("双生武魂");
+    expect(game.view.narrative.at(-1)?.text).toContain("这是本体武魂");
+  });
+
+  it("explains the gameplay impact of identity-fixed traits", () => {
+    expect(fixedTraitEffect("戒备")).toContain("风险判断");
+    expect(fixedTraitEffect("好胜")).toContain("公开失败");
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "fixed-trait-effect" });
+    selectCandidate(game, game.view.candidates[2].id);
+    expect(game.view.shaping?.fixedTraitEffects.every((item) => item.effect.length > 12)).toBe(true);
   });
 });

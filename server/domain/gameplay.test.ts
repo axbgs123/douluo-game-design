@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "../data/world.js";
 import { applyActionResult, resolveAction } from "./actions.js";
 import { settleRun } from "./endings.js";
-import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate } from "./generator.js";
+import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { advanceWorldTime, createHiddenWorld, ensureGameState, recordCanonInfluence } from "./world.js";
 import { applyNarrativeMemory, violatesCanonChronology } from "../services/deepseek.js";
 import { rulebookStats } from "../data/fanfiction-rules.js";
@@ -16,8 +16,9 @@ const personality = {
 function awakened(seed = "gameplay") {
   const game = createGame({ gender: "男", difficulty: "标准", personality, seed });
   selectCandidate(game, game.view.candidates[0].id);
-  finalizeCharacterShaping(game, { keywords: personality.keywords, answers: personality.answers, lifeGoal: "在十八岁前成为魂王，并拥有一套自创魂技体系" });
+  finalizeCharacterShaping(game, { keywords: personality.keywords, answers: personality.answers });
   awakenCharacter(game);
+  selectLifeGoal(game, "在十八岁前成为魂王，并拥有一套自创魂技体系");
   return game;
 }
 
@@ -60,6 +61,8 @@ describe("完整游玩规则", () => {
 
   it("未到魂环瓶颈时不能提前猎取魂环", () => {
     const game = awakened("early-hunt");
+    game.view.character!.soulRank = 3;
+    game.view.character!.soulRings = [];
     const result = resolveAction(game, "开始调查魂兽");
     expect(result.intent).toBe("无法完成");
     expect(game.view.hunting).toBeUndefined();
@@ -76,6 +79,7 @@ describe("完整游玩规则", () => {
 
   it("跨年会推进年龄并触发原作时间节点", () => {
     const game = awakened("timeline");
+    game.world = createHiddenWorld(-1, game.view.locationId!);
     game.view.worldTime = { era: "与唐三同年参加武魂觉醒", year: -1, day: 360, time: "23:00", season: "冬" };
     const age = game.view.character!.age;
     const messages = advanceWorldTime(game, 120);
@@ -113,7 +117,7 @@ describe("完整游玩规则", () => {
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).household;
     delete (game.view.candidates[0] as Partial<typeof game.view.candidates[number]>).residence;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(8);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -204,6 +208,18 @@ describe("完整游玩规则", () => {
     const beforeAwakening = createHiddenWorld(-1, "notting-city");
     expect(beforeAwakening.npcs["ning-rongrong"].age).toBe(5);
     expect(beforeAwakening.npcs["ning-rongrong"].locationId).toBe("seven-treasure-fort");
+  });
+
+  it("keeps later-era long-lived soul beasts alive and reachable in the first-era world", () => {
+    const world = createHiddenWorld(-5, "notting-city");
+    for (const id of ["di-tian", "bi-ji", "zi-ji", "xiong-jun", "wan-yao-wang", "chi-wang", "tian-meng", "snow-empress", "ice-empress"]) {
+      expect(world.npcs[id]?.alive).toBe(true);
+      expect(world.npcs[id]?.knownToPlayer).toBe(false);
+    }
+    expect(world.npcs["di-tian"].locationId).toBe("star-dou-core");
+    expect(world.npcs["snow-empress"].locationId).toBe("extreme-north-core");
+    expect(LOCATIONS.some((location) => location.id === "extreme-north-core" && location.danger === "禁区")).toBe(true);
+    expect(SOUL_BEASTS.some((beast) => beast.name === "冰天雪女" && beast.ageRange[0] >= 600000)).toBe(true);
   });
 
   it("never applies a future power snapshot to a younger canon character", () => {

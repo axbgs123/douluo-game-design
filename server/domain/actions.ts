@@ -132,7 +132,7 @@ function syncInventoryAndEconomy(game: StoredGame): void {
 function tryResurrection(game: StoredGame): boolean {
   const character = game.view.character;
   if (!character) return false;
-  const soulText = [character.martialSoul.name, character.martialSoul.description, ...character.soulRings.flatMap((ring) => [ring.skillName, ring.skillDescription])].join(" ");
+  const soulText = [...(character.martialSouls?.length ? character.martialSouls : [character.martialSoul]).flatMap((soul) => [soul.name, soul.description]), ...character.soulRings.flatMap((ring) => [ring.skillName, ring.skillDescription])].join(" ");
   const systemText = character.specialSystem ? [character.specialSystem.name, ...character.specialSystem.abilities].join(" ") : "";
   const closeExecutor = game.view.relations.find((item) => (item.strength ?? 0) >= 70 && /亲属|师友|同伴/.test(item.category ?? "") && /信任|亲近|生死|挚爱|师徒/.test(`${item.relation}${item.impression}`));
   const strongFaction = game.view.affiliations.find((item) => /昊天宗|七宝琉璃宗|武魂殿|蓝电霸王龙宗|海神岛|隐世/.test(item.name) && /重视|核心|长老|亲传|继承/.test(`${item.role}${item.reputation}`));

@@ -16,6 +16,7 @@ import {
   rerollCharacterShaping,
   removeMapPin,
   selectCandidate,
+  selectLifeGoal,
   getDeepSeekSettings,
   rewriteLastAction,
   restoreCheckpoint,
@@ -24,6 +25,7 @@ import {
 import { CandidateScreen } from "./components/CandidateScreen";
 import { CharacterShapingScreen } from "./components/CharacterShapingScreen";
 import { MetaProgressionPanel } from "./components/MetaProgressionPanel";
+import { LifeGoalScreen } from "./components/LifeGoalScreen";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SetupScreen } from "./components/SetupScreen";
 import { StoryScreen } from "./components/StoryScreen";
@@ -160,8 +162,16 @@ export default function App() {
         candidate={game.candidates.find((candidate) => candidate.id === game.selectedCandidateId) ?? game.candidates[0]}
         shaping={game.shaping}
         busy={busy}
-        onReroll={(part, lockedSlots) => run(() => rerollCharacterShaping(game.id, part, lockedSlots))}
+        onReroll={() => run(() => rerollCharacterShaping(game.id, "personality", []))}
         onComplete={(input) => run(() => completeCharacterShaping(game.id, input))}
+      />}
+
+      {game?.status === "life_goal_selection" && game.shaping && game.character && <LifeGoalScreen
+        game={game}
+        shaping={game.shaping}
+        busy={busy}
+        onReroll={(lockedSlots) => run(() => rerollCharacterShaping(game.id, "goals", lockedSlots))}
+        onComplete={(lifeGoal) => run(() => selectLifeGoal(game.id, lifeGoal))}
       />}
 
       {game && (game.status === "awakening" || game.status === "playing" || game.status === "ended") && <StoryScreen

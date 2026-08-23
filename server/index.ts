@@ -13,6 +13,7 @@ import {
   rerollCandidates,
   rerollCharacterShaping,
   selectCandidate,
+  selectLifeGoal,
 } from "./domain/generator.js";
 import {
   getMetaProgression,
@@ -62,8 +63,8 @@ const shapingRerollSchema = z.object({ part: z.enum(["goals", "personality"]), l
 const shapingSchema = z.object({
   keywords: z.array(z.string().trim().min(1).max(12)).min(1).max(8),
   answers: z.record(z.string(), z.string()).refine((answers) => Object.keys(answers).length >= 6, "请完成六道情境题"),
-  lifeGoal: z.string().trim().min(6).max(160),
 });
+const lifeGoalSchema = z.object({ lifeGoal: z.string().trim().min(6).max(160) });
 const actionSchema = z.object({ input: z.string().trim().min(1).max(1200) });
 const speedSchema = z.object({ speed: z.enum(["标准", "高速"]) });
 const mapPinSchema = z.object({ label: z.string().trim().min(1).max(24), x: z.number().min(0).max(100), y: z.number().min(0).max(100) });
@@ -216,7 +217,8 @@ app.post("/api/games/:id/shaping/reroll", (request, response) => {
   const input = shapingRerollSchema.parse(request.body);
   const game = loadGame(request.params.id);
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
-  if (game.view.status !== "character_shaping") return response.status(409).json({ error: "当前不能重新抽取角色塑造方案" });
+  const validStage = input.part === "goals" ? game.view.status === "life_goal_selection" : game.view.status === "character_shaping";
+  if (!validStage) return response.status(409).json({ error: input.part === "goals" ? "觉醒武魂后才能刷新人生目标" : "当前不能重新抽取性格方案" });
   rerollCharacterShaping(game, input.part, input.lockedSlots);
   saveGame(game, "character_shaping.rerolled", input);
   return response.json(publicView(game));
@@ -227,7 +229,7 @@ app.post("/api/games/:id/shaping/complete", (request, response) => {
   const game = loadGame(request.params.id);
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
   finalizeCharacterShaping(game, input);
-  saveGame(game, "character_shaping.completed", { keywords: input.keywords, lifeGoal: input.lifeGoal });
+  saveGame(game, "character_shaping.completed", { keywords: input.keywords });
   return response.json(publicView(game));
 });
 
@@ -239,10 +241,20 @@ app.post("/api/games/:id/awaken", (request, response) => {
   }
   const character = awakenCharacter(game);
   saveGame(game, "martial_soul.awakened", {
-    name: character.martialSoul.name,
+    names: character.martialSouls.map((soul) => soul.name),
+    types: character.martialSouls.map((soul) => soul.category),
     innateSoulPower: character.innateSoulPower,
   });
-  saveCheckpoint(game, `关键节点 · ${character.martialSoul.name}觉醒`);
+  saveCheckpoint(game, `关键节点 · ${character.martialSouls.map((soul) => soul.name).join("、")}觉醒`);
+  return response.json(publicView(game));
+});
+
+app.post("/api/games/:id/life-goal", (request, response) => {
+  const input = lifeGoalSchema.parse(request.body);
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  selectLifeGoal(game, input.lifeGoal);
+  saveGame(game, "life_goal.selected", { lifeGoal: input.lifeGoal });
   return response.json(publicView(game));
 });
 

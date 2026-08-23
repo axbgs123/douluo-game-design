@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate } from "./generator.js";
+import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { auditNovelEngineNarrative, buildNovelEnginePack } from "./novel-engine.js";
 
 function awakened(seed = "novel-engine") {
@@ -9,9 +9,9 @@ function awakened(seed = "novel-engine") {
   finalizeCharacterShaping(game, {
     keywords: personality.keywords,
     answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])),
-    lifeGoal: game.view.shaping!.lifeGoalOptions[0],
   });
   awakenCharacter(game);
+  selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
   return game;
 }
 

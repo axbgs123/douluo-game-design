@@ -10,6 +10,9 @@ export interface MartialSoulTemplate {
   omens: string[];
   metaRarity?: import("../../shared/game.js").MartialSoulRarity;
   grade?: CandidateRarity;
+  sourceEra?: 1 | 2 | 3 | 4 | "原创" | "局外";
+  affinityTags?: string[];
+  lineageBound?: boolean;
 }
 
 export interface HiddenCandidate {
@@ -17,6 +20,7 @@ export interface HiddenCandidate {
   originId: string;
   roleTags: string[];
   martialSoul: MartialSoulTemplate;
+  martialSouls: MartialSoulTemplate[];
   innateSoulPower: number;
   hiddenGift?: string;
   physique: string;

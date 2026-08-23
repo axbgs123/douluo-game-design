@@ -9,7 +9,7 @@ import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
 import { ensureGameState } from "./domain/world.js";
-import { BIRTH_PROFILE_COUNT } from "./domain/generator.js";
+import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_STATS } from "./domain/generator.js";
 
 const databasePath = process.env.DOULUO_DATA_DIR
   ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
@@ -409,7 +409,8 @@ export function recordRunSettlement(game: StoredGame, settlement: RunSettlementV
   meta.martialSoulDrawTickets += 1;
   const character = game.view.character;
   if (character) {
-    if (!meta.unlockedMartialSouls.includes(character.martialSoul.name)) meta.unlockedMartialSouls.push(character.martialSoul.name);
+    const souls = character.martialSouls?.length ? character.martialSouls : [character.martialSoul];
+    for (const soul of souls) if (!meta.unlockedMartialSouls.includes(soul.name)) meta.unlockedMartialSouls.push(soul.name);
     if (!meta.unlockedOrigins.includes(character.originName)) meta.unlockedOrigins.push(character.originName);
     meta.discoveredMartialSouls = meta.unlockedMartialSouls.length;
     meta.discoveredOrigins = Math.max(meta.discoveredOrigins, meta.unlockedOrigins.length - 1);
@@ -417,29 +418,31 @@ export function recordRunSettlement(game: StoredGame, settlement: RunSettlementV
       const entry = `${ring.beastName} · ${ring.years}年`;
       if (!meta.codexEntries.includes(entry)) meta.codexEntries.push(entry);
     }
-    const knownDefinition = META_MARTIAL_SOULS.find((item) => item.name === character.martialSoul.name);
-    let codex = meta.martialSoulCodex.find((item) => item.name === character.martialSoul.name);
-    if (!codex) {
-      codex = {
-        id: knownDefinition?.id ?? `world-${Buffer.from(character.martialSoul.name).toString("hex")}`,
-        name: character.martialSoul.name,
-        category: character.martialSoul.category,
-        description: character.martialSoul.description,
-        rarity: knownDefinition?.metaRarity ?? (character.innateSoulPower >= 9 ? "金色" : character.innateSoulPower >= 7 ? "紫色" : character.innateSoulPower >= 4 ? "蓝色" : "白色"),
-        charges: 0,
-        completedRuns: 0,
-        enabled: true,
-        initialSoulPowers: [],
-        growthRoutes: knownDefinition?.growthRoutes ?? ["当前实战路线尚未形成"],
-      };
-      meta.martialSoulCodex.push(codex);
+    for (const [index, soul] of souls.entries()) {
+      const knownDefinition = META_MARTIAL_SOULS.find((item) => item.name === soul.name);
+      let codex = meta.martialSoulCodex.find((item) => item.name === soul.name);
+      if (!codex) {
+        codex = {
+          id: knownDefinition?.id ?? `world-${Buffer.from(soul.name).toString("hex")}`,
+          name: soul.name,
+          category: soul.category,
+          description: soul.description,
+          rarity: knownDefinition?.metaRarity ?? (soul.grade === "神话" ? "红色" : soul.grade === "传奇" ? "金色" : soul.grade === "稀有" ? "紫色" : soul.grade === "优秀" ? "蓝色" : "白色"),
+          charges: 0,
+          completedRuns: 0,
+          enabled: true,
+          initialSoulPowers: [],
+          growthRoutes: knownDefinition?.growthRoutes ?? ["当前实战路线尚未形成"],
+        };
+        meta.martialSoulCodex.push(codex);
+      }
+      codex.completedRuns += 1;
+      if (!codex.initialSoulPowers.includes(character.innateSoulPower)) codex.initialSoulPowers.push(character.innateSoulPower);
+      const route = index === 0
+        ? character.soulRings.length ? character.soulRings.map((ring) => `${ring.skillName}（${ring.years}年）`).join(" → ") : "无魂环通关路线"
+        : "本局作为副武魂觉醒，尚未开始附加魂环";
+      if (!codex.growthRoutes.includes(route)) codex.growthRoutes.push(route);
     }
-    codex.completedRuns += 1;
-    if (!codex.initialSoulPowers.includes(character.innateSoulPower)) codex.initialSoulPowers.push(character.innateSoulPower);
-    const route = character.soulRings.length
-      ? character.soulRings.map((ring) => `${ring.skillName}（${ring.years}年）`).join(" → ")
-      : "无魂环通关路线";
-    if (!codex.growthRoutes.includes(route)) codex.growthRoutes.push(route);
     meta.discoveredMartialSouls = meta.martialSoulCodex.length;
   }
   if (game.world.metrics.completedHunts >= 1 && !meta.unlockedHeirlooms.includes("旧猎魂笔记")) meta.unlockedHeirlooms.push("旧猎魂笔记");
@@ -455,6 +458,7 @@ function tableCount(table: string): number {
 export function getWorldCatalogStats(): WorldCatalogStatsView {
   return {
     birthProfiles: BIRTH_PROFILE_COUNT,
+    martialSouls: MARTIAL_SOUL_CATALOG_STATS.total + META_MARTIAL_SOULS.length,
     characters: tableCount("canon_characters"),
     powerSnapshots: tableCount("canon_power_snapshots"),
     factions: tableCount("canon_factions"),

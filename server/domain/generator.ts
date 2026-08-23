@@ -24,6 +24,8 @@ import { EXPANDED_ORIGINS } from "../data/expanded-origins.js";
 import { metaSoulById } from "../data/meta-martial-souls.js";
 import { buildSystemCoreOrigins } from "../data/system-core-origins.js";
 import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
+import { ERA_MARTIAL_SOULS } from "../data/era-martial-souls.js";
+import { fixedTraitEffect } from "./traits.js";
 
 interface OriginTemplate {
   id: string;
@@ -540,10 +542,17 @@ const BASE_MARTIAL_SOULS: MartialSoulTemplate[] = [
   { id: "void-ledger", name: "无字命册", category: "器武魂", description: "能记录因果痕迹的空白册页，前期能力弱，成长方向取决于长期选择。", rarity: 2, soulPowerRange: [5, 10], omens: ["你写下的日期很少记错", "偶尔会梦见一页页没有文字的旧纸"] },
 ];
 
-const MARTIAL_SOULS: MartialSoulTemplate[] = BASE_MARTIAL_SOULS.map((soul) => {
+const seenSoulNames = new Set<string>();
+const MARTIAL_SOULS: MartialSoulTemplate[] = [...BASE_MARTIAL_SOULS, ...ERA_MARTIAL_SOULS].map((soul) => {
   const name = normalizeMartialSoulName(soul.name);
-  return { ...soul, name, grade: martialSoulGrade(name, soul.metaRarity, soul.soulPowerRange[1]) };
-});
+  const sourceEra = soul.sourceEra ?? (/蓝银草|七宝琉璃塔|蓝电霸王龙|昊天锤/.test(name) ? 1 : "原创");
+  return { ...soul, name, sourceEra, grade: soul.grade ?? martialSoulGrade(name, soul.metaRarity, soul.soulPowerRange[1]) };
+}).filter((soul) => seenSoulNames.has(soul.name) ? false : (seenSoulNames.add(soul.name), true));
+
+export const MARTIAL_SOUL_CATALOG_STATS = {
+  total: MARTIAL_SOULS.length,
+  bySource: Object.fromEntries([1, 2, 3, 4, "原创"].map((source) => [source, MARTIAL_SOULS.filter((soul) => soul.sourceEra === source).length])),
+};
 
 const TRAIT_LABELS: Record<string, [string, string]> = {
   courage: ["谨慎", "勇敢"],
@@ -594,6 +603,12 @@ export function derivePersonality(setup: PersonalitySetup): PersonalityProfile {
     [/自由|叛逆|独立/, "independence", 2], [/听话|守序/, "independence", -2],
     [/耐心|谋略|冷静/, "patience", 2], [/冲动|急躁/, "patience", -2],
     [/野心|好强|求道/, "ambition", 2], [/淡泊|知足/, "ambition", -2],
+    [/好胜|自负|控制欲|表演意识|执着/, "ambition", 2],
+    [/审慎|戒备|多疑|警觉|严谨|缜密|细心/, "patience", 2],
+    [/大胆|果断|好战|凶狠/, "courage", 2],
+    [/知恩|护短|仁心|责任感|共情|重情/, "empathy", 2],
+    [/现实|精明|圆滑|权衡|手段意识/, "integrity", -1],
+    [/守口|守秘|秘密主义|谨言/, "independence", 1],
   ];
   for (const [pattern, trait, value] of keywordRules) {
     if (pattern.test(keywordText)) scores[trait] += value;
@@ -643,7 +658,7 @@ function resolvedOriginTier(origin: OriginTemplate): CandidateRarity {
   return origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "优秀" : "平凡");
 }
 
-function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences): MartialSoulTemplate {
+function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences, excludedIds: string[] = []): MartialSoulTemplate {
   const preferredCategory = preferences?.martialSoul;
   const originSoulIds: Record<string, string[]> = {
     "seven-treasure-core": ["seven-treasure-pagoda", "clear-mirror", "star-book"],
@@ -659,17 +674,48 @@ function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: 
   const forced = originSoulIds[origin.id];
   const identityTier = resolvedOriginTier(origin);
   const identityIndex = MARTIAL_SOUL_GRADE_ORDER.indexOf(identityTier);
-  const baseSource = forced ? MARTIAL_SOULS.filter((soul) => forced.includes(soul.id)) : MARTIAL_SOULS;
+  const forcedSource = forced ? MARTIAL_SOULS.filter((soul) => forced.includes(soul.id) && !excludedIds.includes(soul.id)) : [];
+  const baseSource = (forcedSource.length ? forcedSource : MARTIAL_SOULS.filter((soul) => !excludedIds.includes(soul.id)));
   const compatibleSource = baseSource.filter((soul) => MARTIAL_SOUL_GRADE_ORDER.indexOf(soul.grade ?? "平凡") >= identityIndex);
   const source = compatibleSource.length ? compatibleSource : baseSource;
+  const identityText = `${origin.id} ${origin.name} ${origin.summary} ${origin.route ?? ""} ${(origin.roleTags ?? []).join(" ")} ${origin.locations.join(" ")}`;
   const choices = source.map((soul) => ({
     ...soul,
     weight: soul.rarity
-      * (origin.preferredCategories.includes(soul.category) ? 1.8 : 0.65)
+      * (origin.preferredCategories.some((category) => soul.category.includes(category) || category.includes(soul.category)) ? 1.8 : 0.65)
       * (soul.grade === identityTier ? 2.4 : 1)
+      * ((soul.affinityTags ?? []).some((tag) => identityText.includes(tag)) ? 5 : soul.lineageBound ? 0.04 : 1)
       * (preferredCategory && preferredCategory !== "均衡" && soul.category === preferredCategory ? 2.25 : 1),
   }));
   return weightedPick(random, choices);
+}
+
+export function martialSoulMultiplicity(roll: number, tier: CandidateRarity, specialLineage = false): 1 | 2 | 3 {
+  const tripleChance = specialLineage ? 0.012 : tier === "神话" ? 0.0012 : tier === "传奇" ? 0.00035 : 0.00008;
+  const twinChance = specialLineage ? 0.24 : tier === "神话" ? 0.032 : tier === "传奇" ? 0.014 : tier === "稀有" ? 0.006 : tier === "优秀" ? 0.0025 : 0.001;
+  if (roll < tripleChance) return 3;
+  if (roll < tripleChance + twinChance) return 2;
+  return 1;
+}
+
+function martialSoulCount(random: () => number, origin: OriginTemplate): 1 | 2 | 3 {
+  const tier = resolvedOriginTier(origin);
+  const strongMultiLineage = origin.id === "twin-omen-family" || /双生武魂|多武魂/.test(`${origin.name} ${(origin.roleTags ?? []).join(" ")}`);
+  const mutationHint = /异脉|实验|变异/.test(`${origin.name} ${(origin.roleTags ?? []).join(" ")}`);
+  const roll = random();
+  if (strongMultiLineage) return martialSoulMultiplicity(roll, tier, true);
+  if (mutationHint) {
+    if (roll < 0.002) return 3;
+    if (roll < 0.052) return 2;
+  }
+  return martialSoulMultiplicity(roll, tier, false);
+}
+
+function chooseMartialSouls(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences): MartialSoulTemplate[] {
+  const count = martialSoulCount(random, origin);
+  const selected: MartialSoulTemplate[] = [];
+  for (let index = 0; index < count; index += 1) selected.push(chooseSoul(random, origin, preferences, selected.map((soul) => soul.id)));
+  return selected;
 }
 
 function eraRelation(offset: number): string {
@@ -914,7 +960,8 @@ export function generateCandidates(
     }
     usedOrigins.add(origin.id);
 
-    const soul = chooseSoul(random, origin, preferences);
+    const martialSouls = chooseMartialSouls(random, origin, preferences);
+    const soul = martialSouls[0];
     const offset = integer(random, -5, 5);
     const talentFloor = origin.tier === "神话" ? 8 : origin.tier === "传奇" ? 7 : origin.tier === "稀有" ? 5 : 0;
     const innateSoulPower = Math.min(10, Math.max(talentFloor, integer(random, soul.soulPowerRange[0], soul.soulPowerRange[1]) + (origin.innateBonus ?? 0)));
@@ -961,7 +1008,7 @@ export function generateCandidates(
       fixedTraits: origin.fixedTraits ?? [],
       originAdvantage: origin.advantage ?? "没有身份红利，行动自由度较高。",
       originBurden: origin.burden ?? "资源普通，关键机会需要亲自争取。",
-      omens: [thirdPersonClue(pick(random, soul.omens), name, gender), thirdPersonClue(pick(random, [
+      omens: [thirdPersonClue(pick(random, soul.omens), name, gender), thirdPersonClue(martialSouls.length > 1 ? (martialSouls.length === 2 ? "觉醒前的梦里曾先后出现两种互不相同的轮廓" : "觉醒阵附近的黑石曾连续三次产生不同方向的微光") : pick(random, [
         "觉醒日前一夜，你做了一个醒来后便模糊的梦",
         "家中长辈对你的身世似乎隐瞒了一小部分",
         "附近魂师曾评价你的气息比同龄人更稳定",
@@ -991,6 +1038,7 @@ export function generateCandidates(
       originId: origin.id,
       roleTags: origin.roleTags ?? [origin.id === "mystery-arrival" ? "身世谜团" : "本地人"],
       martialSoul: soul,
+      martialSouls,
       innateSoulPower,
       hiddenGift,
       physique: pick(random, ["普通", "优秀", "优秀", "顶尖"]),
@@ -1152,7 +1200,9 @@ export function lifeGoalDifficulty(goal: string): LifeGoalDifficulty {
 
 function martialSoulGoalPotential(candidate: HiddenCandidate): number {
   const colorBonus: Record<string, number> = { 白色: 0, 蓝色: 1, 紫色: 2, 金色: 3, 红色: 5, 七彩: 6 };
-  return Math.min(12, candidate.martialSoul.soulPowerRange[1] + (colorBonus[candidate.martialSoul.metaRarity ?? ""] ?? 0) + Math.floor(candidate.innateSoulPower / 5));
+  const souls = candidate.martialSouls?.length ? candidate.martialSouls : [candidate.martialSoul];
+  const strongest = Math.max(...souls.map((soul) => soul.soulPowerRange[1] + (colorBonus[soul.metaRarity ?? ""] ?? 0)));
+  return Math.min(12, strongest + Math.floor(candidate.innateSoulPower / 5) + Math.max(0, souls.length - 1));
 }
 
 function goalWeight(candidate: HiddenCandidate, goal: string, tailored: Set<string>): number {
@@ -1198,10 +1248,10 @@ function personalityOptions(candidate: HiddenCandidate, seed: string, rerollInde
   });
 }
 
-function buildShaping(game: StoredGame, goalRerollIndex = 0, personalityRerollIndex = 0, goalLocks: boolean[] = [false, false, false], previousGoals?: string[]): CharacterShapingView {
+function buildShaping(game: StoredGame, goalRerollIndex = 0, personalityRerollIndex = 0, goalLocks: boolean[] = [false, false, false], previousGoals?: string[], includeGoals = true): CharacterShapingView {
   const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId);
   if (!candidate) throw new Error("请先选择角色");
-  const freshGoals = lifeGoalOptions(candidate, game.view.seed, goalRerollIndex);
+  const freshGoals = includeGoals ? lifeGoalOptions(candidate, game.view.seed, goalRerollIndex) : [];
   const goals = freshGoals.map((goal, index) => goalLocks[index] && previousGoals?.[index] ? previousGoals[index] : goal);
   return {
     goalRerollIndex,
@@ -1212,6 +1262,7 @@ function buildShaping(game: StoredGame, goalRerollIndex = 0, personalityRerollIn
     lifeGoalDifficulties: goals.map(lifeGoalDifficulty),
     personalityOptions: personalityOptions(candidate, game.view.seed, personalityRerollIndex),
     fixedTraits: candidate.public.fixedTraits,
+    fixedTraitEffects: candidate.public.fixedTraits.map((trait) => ({ trait, effect: fixedTraitEffect(trait) })),
   };
 }
 
@@ -1225,11 +1276,12 @@ export function rerollCharacterShaping(game: StoredGame, part: "goals" | "person
     part === "personality" ? current.personalityRerollIndex + 1 : current.personalityRerollIndex,
     locks,
     current.lifeGoalOptions,
+    part === "goals",
   );
   game.view.updatedAt = new Date().toISOString();
 }
 
-export function finalizeCharacterShaping(game: StoredGame, input: { keywords: string[]; answers: Record<string, string>; lifeGoal: string }): void {
+export function finalizeCharacterShaping(game: StoredGame, input: { keywords: string[]; answers: Record<string, string> }): void {
   if (game.view.status !== "character_shaping") throw new Error("当前不处于角色塑造阶段");
   const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId);
   if (!candidate) throw new Error("请先选择角色");
@@ -1240,10 +1292,7 @@ export function finalizeCharacterShaping(game: StoredGame, input: { keywords: st
   game.personalityProfile = profile;
   game.view.personality = setup;
   game.view.personalitySummary = profile.summary;
-  game.view.lifeGoal = input.lifeGoal.trim();
-  game.view.runProgress.lifeGoal = game.view.lifeGoal;
   game.view.status = "awakening";
-  game.view.shaping = undefined;
   game.view.narrative = [createEntry("narration", buildAwakeningPrelude(candidate, profile))];
   const scores = profile.scores;
   game.view.suggestions = [
@@ -1252,6 +1301,23 @@ export function finalizeCharacterShaping(game: StoredGame, input: { keywords: st
     scores.independence >= 2 ? "直接询问觉醒时该注意什么" : "把家人临行前的话再想一遍",
   ];
   game.view.updatedAt = new Date().toISOString();
+}
+
+export function selectLifeGoal(game: StoredGame, lifeGoal: string): void {
+  if (game.view.status !== "life_goal_selection" || !game.view.character) throw new Error("当前不处于人生目标选择阶段");
+  const goal = lifeGoal.trim();
+  if (goal.length < 6) throw new Error("人生目标需要写得更具体");
+  game.view.lifeGoal = goal;
+  game.view.runProgress.lifeGoal = goal;
+  game.view.tasks = [
+    { id: "life-goal", title: goal, kind: "计划", detail: "这是角色在看清自身武魂后选定的人生方向。", status: "进行中" },
+    ...game.view.tasks.filter((task) => task.id !== "life-goal"),
+  ];
+  game.view.status = "playing";
+  game.view.shaping = undefined;
+  game.storyMemory.openThreads = [...new Set([goal, ...game.storyMemory.openThreads])].slice(0, 12);
+  game.view.updatedAt = new Date().toISOString();
+  refreshStoryArchive(game);
 }
 
 export function createGame(input: CreateGameInput, meta?: MetaProgressionView): StoredGame {
@@ -1279,15 +1345,17 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       soulPowerRange: [Math.min(...entry.initialSoulPowers, 1), Math.max(...entry.initialSoulPowers, 10)] as [number, number],
       omens: [`${entry.name}曾在梦里留下轮廓`, `魂力对${entry.name}的意象产生共鸣`],
       metaRarity: entry.rarity,
+      sourceEra: "局外" as const,
     };
-    candidate.martialSoul = { ...replacement, grade: martialSoulGrade(replacement.name, replacement.metaRarity, replacement.soulPowerRange[1]) };
+    candidate.martialSoul = { ...replacement, sourceEra: replacement.sourceEra ?? "局外", grade: martialSoulGrade(replacement.name, replacement.metaRarity, replacement.soulPowerRange[1]) };
+    candidate.martialSouls = [candidate.martialSoul, ...(candidate.martialSouls ?? []).filter((soul) => soul.id !== candidate.martialSoul.id).slice(0, 2)];
     candidate.innateSoulPower = Math.max(candidate.innateSoulPower, integer(codexRandom, candidate.martialSoul.soulPowerRange[0], candidate.martialSoul.soulPowerRange[1]));
   }
 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 7,
+    schemaVersion: 8,
     hiddenCandidates,
     personalityProfile: profile,
     actionIndex: 0,
@@ -1388,7 +1456,8 @@ export function selectCandidate(game: StoredGame, candidateId: string, customNam
   const candidate = game.hiddenCandidates.find((item) => item.public.id === candidateId);
   if (!candidate) throw new Error("候选角色不存在或已经失效");
   if (forcedSoul) {
-    candidate.martialSoul = forcedSoul;
+    candidate.martialSoul = { ...forcedSoul, sourceEra: forcedSoul.sourceEra ?? "局外", grade: forcedSoul.grade ?? martialSoulGrade(forcedSoul.name, forcedSoul.metaRarity, forcedSoul.soulPowerRange[1]) };
+    candidate.martialSouls = [candidate.martialSoul, ...(candidate.martialSouls ?? []).filter((soul) => soul.id !== candidate.martialSoul.id).slice(0, 2)];
     candidate.innateSoulPower = Math.max(candidate.innateSoulPower, integer(createRandom(`${game.view.seed}:codex-soul:${forcedSoul.id}`), forcedSoul.soulPowerRange[0], forcedSoul.soulPowerRange[1]));
     candidate.public.omens[0] = thirdPersonClue(forcedSoul.omens[0] ?? `${forcedSoul.name}的轮廓曾在梦里出现`, candidate.public.name, candidate.public.gender);
     game.legacy.plannedMartialSoulId = forcedSoul.id;
@@ -1413,7 +1482,7 @@ export function selectCandidate(game: StoredGame, candidateId: string, customNam
   recordIntelligence(game, { subjectType: "地点", subjectId: candidate.public.locationId, title: candidate.public.location, detail: `${candidate.public.residence.district}；住处为${candidate.public.residence.building}，主角日常使用${candidate.public.residence.room}。`, source: "六年日常生活", confidence: 100, status: "确定" });
   game.view.mapHierarchy = buildMapHierarchy(game);
   game.view.candidates = game.hiddenCandidates.map((item) => item.public);
-  game.view.shaping = buildShaping(game);
+  game.view.shaping = buildShaping(game, 0, 0, [false, false, false], undefined, false);
   game.view.narrative = [createEntry("system", `${candidate.public.name}已经选定。接下来再决定${candidate.public.gender === "女" ? "她" : "他"}会成为什么样的人。`)];
   game.view.suggestions = [];
   game.view.updatedAt = new Date().toISOString();
@@ -1493,16 +1562,31 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   );
   if (!selected) throw new Error("请先选择角色");
 
+  const soulTemplates = selected.martialSouls?.length ? selected.martialSouls : [selected.martialSoul];
+  const identityText = `${selected.originId} ${selected.public.originName} ${selected.public.originSummary} ${selected.public.route} ${selected.roleTags.join(" ")}`;
+  const soulViews = soulTemplates.map((soul, index) => ({
+    name: soul.name,
+    category: soul.category,
+    description: soul.description,
+    rarity: soul.metaRarity,
+    grade: soul.grade ?? martialSoulGrade(soul.name, soul.metaRarity, soul.soulPowerRange[1]),
+    sourceEra: soul.sourceEra ?? "原创" as const,
+    cultivationState: index === 0 ? "主修" as const : "未修炼" as const,
+    originFit: soul.sourceEra === "局外"
+      ? "由局外图鉴指定，不受本次出身权重限制。"
+      : (soul.affinityTags ?? []).some((tag) => identityText.includes(tag))
+        ? "与血脉、家族或成长环境高度契合。"
+        : soul.lineageBound
+          ? "属于极低概率的隐性血脉或返祖觉醒，来源需要在剧情中追查。"
+          : selected.public.originName.includes("变异") || selected.roleTags.some((tag) => /实验|异脉|变异|谜团/.test(tag))
+            ? "与身份中的变异征兆相符。"
+            : "与出身常见方向并不完全一致，可能是自然变异。",
+  }));
   const character: CharacterPublic = {
     ...selected.public,
     age: 6,
-    martialSoul: {
-      name: selected.martialSoul.name,
-      category: selected.martialSoul.category,
-      description: selected.martialSoul.description,
-      rarity: selected.martialSoul.metaRarity,
-      grade: selected.martialSoul.grade ?? martialSoulGrade(selected.martialSoul.name, selected.martialSoul.metaRarity, selected.martialSoul.soulPowerRange[1]),
-    },
+    martialSoul: soulViews[0],
+    martialSouls: soulViews,
     innateSoulPower: selected.innateSoulPower,
     soulRank: selected.innateSoulPower,
     cultivationProgress: selected.innateSoulPower >= 10 ? "等待第一魂环" : "刚刚起步",
@@ -1531,7 +1615,8 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   }
 
   game.view.character = character;
-  game.view.status = "playing";
+  game.view.status = "life_goal_selection";
+  game.view.shaping = buildShaping(game, 0, game.view.shaping?.personalityRerollIndex ?? 0, [false, false, false], undefined, true);
   const originStart: Record<string, { coins: number; reputation: string; inventory: string[]; affiliation?: { id: string; name: string; role: string } }> = {
     "seven-treasure-core": { coins: 800, reputation: "七宝内门熟面孔", inventory: ["七宝琉璃宗内门令", "精制行囊", "三日干粮", "备用金票"], affiliation: { id: "seven-treasure", name: "七宝琉璃宗", role: "内门亲传候选" } },
     "spirit-hall-elder-child": { coins: 700, reputation: "长老殿嫡系", inventory: ["长老殿家徽", "武魂城通行令", "精制护身软甲", "金魂币袋"], affiliation: { id: "spirit-hall", name: "武魂殿", role: "长老嫡系" } },
@@ -1580,10 +1665,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     };
   });
   game.view.tasks = selected.innateSoulPower > 0
-    ? [
-        { id: "life-goal", title: game.view.lifeGoal, kind: "计划", detail: "这是角色准备花上一生去完成的事。", status: "进行中" },
-        { id: "first-ring", title: "获得第一魂环", kind: "修炼需求", detail: "魂力达到十级后，完成一次完整猎魂。", status: "进行中" },
-      ]
+    ? [{ id: "first-ring", title: "获得第一魂环", kind: "修炼需求", detail: "魂力达到十级后，完成一次完整猎魂。", status: "进行中" }]
     : [{ title: "理解觉醒结果", kind: "线索", detail: "没有显现先天魂力并不等于所有道路都已断绝。" }];
   if (selected.originId === "cultivator-reincarnation") game.view.tasks.push({ id: "adapt-cultivation", title: "验证前世修行法", kind: "计划", detail: "先完成一条能安全运转的魂力经脉路线。", status: "进行中" });
   if (selected.originId === "modern-transmigrator") game.view.tasks.push({ id: "verify-timeline", title: "核实剧情时间线", kind: "线索", detail: "先确认当前年份、唐三位置和已经发生的关键节点。", status: "进行中" });
@@ -1608,7 +1690,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   game.storyMemory.openThreads = selected.innateSoulPower > 0
     ? ["家人与出身中尚未说清的细节", "获得第一魂环"]
     : ["家人与出身中尚未说清的细节", "理解觉醒结果"];
-  game.storyMemory.summary = `${selected.public.name}在${selected.public.location}完成武魂觉醒，武魂是${selected.martialSoul.name}，先天魂力${selected.innateSoulPower}级。`;
+  game.storyMemory.summary = `${selected.public.name}在${selected.public.location}完成武魂觉醒，${soulViews.length === 1 ? "武魂" : soulViews.length === 2 ? "双生武魂" : "三生武魂"}为${soulViews.map((soul) => soul.name).join("、")}，先天魂力${selected.innateSoulPower}级。`;
   game.view.narrative.push(createEntry("narration", buildAwakeningResult(selected)));
   game.view.suggestions = selected.innateSoulPower > 0
     ? [`询问${selected.innateSoulPower}级先天魂力该怎么修炼`, "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
@@ -1630,12 +1712,16 @@ function buildAwakeningResult(candidate: HiddenCandidate): string {
       ? `水晶球亮了，刻度停在先天魂力 ${candidate.innateSoulPower} 级。执事低头记下数字。`
       : `水晶球一直没亮。执事等了两息，才把它从${pronoun}手下抽走。`;
 
+  const souls = candidate.martialSouls?.length ? candidate.martialSouls : [candidate.martialSoul];
+  const soulCountText = souls.length === 1 ? "武魂" : souls.length === 2 ? "双生武魂" : "三生武魂";
+  const soulLines = souls.map((soul, index) => `${index === 0 ? `${pronoun}的掌心里` : `紧接着，第 ${index + 1} 道魂力轮廓中`}出现了${soul.name}。这是${soul.category}。${soul.description}`);
   return [
     `${name}踩进六角阵。金色光点贴着小腿往上钻，皮肤又麻又痒。右手忽然一沉，${pronoun}差点把胳膊甩出去。`,
-    `${pronoun}的掌心里出现了${candidate.martialSoul.name}。${candidate.martialSoul.description}`,
+    souls.length > 1 ? `阵中的光没有立刻散去。负责觉醒的魂师重新数了一遍魂力轮廓——${soulCountText}。` : "",
+    ...soulLines,
     powerText,
     `门外有人踮脚往里看。家里人还不知道结果，${pronoun}先听见自己喘了一口气。`,
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 }
 
 export function publicView(game: StoredGame) {

@@ -145,8 +145,9 @@ function CharacterPanel({ game }: { game: GameView }) {
 function SoulPanel({ game }: { game: GameView }) {
   if (!game.character) return <LockedPanel text="尚未觉醒" />;
   const character = game.character;
+  const souls = character.martialSouls?.length ? character.martialSouls : [character.martialSoul];
   return <div className="detail-stack">
-    <div className={`identity-block ${character.martialSoul.rarity ? `soul-panel-${character.martialSoul.rarity}` : ""} ${character.martialSoul.grade ? `soul-grade-${character.martialSoul.grade}` : ""}`}><small>{character.martialSoul.rarity ? `${character.martialSoul.rarity} · ` : ""}{character.martialSoul.grade ? `武魂潜质 ${character.martialSoul.grade} · ` : ""}{character.martialSoul.category}</small><strong>{character.martialSoul.name}</strong></div><p className="panel-copy">{character.martialSoul.description}</p>
+    {souls.map((soul, index) => <section key={`${soul.name}-${index}`} className="soul-entry"><div className={`identity-block ${soul.rarity ? `soul-panel-${soul.rarity}` : ""} ${soul.grade ? `soul-grade-${soul.grade}` : ""}`}><small>{index === 0 ? "主武魂" : `第 ${index + 1} 武魂 · 尚未修炼`} · {soul.rarity ? `${soul.rarity} · ` : ""}{soul.grade ? `潜质 ${soul.grade} · ` : ""}{soul.category}</small><strong>{soul.name}</strong></div><p className="panel-copy">{soul.description}</p></section>)}
     <dl className="stat-list"><div><dt>先天魂力</dt><dd>{character.innateSoulPower} 级</dd></div><div><dt>魂环</dt><dd>{character.soulRings.length} 枚</dd></div></dl>
     {character.revealedGift && <article className="gift-card"><span>已发现</span><strong>{character.revealedGift}</strong></article>}
     {character.specialSystem && <article className="special-system-card"><header><span>独立体系</span><strong>{character.specialSystem.name}</strong></header><p>{character.specialSystem.stage} · {character.specialSystem.progress}</p><div className="trait-cloud">{character.specialSystem.abilities.map((ability) => <span key={ability}>{ability}</span>)}</div><small>{character.specialSystem.resourceHint}</small></article>}

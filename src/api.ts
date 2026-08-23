@@ -65,8 +65,12 @@ export function rerollCharacterShaping(id: string, part: "goals" | "personality"
   return request(`/api/games/${id}/shaping/reroll`, { method: "POST", body: JSON.stringify({ part, lockedSlots }) });
 }
 
-export function completeCharacterShaping(id: string, input: { keywords: string[]; answers: Record<string, string>; lifeGoal: string }): Promise<GameView> {
+export function completeCharacterShaping(id: string, input: { keywords: string[]; answers: Record<string, string> }): Promise<GameView> {
   return request(`/api/games/${id}/shaping/complete`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function selectLifeGoal(id: string, lifeGoal: string): Promise<GameView> {
+  return request(`/api/games/${id}/life-goal`, { method: "POST", body: JSON.stringify({ lifeGoal }) });
 }
 
 export function rerollCandidates(id: string, lockedSlots: number[] = []): Promise<GameView> {

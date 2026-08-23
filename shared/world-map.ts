@@ -11,6 +11,8 @@ export const WORLD_MAP_POINTS: WorldMapPoint[] = [
   { id: "vast-sea-city", name: "瀚海城", x: 9, y: 33, kind: "城市" },
   { id: "clear-sky-mountain", name: "昊天宗", x: 20, y: 18, kind: "宗门", hidden: true },
   { id: "skywater-academy", name: "天水学院", x: 34, y: 12, kind: "学院" },
+  { id: "extreme-north-edge", name: "极北外围", x: 42, y: 5, kind: "森林" },
+  { id: "extreme-north-core", name: "极北核心圈", x: 49, y: 3, kind: "险地", hidden: true },
   { id: "heaven-dou-city", name: "天斗城", x: 37, y: 25, kind: "城市" },
   { id: "seven-treasure-fort", name: "七宝琉璃宗", x: 31, y: 29, kind: "宗门" },
   { id: "heaven-royal-academy", name: "天斗皇家学院", x: 41, y: 22, kind: "学院" },
