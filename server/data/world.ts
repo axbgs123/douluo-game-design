@@ -21,6 +21,8 @@ export interface CanonCharacterDefinition {
   personality: string[];
   goals: string[];
   powerSnapshots: PowerSnapshotDefinition[];
+  /** The character's canonical identity is not available through ordinary public inquiry. */
+  hidden?: boolean;
 }
 
 export interface FactionDefinition {
@@ -201,7 +203,7 @@ export const CANON_EVENTS: CanonEventDefinition[] = [
   { id: "tang-awakening", year: 0, day: 20, title: "唐三与小舞进入诺丁学院", locationId: "notting-academy", participantIds: ["tang-san", "xiao-wu", "yu-xiaogang"], inertia: 5, publicSummary: "诺丁学院迎来两名先天满魂力的新生。" },
   { id: "shrek-enrollment", year: 6, day: 20, title: "史莱克七怪聚首", locationId: "shrek-village", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 5, publicSummary: "数名年轻魂师进入史莱克学院。" },
   { id: "shrek-relocation", year: 7, day: 45, title: "史莱克学院迁入天斗城", locationId: "heaven-dou-city", participantIds: ["flender", "yu-xiaogang", "zhao-wuji", "tang-san"], inertia: 4, publicSummary: "一所来自索托城的小学院在天斗城重新落脚。" },
-  { id: "academy-tournament", year: 8, day: 120, title: "全大陆高级魂师学院精英大赛", locationId: "spirit-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun", "bibi-dong", "huliena"], inertia: 5, publicSummary: "两大帝国与武魂殿共同关注的学院赛事举行。" },
+  { id: "academy-tournament", year: 8, day: 120, title: "全大陆高级魂师学院精英大赛预选赛开幕", locationId: "heaven-dou-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 5, publicSummary: "天斗赛区预选赛开幕，多所高级魂师学院开始争夺晋级名额。" },
   { id: "pope-palace-conflict", year: 8, day: 300, title: "教皇殿前的冲突", locationId: "spirit-city", participantIds: ["tang-san", "xiao-wu", "tang-hao", "bibi-dong", "gui-mei", "yue-guan"], inertia: 5, publicSummary: "大赛结束后的冲突使多方关系骤然紧张，公开消息受到严格控制。" },
   { id: "five-year-reunion", year: 13, title: "史莱克五年之约", locationId: "heaven-dou-city", participantIds: ["tang-san", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 4, publicSummary: "昔日史莱克学员约定重聚。" },
   { id: "tang-sect-founded", year: 14, title: "唐门在天斗城立足", locationId: "heaven-dou-city", participantIds: ["tang-san", "tai-tan", "bai-he", "niu-gao", "yang-wudi", "ning-rongrong"], inertia: 4, publicSummary: "一个结合多个单属性家族的新兴魂师势力开始活动。" },
@@ -288,10 +290,23 @@ function appendUnique<T>(target: T[], additions: T[], key: (item: T) => string):
   for (const item of additions) if (!existing.has(key(item))) { target.push(item); existing.add(key(item)); }
 }
 
+const HIDDEN_CANON_CHARACTER_IDS = new Set([
+  "qian-renxue", "qian-daoliu", "tang-chen", "a-yin", "da-ming", "er-ming",
+  "di-tian", "bi-ji", "zi-ji", "xiong-jun", "wan-yao-wang", "chi-wang", "tian-meng",
+  "snow-empress", "ice-empress",
+]);
+for (const character of CANON_CHARACTERS) {
+  if (HIDDEN_CANON_CHARACTER_IDS.has(character.id)) character.hidden = true;
+}
+
 appendUnique(FACTIONS, EXPANDED_FACTIONS, (item) => item.id);
 appendUnique(LOCATIONS, EXPANDED_LOCATIONS, (item) => item.id);
 appendUnique(CANON_CHARACTERS, EXPANDED_CHARACTERS, (item) => item.id);
-appendUnique(CANON_EVENTS, EXPANDED_EVENTS, (item) => item.id);
+const REDUNDANT_EXPANDED_EVENT_IDS = new Set([
+  "shrek-entry-test", "shrek-soto-arena", "imperial-team-match", "d1-golden-triangle-reunion",
+  "tournament-qualifiers", "xiao-wu-identity-exposed", "tang-hao-rescue",
+]);
+appendUnique(CANON_EVENTS, EXPANDED_EVENTS.filter((event) => !REDUNDANT_EXPANDED_EVENT_IDS.has(event.id)), (item) => item.id);
 appendUnique(SOUL_BEASTS, EXPANDED_SOUL_BEASTS, (item) => item.id);
 
 export function locationById(id: string): LocationDefinition | undefined {

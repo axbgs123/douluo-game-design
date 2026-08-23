@@ -100,7 +100,8 @@ export const EXPANDED_LOCATIONS: LocationDefinition[] = [
 ];
 
 type CharacterRow = [string, string, string[], 1 | 2 | 3 | 4 | 5, number | null, string[], string[], string, string[], string, number, string, number?];
-const character = ([id, name, aliases, importance, birthYear, martialSouls, factionIds, initialLocationId, personality, goal, snapshotYear, tier, deathYear]: CharacterRow): CanonCharacterDefinition => ({ id, name, aliases, importance, birthYear: birthYear ?? undefined, deathYear, martialSouls, factionIds, initialLocationId, personality, goals: [goal], powerSnapshots: [{ year: snapshotYear, tier, note: `${name}在对应时代的公开实力与身份记录` }] });
+const HIDDEN_CHARACTER_IDS = new Set(["golden-crocodile", "qian-jun", "jiang-mo", "silver-dragon-sleeping"]);
+const character = ([id, name, aliases, importance, birthYear, martialSouls, factionIds, initialLocationId, personality, goal, snapshotYear, tier, deathYear]: CharacterRow): CanonCharacterDefinition => ({ id, name, aliases, importance, birthYear: birthYear ?? undefined, deathYear, martialSouls, factionIds, initialLocationId, personality, goals: [goal], powerSnapshots: [{ year: snapshotYear, tier, note: `${name}在对应时代的公开实力与身份记录` }], hidden: HIDDEN_CHARACTER_IDS.has(id) });
 
 export const EXPANDED_CHARACTERS: CanonCharacterDefinition[] = ([
   ["yu-yuanzhen", "玉元震", ["雷霆斗罗"], 5, null, ["蓝电霸王龙"], ["blue-lightning"], "blue-lightning-mountain", ["威严", "护族", "强硬"], "守住上三宗地位", -20, "九十五级封号斗罗"],
@@ -204,7 +205,28 @@ export const EXPANDED_CHARACTERS: CanonCharacterDefinition[] = ([
 EXPANDED_CHARACTERS.push(character(["qian-xunji", "千寻疾", ["前任教皇"], 5, null, ["六翼天使"], ["pope-palace", "spirit-hall"], "spirit-city", ["强势", "冷酷", "重视权力"], "维持教皇殿与天使传承", -8, "封号斗罗", -5]));
 
 type EventRow = [string, number, string, string | undefined, string[], 1 | 2 | 3 | 4 | 5, string];
-const event = ([id, year, title, locationId, participantIds, inertia, publicSummary]: EventRow): CanonEventDefinition => ({ id, year, title, locationId, participantIds, inertia, publicSummary });
+const EVENT_DAYS: Record<string, number> = {
+  "notting-master-disciple": 22,
+  "first-ring-tang-san": 40,
+  "shrek-entry-test": 20,
+  "zhao-wuji-test": 21,
+  "star-dou-first-hunt": 35,
+  "titan-ape-appearance": 36,
+  "human-spider-absorption": 38,
+  "shrek-soto-arena": 60,
+  "imperial-team-match": 150,
+  "shrek-to-heaven-royal": 30,
+  "blue-tyrant-merge": 45,
+  "ice-fire-herbs": 100,
+  "seven-devils-herbs": 140,
+  "d1-golden-triangle-reunion": 60,
+  "tournament-qualifiers": 120,
+  "d1-seven-treasure-evolution": 145,
+  "tournament-finals": 260,
+  "xiao-wu-identity-exposed": 300,
+  "tang-hao-rescue": 301,
+};
+const event = ([id, year, title, locationId, participantIds, inertia, publicSummary]: EventRow): CanonEventDefinition => ({ id, year, day: EVENT_DAYS[id], title, locationId, participantIds, inertia, publicSummary });
 
 export const EXPANDED_EVENTS: CanonEventDefinition[] = ([
   ["ayin-sacrifice", -6, "阿银献祭与昊天宗旧案", "holy-soul-village", ["tang-hao", "a-yin", "qian-xunji"], 5, "昊天宗与武魂殿的冲突留下长期裂痕。"],
@@ -220,15 +242,15 @@ export const EXPANDED_EVENTS: CanonEventDefinition[] = ([
   ["titan-ape-appearance", 6, "泰坦巨猿现身", "star-dou-core", ["xiao-wu", "er-ming", "tang-san"], 5, "森林之王的出现改变猎魂队行动。"],
   ["human-spider-absorption", 6, "唐三越级吸收人面魔蛛", "star-dou-edge", ["tang-san"], 5, "外附魂骨八蛛矛开始形成。"],
   ["shrek-soto-arena", 6, "史莱克七怪参加索托斗魂", "suotuo-city", ["tang-san", "dai-mubai", "xiao-wu"], 4, "七怪开始形成固定战斗配合。"],
-  ["imperial-team-match", 7, "史莱克对战皇斗战队", "suotuo-city", ["tang-san", "yu-tianheng", "dugu-yan", "qin-ming"], 4, "两支青年队伍完成关键斗魂。"],
+  ["imperial-team-match", 6, "史莱克对战皇斗战队", "suotuo-city", ["tang-san", "yu-tianheng", "dugu-yan", "qin-ming"], 4, "两支青年队伍完成关键斗魂。"],
   ["shrek-to-heaven-royal", 7, "史莱克前往天斗皇家学院", "heaven-royal-academy", ["flender", "qin-ming", "tang-san"], 4, "学院合并计划受到贵族阻挠。"],
   ["blue-tyrant-merge", 7, "蓝霸学院改为史莱克学院", "heaven-dou-city", ["liu-erlong", "flender", "yu-xiaogang"], 4, "黄金铁三角重新聚首。"],
   ["ice-fire-herbs", 7, "唐三进入冰火两仪眼", "ice-fire-spring", ["tang-san", "dugu-bo"], 5, "仙草资源开始改变史莱克众人根基。"],
   ["seven-devils-herbs", 7, "史莱克七怪服用仙草", "heaven-dou-city", ["tang-san", "ning-rongrong", "ao-si-ka", "ma-hongjun"], 5, "七怪天赋与武魂发生显著变化。"],
   ["tournament-qualifiers", 8, "魂师大赛预选赛", "heaven-dou-city", ["tang-san", "feng-xiaotian", "huo-wu", "shui-binger"], 4, "五元素学院与史莱克展开竞争。"],
   ["tournament-finals", 8, "魂师大赛总决赛", "spirit-city", ["tang-san", "huliena", "xie-yue", "yan"], 5, "年轻魂师在武魂城争夺冠军。"],
-  ["xiao-wu-identity-exposed", 9, "小舞魂兽身份暴露", "spirit-city", ["xiao-wu", "bibi-dong", "tang-hao"], 5, "多方强者围绕十万年魂兽爆发冲突。"],
-  ["tang-hao-rescue", 9, "唐昊现身教皇殿", "spirit-city", ["tang-hao", "tang-san", "bibi-dong"], 5, "昊天斗罗强行带走唐三与小舞。"],
+  ["xiao-wu-identity-exposed", 8, "小舞魂兽身份暴露", "spirit-city", ["xiao-wu", "bibi-dong", "tang-hao"], 5, "多方强者围绕十万年魂兽爆发冲突。"],
+  ["tang-hao-rescue", 8, "唐昊现身教皇殿", "spirit-city", ["tang-hao", "tang-san", "bibi-dong"], 5, "昊天斗罗强行带走唐三与小舞。"],
   ["five-year-training", 10, "史莱克七怪分头修行", undefined, ["tang-san", "dai-mubai", "ning-rongrong"], 3, "七怪进入五年独立成长阶段。"],
   ["tang-san-awakens-emperor", 12, "唐三觉醒蓝银皇", "blue-silver-valley", ["tang-san", "tang-hao", "a-yin"], 5, "唐三的蓝银草完成血脉觉醒。"],
   ["slaughter-city-entry", 12, "唐三进入杀戮之都", "slaughter-city", ["tang-san", "huliena", "tang-chen"], 5, "杀戮试炼与修罗神传承产生联系。"],

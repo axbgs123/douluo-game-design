@@ -659,11 +659,23 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
   return messages;
 }
 
-export function revealNpc(game: StoredGame, npcId: string): void {
+export function canDiscoverNpc(game: StoredGame, npcId: string): boolean {
   const npc = game.world.npcs[npcId];
-  if (!npc || npc.currentGoal === "尚未出生") return;
+  const definition = characterById(npcId);
+  if (!npc || !definition || !npc.alive || npc.currentGoal === "尚未出生") return false;
+  if (npc.knownToPlayer || !definition.hidden) return true;
+  const hasReliableIntel = game.world.intelligenceRecords.some((record) => record.subjectType === "人物" && record.subjectId === npcId && record.confidence >= 60);
+  const hasDirectCausalContact = game.world.canonCausalFootprints.some((cause) => cause.affectedNpcIds.includes(npcId));
+  const isVisibleEventParticipant = game.world.dynamicEvents.some((event) => event.status === "可介入" && event.participantIds.includes(npcId) && event.locationId === game.view.locationId);
+  return hasReliableIntel || hasDirectCausalContact || isVisibleEventParticipant;
+}
+
+export function revealNpc(game: StoredGame, npcId: string): boolean {
+  const npc = game.world.npcs[npcId];
+  if (!npc || !canDiscoverNpc(game, npcId)) return false;
   npc.knownToPlayer = true;
   game.view.knownFigures = buildKnownFigures(game);
+  return true;
 }
 
 export function ensureGameState(game: StoredGame): StoredGame {
@@ -721,7 +733,10 @@ export function ensureGameState(game: StoredGame): StoredGame {
   }
   simulateNpcYears(game, startYear);
   const evidencedNpcIds = new Set([
-    ...legacy.world.intelligenceRecords.filter((record) => record.subjectType === "人物").map((record) => record.subjectId),
+    ...legacy.world.intelligenceRecords.filter((record) => {
+      if (record.subjectType !== "人物") return false;
+      return !characterById(record.subjectId)?.hidden || record.confidence >= 60;
+    }).map((record) => record.subjectId),
     ...game.view.relations.map((relation) => relation.id).filter((id): id is string => Boolean(id)),
     ...Object.values(legacy.world.npcs).filter((npc) => npc.memoryOfPlayer.length > 0).map((npc) => npc.id),
   ]);

@@ -3,7 +3,7 @@ import type { ConditionLabel, HuntingStage, NarrativeEntry, SoulRingView, TaskVi
 import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, locationById, soulBeastById } from "../data/world.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
-import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, inferLocationId, recordCanonInfluence, recordIntelligence, rememberNpcInteraction, revealNpc } from "./world.js";
+import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, canDiscoverNpc, inferLocationId, recordCanonInfluence, recordIntelligence, rememberNpcInteraction, revealNpc } from "./world.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSuggestions, selectNarrativeRules } from "./story-rules.js";
 import { formatSoulCoins } from "../../shared/currency.js";
@@ -730,7 +730,8 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
   const systemMessages: string[] = [];
   if (mentioned) {
     const npc = game.world.npcs[mentioned.id];
-    if (npc?.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId) {
+    const discoverable = canDiscoverNpc(game, mentioned.id);
+    if (npc?.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId && discoverable) {
       revealNpc(game, mentioned.id);
       npc.dispositionToPlayer += 2;
       rememberNpcInteraction(game, npc, `${game.view.worldTime?.year ?? 0}年在${game.view.location ?? "此地"}与玩家交谈`);
@@ -751,10 +752,12 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
       detail = `与 ${mentioned.name} 当面交谈，建立初步关系。`;
       systemMessages.push(`人物记录 · ${mentioned.name}`);
       recordIntelligence(game, { subjectType: "人物", subjectId: mentioned.id, title: mentioned.name, detail: `${mentioned.name}亲口谈及当前话题；其措辞可能保留私心，但见面地点已经确认。`, source: `当面交谈 · ${mentioned.name}`, confidence: 88, status: "确定" });
-    } else {
+    } else if (discoverable) {
       revealNpc(game, mentioned.id);
       detail = `打听到关于 ${mentioned.name} 的传闻，无法确认全部真实性。`;
       recordIntelligence(game, { subjectType: "人物", subjectId: mentioned.id, title: mentioned.name, detail: `有人提到${mentioned.name}，但说法未经本人或第二来源核实。`, source: `${game.view.location ?? "当地"}传闻`, confidence: 38, status: "传闻" });
+    } else {
+      detail = `没有找到能证明“${mentioned.name}”是现实人物的可靠记录。`;
     }
   }
   return {
@@ -762,7 +765,9 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
     minutes: 20,
     ruleSummary: detail,
     fallbackNarrative: mentioned
-      ? `我问到${mentioned.name}时，对方先看了看周围。话说得不多，真假也掺在一起。我把能互相对上的那几句记住，剩下的没急着信。`
+      ? detail.startsWith("没有找到")
+        ? `我问了几处，也翻了能接触到的登记。没人能证明“${mentioned.name}”对应一个真实身份；我没有把猜测当成事实记进人物档案。`
+        : `我问到${mentioned.name}时，对方先看了看周围。话说得不多，真假也掺在一起。我把能互相对上的那几句记住，剩下的没急着信。`
       : "我把问题问了。对方手里的活没停，只挑了几句能说的答。再追问时，他摇头，说自己也只是听来的。",
     suggestions: ["追问消息来源", "换个话题", "把情报记下来"],
     systemMessages,
@@ -771,7 +776,7 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
 
 function investigateResolution(game: StoredGame, action: string): ActionResolution {
   const random = actionRandom(game);
-  const localNpc = Object.values(game.world.npcs).find((npc) => npc.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId && !npc.knownToPlayer && random() < 0.45);
+  const localNpc = Object.values(game.world.npcs).find((npc) => npc.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId && !npc.knownToPlayer && canDiscoverNpc(game, npc.id) && random() < 0.45);
   const systemMessages: string[] = [];
   if (localNpc) {
     revealNpc(game, localNpc.id);

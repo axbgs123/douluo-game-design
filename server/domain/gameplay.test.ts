@@ -3,7 +3,7 @@ import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from
 import { applyActionResult, resolveAction } from "./actions.js";
 import { settleRun } from "./endings.js";
 import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
-import { advanceWorldTime, createHiddenWorld, ensureGameState, recordCanonInfluence } from "./world.js";
+import { advanceWorldTime, canDiscoverNpc, createHiddenWorld, ensureGameState, recordCanonInfluence, recordIntelligence, revealNpc } from "./world.js";
 import { applyNarrativeMemory, violatesCanonChronology } from "../services/deepseek.js";
 import { rulebookStats } from "../data/fanfiction-rules.js";
 import { auditNarrative, selectNarrativeRules } from "./story-rules.js";
@@ -23,6 +23,28 @@ function awakened(seed = "gameplay") {
 }
 
 describe("完整游玩规则", () => {
+  it("普通调查和传闻不会提前确认隐藏人物的真实身份", () => {
+    const game = awakened("hidden-identity");
+    const diTian = game.world.npcs["di-tian"];
+    diTian.locationId = game.view.locationId!;
+    for (let index = 0; index < 12; index += 1) resolveAction(game, "调查当前位置的人物登记");
+    expect(diTian.knownToPlayer).toBe(false);
+
+    resolveAction(game, "打听千仞雪的消息");
+    expect(game.world.npcs["qian-renxue"].knownToPlayer).toBe(false);
+    expect(game.world.intelligenceRecords.some((record) => record.subjectId === "qian-renxue")).toBe(false);
+  });
+
+  it("隐藏人物只有在可靠证据形成后才可写入人物档案", () => {
+    const game = awakened("hidden-evidence");
+    expect(canDiscoverNpc(game, "qian-renxue")).toBe(false);
+    expect(revealNpc(game, "qian-renxue")).toBe(false);
+    recordIntelligence(game, { subjectType: "人物", subjectId: "qian-renxue", title: "宫廷密档中的未知身份", detail: "两份独立密档与一次直接目击能够互相印证。", source: "直接目击与交叉核验", confidence: 88, status: "确定" });
+    expect(canDiscoverNpc(game, "qian-renxue")).toBe(true);
+    expect(revealNpc(game, "qian-renxue")).toBe(true);
+    expect(game.world.npcs["qian-renxue"].knownToPlayer).toBe(true);
+  });
+
   it("修炼会推进时间、疲劳和内部成长", () => {
     const game = awakened("training");
     game.view.character!.soulRank = 3;
@@ -230,6 +252,13 @@ describe("完整游玩规则", () => {
     advanceWorldTime(game, 40 * 1440);
     expect(game.world.firedCanonEvents).toContain("suotuo-spirit-arena");
     expect(game.world.firedCanonEvents).not.toContain("imperial-team-battle");
+  });
+
+  it("主事件目录不会再次加入同义的扩展事件", () => {
+    const redundantIds = ["shrek-entry-test", "shrek-soto-arena", "imperial-team-match", "d1-golden-triangle-reunion", "tournament-qualifiers", "xiao-wu-identity-exposed", "tang-hao-rescue"];
+    expect(CANON_EVENTS.some((event) => redundantIds.includes(event.id))).toBe(false);
+    expect(CANON_EVENTS.find((event) => event.id === "academy-tournament")).toMatchObject({ year: 8, day: 120, locationId: "heaven-dou-city" });
+    expect(CANON_EVENTS.find((event) => event.id === "tournament-finals")).toMatchObject({ year: 8, day: 260, locationId: "spirit-city" });
   });
 
   it("a strong linked cause can change the matching canon event", () => {
