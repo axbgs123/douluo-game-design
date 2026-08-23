@@ -35,6 +35,15 @@ describe("完整游玩规则", () => {
     expect(game.world.intelligenceRecords.some((record) => record.subjectId === "qian-renxue")).toBe(false);
   });
 
+  it("不能用拜师或攻击指令绕过隐藏人物认知门禁", () => {
+    const game = awakened("hidden-action-guard");
+    game.world.npcs["di-tian"].locationId = game.view.locationId!;
+    expect(resolveAction(game, "拜帝天为师").intent).toBe("规则阻止");
+    expect(resolveAction(game, "刺杀帝天").intent).toBe("规则阻止");
+    expect(game.world.npcs["di-tian"].memoryOfPlayer).toHaveLength(0);
+    expect(game.world.npcs["di-tian"].knownToPlayer).toBe(false);
+  });
+
   it("隐藏人物只有在可靠证据形成后才可写入人物档案", () => {
     const game = awakened("hidden-evidence");
     expect(canDiscoverNpc(game, "qian-renxue")).toBe(false);

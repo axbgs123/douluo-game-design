@@ -959,6 +959,7 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
 function mentorResolution(game: StoredGame, action: string): ActionResolution {
   const mentioned = CANON_CHARACTERS.find((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)));
   const npc = mentioned ? game.world.npcs[mentioned.id] : undefined;
+  if (mentioned?.hidden && !canDiscoverNpc(game, mentioned.id)) return impossible("无法确认这个名字对应现实中的哪一位导师。", ["调查名字来源", "寻找当地导师", "先积累可信线索"]);
   if (mentioned && npc?.locationId !== game.view.locationId) return impossible(`${mentioned.name}目前不在这里，连当面提出请求的机会都没有。`, [`打听${mentioned.name}的行踪`, "寻找当地导师", "先证明自己的能力"]);
   const mentorName = mentioned?.name ?? `${game.view.location ?? "当地"}散修 ${pick(actionRandom(game), ["顾闻山", "周砺", "林鹤", "沈秋岩"])}`;
   const existing = game.view.relations.find((item) => item.name === mentorName);
@@ -1064,6 +1065,7 @@ function npcConflictResolution(game: StoredGame, action: string): ActionResoluti
   const definition = CANON_CHARACTERS.find((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)));
   if (!definition) return impossible("没有确认攻击目标。", ["观察目标", "调查对方实力", "暂时退开"]);
   const npc = game.world.npcs[definition.id];
+  if (definition.hidden && !canDiscoverNpc(game, definition.id)) return impossible("无法确认这个名字对应现实中的具体目标，攻击行动没有成立。", ["调查名字来源", "确认目标身份", "放弃盲目袭击"]);
   if (!npc?.alive) return impossible(`${definition.name}已经不在可战斗状态。`, ["确认消息", "调查遗留影响", "离开"]);
   if (npc.locationId !== game.view.locationId) return impossible(`${definition.name}不在这里。`, [`打听${definition.name}的行踪`, "放弃攻击", "寻找其他办法"]);
   const estimatedNpcPower = npc.soulRank ?? (/封号|超级|绝世/.test(npc.powerTier) ? 92 : /魂斗罗/.test(npc.powerTier) ? 82 : /魂圣/.test(npc.powerTier) ? 72 : 45);
@@ -1365,7 +1367,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/上课|课程|学院学习|参加实战课/.test(action)) resolution = academyStudyResolution(game);
   else if (/入学|报名.*学院|申请.*学院|成为工读生/.test(action)) resolution = academyResolution(game);
   else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克/.test(action)) resolution = factionResolution(game, action);
-  else if (/拜师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
+  else if (/拜师|拜.*为师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);
   else if (/修炼|冥想|运转|练功|闭关/.test(action)) resolution = trainingResolution(game, action);
   else if (/休息|睡觉|疗伤|恢复/.test(action)) resolution = restResolution(game);

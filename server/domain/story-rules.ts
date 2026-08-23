@@ -100,10 +100,18 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
     );
   }
 
-  const directContact = /拜访|见到|交谈|询问|告诉|攻击|杀|跟随|寻找/.test(action);
+  const directContact = /拜访|拜师|拜.*为师|见到|交谈|询问|告诉|攻击|杀|跟随|寻找/.test(action);
   if (directContact) {
     const definition = CANON_CHARACTERS.find((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)));
     const npc = definition ? game.world.npcs[definition.id] : undefined;
+    const hasIdentityEvidence = definition ? game.world.intelligenceRecords.some((record) => record.subjectType === "人物" && record.subjectId === definition.id && record.confidence >= 60) || game.world.canonCausalFootprints.some((cause) => cause.affectedNpcIds.includes(definition.id)) : false;
+    if (definition?.hidden && npc && !npc.knownToPlayer && !hasIdentityEvidence) {
+      return impossible(game,
+        `${name}无法确认这个名字对应现实中的哪一个人，更不能据此直接接触或攻击目标。`,
+        ["调查名字的来源", "寻找两条独立证据", "把传闻暂时标为未证实"],
+        [18, 53, 54, 66, 69, 931],
+      );
+    }
     if (definition && npc && !npc.alive) {
       return impossible(game,
         `${name}在当前年代找不到${definition.name}真实存在的线索，不能直接与其见面或交谈。`,
