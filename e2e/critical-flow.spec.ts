@@ -73,6 +73,8 @@ test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状�
 
   await page.getByRole("button", { name: "返回书架" }).click();
   await createPlayingCharacter(page, 4);
+  await expect(page.locator(".world-clock strong")).toContainText("蓝轩宇");
+  await expect(page.locator(".world-clock strong")).not.toContainText("唐三");
   await submitAction(page, "进行星舰指挥模拟训练");
   await page.getByRole("button", { name: "武魂", exact: true }).click();
   await expect(page.getByText("星舰资格 · 无", { exact: true })).toBeVisible();

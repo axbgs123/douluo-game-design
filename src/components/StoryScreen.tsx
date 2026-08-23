@@ -66,7 +66,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
           <div className="speed-switch" aria-label="游戏速度">
             {(["标准", "高速"] as GameSpeed[]).map((speed) => <button key={speed} type="button" disabled={busy || game.status === "ended"} className={game.speed === speed ? "active" : ""} onClick={() => void onSpeed(speed)}>{speed}</button>)}
           </div>
-          <div className="world-clock"><span>{game.character ? `${game.character.age} 岁` : game.worldTime?.era}</span><strong>{game.worldTime ? `${game.worldTime.season} · ${canonYearLabel(game.worldTime.year)} · 第 ${game.worldTime.day} 日 · ${game.worldTime.time}` : "觉醒日前"}</strong></div>
+          <div className="world-clock"><span>{game.character ? `${game.character.age} 岁` : game.worldTime?.era}</span><strong>{game.worldTime ? `${game.worldTime.season} · ${game.worldTime.era} · 第 ${game.worldTime.day} 日 · ${game.worldTime.time}` : "觉醒日前"}</strong></div>
         </div>
       </header>
 
@@ -116,11 +116,6 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
       </div>
     </main>
   );
-}
-
-function canonYearLabel(year: number): string {
-  if (year === 0) return "唐三觉醒同年";
-  return year < 0 ? `唐三觉醒前 ${Math.abs(year)} 年` : `唐三觉醒后 ${year} 年`;
 }
 
 function CharacterPanel({ game }: { game: GameView }) {
