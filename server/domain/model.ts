@@ -232,6 +232,7 @@ export interface StoredGame {
     upgrades: Record<string, number>;
     equippedHeirloom?: string;
     plannedMartialSoulId?: string;
+    plannedOriginId?: string;
     worldInheritance?: WorldInheritanceView;
   };
 }

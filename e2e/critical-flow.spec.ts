@@ -408,13 +408,14 @@ test("候选页只显示人工身份并保证三张开局流派不同", async ({
   expect((await page.locator(".candidate-origin").allTextContents()).every((name) => !name.includes("护阵房学徒家庭"))).toBe(true);
 });
 
-test("局外召唤区直接提供武魂仓库与遗物仓库", async ({ page }) => {
+test("局外召唤区直接提供武魂、身世与遗物仓库", async ({ page }) => {
   await seedUnlimitedMartialSoulWarehouse();
   await page.goto("/");
   await page.getByRole("button", { name: "✦ 局外成长 传承与图鉴" }).click();
   const poolText = await page.locator(".soul-draw-rules").innerText();
   expect(Number(poolText.match(/武魂池\s+(\d+)\s+种/)?.[1] ?? 0)).toBeGreaterThanOrEqual(300);
   await expect(page.getByTestId("summon-tab-souls")).toBeVisible();
+  await expect(page.getByTestId("summon-tab-origins")).toBeVisible();
   await expect(page.getByTestId("summon-tab-heirlooms")).toBeVisible();
   await expect(page.locator(".soul-warehouse-section")).toBeVisible();
   await expect(page.locator(".soul-warehouse-section")).toContainText("永久无限");
@@ -424,6 +425,9 @@ test("局外召唤区直接提供武魂仓库与遗物仓库", async ({ page }) 
   const raritySelect = page.locator(".soul-warehouse-section select");
   await raritySelect.selectOption("紫色");
   expect(await raritySelect.evaluate((element) => (element as HTMLSelectElement).value)).toBe("紫色");
+  await page.getByTestId("summon-tab-origins").click();
+  await expect(page.locator(".origin-warehouse-section")).toBeVisible();
+  await expect(page.locator(".origin-warehouse-section")).toContainText("最低为紫色");
   await page.getByTestId("summon-tab-heirlooms").click();
   await expect(page.locator(".heirloom-warehouse-section")).toBeVisible();
   await expect(page.locator(".heirloom-warehouse-section")).toContainText("每局发动次数限制");

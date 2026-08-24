@@ -463,6 +463,31 @@ const LATER_ERA_ORIGINS: Record<2 | 3 | 4, OriginTemplate[]> = {
   ],
 };
 
+const RAINBOW_META_ORIGIN_IDS = new Set(["spirit-hall-elder-child", "hidden-sect-heir", "d4-ancient-blood"]);
+const RED_META_ORIGIN_IDS = new Set(["d2-body-sect-omen", "d3-shrek-lineage"]);
+
+export const META_ORIGIN_POOL = ([
+  ...ORIGINS.map((origin) => ({ origin, era: 1 as const })),
+  ...([2, 3, 4] as const).flatMap((era) => LATER_ERA_ORIGINS[era].map((origin) => ({ origin, era }))),
+] as const).filter(({ origin }) => ["稀有", "传奇", "神话"].includes(origin.tier ?? "平凡")).map(({ origin, era }) => ({
+  id: origin.id,
+  name: origin.name,
+  era,
+  rarity: RAINBOW_META_ORIGIN_IDS.has(origin.id) ? "七彩" as const
+    : RED_META_ORIGIN_IDS.has(origin.id) || origin.tier === "神话" ? "红色" as const
+      : origin.tier === "传奇" ? "金色" as const : "紫色" as const,
+  summary: origin.summary,
+  advantage: origin.advantage ?? origin.summary,
+  burden: origin.burden ?? origin.details[0] ?? "身份越高，越需要承担对应势力的审查与责任。",
+  drawWeight: RAINBOW_META_ORIGIN_IDS.has(origin.id) ? 1 : origin.tier === "神话" ? 2 : origin.tier === "传奇" ? 5 : 15,
+}));
+
+export const META_ORIGIN_POOL_SIZE = META_ORIGIN_POOL.length;
+
+function metaOriginTemplateById(id: string, era: GameEra): OriginTemplate | undefined {
+  return (era === 1 ? ORIGINS : LATER_ERA_ORIGINS[era]).find((origin) => origin.id === id);
+}
+
 export const BIRTH_PROFILE_COUNT = ORIGINS.length * FAMILY_CLIMATES.length * 6;
 export const CORE_ORIGIN_COUNT = ORIGINS.length;
 export const CORE_ORIGIN_UNIQUE_NAME_COUNT = new Set(ORIGINS.map((origin) => origin.name)).size;
@@ -1099,6 +1124,7 @@ export function generateCandidates(
   giftBonus = 0,
   era: GameEra = 1,
   excludedOriginIds: string[] = [],
+  forcedOriginId?: string,
 ): HiddenCandidate[] {
   const random = createRandom(`${seed}:candidates:${rerollIndex}`);
   const usedOrigins = new Set<string>();
@@ -1107,6 +1133,8 @@ export function generateCandidates(
   const baseOrigins = originPool(preferences, era);
   const filteredOrigins = baseOrigins.filter((origin) => !excludedOriginIds.includes(origin.id));
   const origins = filteredOrigins.length >= 3 ? filteredOrigins : baseOrigins;
+  const forcedOrigin = forcedOriginId ? metaOriginTemplateById(forcedOriginId, era) : undefined;
+  if (forcedOriginId && !forcedOrigin) throw new Error("已装备的身世不属于当前时代，请切换对应时代或更换身世");
 
   return Array.from({ length: 3 }, (_, index) => {
     let slotOrigins = index === 1
@@ -1120,7 +1148,7 @@ export function generateCandidates(
     }
     const diverseOrigins = slotOrigins.filter((item) => !usedOrigins.has(item.id) && !usedOpeningStyles.has(openingStyleFor(item)));
     const unusedOrigins = slotOrigins.filter((item) => !usedOrigins.has(item.id));
-    const origin = weightedPick(random, diverseOrigins.length ? diverseOrigins : unusedOrigins.length ? unusedOrigins : slotOrigins);
+    const origin = index === 0 && forcedOrigin ? forcedOrigin : weightedPick(random, diverseOrigins.length ? diverseOrigins : unusedOrigins.length ? unusedOrigins : slotOrigins);
     usedOrigins.add(origin.id);
     usedOpeningStyles.add(openingStyleFor(origin));
 
@@ -1573,7 +1601,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const profile = derivePersonality(initialPersonality);
   const era = input.era ?? 1;
   const eraName = ({ 1: "斗罗大陆", 2: "绝世唐门", 3: "龙王传说", 4: "终极斗罗" } as const)[era];
-  const hiddenCandidates = generateCandidates(seed, 0, input.gender, meta?.weightPreferences, (meta?.purchasedUpgrades["命运余量"] ?? 0) * 0.01, era);
+  const hiddenCandidates = generateCandidates(seed, 0, input.gender, meta?.weightPreferences, (meta?.purchasedUpgrades["命运余量"] ?? 0) * 0.01, era, [], meta?.equippedOriginId);
   const enabledCodexSouls = meta?.martialSoulCodex.filter((entry) => entry.enabled && entry.completedRuns > 0) ?? [];
   const codexRandom = createRandom(`${seed}:enabled-codex-souls`);
   for (const candidate of hiddenCandidates) {
@@ -1603,7 +1631,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 28,
+    schemaVersion: 29,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1618,7 +1646,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       chapterTitle: "觉醒之日",
       lastUpdatedAction: 0,
     },
-    legacy: { upgrades: { ...(meta?.purchasedUpgrades ?? {}) }, equippedHeirloom: meta?.equippedHeirloom },
+    legacy: { upgrades: { ...(meta?.purchasedUpgrades ?? {}) }, equippedHeirloom: meta?.equippedHeirloom, plannedOriginId: meta?.equippedOriginId },
     view: {
       id,
       seed,
@@ -1803,6 +1831,7 @@ export function rerollCandidates(game: StoredGame, preferences?: WeightPreferenc
     (game.legacy.upgrades["命运余量"] ?? 0) * 0.01,
     game.view.era ?? 1,
     game.hiddenCandidates.map((candidate) => candidate.originId),
+    game.legacy.plannedOriginId,
   );
   const locks = new Set(lockedSlots.filter((slot) => slot >= 0 && slot < 3));
   game.hiddenCandidates = fresh.map((candidate, index) => locks.has(index) ? game.hiddenCandidates[index] ?? candidate : candidate);

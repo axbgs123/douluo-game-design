@@ -212,6 +212,18 @@ export function deleteMetaMartialSoul(id: string): Promise<MetaProgressionView> 
   return request(`/api/meta/martial-souls/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+export function equipMetaOrigin(id?: string): Promise<MetaProgressionView> {
+  return request("/api/meta/origins/equip", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export function favoriteMetaOrigin(id: string, favorite: boolean): Promise<MetaProgressionView> {
+  return request("/api/meta/origins/favorite", { method: "POST", body: JSON.stringify({ id, favorite }) });
+}
+
+export function deleteMetaOrigin(id: string): Promise<MetaProgressionView> {
+  return request(`/api/meta/origins/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export function getDeepSeekSettings(): Promise<DeepSeekSettingsView> {
   return request("/api/settings/deepseek");
 }

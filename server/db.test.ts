@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { awakenCharacter, createEraSuccessor, createGame, finalizeCharacterShaping, selectCandidate } from "./domain/generator.js";
+import { awakenCharacter, createEraSuccessor, createGame, finalizeCharacterShaping, META_ORIGIN_POOL, rerollCandidates, selectCandidate } from "./domain/generator.js";
 
 const testDirectoryPrefix = join(tmpdir(), "douluo-db-test-");
 const testDirectory = mkdtempSync(testDirectoryPrefix);
@@ -50,6 +50,34 @@ describe("存档数据库", () => {
     if (result.kind === "heirloom") expect(result.meta.unlockedHeirlooms).toContain(result.drawn.name);
   });
 
+  it("summons only purple-or-better origins, includes rainbow origins, and applies the full origin to a reusable opening", () => {
+    expect(META_ORIGIN_POOL.length).toBeGreaterThan(20);
+    expect(META_ORIGIN_POOL.every((item) => ["紫色", "金色", "红色", "七彩"].includes(item.rarity))).toBe(true);
+    expect(META_ORIGIN_POOL.some((item) => item.rarity === "七彩")).toBe(true);
+    const meta = database.getMetaProgression();
+    meta.legacyPoints = 1_000;
+    meta.martialSoulDrawTickets = 0;
+    meta.summonGoldPity = 0;
+    meta.summonRedPity = 0;
+    meta.summonRainbowPity = 0;
+    database.saveMetaProgression(meta);
+
+    const result = database.drawMetaMartialSoul(() => 0.1);
+    expect(result.kind).toBe("origin");
+    if (result.kind !== "origin") return;
+    expect(["紫色", "金色", "红色", "七彩"]).toContain(result.drawn.rarity);
+    database.equipCodexOrigin(result.drawn.id);
+    const equippedMeta = database.getMetaProgression();
+    const game = createGame({ era: result.drawn.era, gender: "男", difficulty: "标准", seed: "equipped-origin" }, equippedMeta);
+    expect(game.hiddenCandidates[0].originId).toBe(result.drawn.id);
+    expect(game.view.candidates[0].originSummary).toContain(result.drawn.summary.slice(0, 8));
+    rerollCandidates(game, equippedMeta.weightPreferences);
+    expect(game.hiddenCandidates[0].originId).toBe(result.drawn.id);
+    database.saveGameAndClaimEquippedLoadout(game, undefined, result.drawn.id, "test.origin-claimed");
+    expect(database.getMetaProgression().originCodex.some((item) => item.id === result.drawn.id)).toBe(true);
+    expect(database.getMetaProgression().equippedOriginId).toBeUndefined();
+  });
+
   it("makes every summoned martial soul permanently reusable for unlimited new games", () => {
     const meta = database.getMetaProgression();
     meta.legacyPoints = 1_000;
@@ -82,7 +110,7 @@ describe("存档数据库", () => {
     for (let index = 0; index < 7; index += 1) database.drawMetaMartialSoul(() => .73);
     const afterDraws = database.getMetaProgression();
     expect(afterDraws.summonHistory).toHaveLength(5);
-    expect(afterDraws.summonHistory.every((item) => item.kind === "martialSoul" || item.kind === "heirloom")).toBe(true);
+    expect(afterDraws.summonHistory.every((item) => item.kind === "martialSoul" || item.kind === "origin" || item.kind === "heirloom")).toBe(true);
     const soul = afterDraws.martialSoulCodex[0];
     expect(database.favoriteCodexMartialSoul(soul.id, true).martialSoulCodex.find((item) => item.id === soul.id)?.favorite).toBe(true);
     database.equipCodexMartialSoul(soul.id);

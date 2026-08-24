@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { DIFFICULTIES, type MetaProgressionView, type WorldCatalogStatsView } from "../../shared/game";
 import { GOLD_FINGERS } from "../../shared/gold-fingers";
 import { heirloomByName } from "../../shared/heirlooms";
-import { deleteMetaMartialSoul, drawMetaMartialSoul, equipMetaHeirloom, equipMetaMartialSoul, favoriteMetaMartialSoul, getMetaProgression, getWorldCatalogStats, purchaseMetaUpgrade, saveMetaPreferences, toggleMetaMartialSoul } from "../api";
+import { deleteMetaMartialSoul, deleteMetaOrigin, drawMetaMartialSoul, equipMetaHeirloom, equipMetaMartialSoul, equipMetaOrigin, favoriteMetaMartialSoul, favoriteMetaOrigin, getMetaProgression, getWorldCatalogStats, purchaseMetaUpgrade, saveMetaPreferences, toggleMetaMartialSoul } from "../api";
 
 interface MetaProgressionPanelProps { open: boolean; onClose: () => void }
 
@@ -24,11 +24,14 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
   const [message, setMessage] = useState("");
   const [lastDrawId, setLastDrawId] = useState<string>();
   const [soulSearch, setSoulSearch] = useState("");
+  const [originSearch, setOriginSearch] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [summonTab, setSummonTab] = useState<"history" | "souls" | "heirlooms">("souls");
+  const [summonTab, setSummonTab] = useState<"history" | "souls" | "origins" | "heirlooms">("souls");
   const [soulWarehouseExpanded, setSoulWarehouseExpanded] = useState(true);
+  const [originWarehouseExpanded, setOriginWarehouseExpanded] = useState(true);
   const [heirloomWarehouseExpanded, setHeirloomWarehouseExpanded] = useState(true);
   const [soulRarityFilter, setSoulRarityFilter] = useState<"全部" | "白色" | "蓝色" | "紫色" | "金色" | "红色" | "七彩">("全部");
+  const [originRarityFilter, setOriginRarityFilter] = useState<"全部" | "紫色" | "金色" | "红色" | "七彩">("全部");
   const [heirloomRarityFilter, setHeirloomRarityFilter] = useState<"全部" | "紫色" | "金色" | "红色">("全部");
 
   useEffect(() => {
@@ -62,6 +65,10 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
         setSummonTab("souls");
         setLastDrawId(result.drawn.id);
         setMessage(`${result.drawn.rarity}武魂 · ${result.drawn.name}。已永久解锁，可无限次用于新开局${result.cost ? `；消耗 ${result.cost} 传承点` : "；本次使用召唤券"}。`);
+      } else if (result.kind === "origin") {
+        setSummonTab("origins");
+        setLastDrawId(result.drawn.id);
+        setMessage(`${result.drawn.rarity}身世 · ${result.drawn.name}。已永久加入身世仓库${result.drawn.duplicate ? "；重复获得，返还 1 张召唤券" : "，可指定对应时代的新开局"}。`);
       } else {
         setSummonTab("heirlooms");
         setLastDrawId(undefined);
@@ -91,6 +98,22 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
     catch (caught) { setMessage(caught instanceof Error ? caught.message : "删除失败"); }
   };
 
+  const equipOrigin = async (id?: string) => {
+    try { setMeta(await equipMetaOrigin(id)); setMessage(id ? "已设为下一次对应时代开局的第一张候选身世。" : "已取消指定身世。"); }
+    catch (caught) { setMessage(caught instanceof Error ? caught.message : "设置失败"); }
+  };
+
+  const favoriteOrigin = async (id: string, favorite: boolean) => {
+    try { setMeta(await favoriteMetaOrigin(id, favorite)); setMessage(favorite ? "已收藏这个身世。" : "已取消收藏。"); }
+    catch (caught) { setMessage(caught instanceof Error ? caught.message : "收藏失败"); }
+  };
+
+  const deleteOrigin = async (id: string, name: string) => {
+    if (!window.confirm(`从身世仓库永久删除“${name}”？`)) return;
+    try { setMeta(await deleteMetaOrigin(id)); setLastDrawId((current) => current === id ? undefined : current); setMessage(`已从仓库删除${name}。`); }
+    catch (caught) { setMessage(caught instanceof Error ? caught.message : "删除失败"); }
+  };
+
   if (!open) return null;
   return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="meta-modal" role="dialog" aria-modal="true" aria-label="局外成长" onMouseDown={(event) => event.stopPropagation()}>
@@ -104,10 +127,10 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
         </section>
 
         <section className="meta-section soul-draw-section">
-          <div className="meta-section-heading"><div><h3>召唤</h3><p>只会出现紫色及以上武魂，并有 8% 概率出现遗物。武魂一旦抽到便永久解锁，可以无限次指定新开局。</p></div><button type="button" className="soul-draw-button" onClick={() => void drawSoul()}>{meta.martialSoulDrawTickets > 0 ? `使用召唤券 · ${meta.martialSoulDrawTickets}` : "召唤一次 · 20 传承点"}</button></div>
-          <div className="soul-draw-rules"><span>武魂池 {meta.martialSoulSummonPoolSize} 种</span><span>最低紫色</span><span>金色保底 {10 - meta.summonGoldPity} 抽</span><span>红色保底 {40 - meta.summonRedPity} 抽</span><span>七彩保底 {80 - meta.summonRainbowPity} 抽</span><span>遗物概率 8%</span></div>
-          <nav className="summon-tabs" aria-label="召唤仓库"><button data-testid="summon-tab-history" type="button" className={summonTab === "history" ? "active" : ""} onClick={() => setSummonTab("history")}>召唤记录 · {meta.summonHistory.length}</button><button data-testid="summon-tab-souls" type="button" className={summonTab === "souls" ? "active" : ""} onClick={() => setSummonTab("souls")}>武魂仓库 · {meta.martialSoulCodex.length}</button><button data-testid="summon-tab-heirlooms" type="button" className={summonTab === "heirlooms" ? "active" : ""} onClick={() => setSummonTab("heirlooms")}>遗物仓库 · {meta.unlockedHeirlooms.length}</button></nav>
-          {summonTab === "history" && <div className="summon-history"><h4>最近五次</h4>{meta.summonHistory.length ? meta.summonHistory.map((entry) => <article key={entry.id} className={`summon-history-card soul-rarity-${entry.rarity}`}><span>{entry.rarity} · {entry.kind === "martialSoul" ? "武魂" : "遗物"}</span><strong>{entry.name}</strong><p>{entry.description}</p><small>{entry.duplicate ? "重复获得" : "首次获得"} · {new Date(entry.drawnAt).toLocaleString("zh-CN")}</small></article>) : <p className="meta-empty-copy">还没有召唤记录。</p>}</div>}
+          <div className="meta-section-heading"><div><h3>召唤</h3><p>武魂与身世都只会出现紫色及以上品质；身世会完整生成家庭、住址、权限、资源和代价，不是只改一行简介。</p></div><button type="button" className="soul-draw-button" onClick={() => void drawSoul()}>{meta.martialSoulDrawTickets > 0 ? `使用召唤券 · ${meta.martialSoulDrawTickets}` : "召唤一次 · 20 传承点"}</button></div>
+          <div className="soul-draw-rules"><span>武魂池 {meta.martialSoulSummonPoolSize} 种</span><span>身世池 {meta.originSummonPoolSize} 种</span><span>最低紫色</span><span>金色保底 {10 - meta.summonGoldPity} 抽</span><span>红色保底 {40 - meta.summonRedPity} 抽</span><span>七彩保底 {80 - meta.summonRainbowPity} 抽</span><span>身世概率 12%</span><span>遗物概率 8%</span></div>
+          <nav className="summon-tabs" aria-label="召唤仓库"><button data-testid="summon-tab-history" type="button" className={summonTab === "history" ? "active" : ""} onClick={() => setSummonTab("history")}>召唤记录 · {meta.summonHistory.length}</button><button data-testid="summon-tab-souls" type="button" className={summonTab === "souls" ? "active" : ""} onClick={() => setSummonTab("souls")}>武魂仓库 · {meta.martialSoulCodex.length}</button><button data-testid="summon-tab-origins" type="button" className={summonTab === "origins" ? "active" : ""} onClick={() => setSummonTab("origins")}>身世仓库 · {meta.originCodex.length}</button><button data-testid="summon-tab-heirlooms" type="button" className={summonTab === "heirlooms" ? "active" : ""} onClick={() => setSummonTab("heirlooms")}>遗物仓库 · {meta.unlockedHeirlooms.length}</button></nav>
+          {summonTab === "history" && <div className="summon-history"><h4>最近五次</h4>{meta.summonHistory.length ? meta.summonHistory.map((entry) => <article key={entry.id} className={`summon-history-card soul-rarity-${entry.rarity}`}><span>{entry.rarity} · {entry.kind === "martialSoul" ? "武魂" : entry.kind === "origin" ? "身世" : "遗物"}</span><strong>{entry.name}</strong><p>{entry.description}</p><small>{entry.duplicate ? "重复获得" : "首次获得"} · {new Date(entry.drawnAt).toLocaleString("zh-CN")}</small></article>) : <p className="meta-empty-copy">还没有召唤记录。</p>}</div>}
         </section>
 
         {summonTab === "souls" && <section className="meta-section soul-warehouse-section">
@@ -123,6 +146,21 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
               <footer><button type="button" className={meta.equippedMartialSoulId === entry.id ? "active" : ""} onClick={() => void equipSoul(meta.equippedMartialSoulId === entry.id ? undefined : entry.id)}>{meta.equippedMartialSoulId === entry.id ? "已指定下局" : "设为下局武魂"}</button><button type="button" className={entry.favorite ? "active" : ""} onClick={() => void favoriteSoul(entry.id, !entry.favorite)}>{entry.favorite ? "★ 已收藏" : "☆ 收藏"}</button><label><input type="checkbox" checked={entry.enabled} onChange={(event) => void toggleSoul(entry.id, event.target.checked)} />允许随机出场</label><button type="button" className="danger-button" onClick={() => void deleteSoul(entry.id, entry.name)}>删除</button></footer>
             </article>)}
             {!meta.martialSoulCodex.length && <p className="meta-empty-copy">仓库为空。召唤获得的武魂会出现在这里。</p>}
+          </div></>}
+        </section>}
+
+        {summonTab === "origins" && <section className="meta-section origin-warehouse-section">
+          <div className="meta-section-heading"><div><h3>身世仓库</h3><p>全部为紫色以上永久身世。七彩档会显著抬高资源、血脉或势力权限，同时必带监控、责任或追索条件。</p></div><button type="button" onClick={() => setOriginWarehouseExpanded((value) => !value)}>{originWarehouseExpanded ? "收起身世仓库" : "展开身世仓库"}</button></div>
+          {meta.equippedOriginId && <div className="equipped-soul-line"><span>下局指定</span><strong>{meta.originCodex.find((item) => item.id === meta.equippedOriginId)?.name}</strong><button type="button" onClick={() => void equipOrigin()}>取消</button></div>}
+          {originWarehouseExpanded && <><div className="warehouse-tools"><input value={originSearch} onChange={(event) => setOriginSearch(event.target.value)} placeholder="搜索身世、优势、代价或时代" /><label><span>稀有度</span><select value={originRarityFilter} onChange={(event) => setOriginRarityFilter(event.target.value as typeof originRarityFilter)}>{["全部", "紫色", "金色", "红色", "七彩"].map((rarity) => <option key={rarity}>{rarity}</option>)}</select></label><span>{meta.originCodex.length} 种</span></div>
+          <div className="martial-soul-codex origin-codex">
+            {meta.originCodex.filter((entry) => originRarityFilter === "全部" || entry.rarity === originRarityFilter).filter((entry) => `${entry.name}${entry.summary}${entry.advantage}${entry.burden}${entry.era}`.toLowerCase().includes(originSearch.trim().toLowerCase())).sort((left, right) => Number(Boolean(right.favorite)) - Number(Boolean(left.favorite))).map((entry) => <article key={entry.id} className={`codex-soul-card soul-rarity-${entry.rarity} ${lastDrawId === entry.id ? "new-draw" : ""}`}>
+              <header><span>{entry.rarity}</span><strong>{entry.name}</strong><small>斗罗{["", "一", "二", "三", "四"][entry.era]}时代</small></header>
+              <p>{entry.summary}</p>
+              <dl><div><dt>开局使用</dt><dd>永久无限</dd></div><div><dt>核心优势</dt><dd>{entry.advantage}</dd></div><div><dt>约束代价</dt><dd>{entry.burden}</dd></div></dl>
+              <footer><button type="button" className={meta.equippedOriginId === entry.id ? "active" : ""} onClick={() => void equipOrigin(meta.equippedOriginId === entry.id ? undefined : entry.id)}>{meta.equippedOriginId === entry.id ? "已指定下局" : "设为下局身世"}</button><button type="button" className={entry.favorite ? "active" : ""} onClick={() => void favoriteOrigin(entry.id, !entry.favorite)}>{entry.favorite ? "★ 已收藏" : "☆ 收藏"}</button><button type="button" className="danger-button" onClick={() => void deleteOrigin(entry.id, entry.name)}>删除</button></footer>
+            </article>)}
+            {!meta.originCodex.length && <p className="meta-empty-copy">仓库为空。召唤获得的身世会出现在这里，最低为紫色。</p>}
           </div></>}
         </section>}
 

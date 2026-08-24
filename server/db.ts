@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes, randomUUID } from "node:crypto";
-import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, MetaSummonResultView, ModelUsageView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
+import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, MetaSummonResultView, ModelUsageView, OriginCodexEntryView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
 import type { MartialSoulTemplate } from "./domain/model.js";
 import { META_MARTIAL_SOULS, META_MARTIAL_SOUL_POOL_SIZE, metaSoulById } from "./data/meta-martial-souls.js";
 import { META_HEIRLOOMS } from "./data/meta-heirlooms.js";
@@ -10,7 +10,7 @@ import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
 import { ensureGameState } from "./domain/world.js";
-import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_NAMES } from "./domain/generator.js";
+import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_NAMES, META_ORIGIN_POOL, META_ORIGIN_POOL_SIZE } from "./domain/generator.js";
 
 const databasePath = process.env.DOULUO_DATA_DIR
   ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
@@ -183,6 +183,8 @@ const defaultMetaProgression: MetaProgressionView = {
   purchasedUpgrades: {},
   martialSoulCodex: [],
   martialSoulSummonPoolSize: META_MARTIAL_SOUL_POOL_SIZE,
+  originCodex: [],
+  originSummonPoolSize: META_ORIGIN_POOL_SIZE,
   martialSoulDrawTickets: 1,
   martialSoulDrawPity: 0,
   summonGoldPity: 0,
@@ -341,6 +343,7 @@ export function getMetaProgression(): MetaProgressionView {
   const stored = JSON.parse(row.state_json) as Partial<MetaProgressionView>;
   const legacyPity = stored.martialSoulDrawPity ?? 0;
   const martialSoulCodex = (stored.martialSoulCodex ?? []).map((item) => ({ ...item, favorite: item.favorite ?? false, unlimited: true }));
+  const originCodex = (stored.originCodex ?? []).map((item) => ({ ...item, favorite: item.favorite ?? false }));
   const historicalDraws = martialSoulCodex.reduce((sum, item) => sum + item.charges + (item.completedRuns > 0 ? 1 : 0), 0);
   const hasRedOrBetter = martialSoulCodex.some((item) => item.rarity === "红色" || item.rarity === "七彩");
   const hasRainbow = martialSoulCodex.some((item) => item.rarity === "七彩");
@@ -351,6 +354,8 @@ export function getMetaProgression(): MetaProgressionView {
     purchasedUpgrades: { ...defaultMetaProgression.purchasedUpgrades, ...stored.purchasedUpgrades },
     martialSoulCodex,
     martialSoulSummonPoolSize: META_MARTIAL_SOUL_POOL_SIZE,
+    originCodex,
+    originSummonPoolSize: META_ORIGIN_POOL_SIZE,
     summonGoldPity: stored.summonGoldPity ?? legacyPity,
     summonRedPity: stored.summonRedPity ?? (hasRedOrBetter ? legacyPity : Math.min(39, Math.max(legacyPity, historicalDraws))),
     summonRainbowPity: stored.summonRainbowPity ?? (hasRainbow ? legacyPity : Math.min(79, Math.max(legacyPity, historicalDraws))),
@@ -381,7 +386,8 @@ export function drawMetaMartialSoul(random: () => number = randomUnit): MetaSumm
   const forcedRainbow = meta.summonRainbowPity >= 79;
   const forcedRed = meta.summonRedPity >= 39;
   const forcedGold = meta.summonGoldPity >= 9;
-  const relicRoll = !forcedRainbow && !forcedRed && !forcedGold && random() < 0.08;
+  const specialRoll = !forcedRainbow && !forcedRed && !forcedGold ? random() : 1;
+  const relicRoll = specialRoll < 0.08;
   if (relicRoll) {
     const unowned = META_HEIRLOOMS.filter((item) => !meta.unlockedHeirlooms.includes(item.name));
     const pool = unowned.length > 0 ? unowned : META_HEIRLOOMS;
@@ -396,6 +402,31 @@ export function drawMetaMartialSoul(random: () => number = randomUnit): MetaSumm
     meta.martialSoulDrawPity = meta.summonGoldPity;
     saveMetaProgression(meta);
     return { kind: "heirloom", meta, cost, drawn: { id: definition.id, name: definition.name, rarity: definition.rarity, description: definition.description, duplicate } };
+  }
+  if (specialRoll >= 0.08 && specialRoll < 0.20) {
+    const definition = weightedMetaSoul(META_ORIGIN_POOL, random);
+    const existing = meta.originCodex.find((item) => item.id === definition.id);
+    const duplicate = Boolean(existing);
+    const drawn: OriginCodexEntryView = existing ?? {
+      id: definition.id,
+      name: definition.name,
+      rarity: definition.rarity,
+      era: definition.era,
+      summary: definition.summary,
+      advantage: definition.advantage,
+      burden: definition.burden,
+      favorite: false,
+    };
+    if (duplicate) meta.martialSoulDrawTickets += 1;
+    else meta.originCodex.push(drawn);
+    meta.discoveredOrigins = meta.originCodex.length;
+    meta.summonHistory = [{ id: randomUUID(), kind: "origin" as const, name: drawn.name, rarity: drawn.rarity, description: `${drawn.advantage}；代价：${drawn.burden}`, duplicate, drawnAt: new Date().toISOString() }, ...meta.summonHistory].slice(0, 5);
+    meta.summonGoldPity += 1;
+    meta.summonRedPity += 1;
+    meta.summonRainbowPity += 1;
+    meta.martialSoulDrawPity = meta.summonGoldPity;
+    saveMetaProgression(meta);
+    return { kind: "origin", meta, cost, drawn: { ...drawn, duplicate } };
   }
   const eligible = META_MARTIAL_SOULS.filter((item) => ["紫色", "金色", "红色", "七彩"].includes(item.metaRarity));
   const pool = forcedRainbow
@@ -470,6 +501,31 @@ export function deleteCodexMartialSoul(id: string): MetaProgressionView {
   return saveMetaProgression(meta);
 }
 
+export function equipCodexOrigin(id?: string): MetaProgressionView {
+  const meta = getMetaProgression();
+  if (!id) { meta.equippedOriginId = undefined; return saveMetaProgression(meta); }
+  if (!meta.originCodex.some((item) => item.id === id)) throw new Error("尚未抽到这个身世");
+  meta.equippedOriginId = id;
+  return saveMetaProgression(meta);
+}
+
+export function favoriteCodexOrigin(id: string, favorite: boolean): MetaProgressionView {
+  const meta = getMetaProgression();
+  const entry = meta.originCodex.find((item) => item.id === id);
+  if (!entry) throw new Error("身世仓库中没有这项记录");
+  entry.favorite = favorite;
+  return saveMetaProgression(meta);
+}
+
+export function deleteCodexOrigin(id: string): MetaProgressionView {
+  const meta = getMetaProgression();
+  if (!meta.originCodex.some((item) => item.id === id)) throw new Error("身世仓库中没有这项记录");
+  meta.originCodex = meta.originCodex.filter((item) => item.id !== id);
+  if (meta.equippedOriginId === id) meta.equippedOriginId = undefined;
+  meta.discoveredOrigins = meta.originCodex.length;
+  return saveMetaProgression(meta);
+}
+
 function templateFromCodexEntry(entry: MartialSoulCodexEntryView): MartialSoulTemplate {
   const definition = metaSoulById(entry.id);
   return definition ?? {
@@ -494,13 +550,23 @@ export function peekEquippedMartialSoul(): MartialSoulTemplate | undefined {
 }
 
 export function saveGameAndClaimEquippedMartialSoul(game: StoredGame, soulId: string, eventType: string, payload: unknown = {}): void {
+  saveGameAndClaimEquippedLoadout(game, soulId, undefined, eventType, payload);
+}
+
+export function saveGameAndClaimEquippedLoadout(game: StoredGame, soulId: string | undefined, originId: string | undefined, eventType: string, payload: unknown = {}): void {
   database.exec("BEGIN IMMEDIATE");
   try {
     const meta = getMetaProgression();
-    if (meta.equippedMartialSoulId !== soulId) throw new Error("局外武魂装备状态已经变化，请重新选择角色");
-    const entry = meta.martialSoulCodex.find((item) => item.id === soulId);
-    if (!entry) throw new Error("尚未抽到这个武魂");
-    meta.equippedMartialSoulId = undefined;
+    if (soulId) {
+      if (meta.equippedMartialSoulId !== soulId) throw new Error("局外武魂装备状态已经变化，请重新选择角色");
+      if (!meta.martialSoulCodex.some((item) => item.id === soulId)) throw new Error("尚未抽到这个武魂");
+      meta.equippedMartialSoulId = undefined;
+    }
+    if (originId) {
+      if (meta.equippedOriginId !== originId) throw new Error("局外身世装备状态已经变化，请重新创建候选角色");
+      if (!meta.originCodex.some((item) => item.id === originId)) throw new Error("尚未抽到这个身世");
+      meta.equippedOriginId = undefined;
+    }
     saveMetaProgression(meta);
     writeGameAndEvent(game, eventType, payload);
     database.exec("COMMIT");

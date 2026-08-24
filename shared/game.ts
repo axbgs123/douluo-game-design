@@ -942,9 +942,20 @@ export interface MartialSoulCodexEntryView {
   favorite?: boolean;
 }
 
+export interface OriginCodexEntryView {
+  id: string;
+  name: string;
+  rarity: Extract<MartialSoulRarity, "紫色" | "金色" | "红色" | "七彩">;
+  era: GameEra;
+  summary: string;
+  advantage: string;
+  burden: string;
+  favorite?: boolean;
+}
+
 export interface MetaSummonHistoryEntryView {
   id: string;
-  kind: "martialSoul" | "heirloom";
+  kind: "martialSoul" | "origin" | "heirloom";
   name: string;
   rarity: MartialSoulRarity;
   description: string;
@@ -997,6 +1008,9 @@ export interface MetaProgressionView {
   martialSoulCodex: MartialSoulCodexEntryView[];
   martialSoulSummonPoolSize: number;
   equippedMartialSoulId?: string;
+  originCodex: OriginCodexEntryView[];
+  originSummonPoolSize: number;
+  equippedOriginId?: string;
   martialSoulDrawTickets: number;
   martialSoulDrawPity: number;
   summonGoldPity: number;
@@ -1017,6 +1031,7 @@ export interface MetaSummonHeirloomView {
 
 export type MetaSummonResultView =
   | { kind: "martialSoul"; meta: MetaProgressionView; drawn: MartialSoulCodexEntryView; cost: number }
+  | { kind: "origin"; meta: MetaProgressionView; drawn: OriginCodexEntryView & { duplicate: boolean }; cost: number }
   | { kind: "heirloom"; meta: MetaProgressionView; drawn: MetaSummonHeirloomView; cost: number };
 
 export interface WorldCatalogStatsView {

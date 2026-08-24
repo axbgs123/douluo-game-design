@@ -35,13 +35,16 @@ import {
   restoreCheckpoint,
   saveCheckpoint,
   equipCodexMartialSoul,
-  saveGameAndClaimEquippedMartialSoul,
   saveGameWithLegacyCost,
   saveSettledGame,
   saveEraSuccessor,
   toggleCodexMartialSoul,
   favoriteCodexMartialSoul,
   deleteCodexMartialSoul,
+  equipCodexOrigin,
+  favoriteCodexOrigin,
+  deleteCodexOrigin,
+  saveGameAndClaimEquippedLoadout,
 } from "./db.js";
 import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithAuditRetries, validateInterpretedAction } from "./services/deepseek.js";
 import { readDeepSeekSettings, settingsView, writeDeepSeekSettings } from "./services/settings.js";
@@ -93,6 +96,8 @@ const metaEquipSchema = z.object({ name: z.string().trim().max(60).optional() })
 const metaSoulEquipSchema = z.object({ id: z.string().trim().min(1).optional() });
 const metaSoulToggleSchema = z.object({ id: z.string().trim().min(1), enabled: z.boolean() });
 const metaSoulFavoriteSchema = z.object({ id: z.string().trim().min(1), favorite: z.boolean() });
+const metaOriginEquipSchema = z.object({ id: z.string().trim().min(1).optional() });
+const metaOriginFavoriteSchema = z.object({ id: z.string().trim().min(1), favorite: z.boolean() });
 const settingsSchema = z.object({
   apiKey: z.string().trim().optional(),
   baseUrl: z.string().url().refine((value) => {
@@ -153,6 +158,19 @@ app.post("/api/meta/martial-souls/favorite", (request, response) => {
 
 app.delete("/api/meta/martial-souls/:id", (request, response) => {
   response.json(deleteCodexMartialSoul(request.params.id));
+});
+
+app.post("/api/meta/origins/equip", (request, response) => {
+  response.json(equipCodexOrigin(metaOriginEquipSchema.parse(request.body).id));
+});
+
+app.post("/api/meta/origins/favorite", (request, response) => {
+  const input = metaOriginFavoriteSchema.parse(request.body);
+  response.json(favoriteCodexOrigin(input.id, input.favorite));
+});
+
+app.delete("/api/meta/origins/:id", (request, response) => {
+  response.json(deleteCodexOrigin(request.params.id));
 });
 
 app.get("/api/world/catalog/stats", (_request, response) => {
@@ -222,9 +240,10 @@ app.post("/api/games/:id/select", (request, response) => {
   if (!game.view.candidates.some((candidate) => candidate.id === input.candidateId)) return response.status(404).json({ error: "候选角色不存在" });
   const working = structuredClone(game);
   const forcedSoul = peekEquippedMartialSoul();
+  const forcedOriginId = working.legacy.plannedOriginId;
   selectCandidate(working, input.candidateId, input.customName, forcedSoul);
-  const payload = { candidateId: input.candidateId, customName: input.customName, equippedMartialSoulId: forcedSoul?.id };
-  if (forcedSoul) saveGameAndClaimEquippedMartialSoul(working, forcedSoul.id, "candidate.selected", payload);
+  const payload = { candidateId: input.candidateId, customName: input.customName, equippedMartialSoulId: forcedSoul?.id, equippedOriginId: forcedOriginId };
+  if (forcedSoul || forcedOriginId) saveGameAndClaimEquippedLoadout(working, forcedSoul?.id, forcedOriginId, "candidate.selected", payload);
   else saveGame(working, "candidate.selected", payload);
   return response.json(publicView(working));
 });
