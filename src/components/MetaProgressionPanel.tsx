@@ -99,7 +99,7 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
   };
 
   const equipOrigin = async (id?: string) => {
-    try { setMeta(await equipMetaOrigin(id)); setMessage(id ? "已设为下一次对应时代开局的第一张候选身世。" : "已取消指定身世。"); }
+    try { setMeta(await equipMetaOrigin(id)); setMessage(id ? "已指定下局身世。创建对应时代角色时会跳过身份三选一，直接进入角色塑造。" : "已取消指定身世。"); }
     catch (caught) { setMessage(caught instanceof Error ? caught.message : "设置失败"); }
   };
 

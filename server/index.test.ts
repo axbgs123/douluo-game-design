@@ -59,6 +59,24 @@ afterAll(async () => {
 });
 
 describe("HTTP 状态机", () => {
+  it("skips candidate selection when an origin is equipped", async () => {
+    const drawn = database.drawMetaOrigin(() => 0);
+    database.equipCodexOrigin(drawn.drawn.id);
+    const response = await fetch(`${baseUrl}/api/games`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ era: drawn.drawn.era, gender: "男", difficulty: "标准", seed: "api-equipped-origin" }),
+    });
+    expect(response.status).toBe(201);
+    const game = await response.json() as GameView;
+    expect(game.status).toBe("character_shaping");
+    expect(game.selectedCandidateId).toBe(game.candidates[0].id);
+    expect(game.candidates[0].originName).toBe(drawn.drawn.name);
+    expect(game.shaping?.personalityOptions.length).toBeGreaterThan(0);
+    expect(database.getMetaProgression().equippedOriginId).toBeUndefined();
+    database.deleteGame(game.id);
+  });
+
   it("advances a qualified settled save into the next era through the public API", async () => {
     const parent = createGame({ era: 1, gender: "女", difficulty: "标准", seed: "api-era-successor" });
     selectCandidate(parent, parent.view.candidates[0].id, "顾遥");

@@ -95,6 +95,21 @@ describe("存档数据库", () => {
     expect(result.meta.originRainbowPity).toBe(0);
   });
 
+  it("auto-selects an equipped origin for a candidate save created before the skip flow", () => {
+    const existing = database.getMetaProgression().originCodex[0];
+    expect(existing).toBeDefined();
+    database.equipCodexOrigin(existing.id);
+    const game = createGame({ era: existing.era, gender: "女", difficulty: "标准", seed: "legacy-equipped-origin-selection" }, database.getMetaProgression());
+    expect(game.view.status).toBe("candidate_selection");
+    database.saveGame(game, "test.legacy-equipped-origin");
+
+    const migrated = database.loadGame(game.view.id)!;
+    expect(migrated.view.status).toBe("character_shaping");
+    expect(migrated.view.selectedCandidateId).toBe(migrated.view.candidates[0].id);
+    expect(database.getMetaProgression().equippedOriginId).toBeUndefined();
+    database.deleteGame(game.view.id);
+  });
+
   it("makes every summoned martial soul permanently reusable for unlimited new games", () => {
     const meta = database.getMetaProgression();
     meta.legacyPoints = 1_000;

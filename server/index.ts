@@ -191,8 +191,20 @@ app.get("/api/games/:id", (request, response) => {
 app.post("/api/games", (request, response) => {
   if (listSaves().length >= 3) return response.status(409).json({ error: "三个存档位都已使用。请先在书架删除一个存档，再开始新人生。" });
   const input = createGameSchema.parse(request.body);
-  const game = createGame(input, getMetaProgression());
-  saveGame(game, "game.created", { difficulty: input.difficulty });
+  const meta = getMetaProgression();
+  const game = createGame(input, meta);
+  if (meta.equippedOriginId) {
+    const forcedSoul = peekEquippedMartialSoul();
+    const candidate = game.hiddenCandidates[0];
+    if (!candidate) throw new Error("指定身世未能生成角色");
+    selectCandidate(game, candidate.public.id, undefined, forcedSoul);
+    saveGameAndClaimEquippedLoadout(game, forcedSoul?.id, meta.equippedOriginId, "game.created_with_origin", {
+      difficulty: input.difficulty,
+      candidateId: candidate.public.id,
+      equippedOriginId: meta.equippedOriginId,
+      equippedMartialSoulId: forcedSoul?.id,
+    });
+  } else saveGame(game, "game.created", { difficulty: input.difficulty });
   response.status(201).json(publicView(game));
 });
 

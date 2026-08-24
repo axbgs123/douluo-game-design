@@ -10,7 +10,7 @@ import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
 import { ensureGameState } from "./domain/world.js";
-import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_NAMES, META_ORIGIN_POOL, META_ORIGIN_POOL_SIZE } from "./domain/generator.js";
+import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_NAMES, META_ORIGIN_POOL, META_ORIGIN_POOL_SIZE, selectCandidate } from "./domain/generator.js";
 
 const databasePath = process.env.DOULUO_DATA_DIR
   ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
@@ -272,7 +272,23 @@ export function saveGameWithLegacyCost(game: StoredGame, cost: number, reason: s
 
 export function loadGame(id: string): StoredGame | undefined {
   const row = loadGameStatement.get(id) as { state_json: string } | undefined;
-  return row ? ensureGameState(JSON.parse(row.state_json) as StoredGame) : undefined;
+  if (!row) return undefined;
+  const game = ensureGameState(JSON.parse(row.state_json) as StoredGame);
+  if (game.view.status === "candidate_selection" && game.legacy.plannedOriginId) {
+    const meta = getMetaProgression();
+    const originId = game.legacy.plannedOriginId;
+    const candidate = game.hiddenCandidates[0];
+    if (candidate?.originId === originId && meta.equippedOriginId === originId) {
+      const forcedSoul = peekEquippedMartialSoul();
+      selectCandidate(game, candidate.public.id, undefined, forcedSoul);
+      saveGameAndClaimEquippedLoadout(game, forcedSoul?.id, originId, "candidate.auto_selected_from_equipped_origin", {
+        candidateId: candidate.public.id,
+        equippedOriginId: originId,
+        equippedMartialSoulId: forcedSoul?.id,
+      });
+    }
+  }
+  return game;
 }
 
 export function listSaves(): SaveSummary[] {
