@@ -41,7 +41,7 @@ const server = createServer((request, response) => {
       // Narration prompts are not required to contain the semantic payload.
     }
     const accountableHistory = /旧世|档案|年表|历史权益|听证|旧址线索|当前产权/.test(playerInput);
-    const accountableMedia = /媒体联盟|核验联盟|共享核验|优先议题|共同核验|修复计划|恢复复核|观察期核验|补充.*核验资源|第三家.*媒体|三方.*准入/.test(playerInput);
+    const accountableMedia = /媒体联盟|核验联盟|共享核验|优先议题|共同核验|修复计划|恢复复核|观察期核验|补充.*核验资源|第三家.*媒体|三方.*准入|退出.*联盟|联盟.*退出|替补.*(?:媒体|机构|成员|加入|准入|来源|记录)/.test(playerInput);
     const historyNarrative = /听证/.test(playerInput)
       ? `审理人把旧档和当代登记分开核对，听完异议才在裁定页落笔：${fixedRuleResult}`
       : /重新投资|复建|重新经营/.test(playerInput)
@@ -49,7 +49,17 @@ const server = createServer((request, response) => {
         : /提交|申请/.test(playerInput) && /主张|历史权益/.test(playerInput)
           ? `受理员逐页编号旧档、权属调查和送达材料，收下费用后签出回单：${fixedRuleResult}`
           : `他沿着目录号查到保管记录，把档案年代、转交印记和独立证据逐项对齐：${fixedRuleResult}`;
-    const mediaNarrative = /登记.*第三家/.test(playerInput)
+    const mediaNarrative = /登记.*退出.*联盟/.test(playerInput)
+      ? `退出申请进入复核栏，旧报道责任继续留档，共享资源仍锁在联盟账内：${fixedRuleResult}`
+      : /批准.*退出.*联盟/.test(playerInput)
+        ? `成员退出后转入历史责任栏，联盟因成员不足冻结共享资源：${fixedRuleResult}`
+      : /登记.*替补/.test(playerInput)
+        ? `替补机构只进入候选栏，不继承旧责任，并等待编辑复核和独立调查：${fixedRuleResult}`
+      : /调查.*替补/.test(playerInput)
+        ? `调查员独立核对替补机构的来源记录，候选资格仍等待复核：${fixedRuleResult}`
+      : /批准.*替补/.test(playerInput)
+        ? `替补经分别复核后完成准入，旧成员历史责任不变，共享资源才解除冻结：${fixedRuleResult}`
+      : /登记.*第三家/.test(playerInput)
       ? `第三家机构只进入候选准入栏，责任编辑与来源边界另页登记：${fixedRuleResult}`
       : /批准.*第三家|三方.*准入/.test(playerInput)
         ? `三名编辑分别复核调查编号后，第三家机构才进入正式成员表并交入核验资源：${fixedRuleResult}`

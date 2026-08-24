@@ -808,7 +808,7 @@ export interface MediaAllianceView {
   name: string;
   competitionId: string;
   outlets: string[];
-  status: "提议中" | "试运行" | "资源冲突" | "暂停合作" | "修复审核" | "受限恢复";
+  status: "提议中" | "试运行" | "资源冲突" | "暂停合作" | "修复审核" | "受限恢复" | "成员不足";
   sharedVerificationPool: number;
   priorityAgendaId?: string;
   delayedAgendaIds: string[];
@@ -821,11 +821,24 @@ export interface MediaAllianceView {
   resourceDepletedAtActionIndex?: number;
   resourceDepletionInteractionCounts?: Record<string, number>;
   resourceRefillCount?: number;
+  minimumMembers?: number;
+  statusBeforeMemberShortage?: "试运行" | "资源冲突";
+  departures?: Array<{
+    outlet: string;
+    editorName: string;
+    status: "待退出复核" | "已退出";
+    requestedAtActionIndex: number;
+    approvedAtActionIndex?: number;
+    interactionCounts: Record<string, number>;
+    evidence: string[];
+  }>;
   membershipApplications?: Array<{
     outlet: string;
     stance: string;
     editorName: string;
-    status: "候选核验" | "已加入" | "已拒绝";
+    status: "候选核验" | "替补核验" | "已加入" | "已拒绝";
+    kind?: "扩员" | "替补";
+    replacesOutlet?: string;
     registeredAtActionIndex: number;
     evidence: string[];
   }>;

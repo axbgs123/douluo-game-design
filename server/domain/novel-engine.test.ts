@@ -75,6 +75,10 @@ describe("增强小说引擎", () => {
     expect(auditResolutionAlignment("资源室核对新调查和双编辑复核后，只补回一枚核验签。", { ...ordinaryResolution, intent: "补充媒体联盟核验资源" })).toEqual([]);
     expect(auditResolutionAlignment("第三家机构只进入候选准入栏，责任编辑和来源边界另页登记。", { ...ordinaryResolution, intent: "登记第三媒体联盟候选" })).toEqual([]);
     expect(auditResolutionAlignment("大家同意一起工作。", { ...ordinaryResolution, intent: "批准第三媒体加入联盟" })).toContain("正文没有呈现第三媒体准入结果");
+    expect(auditResolutionAlignment("退出申请进入复核栏，旧责任和共享资源都没有被带走。", { ...ordinaryResolution, intent: "登记媒体联盟成员退出" })).toEqual([]);
+    expect(auditResolutionAlignment("成员退出后转入历史责任栏，人数不足使共享资源冻结。", { ...ordinaryResolution, intent: "批准媒体联盟成员退出" })).toEqual([]);
+    expect(auditResolutionAlignment("替补只进入候选栏，等待独立调查。", { ...ordinaryResolution, intent: "登记媒体联盟替补候选" })).toEqual([]);
+    expect(auditResolutionAlignment("替补经分别复核后准入，旧成员历史责任仍保留。", { ...ordinaryResolution, intent: "批准替补媒体加入联盟" })).toEqual([]);
   });
 
   it("automatically regenerates with the previous audit reasons", async () => {

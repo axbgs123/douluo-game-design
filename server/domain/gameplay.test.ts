@@ -540,7 +540,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "城市告示处", stance: "地方治安", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(25);
+    expect(migrated.schemaVersion).toBe(26);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -549,7 +549,7 @@ describe("完整游玩规则", () => {
     expect(migrated.view.mediaOutlets[0].responsibleEditor).toMatchObject({ name: "沈砚", sourceTrust: 64, handledReports: 2, playerTrust: 0, interactions: 0 });
     expect(migrated.view.mediaCompetitions[0]).toMatchObject({ sharedTopics: 1, status: "更正问责", leader: "行旅商讯抄报", scores: { 商会公报编辑处: -2, 行旅商讯抄报: 2 } });
     expect(migrated.view.mediaCompetitions[0].topics).toHaveLength(1);
-    expect(migrated.view.mediaAlliances[0]).toMatchObject({ id: "legacy-alliance", recoveryEvidence: [], suspendedOutletNames: [], probationVerificationsRemaining: 0, resourceRefillCount: 0, membershipApplications: [] });
+    expect(migrated.view.mediaAlliances[0]).toMatchObject({ id: "legacy-alliance", recoveryEvidence: [], suspendedOutletNames: [], probationVerificationsRemaining: 0, resourceRefillCount: 0, minimumMembers: 2, departures: [], membershipApplications: [] });
   });
 
   it("重要人物互动会留下记忆并推动世界偏差", () => {
@@ -1028,6 +1028,41 @@ describe("第一部世界资料", () => {
     expect(exclusive.intent).toBe("提交独家媒体线索");
     expect(exclusive.ruleSummary).toContain("取得线索优势");
     expect(game.view.mediaCompetitions[0]).toMatchObject({ status: "核验拉锯", leader: "行旅商讯抄报", playerChoice: "行旅商讯抄报", scores: { 城市告示处: 3, 行旅商讯抄报: 5 } });
+
+    const exitRequest = resolveAction(game, "登记跨城见证核验社退出联盟申请");
+    expect(exitRequest.intent).toBe("登记媒体联盟成员退出");
+    applyActionResult(game, "登记跨城见证核验社退出联盟申请", exitRequest, exitRequest.fallbackNarrative, exitRequest.suggestions);
+    expect(alliance.departures?.[0]).toMatchObject({ outlet: "跨城见证核验社", editorName: "叶闻", status: "待退出复核" });
+    expect(resolveAction(game, "批准跨城见证核验社退出联盟").intent).toBe("无法完成");
+    for (const editorName of ["沈砚", "程路", "叶闻"]) {
+      const review = resolveAction(game, `联系${editorName}责任编辑复核退出责任`);
+      applyActionResult(game, `联系${editorName}责任编辑复核退出责任`, review, review.fallbackNarrative, review.suggestions);
+    }
+    const approvedExit = resolveAction(game, "批准跨城见证核验社退出联盟");
+    expect(approvedExit.intent).toBe("批准媒体联盟成员退出");
+    applyActionResult(game, "批准跨城见证核验社退出联盟", approvedExit, approvedExit.fallbackNarrative, approvedExit.suggestions);
+    expect(alliance).toMatchObject({ outlets: ["城市告示处", "行旅商讯抄报"], status: "成员不足", sharedVerificationPool: 2, minimumMembers: 3 });
+    expect(alliance.departures?.[0]).toMatchObject({ status: "已退出" });
+    expect(game.view.mediaOutlets.find((outlet) => outlet.name === "跨城见证核验社")?.responsibleEditor?.name).toBe("叶闻");
+    expect(resolveAction(game, "让媒体联盟共同核验优先议题").intent).toBe("无法完成");
+
+    const replacementRegistration = resolveAction(game, "登记替补媒体候选");
+    expect(replacementRegistration.intent).toBe("登记媒体联盟替补候选");
+    applyActionResult(game, "登记替补媒体候选", replacementRegistration, replacementRegistration.fallbackNarrative, replacementRegistration.suggestions);
+    expect(alliance.membershipApplications?.at(-1)).toMatchObject({ outlet: "山河档案公证所", editorName: "方谨", status: "替补核验", kind: "替补", replacesOutlet: "跨城见证核验社" });
+    expect(resolveAction(game, "批准替补媒体加入联盟").intent).toBe("无法完成");
+    for (const editorName of ["沈砚", "程路", "方谨"]) {
+      const review = resolveAction(game, `联系${editorName}责任编辑复核替补准入`);
+      applyActionResult(game, `联系${editorName}责任编辑复核替补准入`, review, review.fallbackNarrative, review.suggestions);
+    }
+    expect(resolveAction(game, "批准替补媒体加入联盟").intent).toBe("无法完成");
+    const replacementInvestigation = resolveAction(game, "调查替补机构的独立来源记录");
+    applyActionResult(game, "调查替补机构的独立来源记录", replacementInvestigation, replacementInvestigation.fallbackNarrative, replacementInvestigation.suggestions);
+    const approvedReplacement = resolveAction(game, "批准替补媒体加入联盟");
+    expect(approvedReplacement.intent).toBe("批准替补媒体加入联盟");
+    expect(alliance).toMatchObject({ outlets: ["城市告示处", "行旅商讯抄报", "山河档案公证所"], status: "资源冲突", sharedVerificationPool: 2, minimumMembers: 3 });
+    expect(alliance.membershipApplications?.at(-1)?.status).toBe("已加入");
+    expect(approvedReplacement.ruleSummary).toContain("不继承跨城见证核验社的信誉、票数或历史责任");
   });
 
   it("四个时代使用各自可用的公共传播渠道", () => {
@@ -1062,6 +1097,30 @@ describe("第一部世界资料", () => {
       const [outletName, editorName] = expected[era];
       expect(game.view.mediaAlliances[0].membershipApplications?.[0]).toMatchObject({ outlet: outletName, editorName, status: "候选核验" });
       expect(game.view.mediaOutlets.find((outlet) => outlet.name === outletName)?.responsibleEditor?.name).toBe(editorName);
+    }
+  });
+
+  it("四个时代的联盟替补都有独立机构、编辑和不继承旧责的登记", () => {
+    const expected = {
+      1: ["山河档案公证所", "方谨"],
+      2: ["联城魂导证据台", "卓宁"],
+      3: ["联邦公共查证协作社", "乔衡"],
+      4: ["星海独立档案节点", "卫岚"],
+    } as const;
+    for (const era of [1, 2, 3, 4] as const) {
+      const game = createGame({ era, gender: "男", difficulty: "标准", personality, seed: `alliance-replacement-era-${era}` });
+      selectCandidate(game, game.view.candidates[0].id);
+      finalizeCharacterShaping(game, { keywords: personality.keywords, answers: personality.answers });
+      awakenCharacter(game);
+      for (const name of ["测试留任机构甲", "测试留任机构乙"]) recordMediaOutletReputation(game, { name, stance: "测试来源责任", trustDelta: 0, evidence: "测试替补既有成员" });
+      game.view.mediaAlliances = [{ id: `era-${era}-replacement`, name: "测试联盟（待替补）", competitionId: "test-competition", outlets: ["测试留任机构甲", "测试留任机构乙"], status: "成员不足", sharedVerificationPool: 2, minimumMembers: 3, statusBeforeMemberShortage: "试运行", delayedAgendaIds: [], agendas: [], departures: [{ outlet: "测试退出机构", editorName: "旧责编辑", status: "已退出", requestedAtActionIndex: 1, approvedAtActionIndex: 2, interactionCounts: {}, evidence: ["既往责任保留"] }], membershipApplications: [], evidence: [] }];
+      const registration = resolveAction(game, "登记替补媒体候选");
+      expect(registration.intent).toBe("登记媒体联盟替补候选");
+      const [outletName, editorName] = expected[era];
+      expect(game.view.mediaAlliances[0].membershipApplications?.[0]).toMatchObject({ outlet: outletName, editorName, status: "替补核验", kind: "替补", replacesOutlet: "测试退出机构" });
+      expect(game.view.mediaOutlets.find((outlet) => outlet.name === outletName)?.responsibleEditor?.name).toBe(editorName);
+      expect(game.view.mediaAlliances[0].sharedVerificationPool).toBe(2);
+      expect(registration.ruleSummary).toContain("不继承退出机构的信誉、议题票数或责任");
     }
   });
 

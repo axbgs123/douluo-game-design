@@ -521,6 +521,10 @@ function responsibleEditor(outlet: string): { name: string; role: "责任编辑"
     魂导公共查证台: { name: "苏澄", role: "值班核验编辑" },
     大陆独立事实核验站: { name: "裴真", role: "责任编辑" },
     星域公共证据联合站: { name: "罗序", role: "值班核验编辑" },
+    山河档案公证所: { name: "方谨", role: "责任编辑" },
+    联城魂导证据台: { name: "卓宁", role: "值班核验编辑" },
+    联邦公共查证协作社: { name: "乔衡", role: "责任编辑" },
+    星海独立档案节点: { name: "卫岚", role: "值班核验编辑" },
   };
   return profiles[outlet] ?? { name: "当班编辑", role: "值班核验编辑" };
 }
@@ -996,7 +1000,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 25;
+  legacy.schemaVersion = 26;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -1043,6 +1047,8 @@ export function ensureGameState(game: StoredGame): StoredGame {
     alliance.probationVerificationsRemaining ??= 0;
     alliance.resourceRefillCount ??= 0;
     alliance.membershipApplications ??= [];
+    alliance.minimumMembers ??= alliance.outlets.length >= 3 ? 3 : 2;
+    alliance.departures ??= [];
   }
   if (missingMediaCompetitions) {
     for (const rumor of legacy.world.socialRumors) {
