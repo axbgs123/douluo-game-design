@@ -19,14 +19,13 @@
 
 最近一轮把中国网文生产与 GitHub 小说逻辑 Skill 的可用机制接入 AI 生成前：程序现在编译 `narrative-logic.v1`，逐项锁定状态/约束版本、原著锚点、主角欲望、信息来源、权限、资源、固定后果、参与者反应义务、多人场景规模和连续性变化。逻辑预检失败时不调用模型且不重试。此前斗一传播制度倒灌修正仍然有效。
 
-本机 Codex 另安装了四套项目专用 Skill：
+本机 Codex 保留三套项目专用 Skill：
 
 - `~/.codex/skills/douluo-canon-logic/`
 - `~/.codex/skills/chinese-webnovel-choice-design/`
 - `~/.codex/skills/chinese-webnovel-causality-audit/`
-- `~/.codex/skills/chinese-webnovel-production/`
 
-这些 Skill 不在 Git 仓库内；换机器接手时需要单独复制或重新安装。仓库内可移植的方法论与运行时代码分别位于 `docs/research/douluo-choice-and-plot-logic.md`、`docs/research/github-novel-logic-skills.md`、`server/domain/story-rules.ts` 和 `server/services/deepseek.ts`。
+这些 Skill 不在 Git 仓库内；换机器接手时需要单独复制或重新安装。GitHub 小说逻辑 Skill 的有效机制已经重新实现并内置在仓库，不依赖 Codex 保留额外封装 Skill；可移植方法与运行时代码分别位于 `docs/research/douluo-choice-and-plot-logic.md`、`docs/research/github-novel-logic-skills.md`、`server/domain/story-rules.ts` 和 `server/services/deepseek.ts`。
 
 ## 1. 项目定位
 
@@ -295,6 +294,6 @@ shared/
 | 运行态 | `partially-verified` | 本轮生产构建、四时代长局与 25 条浏览器流程通过；未执行真实 DeepSeek 四时代付费冒烟 |
 | 文档 | `changed-and-verified` | README、本文、发布验收基线和完成度审计已同步当前测试清单 |
 | 规则 | `changed-and-verified` | 新增根目录 `AGENTS.md`，提供接手命令与安全边界 |
-| 记忆 | `not-applicable` | 未修改任何宿主生成记忆；四套本机项目 Skill 的位置已记录 |
+| 记忆 | `not-applicable` | 未修改任何宿主生成记忆；三套本机项目 Skill 的位置已记录，额外小说生产封装已移除 |
 | 工作区 | `verified-current` | 收尾前单 worktree、无未提交文件；没有执行删除或清场 |
 | 发布 | `pushed` | 最新功能提交已在远端分支；未声明已合并、部署或公开上线 |
