@@ -269,7 +269,13 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .shaping-submit { width: 100%; margin-top: 18px; padding: 17px; letter-spacing: .1em; }
 
 .game-shell { max-width: 1500px; margin: auto; padding: 24px 30px 34px; }
-.game-topbar { display: flex; justify-content: space-between; align-items: flex-end; padding: 12px 4px 26px; border-bottom: 1px solid var(--line); }
+.game-topbar { position: relative; isolation: isolate; overflow: hidden; display: flex; justify-content: space-between; align-items: flex-end; min-height: 108px; padding: 22px 20px 24px; border: 1px solid var(--line); background: rgba(255,250,240,.9); box-shadow: 0 10px 28px rgba(74,54,24,.08); }
+.game-topbar::before { content: ""; position: absolute; z-index: -2; inset: 0; background: url("/assets/era-panorama.webp") center/cover no-repeat; opacity: .2; filter: saturate(.75) contrast(.9); }
+.game-topbar::after { content: ""; position: absolute; z-index: -1; inset: 0; background: linear-gradient(90deg, rgba(255,250,240,.97) 0%, rgba(255,250,240,.84) 48%, rgba(255,250,240,.94) 100%); }
+.game-era-1 .game-topbar::before { background-position: 4% center; }
+.game-era-2 .game-topbar::before { background-position: 39% center; }
+.game-era-3 .game-topbar::before { background-position: 67% center; }
+.game-era-4 .game-topbar::before { background-position: 96% center; }
 .game-topbar h1 { margin: 0; font-weight: 500; font-size: 19px; }
 .world-clock { text-align: right; }
 .world-clock span, .world-clock strong { display: block; }
@@ -643,7 +649,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   .question-options, .suggestion-list { grid-template-columns: 1fr; }
   .goal-draw-grid, .personality-draw-grid { grid-template-columns: 1fr; }
   .save-row { grid-template-columns: 1fr; }
-  .game-topbar { align-items: flex-start; gap: 15px; }
+  .game-topbar { align-items: flex-start; gap: 15px; min-height: 96px; padding: 16px; }
   .world-clock { max-width: 45%; }
   .topbar-tools { align-items: flex-end; flex-direction: column-reverse; gap: 8px; }
   .story-column { min-height: 0; }

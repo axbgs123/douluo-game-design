@@ -353,6 +353,7 @@ test.afterAll(() => fixtureDatabase?.closeDatabase());
 
 test("玩家可以完成角色创建、推进故事并管理存档", async ({ page }) => {
   await createPlayingCharacter(page, 1);
+  await expect(page.locator(".game-era-1 .game-topbar")).toBeVisible();
   await page.getByRole("button", { name: "背包", exact: true }).click();
   await expect(page.getByRole("button", { name: "承接货运", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /^手记/ }).click();

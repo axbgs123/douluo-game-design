@@ -60,7 +60,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
   };
 
   return (
-    <main className="game-shell">
+    <main className={`game-shell game-era-${game.era}`}>
       <header className="game-topbar">
         <div><p className="eyebrow">{game.character ? `${game.character.name}的故事` : "武魂觉醒"}</p><h1>{game.location}</h1></div>
         <div className="topbar-tools">
