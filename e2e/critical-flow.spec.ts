@@ -630,6 +630,10 @@ test("四人编队可以从共同训练、明确出发一路进入实战并发�
   const prepareFormation = page.getByRole("button", { name: "准备四人编队" });
   for (let attempt = 0; attempt < 6 && !await prepareFormation.isVisible(); attempt += 1) await submitAction(page, "寻找足迹追踪魂兽");
   await expect(prepareFormation).toBeVisible();
+  const combatScene = page.locator(".combat-scene");
+  await expect(combatScene).toBeVisible();
+  await expect(combatScene.locator("img")).toHaveAttribute("src", "/assets/combat-era-1.webp");
+  await expect(combatScene).toContainText("原创战斗环境 · 斗1");
   await prepareFormation.click();
   await expect(page.locator(".hunt-target").filter({ hasText: "连携准备" })).toContainText("四象战阵");
   await expect(page.locator(".hunt-target").filter({ hasText: "连携准备" })).toContainText("四角轮换");
