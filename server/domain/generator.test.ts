@@ -56,12 +56,13 @@ describe("candidate generation", () => {
     expect(candidates.every((candidate) => candidate.public.selfKnowledge.length > 0 && candidate.public.knownBackground.length > 20)).toBe(true);
   });
 
-  it("contains at least one thousand concrete birth profiles with exact homes", () => {
+  it("uses a compact hand-authored origin pool with thousands of concrete homes", () => {
     expect(BIRTH_PROFILE_COUNT).toBeGreaterThanOrEqual(1000);
-    expect(CORE_ORIGIN_COUNT).toBe(1000);
-    expect(CORE_ORIGIN_UNIQUE_NAME_COUNT).toBe(1000);
-    expect(CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT).toBe(1000);
-    expect(BIRTH_PROFILE_COUNT).toBe(36000);
+    expect(CORE_ORIGIN_COUNT).toBeGreaterThanOrEqual(120);
+    expect(CORE_ORIGIN_COUNT).toBeLessThan(200);
+    expect(CORE_ORIGIN_UNIQUE_NAME_COUNT).toBe(CORE_ORIGIN_COUNT);
+    expect(CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT).toBe(CORE_ORIGIN_COUNT);
+    expect(BIRTH_PROFILE_COUNT).toBe(CORE_ORIGIN_COUNT * 36);
     const candidates = Array.from({ length: 30 }, (_, rerollIndex) => generateCandidates("birth-map", rerollIndex, "男")).flat();
     expect(candidates.every((candidate) => candidate.public.birthProfileId && candidate.public.dwelling.includes(" · "))).toBe(true);
     expect(candidates.every((candidate) => candidate.public.mapX >= 0 && candidate.public.mapX <= 100 && candidate.public.mapY >= 0 && candidate.public.mapY <= 100)).toBe(true);
@@ -153,6 +154,26 @@ describe("candidate generation", () => {
     expect(draws.every((draw) => new Set(draw.map((candidate) => candidate.public.name)).size === 3)).toBe(true);
     const allNames = draws.flat().map((candidate) => candidate.public.name);
     expect(new Set(allNames).size).toBeGreaterThanOrEqual(820);
+  });
+
+  it("draws three different opening styles whenever the era pool permits it", () => {
+    for (let rerollIndex = 0; rerollIndex < 180; rerollIndex += 1) {
+      const candidates = generateCandidates("opening-style-diversity", rerollIndex, rerollIndex % 2 ? "男" : "女");
+      expect(new Set(candidates.map((candidate) => candidate.public.openingStyle)).size).toBe(3);
+    }
+  });
+
+  it("supports a beast-raised route and a truly unbound arrival without invented local ties", () => {
+    const beast = generateCandidates("beast-raised-opening", 0, "男", { origin: "凶兽养成", martialSoul: "均衡", gift: "均衡" })[0];
+    expect(beast.originId).toBe("fierce-beast-raised");
+    expect(beast.public.openingStyle).toBe("凶兽养成");
+
+    const unbound = generateCandidates("unbound-opening", 0, "女", { origin: "无羁绊", martialSoul: "均衡", gift: "均衡" })[0];
+    expect(unbound.originId).toBe("void-arrival-unbound");
+    expect(unbound.public.openingStyle).toBe("无羁绊异客");
+    expect(unbound.public.startingRelations).toHaveLength(0);
+    expect(unbound.public.household.structure).toBe("独身无监护");
+    expect(unbound.public.originBurden).toContain("合法身份");
   });
 
   it("reveals the martial soul only after selection and awakening", () => {

@@ -225,6 +225,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .candidate-meta { display: flex; gap: 7px; margin-bottom: 42px; position: relative; z-index: 1; }
 .candidate-meta { flex-wrap: wrap; }
 .candidate-meta span { color: var(--muted); border: 1px solid var(--line); padding: 4px 7px; font-size: 9px; }
+.candidate-meta .opening-style { color: #75571b; border-color: rgba(154, 113, 30, .35); background: rgba(197, 157, 73, .08); }
 .candidate-meta strong { width: 100%; margin-top: 3px; color: var(--gold); font-size: 10px; letter-spacing: .08em; }
 .candidate-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 7px; }
 .candidate-card.rarity-平凡 { background: linear-gradient(160deg, #fffefb, #eeeae1); border-color: #c8c4ba; }.candidate-card.rarity-平凡::before { background: #fafafa; }

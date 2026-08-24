@@ -34,6 +34,7 @@ export interface CandidatePublic {
   startingRelations: RelationView[];
   omens: string[];
   route: string;
+  openingStyle?: string;
   rarity: CandidateRarity;
   selfKnowledge: string;
   knownBackground: string;

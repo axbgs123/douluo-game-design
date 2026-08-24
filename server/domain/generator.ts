@@ -23,7 +23,6 @@ import { refreshStoryArchive } from "./story-rules.js";
 import { worldMapPoint } from "../../shared/world-map.js";
 import { EXPANDED_ORIGINS } from "../data/expanded-origins.js";
 import { metaSoulById } from "../data/meta-martial-souls.js";
-import { buildSystemCoreOrigins } from "../data/system-core-origins.js";
 import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 import { ERA_MARTIAL_SOULS } from "../data/era-martial-souls.js";
 import { ORIGINAL_MARTIAL_SOULS } from "../data/original-martial-souls.js";
@@ -69,6 +68,8 @@ const FAMILY_CLIMATES = [
 ] as const;
 
 function dwellingOptions(origin: OriginTemplate, location: string): string[] {
+  if (origin.id === "fierce-beast-raised") return ["盘根古树下的干燥树洞", "岩壁暖泉旁的兽巢", "倒伏巨木形成的内腔", "覆满苔藓的山腹洞穴", "兽群领地中央的石窟", "高大树冠遮住的岩棚"];
+  if (origin.id === "void-arrival-unbound") return ["昨夜落地的荒草坡", "暂时避雨的废弃土地庙", "城外路碑背风处", "无人看守的旧车棚", "荒道旁倒塌一半的草亭", "公共觉醒队营地外的空地"];
   if (/少宗主|继承人|宗主独子|嫡系/.test(origin.name)) return ["主峰继承人院东厢", "宗主院落第二进独室", "内门议事堂后的少主院", "护山阵内侧的继承人居所", "藏经阁与主峰之间的独院", "宗门核心区的临崖静室"];
   if (/亲传|核心弟子|圣子|圣女/.test(origin.name)) return ["内门弟子院甲字房", "授业长老院外侧弟子房", "核心演武场北侧静室", "藏书楼后的亲传小院", "主殿东侧弟子厢房", "拟态修炼区旁的独院"];
   if (/长老|斗罗|供奉/.test(origin.name)) return ["长老府东侧子弟院", "供奉殿家属区独院", "封号斗罗府邸第二进", "长老演武场后的暖阁", "内城警戒区家属院", "长老私宅藏书室旁卧房"];
@@ -424,7 +425,6 @@ const ORIGINS: OriginTemplate[] = [
     burden: origin.burden ?? origin.details[0],
     startingItems: origin.startingItems ?? [`${origin.name}的家用信物`],
   })),
-  ...buildSystemCoreOrigins(Math.max(0, 1000 - BASE_ORIGINS.length)),
 ];
 
 export const ERA_BASE_YEARS: Record<GameEra, number> = { 1: 0, 2: 10000, 3: 20000, 4: 30000 };
@@ -671,7 +671,23 @@ const ORIGIN_PREFERENCE_IDS: Record<string, string[]> = {
   反派: ["spirit-hall-elder-child", "star-luo-contender", "underworld-heir", "evil-soul-remnant"],
   穿越: ["cultivator-reincarnation", "modern-transmigrator"],
   特殊: ["mystery-arrival", "fallen-clan", "sect-village", "hidden-sect-heir", "cultivator-reincarnation", "modern-transmigrator", "underworld-heir", "evil-soul-remnant"],
+  凶兽养成: ["fierce-beast-raised"],
+  无羁绊: ["void-arrival-unbound"],
 };
+
+function openingStyleFor(origin: OriginTemplate): string {
+  const text = `${origin.id} ${origin.name} ${origin.route ?? ""} ${(origin.roleTags ?? []).join(" ")}`;
+  if (/无羁绊|凭空穿越|异界来客/.test(text)) return "无羁绊异客";
+  if (/凶兽养成|兽群养大|魂兽养育/.test(text)) return "凶兽养成";
+  if (/皇室|公爵|贵族|权贵|质子|王府|宗主|少主|继承人/.test(text)) return "权贵棋局";
+  if (/天才|天骄|神童|先天异象|领域|双生|魂骨/.test(text) || ["传奇", "神话"].includes(origin.tier ?? "平凡")) return "天骄崛起";
+  if (/穿越|转生|异界|修仙|前世/.test(text)) return "异世重修";
+  if (/武魂殿|七宝|蓝电|昊天|宗门|学院|唐门|史莱克|传灵塔/.test(text)) return "势力门徒";
+  if (/地下|邪教|杀手|海盗|禁术|通缉|反派/.test(text)) return "黑暗求生";
+  if (/商队|游方|漂泊|流民|海路|驿路/.test(text)) return "漂泊游历";
+  if (/工匠|医|药|锻造|制墨|矿|商|厨|阵法|研究/.test(text)) return "百业技艺";
+  return "草根逆袭";
+}
 
 function originPool(preferences?: WeightPreferences, era: GameEra = 1): OriginTemplate[] {
   const preferredIds = ORIGIN_PREFERENCE_IDS[preferences?.origin ?? "均衡"] ?? [];
@@ -686,6 +702,8 @@ function originPool(preferences?: WeightPreferences, era: GameEra = 1): OriginTe
     if (preference === "反派") return /地下|暗街|禁物|毒|夺位|反派/.test(text);
     if (preference === "穿越") return /穿越|转生|修仙|异界/.test(text);
     if (preference === "特殊") return /异脉|禁物|旧案|血脉|遗迹|残魂|实验|诅咒/.test(text);
+    if (preference === "凶兽养成") return openingStyleFor(origin) === "凶兽养成";
+    if (preference === "无羁绊") return openingStyleFor(origin) === "无羁绊异客";
     return false;
   };
   const pool = era === 1 ? ORIGINS : LATER_ERA_ORIGINS[era];
@@ -912,6 +930,11 @@ function specificOrigin(
       { name: "林秋娘", relation: "山下药师", impression: "把他当亲外甥照看，也害怕老人过去的仇家", strength: 70, category: "亲属" },
       { name: officer, relation: "武魂殿巡查执事", impression: "觉得这户隐居人家的底细不太干净", faction: "武魂殿", strength: 9, category: "势力" },
     ],
+    "fierce-beast-raised": [
+      { name: "岩叔", relation: "凶兽养育者与监护者", impression: "把孩子护在领地内，却拒绝替孩子决定是否进入人类社会", faction: "星斗核心区兽群", strength: 91, category: "亲属" },
+      { name: "青羽", relation: "魂兽玩伴", impression: "把这个孩子当作兽群里不会长毛的幼崽，不理解人类身份意味着什么", faction: "星斗核心区兽群", strength: 76, category: "师友" },
+    ],
+    "void-arrival-unbound": [],
   };
   const specialFamilies: Record<string, string> = {
     "seven-treasure-core": "内门监护人宁远山；宗主宁风致亲自过问课业",
@@ -923,8 +946,13 @@ function specificOrigin(
     "star-luo-contender": "父亲戴岳衡是军功公爵；母亲朱静娴",
     "underworld-heir": "父亲顾黑槐是会主；母亲程素琴掌管暗账",
     "hidden-master-ward": "养父岳山老人；山下药师林秋娘常来照看",
+    "fierce-beast-raised": "没有人类亲属；由自称“岩叔”的凶兽与附近兽群共同养育",
+    "void-arrival-unbound": "独自抵达；没有监护人、当地亲属或预设熟人",
   };
-
+  const specialHouseholdStructures: Record<string, string> = {
+    "fierce-beast-raised": "魂兽监护",
+    "void-arrival-unbound": "独身无监护",
+  };
   const dwellings = dwellingOptions(origin, location);
   const dwellingIndex = integer(random, 0, dwellings.length - 1);
   const dwelling = `${location} · ${authority}管辖区 · ${dwellings[dwellingIndex]}`;
@@ -953,6 +981,9 @@ function specificOrigin(
     "家臣监护": { summary: `父母或身份核心人物并不负责日常生活，由${guardian}这名家臣长期监护。`, members: [{ name: guardian, role: "家臣监护人", note: "忠诚首先指向家族或势力" }], relations: [{ name: guardian, relation: "家臣监护人", impression: "照顾细致，但遇到家族命令时会优先服从上级", strength: 62, category: "势力" }] },
   };
   const genericHousehold = genericHouseholds[householdStructure];
+  const familyFact = specialFamilies[origin.id]
+    ? `${specialFamilies[origin.id]}${["fierce-beast-raised", "void-arrival-unbound"].includes(origin.id) ? "" : `；${FAMILY_CLIMATES[familyClimateIndex]}`}`
+    : `${householdStructure}：${genericHousehold.summary}；${FAMILY_CLIMATES[familyClimateIndex]}`;
   const authorityText = `${authority}${origin.name}${(origin.roleTags ?? []).join("")}`;
   const awakeningFaction = /七宝/.test(authorityText) ? "七宝琉璃宗"
     : /蓝电/.test(authorityText) ? "蓝电霸王龙宗"
@@ -976,7 +1007,7 @@ function specificOrigin(
     originName,
     originSummary: joinDistinctOriginText(livelihood, obligation),
     originFacts: [
-      { label: "家庭", value: `${specialFamilies[origin.id] ?? `${householdStructure}：${genericHousehold.summary}`}；${FAMILY_CLIMATES[familyClimateIndex]}` },
+      { label: "家庭", value: familyFact },
       { label: "归属", value: authority },
       { label: "生计", value: livelihood },
       { label: "眼前事", value: obligation },
@@ -984,8 +1015,24 @@ function specificOrigin(
       { label: "身份代价", value: origin.burden ?? "资源有限，但暂时也没有高层势力把他当作棋子。" },
     ],
     startingRelations,
-    household: { structure: specialStartingRelations ? (/养父|养母/.test(specialStartingRelations.map((item) => item.relation).join("")) ? "收养家庭" : /监护/.test(specialStartingRelations.map((item) => item.relation).join("")) ? "家臣监护" : "身份专属家庭") : householdStructure, summary: specialFamilies[origin.id] ?? genericHousehold.summary, members: householdMembers },
-    residence: {
+    household: { structure: specialHouseholdStructures[origin.id] ?? (specialStartingRelations ? (/养父|养母/.test(specialStartingRelations.map((item) => item.relation).join("")) ? "收养家庭" : /监护/.test(specialStartingRelations.map((item) => item.relation).join("")) ? "家臣监护" : "身份专属家庭") : householdStructure), summary: specialFamilies[origin.id] ?? genericHousehold.summary, members: householdMembers },
+    residence: origin.id === "fierce-beast-raised" ? {
+      region: location,
+      settlement: "星斗核心区边缘兽群领地",
+      district: "岩叔气息覆盖的古林",
+      building: dwellings[dwellingIndex],
+      room: "铺着干草、旧兽皮和宽叶的睡处",
+      security: "依靠凶兽领地威压与兽群巡守；离开领地后不再生效",
+      nearby: ["兽群饮水溪", "旧日战场遗留的觉醒阵石", "通往人类外围区的陌生兽径"],
+    } : origin.id === "void-arrival-unbound" ? {
+      region: location,
+      settlement: "尚未登记",
+      district: "诺丁城外无主荒道",
+      building: dwellings[dwellingIndex],
+      room: "没有固定房间或可以上锁的私人空间",
+      security: "没有监护、门锁或所属势力保护",
+      nearby: ["诺丁城城门", "地方公共觉醒队临时营地", "可取水的路边浅沟"],
+    } : {
       region: location,
       settlement: location,
       district,
@@ -1008,19 +1055,24 @@ export function generateCandidates(
   const random = createRandom(`${seed}:candidates:${rerollIndex}`);
   const usedOrigins = new Set<string>();
   const usedNames = new Set<string>();
+  const usedOpeningStyles = new Set<string>();
   const origins = originPool(preferences, era);
 
   return Array.from({ length: 3 }, (_, index) => {
-    const slotOrigins = index === 1
+    let slotOrigins = index === 1
       ? origins.filter((item) => (item.tier ?? (["minor-noble", "fallen-clan", "sect-village"].includes(item.id) ? "优秀" : "平凡")) !== "平凡")
       : index === 2
         ? origins.filter((item) => ["稀有", "传奇", "神话"].includes(item.tier ?? "平凡"))
         : origins;
-    let origin = weightedPick(random, slotOrigins);
-    for (let attempt = 0; usedOrigins.has(origin.id) && attempt < 8; attempt += 1) {
-      origin = weightedPick(random, slotOrigins);
+    if (index === 0 && ["凶兽养成", "无羁绊"].includes(preferences?.origin ?? "")) {
+      const exactStyleOrigins = slotOrigins.filter((item) => ORIGIN_PREFERENCE_IDS[preferences!.origin].includes(item.id));
+      if (exactStyleOrigins.length) slotOrigins = exactStyleOrigins;
     }
+    const diverseOrigins = slotOrigins.filter((item) => !usedOrigins.has(item.id) && !usedOpeningStyles.has(openingStyleFor(item)));
+    const unusedOrigins = slotOrigins.filter((item) => !usedOrigins.has(item.id));
+    const origin = weightedPick(random, diverseOrigins.length ? diverseOrigins : unusedOrigins.length ? unusedOrigins : slotOrigins);
     usedOrigins.add(origin.id);
+    usedOpeningStyles.add(openingStyleFor(origin));
 
     const martialSouls = chooseMartialSouls(random, origin, preferences, era);
     const soul = martialSouls[0];
@@ -1069,6 +1121,7 @@ export function generateCandidates(
       household: concreteOrigin.household,
       residence: concreteOrigin.residence,
       route: origin.route ?? (origin.id === "mystery-arrival" ? "身世谜团" : "本地成长"),
+      openingStyle: openingStyleFor(origin),
       rarity: resolvedOriginTier(origin),
       selfKnowledge: origin.selfKnowledge ?? (origin.id === "mystery-arrival" ? "本地人 · 身世未知" : "本地人 · 身世明确"),
       knownBackground: thirdPersonClue(pick(random, origin.knownBackgrounds ?? [origin.id === "mystery-arrival" ? "你知道自己是被收养的，亲生父母和那块碎玉的来历都没人肯说。" : "你知道家里靠什么生活，也认得每天会见到的人。更深的秘密是否存在，还要靠经历确认。"]), name, gender),
@@ -1764,6 +1817,16 @@ function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityP
       `${pronoun}又核对了一遍年份和地点。剧情只能当旧地图，眼前每张脸都没有写在书里。${candidate.public.name}${reaction}。`,
       `六块黑石亮起边角的金纹。执事念到${candidate.public.name}，${pronoun}把时间线笔记留在了家人的包里。`,
     ],
+    "fierce-beast-raised": [
+      `星斗大森林深处没有人类觉醒堂。岩叔从旧日战场带回六块阵石，照着一张残破的人类卷册摆在古树根间。`,
+      `${candidate.public.name}闻得出附近每一头魂兽的位置，却第一次面对只为人类准备的仪式。${pronoun}${reaction}。`,
+      `岩叔以魂力依次点亮阵石，没有许诺武魂强大便能留在核心区，也没有替${candidate.public.name}选择要不要走向人类世界。`,
+    ],
+    "void-arrival-unbound": [
+      `昨夜，${candidate.public.name}还不属于这片大陆。天亮时，${pronoun}沿荒道看见一支去乡村主持公共觉醒的队伍。`,
+      `没有名册、监护人或本地钱币能证明身份。${candidate.public.name}${reaction}，决定先借这次仪式确认六岁身体里究竟有什么。`,
+      `巡查执事允许${pronoun}站到队尾，但只登记了一个口述姓名；这不是收养、招募或任何关系承诺。`,
+    ],
     "underworld-heir": [
       "黑槐会包下了武魂分殿后厅。刑堂主带来的人守住两扇门，登记执事收了钱，脸色仍不好看。",
       `顾黑槐没有教孩子该笑还是该怕。${candidate.public.name}${reaction}，先记住了厅里每个人站的位置。`,
@@ -1795,6 +1858,7 @@ function awakeningContext(selected: HiddenCandidate): AwakeningContext {
   const text = `${selected.originId}${selected.public.originName}${selected.roleTags.join("")}`;
   const souls = selected.martialSouls?.length ? selected.martialSouls : [selected.martialSoul];
   const soulNames = souls.map((soul) => soul.name);
+  if (selected.originId === "fierce-beast-raised") return { factionId: "star-dou-beasts", factionName: "星斗核心区兽群", officiant: "凶兽养育者岩叔", venue: "古树根间的临时觉醒阵" };
   if (/七宝/.test(text)) return { factionId: "seven-treasure", factionName: "七宝琉璃宗", officiant: "七宝琉璃宗觉醒教习", venue: "宗门觉醒堂", notableNpc: soulNames.includes("七杀剑") ? { id: "chen-xin", name: "尘心" } : soulNames.includes("骨龙") ? { id: "gu-rong", name: "古榕" } : soulNames.some((name) => /七宝琉璃塔|九宝琉璃塔/.test(name)) ? { id: "ning-fengzhi", name: "宁风致" } : undefined };
   if (/蓝电/.test(text)) return { factionId: "blue-lightning", factionName: "蓝电霸王龙宗", officiant: "蓝电霸王龙宗雷池教习", venue: "宗门觉醒石台" };
   if (/昊天/.test(text)) return { factionId: "clear-sky", factionName: "昊天宗", officiant: "昊天宗支脉长老", venue: "支脉觉醒堂", notableNpc: soulNames.includes("昊天锤") ? { id: "tang-xiao", name: "唐啸" } : undefined };
@@ -1862,6 +1926,10 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     character.specialSystem = { name: "前世剑修传承", stage: "斗罗适配 · 未入门", progress: "0%", abilities: ["剑理记忆", "经脉辨识"], resourceHint: "需要结合武魂、魂环与当地材料逐步验证" };
   } else if (selected.originId === "modern-transmigrator") {
     character.revealedGift = "知道原作主要时间线；越受玩家影响，记忆越不可靠";
+  } else if (selected.originId === "void-arrival-unbound") {
+    character.revealedGift = "完整保留异界记忆，但没有系统、当地身份或任何预设关系";
+  } else if (selected.originId === "fierce-beast-raised") {
+    character.revealedGift = "熟悉星斗核心区的兽群信号与生存规则，但几乎不懂人类社会";
   } else if (selected.originId === "evil-soul-remnant") {
     character.revealedGift = "知道家族禁术的入门方法与戒律";
     character.specialSystem = { name: "家族吞噬禁术", stage: "封存 · 可选择是否修炼", progress: "0%", abilities: ["隐藏异常气息"], resourceHint: "修炼会带来道德、追捕和身体风险" };
@@ -1883,6 +1951,8 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     "underworld-heir": { coins: 450, reputation: "黑槐会少主", inventory: ["黑槐木牌", "暗账缩本", "袖中短刃", "应急钱袋"], affiliation: { id: "black-huai", name: "黑槐会", role: "少主" } },
     "evil-soul-remnant": { coins: 35, reputation: "旧姓避难者", inventory: ["禁术戒律残页", "遮掩气息的草药", "伪造路引", "旧布包"] },
     "hidden-master-ward": { coins: 80, reputation: "山里老猎人的养子", inventory: ["养父磨钝的猎刀", "呼吸步法木册", "疗伤药包", "两日干粮"] },
+    "fierce-beast-raised": { coins: 0, reputation: "星斗兽群养大的陌生幼崽", inventory: ["兽牙磨成的护符", "树叶包裹的干果", "磨平边缘的燧石"] },
+    "void-arrival-unbound": { coins: 0, reputation: "没有登记记录的异界来客", inventory: ["随穿越保留下来的旧衣"] },
   };
   const start = originStart[selected.originId];
   if (start) {
@@ -1931,11 +2001,14 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   }
   if (selected.originId === "cultivator-reincarnation") game.view.tasks.push({ id: "adapt-cultivation", title: "验证前世修行法", kind: "计划", detail: "先完成一条能安全运转的魂力经脉路线。", status: "进行中" });
   if (selected.originId === "modern-transmigrator") game.view.tasks.push({ id: "verify-timeline", title: "核实剧情时间线", kind: "线索", detail: "先确认当前年份、唐三位置和已经发生的关键节点。", status: "进行中" });
+  if (selected.originId === "void-arrival-unbound") game.view.tasks.push({ id: "establish-local-identity", title: "决定是否建立大陆身份", kind: "计划", detail: "户籍、住处与关系都从零开始；可以登记、隐瞒来历或继续独行。", status: "进行中" });
+  if (selected.originId === "fierce-beast-raised") game.view.tasks.push({ id: "choose-human-world", title: "决定是否接触人类世界", kind: "计划", detail: "兽群不会替他决定归属；进入人类社会也不会自动获得合法身份与信任。", status: "进行中" });
   if (selected.originId === "evil-soul-remnant") game.view.tasks.push({ id: "forbidden-choice", title: "决定是否接触家族禁术", kind: "计划", detail: "戒律、收益和代价都已经知道，是否修炼仍由角色决定。", status: "进行中" });
   if ((selected.originStart?.pressure ?? 1) >= 3) game.view.tasks.push({ id: "identity-burden", title: "处理身份带来的第一场麻烦", kind: "线索", detail: selected.originStart?.burden ?? selected.public.originBurden, status: "进行中", destinationId: selected.public.locationId });
   const soulGrades = soulViews.map((soul) => MARTIAL_SOUL_GRADE_ORDER.indexOf(soul.grade ?? "平凡"));
   const highAttention = selected.innateSoulPower >= 7 || (selected.innateSoulPower > 0 && (soulViews.length > 1 || Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("传奇")));
   if (highAttention) {
+    const beastAwakening = selected.originId === "fierce-beast-raised";
     const attentionLevel = selected.innateSoulPower === 10 || soulViews.length > 1 || Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("神话") ? "最高优先" : "重点";
     game.world.flags.awakeningAttention = attentionLevel;
     let awakeningRelation = game.view.relations.find((relation) => relation.faction === awakening.factionName || /觉醒/.test(`${relation.relation}${relation.name}`));
@@ -1944,14 +2017,14 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
       game.view.relations.push(awakeningRelation);
     }
     if (awakeningRelation) {
-      awakeningRelation.impression = `将觉醒结果列入${awakening.factionName}内部培养评估`;
+      awakeningRelation.impression = beastAwakening ? "确认孩子已经具备离开领地或继续留在兽群修炼的选择资格" : `将觉醒结果列入${awakening.factionName}内部培养评估`;
       awakeningRelation.history = [...(awakeningRelation.history ?? []), { date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `${selected.innateSoulPower}级先天魂力与${soulViews.length > 1 ? `${soulViews.length}生武魂` : soulViews[0].name}引起注意`, changes: `${awakening.factionName}关注提升至${attentionLevel}` }];
     }
-    game.view.tasks.push({ id: "awakening-recruitment", title: `回应${awakening.factionName}的培养评估`, kind: "线索", detail: `${awakening.officiant}会先向${awakening.factionName}内部上报，由所属势力提供学院、导师、魂环与身份安排；其他势力不会无视归属直接接管。`, status: "进行中", destinationId: selected.public.locationId, deadline: selected.innateSoulPower === 10 ? "今日内会有高层过问" : "约十日内会有正式答复" });
+    game.view.tasks.push({ id: "awakening-recruitment", title: beastAwakening ? "与养育者商量觉醒后的去向" : `回应${awakening.factionName}的培养评估`, kind: "线索", detail: beastAwakening ? "兽群能提供森林生存与魂兽知识，却没有人类学院、户籍或公开导师资格；是否离开必须由角色自己决定。" : `${awakening.officiant}会先向${awakening.factionName}内部上报，由所属势力提供学院、导师、魂环与身份安排；其他势力不会无视归属直接接管。`, status: "进行中", destinationId: selected.public.locationId, deadline: beastAwakening ? "没有强制期限" : selected.innateSoulPower === 10 ? "今日内会有高层过问" : "约十日内会有正式答复" });
     const year = game.view.worldTime?.year ?? 0;
     const day = game.view.worldTime?.day ?? 1;
     const participantIds = awakening.notableNpc ? [awakening.notableNpc.id] : [];
-    game.world.dynamicEvents.push({ id: `awakening-attention-${game.view.id}`, title: `${awakening.factionName}内部培养评估`, kind: "势力", locationId: selected.public.locationId, participantIds, detail: awakening.notableNpc ? `${awakening.notableNpc.name}因相同或直接相关的武魂传承被列为第一过问人；是否收徒、亲近或投入资源仍取决于后续观察。` : `觉醒记录已进入${awakening.factionName}内部渠道，培养条件将按天赋、武魂路线与身份共同核定。`, stakes: attentionLevel === "最高优先" ? 5 : 3, status: "可介入", createdYear: year, createdDay: day, expiresOrdinal: year * 360 + day + 10 });
+    game.world.dynamicEvents.push({ id: `awakening-attention-${game.view.id}`, title: beastAwakening ? "兽群讨论人类幼崽的去向" : `${awakening.factionName}内部培养评估`, kind: "势力", locationId: selected.public.locationId, participantIds, detail: beastAwakening ? "觉醒结果让兽群内部出现分歧：继续藏在核心区最安全，接触人类则可能获得完整魂师训练，也可能暴露整个领地。" : awakening.notableNpc ? `${awakening.notableNpc.name}因相同或直接相关的武魂传承被列为第一过问人；是否收徒、亲近或投入资源仍取决于后续观察。` : `觉醒记录已进入${awakening.factionName}内部渠道，培养条件将按天赋、武魂路线与身份共同核定。`, stakes: attentionLevel === "最高优先" ? 5 : 3, status: "可介入", createdYear: year, createdDay: day, expiresOrdinal: year * 360 + day + 10 });
     if (awakening.notableNpc) {
       revealNpc(game, awakening.notableNpc.id);
       const npc = game.world.npcs[awakening.notableNpc.id];
@@ -1976,9 +2049,12 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
           { id: "commit", text: "选定下一阶段愿意付出代价的道路", status: "未开始" },
         ],
   };
+  const originThread = selected.originId === "void-arrival-unbound" ? "在没有任何既有羁绊的大陆建立第一段关系"
+    : selected.originId === "fierce-beast-raised" ? "在人类身份与养育自己的兽群之间作出选择"
+      : "家人与出身中尚未说清的细节";
   game.storyMemory.openThreads = selected.innateSoulPower > 0
-    ? ["家人与出身中尚未说清的细节", "获得第一魂环"]
-    : ["家人与出身中尚未说清的细节", "理解觉醒结果"];
+    ? [originThread, "获得第一魂环"]
+    : [originThread, "理解觉醒结果"];
   game.storyMemory.summary = `${selected.public.name}在${selected.public.location}完成武魂觉醒，${soulViews.length === 1 ? "武魂" : soulViews.length === 2 ? "双生武魂" : "三生武魂"}为${soulViews.map((soul) => soul.name).join("、")}，先天魂力${selected.innateSoulPower}级。`;
   game.view.narrative.push(createEntry("narration", buildAwakeningResult(selected, awakening)));
   game.view.suggestions = selected.innateSoulPower > 0
@@ -1995,6 +2071,8 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
 function buildAwakeningResult(candidate: HiddenCandidate, awakening: AwakeningContext): string {
   const name = candidate.public.name;
   const pronoun = candidate.public.gender === "女" ? "她" : "他";
+  const beastRaised = candidate.originId === "fierce-beast-raised";
+  const unbound = candidate.originId === "void-arrival-unbound";
   const powerText = candidate.innateSoulPower === 10
     ? `手掌刚贴上水晶球，白光便猛地涨开。${awakening.officiant}立刻换备用水晶又测了一次。先天满魂力。`
     : candidate.innateSoulPower > 0
@@ -2005,17 +2083,27 @@ function buildAwakeningResult(candidate: HiddenCandidate, awakening: AwakeningCo
   const soulCountText = souls.length === 1 ? "武魂" : souls.length === 2 ? "双生武魂" : "三生武魂";
   const soulLines = souls.map((soul, index) => `${index === 0 ? `${pronoun}的掌心里` : `紧接着，第 ${index + 1} 道魂力轮廓中`}出现了${soul.name}。这是${soul.category}。${soul.description}`);
   const attentionText = candidate.innateSoulPower === 10 || souls.length > 1
-    ? `${awakening.officiant}没有当众议论，只把记录封进${awakening.factionName}内部档案，要求家人与孩子暂时别走。培养评估会在今天开始。${awakening.notableNpc ? `${awakening.notableNpc.name}会收到第一份复核通知。` : ""}`
+    ? beastRaised
+      ? `岩叔没有替${name}庆祝或许诺力量，只叫来兽群中几名长者讨论：继续留在核心区最安全，去人类世界才可能学到完整的魂师体系。`
+      : unbound
+        ? `${awakening.officiant}把异常结果和“无户籍”分开登记。武魂殿会提出培养条件，但这份记录不等于收养、效忠或已经建立的人情。`
+        : `${awakening.officiant}没有当众议论，只把记录封进${awakening.factionName}内部档案，要求家人与孩子暂时别走。培养评估会在今天开始。${awakening.notableNpc ? `${awakening.notableNpc.name}会收到第一份复核通知。` : ""}`
     : candidate.innateSoulPower >= 7
-      ? `${awakening.officiant}在魂力等级下面画了两道线，说明这份记录会作为重点天赋上报${awakening.factionName}，之后会有人来谈学院与培养条件。`
+      ? beastRaised
+        ? `岩叔记住了魂力强度，却只承诺说明森林中哪些地方不能去；人类学院和培养路线仍要${name}自己寻找。`
+        : unbound
+          ? `${awakening.officiant}把天赋与无户籍状态分别登记，愿意转交培养申请，但没有替${name}虚构监护人与来历。`
+          : `${awakening.officiant}在魂力等级下面画了两道线，说明这份记录会作为重点天赋上报${awakening.factionName}，之后会有人来谈学院与培养条件。`
       : "";
   return [
     `${name}踩进六角阵。金色光点贴着小腿往上钻，皮肤又麻又痒。右手忽然一沉，${pronoun}差点把胳膊甩出去。`,
-    souls.length > 1 ? `阵中的光没有立刻散去。负责觉醒的魂师重新数了一遍魂力轮廓——${soulCountText}。` : "",
+    souls.length > 1 ? `阵中的光没有立刻散去。${beastRaised ? "主持仪式的凶兽" : "负责觉醒的魂师"}重新数了一遍魂力轮廓——${soulCountText}。` : "",
     ...soulLines,
     powerText,
     attentionText,
-    `门外有人踮脚往里看。家里人还不知道结果，${pronoun}先听见自己喘了一口气。`,
+    beastRaised ? `林间没有围观的人，只有远近不同的兽瞳。${name}第一次意识到，觉醒之后要面对的也许不是修炼，而是去哪里生活。`
+      : unbound ? `公共觉醒队继续赶路，围观者很快散去。没有家人在门外等${pronoun}，也没有任何关系会替${pronoun}安排今晚住在哪里。`
+        : `门外有人踮脚往里看。家里人还不知道结果，${pronoun}先听见自己喘了一口气。`,
   ].filter(Boolean).join("\n\n");
 }
 

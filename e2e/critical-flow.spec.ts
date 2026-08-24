@@ -379,6 +379,17 @@ test.beforeEach(async ({ request }) => {
 
 test.afterAll(() => fixtureDatabase?.closeDatabase());
 
+test("候选页只显示人工身份并保证三张开局流派不同", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "抽取三名角色" }).click();
+  await expect(page.getByRole("heading", { name: "选择角色" })).toBeVisible();
+  await expect(page.getByText("出生池现有 5004 份具体档案", { exact: false })).toBeVisible();
+  const styles = await page.locator(".opening-style").allTextContents();
+  expect(styles).toHaveLength(3);
+  expect(new Set(styles).size).toBe(3);
+  expect((await page.locator(".candidate-origin").allTextContents()).every((name) => !name.includes("护阵房学徒家庭"))).toBe(true);
+});
+
 test("玩家可以完成角色创建、推进故事并管理存档", async ({ page }) => {
   await createPlayingCharacter(page, 1);
   await expect(page.locator(".game-era-1 .game-topbar")).toBeVisible();
