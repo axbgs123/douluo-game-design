@@ -114,3 +114,15 @@ export function auditNovelEngineNarrative(game: StoredGame, text: string, pack: 
   if (game.view.character && new RegExp(`${game.view.character.name}.{0,16}(替玩家|自行决定重大选择)`).test(outside)) issues.push("正文替玩家作出重大决定");
   return issues;
 }
+
+export function auditResolutionAlignment(text: string, resolution: ActionResolution): string[] {
+  const requiredByIntent: Array<[RegExp, RegExp, string]> = [
+    [/核验旧世档案/, /档案|目录|谱牒|账册|记录|证据|印记|年代/, "正文没有呈现旧世档案核验"],
+    [/调查当代权属/, /登记|权属|产权|旧址|现权利|保管人/, "正文没有呈现当代权属调查"],
+    [/提交历史权益主张/, /受理|提交|主张|送达|公示|费用|待审/, "正文没有呈现历史权益受理"],
+    [/参加历史权益听证/, /听证|审理|裁定|承认|驳回|异议/, "正文没有呈现听证裁定"],
+    [/投资成立当代新主体/, /投资|登记|新主体|新社|铺面|场地|启动/, "正文没有呈现当代投资与新设主体"],
+  ];
+  const requirement = requiredByIntent.find(([intent]) => intent.test(resolution.intent));
+  return requirement && !requirement[1].test(text) ? [requirement[2]] : [];
+}

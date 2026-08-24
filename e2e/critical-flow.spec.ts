@@ -876,10 +876,13 @@ test("旧世机构在浏览器中必须经过主张、听证和付费新设主�
   await expect(institution).toContainText("主张：未主张");
   await institution.getByRole("button", { name: "提交主张" }).click();
   await expect(institution).toContainText("主张：待审理");
+  await expect(page.locator(".prose-entry").last()).toContainText("待审理");
   await institution.getByRole("button", { name: "参加听证" }).click();
   await expect(institution).toContainText("主张：有限承认");
   await expect(institution).toContainText("旧档案查阅、复制与名称沿革说明权");
+  await expect(page.locator(".prose-entry").last()).toContainText("有限承认");
   await institution.getByRole("button", { name: "投资新主体" }).click();
+  await expect(page.locator(".prose-entry").last()).toContainText("投入3 银魂币成立青册门沿革新社");
   await page.getByRole("button", { name: "人物", exact: true }).click();
   await expect(page.locator(".panel-copy").filter({ hasText: "青册门沿革新社" })).toContainText("当代经营主体");
   await expect(page.getByText("6 银魂币", { exact: true }).first()).toBeVisible();

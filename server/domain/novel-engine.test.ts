@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
-import { auditNovelEngineNarrative, buildNovelEnginePack } from "./novel-engine.js";
+import { auditNovelEngineNarrative, auditResolutionAlignment, buildNovelEnginePack } from "./novel-engine.js";
 import { NarrativeAuditError, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing, validateInterpretedAction } from "../services/deepseek.js";
 
 function awakened(seed = "novel-engine") {
@@ -61,6 +61,13 @@ describe("增强小说引擎", () => {
     const game = awakened("pacing");
     expect(narrativePacing(game, "翻找抽屉并整理旧衣", { ...ordinaryResolution, intent: "一般行动" }).kind).toBe("略写");
     expect(narrativePacing(game, "在魂环吸收中决定是否冒险", { ...ordinaryResolution, intent: "魂环吸收", ruleSummary: "这是可能重伤的重大选择" }).kind).toBe("关键");
+  });
+
+  it("rejects fluent prose that ignores an accountable historical result", () => {
+    expect(auditResolutionAlignment("他在屋里安静等过了一天。", { ...ordinaryResolution, intent: "提交历史权益主张" })).toContain("正文没有呈现历史权益受理");
+    expect(auditResolutionAlignment("受理员核过送达名册，收下费用并签出待审回单。", { ...ordinaryResolution, intent: "提交历史权益主张" })).toEqual([]);
+    expect(auditResolutionAlignment("裁定只承认档案查阅权，没有移交旧产权。", { ...ordinaryResolution, intent: "参加历史权益听证" })).toEqual([]);
+    expect(auditResolutionAlignment("他租下今天的铺面，付清启动款，为新主体登记。", { ...ordinaryResolution, intent: "投资成立当代新主体" })).toEqual([]);
   });
 
   it("automatically regenerates with the previous audit reasons", async () => {

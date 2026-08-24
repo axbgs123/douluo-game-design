@@ -3,7 +3,7 @@ import { CANON_CHARACTERS, CANON_EVENTS, characterById } from "../data/world.js"
 import { toThirdPersonNarrative } from "../domain/narrative.js";
 import { auditNarrative, refreshStoryArchive, sanitizeNarrativeSuggestions, selectNarrativeRules, violatesCanonChronology } from "../domain/story-rules.js";
 import { readDeepSeekSettings } from "./settings.js";
-import { auditNovelEngineNarrative, buildNovelEnginePack } from "../domain/novel-engine.js";
+import { auditNovelEngineNarrative, auditResolutionAlignment, buildNovelEnginePack } from "../domain/novel-engine.js";
 import { rememberNpcInteraction } from "../domain/world.js";
 import { buildSceneKnowledgePack } from "../domain/scene-knowledge.js";
 
@@ -272,7 +272,7 @@ export async function narrateWithDeepSeek(
   if (violatesCanonChronology(chronologyText, game.view.worldTime?.year ?? 0)) throw new Error("DeepSeek 生成内容违反当前原作时间线，已改用安全叙事");
   const auditIssues = auditNarrative(game, parsed.narrative);
   const novelEngineIssues = auditNovelEngineNarrative(game, parsed.narrative, novelEngine);
-  const allAuditIssues = [...auditIssues, ...novelEngineIssues];
+  const allAuditIssues = [...auditIssues, ...novelEngineIssues, ...auditResolutionAlignment(parsed.narrative, resolution)];
   if (allAuditIssues.length) throw new NarrativeAuditError(allAuditIssues);
 
   return {
