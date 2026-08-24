@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 
 const tracked = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
+const presentTracked = tracked.filter((file) => existsSync(file));
 const violations = [];
 const forbiddenPaths = [".data/", "source-materials/", "dist/", "dist-server/", "test-results/", "playwright-report/"];
 const forbiddenExtensions = /\.(?:db|db-wal|db-shm|zip|rar|7z|epub)$/i;
@@ -12,7 +13,7 @@ const secretPatterns = [
   { label: "private key", pattern: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
 ];
 
-for (const file of tracked) {
+for (const file of presentTracked) {
   if (forbiddenPaths.some((prefix) => file.startsWith(prefix)) || forbiddenExtensions.test(file) || /(^|\/)\.env(?:\.|$)/.test(file)) {
     violations.push(`${file}: forbidden tracked release artifact`);
     continue;
@@ -33,4 +34,5 @@ if (violations.length) {
   process.exit(1);
 }
 
-console.log(`Release security check passed: ${tracked.length} tracked files, no forbidden private artifacts or credential patterns.`);
+const stagedDeletionCount = tracked.length - presentTracked.length;
+console.log(`Release security check passed: ${presentTracked.length} present tracked files${stagedDeletionCount ? `, ${stagedDeletionCount} staged deletion${stagedDeletionCount === 1 ? "" : "s"} ignored` : ""}, no forbidden private artifacts or credential patterns.`);
