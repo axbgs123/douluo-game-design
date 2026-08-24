@@ -28,6 +28,7 @@ import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } 
 import { ERA_MARTIAL_SOULS } from "../data/era-martial-souls.js";
 import { ORIGINAL_MARTIAL_SOULS } from "../data/original-martial-souls.js";
 import { fixedTraitEffect } from "./traits.js";
+import { CHARACTER_SURNAMES, FEMALE_GIVEN_NAMES, MALE_GIVEN_NAMES, MATURE_FEMALE_GIVEN_NAMES, MATURE_MALE_GIVEN_NAMES, NEUTRAL_GIVEN_NAMES } from "../data/chinese-name-pool.js";
 
 interface OriginTemplate {
   id: string;
@@ -53,10 +54,10 @@ interface OriginTemplate {
   pressure?: number;
 }
 
-const SURNAMES = ["林", "苏", "顾", "沈", "陆", "叶", "程", "江", "白", "宁", "周", "秦"];
-const GIVEN_NAMES = ["川", "宁", "昭", "砚", "澜", "遥", "清", "越", "衡", "棠", "烬", "青", "禾", "微"];
-const FATHER_GIVEN_NAMES = ["守义", "青禾", "岳山", "德昌", "远林", "成业", "茂生", "长顺"];
-const MOTHER_GIVEN_NAMES = ["兰芝", "素琴", "秋娘", "静娴", "春桃", "桂香", "月娥", "秀禾"];
+const SURNAMES = CHARACTER_SURNAMES;
+const GIVEN_NAMES = NEUTRAL_GIVEN_NAMES;
+const FATHER_GIVEN_NAMES = MATURE_MALE_GIVEN_NAMES;
+const MOTHER_GIVEN_NAMES = MATURE_FEMALE_GIVEN_NAMES;
 const OFFICER_NAMES = ["素云涛", "韩守成", "顾岩", "赵闻", "林策", "程肃"];
 const FAMILY_CLIMATES = [
   "家里规矩重，长辈很少当面夸人",
@@ -764,9 +765,10 @@ function eraRelation(year: number, era: GameEra): string {
   return `比${anchor}基准年晚约 ${offset} 年`;
 }
 
-function generateName(random: () => number): string {
-  const doubleName = random() > 0.55;
-  return `${pick(random, SURNAMES)}${pick(random, GIVEN_NAMES)}${doubleName ? pick(random, GIVEN_NAMES) : ""}`;
+function generateName(random: () => number, gender: "男" | "女"): string {
+  const gendered = gender === "女" ? FEMALE_GIVEN_NAMES : MALE_GIVEN_NAMES;
+  const pool = random() < .72 ? gendered : GIVEN_NAMES;
+  return `${pick(random, SURNAMES)}${pick(random, pool)}`;
 }
 
 function thirdPersonClue(text: string, name: string, gender: "男" | "女"): string {
@@ -776,6 +778,14 @@ function thirdPersonClue(text: string, name: string, gender: "男" | "女"): str
     .replaceAll("你", pronoun)
     .replace(/(^|[，。；！？\s])他(?=[的从在会能已也不只要把记知清带五六三每手名自保来出生住])/g, `$1${pronoun}`)
     .replace(new RegExp(`^${pronoun}`), name);
+}
+
+function joinDistinctOriginText(livelihood: string, obligation: string): string {
+  const left = livelihood.trim();
+  const right = obligation.trim();
+  if (!right || left.includes(right)) return left;
+  if (right.includes(left)) return right;
+  return `${left}${/[。！？]$/.test(left) ? "" : "。"}${right}`;
 }
 
 function specificOrigin(
@@ -964,7 +974,7 @@ function specificOrigin(
     dwelling,
     birthProfileId: `${origin.id}-${familyClimateIndex + 1}-${dwellingIndex + 1}`,
     originName,
-    originSummary: `${livelihood}${obligation}`,
+    originSummary: joinDistinctOriginText(livelihood, obligation),
     originFacts: [
       { label: "家庭", value: `${specialFamilies[origin.id] ?? `${householdStructure}：${genericHousehold.summary}`}；${FAMILY_CLIMATES[familyClimateIndex]}` },
       { label: "归属", value: authority },
@@ -997,6 +1007,7 @@ export function generateCandidates(
 ): HiddenCandidate[] {
   const random = createRandom(`${seed}:candidates:${rerollIndex}`);
   const usedOrigins = new Set<string>();
+  const usedNames = new Set<string>();
   const origins = originPool(preferences, era);
 
   return Array.from({ length: 3 }, (_, index) => {
@@ -1016,7 +1027,7 @@ export function generateCandidates(
     const offset = ERA_BASE_YEARS[era] + integer(random, -5, 5);
     const talentFloor = origin.tier === "神话" ? 8 : origin.tier === "传奇" ? 7 : origin.tier === "稀有" ? 5 : 0;
     const innateSoulPower = Math.min(10, Math.max(talentFloor, integer(random, soul.soulPowerRange[0], soul.soulPowerRange[1]) + (origin.innateBonus ?? 0)));
-    let name = generateName(random);
+    let name = generateName(random, gender);
     const lineageSurnames: Record<string, string[]> = {
       "seven-treasure-core": ["宁"],
       "spirit-hall-elder-child": ["凌"],
@@ -1029,6 +1040,11 @@ export function generateCandidates(
     };
     const lineage = lineageSurnames[origin.id];
     if (lineage) name = `${pick(random, lineage)}${name.slice(1)}`;
+    for (let attempt = 0; usedNames.has(name) && attempt < 12; attempt += 1) {
+      name = generateName(random, gender);
+      if (lineage) name = `${pick(random, lineage)}${name.slice(1)}`;
+    }
+    usedNames.add(name);
     const concreteOrigin = specificOrigin(random, origin, pick(random, origin.locations), name);
     const locationId = inferLocationId(concreteOrigin.location);
     const mapPoint = worldMapPoint(locationId);

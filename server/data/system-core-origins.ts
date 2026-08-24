@@ -90,6 +90,14 @@ function rarityFor(role: RoleAxis, affiliation: AffiliationAxis, conflict: Confl
   return RARITIES[Math.max(0, Math.min(RARITIES.length - 1, score))];
 }
 
+function naturalOriginName(role: RoleAxis, affiliation: AffiliationAxis, conflict: ConflictAxis): string {
+  const household = role.title.replace(/家庭$/, "人家");
+  const prefix: Record<string, string> = {
+    debt: "欠着旧债的", missing: "掌家人失踪后的", lineage: "改过族谱的", rival: "争一份培养名额的", "sealed-item": "替人守着封匣的",
+  };
+  return `${prefix[conflict.id] ?? "有旧事的"}${affiliation.prefix}${household}`;
+}
+
 export function buildSystemCoreOrigins(limit: number): ExpandedOriginTemplate[] {
   const generated: ExpandedOriginTemplate[] = [];
   for (const role of ROLES) for (const affiliation of AFFILIATIONS) for (const conflict of CONFLICTS) {
@@ -98,12 +106,12 @@ export function buildSystemCoreOrigins(limit: number): ExpandedOriginTemplate[] 
     const burden = `${conflict.burden}；${affiliation.obligation}`;
     generated.push({
       id: `system-${affiliation.id}-${role.id}-${conflict.id}`,
-      name: `${affiliation.prefix}${role.title}·${conflict.label}`,
-      summary: `家里${role.livelihood}。${conflict.summary}`,
-      details: [conflict.summary, affiliation.obligation, burden],
+      name: naturalOriginName(role, affiliation, conflict),
+      summary: `这一家靠${role.livelihood}过活。${conflict.summary}`,
+      details: [affiliation.obligation, conflict.burden, `家中长辈最熟悉的是${role.advantage}。`],
       locations: [affiliation.location],
       preferredCategories: role.categories,
-      weight: tier === "平凡" ? 7 : tier === "优秀" ? 6 : tier === "稀有" ? 4 : tier === "传奇" ? 2 : 0.7,
+      weight: tier === "平凡" ? .7 : tier === "优秀" ? .6 : tier === "稀有" ? .4 : tier === "传奇" ? .2 : .07,
       tier,
       route: `${role.route} · ${conflict.route}`,
       selfKnowledge: conflict.selfKnowledge,

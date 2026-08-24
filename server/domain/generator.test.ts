@@ -133,6 +133,28 @@ describe("candidate generation", () => {
     expect(summaries.size).toBeGreaterThanOrEqual(24);
   });
 
+  it("does not repeat the same sentence inside a candidate introduction", () => {
+    const candidates = Array.from({ length: 240 }, (_, rerollIndex) =>
+      generateCandidates("origin-copy-deduplication", rerollIndex, rerollIndex % 2 ? "男" : "女"),
+    ).flat();
+    for (const candidate of candidates) {
+      const sentences = candidate.public.originSummary
+        .split(/(?<=[。！？])/)
+        .map((sentence) => sentence.trim())
+        .filter(Boolean);
+      expect(new Set(sentences).size, candidate.public.originSummary).toBe(sentences.length);
+    }
+  });
+
+  it("keeps names distinct within each draw and varied across rerolls", () => {
+    const draws = Array.from({ length: 300 }, (_, rerollIndex) =>
+      generateCandidates("screened-chinese-name-pool", rerollIndex, rerollIndex % 2 ? "男" : "女"),
+    );
+    expect(draws.every((draw) => new Set(draw.map((candidate) => candidate.public.name)).size === 3)).toBe(true);
+    const allNames = draws.flat().map((candidate) => candidate.public.name);
+    expect(new Set(allNames).size).toBeGreaterThanOrEqual(820);
+  });
+
   it("reveals the martial soul only after selection and awakening", () => {
     const game = createGame({ gender: "女", difficulty: "标准", personality, seed: "awakening-seed" });
     const candidateId = game.view.candidates[0].id;
@@ -239,7 +261,7 @@ describe("candidate generation", () => {
     hidden.martialSouls = [hidden.martialSoul];
     hidden.innateSoulPower = 10;
     selectCandidate(game, hidden.public.id);
-    finalizeCharacterShaping(game, { keywords: ["勇敢", "专注"], answers: {} });
+    finalizeCharacterShaping(game, { keywords: ["勇敢", "专注", "审慎"], answers: {} });
     awakenCharacter(game);
     expect(game.view.tasks.find((task) => task.id === "awakening-recruitment")?.title).toContain("七宝琉璃宗");
     expect(game.view.tasks.find((task) => task.id === "awakening-recruitment")?.detail).not.toContain("武魂殿");

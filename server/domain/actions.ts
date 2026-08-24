@@ -1701,7 +1701,7 @@ function academyResolution(game: StoredGame): ActionResolution {
     "shrek-city": "史莱克学院", "radiant-city": "日月皇家魂导师学院", "heavenly-soul-city": "天魂皇家学院", "dou-ling-city": "斗灵皇家学院",
     "east-sea-city": "东海学院", "mingdu-federal": "明都联邦学院", "mother-ship-port": "联邦星际学院",
   };
-  const academyName = academyNameByLocation[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}初级魂师学堂`;
+  const academyName = academyNameByLocation[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}初级魂师学院`;
   if (game.view.affiliations.some((item) => item.name === academyName)) return impossible(`我已经是${academyName}的学员。`, ["参加课程", "寻找导师", "认识同学"]);
   const joinedAt = `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`;
   game.view.affiliations.push({ id: `academy-${game.view.locationId}`, name: academyName, role: character.coins < 20 ? "工读生" : "学员", reputation: "新入学", joinedAt, contribution: 0, completedAssignments: 0, rankEvidence: [] });

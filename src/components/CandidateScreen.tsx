@@ -34,7 +34,8 @@ export function CandidateScreen({
       <header className="candidate-header">
         <p className="eyebrow">第 {rerollIndex + 1} 次抽取</p>
         <h1>选择角色</h1>
-        <p>出生池现有 {birthProfileCount} 份具体档案，来自 {Math.round(birthProfileCount / 36)} 种核心身份。稀有度代表资源、异常性与故事牵连，不是没有代价的强度；武魂仍留到觉醒时揭晓。</p>
+        <p>出生池现有 {birthProfileCount} 份具体档案，来自 {Math.round(birthProfileCount / 36)} 种核心身份。武魂仍留到觉醒时揭晓。</p>
+        <details className="rarity-explainer"><summary>出身稀有度具体影响什么？</summary><div><p>它衡量的是“这个开局在大陆上有多不寻常”，不是角色等级。</p><ul><li>决定身份资源、初始物品、金魂币、人脉和社会关注。</li><li>限定可抽到的武魂最低档次；稀有、传奇、神话身份的先天魂力下限分别为 5、7、8 级。</li><li>身份越罕见，追索、宗门责任、政治利用和失控风险通常也越高。</li><li>不保证双生武魂、特殊外挂、必胜或原著人物好感。</li></ul></div></details>
       </header>
 
       <section className="candidate-map-section">
@@ -64,7 +65,7 @@ export function CandidateScreen({
             <label className="candidate-name-field"><span>姓名</span><input value={names[candidate.id] ?? candidate.name} maxLength={12} onChange={(event) => setNames((current) => ({ ...current, [candidate.id]: event.target.value }))} /></label>
             <p className="candidate-origin">{candidate.originName}</p>
             <p className="candidate-summary">{candidate.originSummary}</p>
-            <dl className="origin-facts">{candidate.originFacts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>
+            <dl className="origin-facts">{candidate.originFacts.filter((fact) => fact.label !== "生计").map((fact) => <div key={fact.label}><dt>{fact.label === "开局优势" ? "能依靠的" : fact.label === "身份代价" ? "绕不开的" : fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>
             <section className="identity-knowledge"><small>{candidate.selfKnowledge}</small><p>{candidate.knownBackground}</p></section>
             {candidate.fixedTraits.length > 0 && <div className="fixed-trait-line"><span>身份烙印</span>{candidate.fixedTraits.map((trait) => <b key={trait}>{trait}</b>)}</div>}
             <div className="location-line"><span>住处</span>{candidate.dwelling}</div>
