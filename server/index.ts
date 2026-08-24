@@ -40,6 +40,8 @@ import {
   saveSettledGame,
   saveEraSuccessor,
   toggleCodexMartialSoul,
+  favoriteCodexMartialSoul,
+  deleteCodexMartialSoul,
 } from "./db.js";
 import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithAuditRetries, validateInterpretedAction } from "./services/deepseek.js";
 import { readDeepSeekSettings, settingsView, writeDeepSeekSettings } from "./services/settings.js";
@@ -72,7 +74,11 @@ const shapingSchema = z.object({
   keywords: z.array(z.string().trim().min(1).max(12)).min(1).max(8),
   answers: z.record(z.string(), z.string()).refine((answers) => Object.keys(answers).length >= 6, "请完成六道情境题"),
 });
-const lifeGoalSchema = z.object({ lifeGoal: z.string().trim().min(6).max(160) });
+const lifeGoalSchema = z.object({
+  lifeGoal: z.string().trim().min(6).max(160),
+  activeMartialSoulIndex: z.number().int().min(0).max(2).default(0),
+  publiclyKnownMartialSoulIndices: z.array(z.number().int().min(0).max(2)).min(1).max(3).default([0]),
+});
 const actionSchema = z.object({ input: z.string().trim().min(1).max(1200), requestId: z.string().uuid().optional() });
 const speedSchema = z.object({ speed: z.enum(["标准", "高速"]) });
 const mapPinSchema = z.object({ label: z.string().trim().min(1).max(24), x: z.number().min(0).max(100), y: z.number().min(0).max(100) });
@@ -86,6 +92,7 @@ const metaPurchaseSchema = z.object({ name: z.enum(["命运余量", "稳固根�
 const metaEquipSchema = z.object({ name: z.string().trim().max(60).optional() });
 const metaSoulEquipSchema = z.object({ id: z.string().trim().min(1).optional() });
 const metaSoulToggleSchema = z.object({ id: z.string().trim().min(1), enabled: z.boolean() });
+const metaSoulFavoriteSchema = z.object({ id: z.string().trim().min(1), favorite: z.boolean() });
 const settingsSchema = z.object({
   apiKey: z.string().trim().optional(),
   baseUrl: z.string().url().refine((value) => {
@@ -137,6 +144,15 @@ app.post("/api/meta/martial-souls/equip", (request, response) => {
 app.post("/api/meta/martial-souls/toggle", (request, response) => {
   const input = metaSoulToggleSchema.parse(request.body);
   response.json(toggleCodexMartialSoul(input.id, input.enabled));
+});
+
+app.post("/api/meta/martial-souls/favorite", (request, response) => {
+  const input = metaSoulFavoriteSchema.parse(request.body);
+  response.json(favoriteCodexMartialSoul(input.id, input.favorite));
+});
+
+app.delete("/api/meta/martial-souls/:id", (request, response) => {
+  response.json(deleteCodexMartialSoul(request.params.id));
 });
 
 app.get("/api/world/catalog/stats", (_request, response) => {
@@ -271,8 +287,8 @@ app.post("/api/games/:id/life-goal", (request, response) => {
   const input = lifeGoalSchema.parse(request.body);
   const game = loadGame(request.params.id);
   if (!game) return response.status(404).json({ error: "没有找到这个存档" });
-  selectLifeGoal(game, input.lifeGoal);
-  saveGame(game, "life_goal.selected", { lifeGoal: input.lifeGoal });
+  selectLifeGoal(game, input.lifeGoal, input);
+  saveGame(game, "life_goal.selected", input);
   return response.json(publicView(game));
 });
 

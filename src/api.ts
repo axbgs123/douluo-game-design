@@ -76,8 +76,8 @@ export function completeCharacterShaping(id: string, input: { personalityId: str
   return request(`/api/games/${id}/shaping/complete`, { method: "POST", body: JSON.stringify(input) });
 }
 
-export function selectLifeGoal(id: string, lifeGoal: string): Promise<GameView> {
-  return request(`/api/games/${id}/life-goal`, { method: "POST", body: JSON.stringify({ lifeGoal }) });
+export function selectLifeGoal(id: string, input: { lifeGoal: string; activeMartialSoulIndex: number; publiclyKnownMartialSoulIndices: number[] }): Promise<GameView> {
+  return request(`/api/games/${id}/life-goal`, { method: "POST", body: JSON.stringify(input) });
 }
 
 export function rerollCandidates(id: string, lockedSlots: number[] = []): Promise<GameView> {
@@ -202,6 +202,14 @@ export function equipMetaMartialSoul(id?: string): Promise<MetaProgressionView> 
 
 export function toggleMetaMartialSoul(id: string, enabled: boolean): Promise<MetaProgressionView> {
   return request("/api/meta/martial-souls/toggle", { method: "POST", body: JSON.stringify({ id, enabled }) });
+}
+
+export function favoriteMetaMartialSoul(id: string, favorite: boolean): Promise<MetaProgressionView> {
+  return request("/api/meta/martial-souls/favorite", { method: "POST", body: JSON.stringify({ id, favorite }) });
+}
+
+export function deleteMetaMartialSoul(id: string): Promise<MetaProgressionView> {
+  return request(`/api/meta/martial-souls/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export function getDeepSeekSettings(): Promise<DeepSeekSettingsView> {

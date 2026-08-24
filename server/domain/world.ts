@@ -6,6 +6,7 @@ import { toThirdPersonNarrative } from "./narrative.js";
 import { refreshStoryArchive } from "./story-rules.js";
 import { createRandom, integer, pick } from "./random.js";
 import { worldMapPoint } from "../../shared/world-map.js";
+import { heirloomByName } from "../../shared/heirlooms.js";
 import { martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 import { fixedTraitEffect } from "./traits.js";
 
@@ -995,6 +996,32 @@ export function revealNpc(game: StoredGame, npcId: string): boolean {
   return true;
 }
 
+function repairLegacyUnboundAwakening(game: StoredGame): void {
+  const character = game.view.character;
+  if (!character) return;
+  const pronoun = character.gender === "女" ? "她" : "他";
+  const prelude = game.view.narrative.find((entry) => entry.kind === "narration" && /昨夜，.+还不属于这片大陆/.test(entry.text) && entry.text.includes("巡查执事允许"));
+  if (prelude) prelude.text = [
+    `天亮以后，一支挂着武魂殿铜牌的车队停在荒道边。带队执事正催车夫赶去下一个村子，忽然看见路旁站着个衣着古怪的孩子。`,
+    `${character.name}低头看过自己的手。身体只有六岁，记忆却仍属于另一个世界；昨夜一起落在荒地上的，除了一身旧衣，再没有别的东西。`,
+    `“名字？”执事问。${character.name}只答得出这一个问题。${pronoun}的目光越过车辕，落在箱子里露出一角的六块黑石上。`,
+    `执事盯了${pronoun}片刻，把名册翻到末页：“跟上。到了村里站最后一个。测完以后，你得把来处重新说一遍。”`,
+  ].join("\n\n");
+  const awakening = game.view.narrative.find((entry) => entry.kind === "narration" && entry.text.includes("公共觉醒队继续赶路，围观者很快散去") && entry.text.includes("先天满魂力"));
+  if (!awakening) return;
+  const souls = character.martialSouls?.length ? character.martialSouls : [character.martialSoul];
+  const soulReveal = souls.map((soul, index) => index === 0
+    ? `${pronoun}摊开手，${soul.name}托在掌心。执事俯身察看形态，让记录员把轮廓一笔笔画下来。`
+    : `阵光本该散去，${soul.name}却紧跟着显形。执事猛地抬头，刚写下的一行字被当场划掉。`).join("\n\n");
+  awakening.text = [
+    `${character.name}踩进六角阵。金色光点贴着小腿往上钻，麻痒一路爬到肩头。右手骤然一沉，${pronoun}险些把胳膊甩出阵外。`,
+    soulReveal,
+    `手掌贴上水晶球，白光猛地冲到顶端。执事把水晶抽走，又从箱底取出备用的一颗。第二次，光仍旧一分不少。\n\n“先天满魂力。”他念出这五个字时，门口先静了一瞬，紧接着便炸开了低语。有人踮脚往阵里看，有人拉住自家孩子，追问刚才究竟觉醒了什么。`,
+    `执事啪地合上名册，叫助手拦住正在收阵石的人。\n\n“队伍晚走半个时辰。先给这孩子拿水和吃的。”他又点了个人骑马回分殿报信，“把里正也请来，来历和安置分开办。”`,
+    `他把一张临时通行条压在桌上：“今晚以前，你至少不会再睡荒地。身份怎么登记、由谁培养，等分殿的人来了再谈。”原本几分钟便能结束的仪式就此停住，门外的队伍和屋里的安排全被改了。`,
+  ].join("\n\n");
+}
+
 export function ensureGameState(game: StoredGame): StoredGame {
   const legacy = game as StoredGame & { schemaVersion?: number; world?: HiddenWorldState };
   const migrateNarrative = (legacy.schemaVersion ?? 1) < 4;
@@ -1161,6 +1188,10 @@ export function ensureGameState(game: StoredGame): StoredGame {
     keyChoices: [], npcNotes: {}, chapterNumber: 1, chapterTitle: "未完的故事", lastUpdatedAction: game.actionIndex,
   };
   game.legacy ??= { upgrades: {} };
+  if (!game.view.activeHeirloom && game.legacy.equippedHeirloom && game.view.character) {
+    const heirloom = heirloomByName(game.legacy.equippedHeirloom);
+    if (heirloom) game.view.activeHeirloom = { id: heirloom.id, name: heirloom.name, rarity: heirloom.rarity, description: heirloom.description, effect: heirloom.effect, trigger: heirloom.trigger, status: "等待触发", actionCommand: heirloom.actionCommand };
+  }
   legacy.personalityProfile.evidence ??= [];
   const allCandidates = [...game.hiddenCandidates.map((item) => item.public), ...game.view.candidates];
   for (const item of allCandidates) {
@@ -1243,6 +1274,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.view.worldTime.era = eraAtYear(game.view.worldTime.year);
   }
   if (game.view.character) {
+    repairLegacyUnboundAwakening(game);
     game.storyMemory.openThreads = game.storyMemory.openThreads.filter((thread) => thread !== "武魂觉醒结果");
     if (/即将参加武魂觉醒|尚未真正开始/.test(game.storyMemory.summary)) {
       game.storyMemory.summary = `${game.view.character.name}已经完成武魂觉醒，武魂是${game.view.character.martialSoul.name}，先天魂力${game.view.character.innateSoulPower}级。`;
@@ -1261,6 +1293,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.view.character.martialSoul.grade ??= martialSoulGrade(game.view.character.martialSoul.name, game.view.character.martialSoul.rarity, game.view.character.innateSoulPower);
     game.view.character.martialSoul.sourceEra ??= game.view.character.martialSoul.rarity ? "局外" : "原创";
     game.view.character.martialSouls ??= [game.view.character.martialSoul];
+    game.view.character.publiclyKnownMartialSoulIndices ??= game.view.character.martialSouls.map((_soul, index) => index);
     game.view.character.activeMartialSoulIndex ??= 0;
     game.view.character.activeMartialSoulIndex = Math.max(0, Math.min(game.view.character.activeMartialSoulIndex, game.view.character.martialSouls.length - 1));
     game.view.character.soulRingSets ??= [game.view.character.soulRings];

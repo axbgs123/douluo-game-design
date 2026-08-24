@@ -50,6 +50,26 @@ describe("存档数据库", () => {
     if (result.kind === "heirloom") expect(result.meta.unlockedHeirlooms).toContain(result.drawn.name);
   });
 
+  it("keeps only five summon records and supports warehouse favorites and deletion", () => {
+    const meta = database.getMetaProgression();
+    meta.legacyPoints = 2_000;
+    meta.martialSoulDrawTickets = 0;
+    meta.summonGoldPity = 9;
+    meta.summonRedPity = 0;
+    meta.summonRainbowPity = 0;
+    database.saveMetaProgression(meta);
+    for (let index = 0; index < 7; index += 1) database.drawMetaMartialSoul(() => .73);
+    const afterDraws = database.getMetaProgression();
+    expect(afterDraws.summonHistory).toHaveLength(5);
+    expect(afterDraws.summonHistory.every((item) => item.kind === "martialSoul" || item.kind === "heirloom")).toBe(true);
+    const soul = afterDraws.martialSoulCodex[0];
+    expect(database.favoriteCodexMartialSoul(soul.id, true).martialSoulCodex.find((item) => item.id === soul.id)?.favorite).toBe(true);
+    database.equipCodexMartialSoul(soul.id);
+    const deleted = database.deleteCodexMartialSoul(soul.id);
+    expect(deleted.martialSoulCodex.some((item) => item.id === soul.id)).toBe(false);
+    expect(deleted.equippedMartialSoulId).toBeUndefined();
+  });
+
   it("records model cost telemetry without storing prompts or generated prose", () => {
     database.recordModelCall({ gameId: "telemetry-game", role: "narrator", model: "test-model", status: "success", latencyMs: 321, promptChars: 900, outputChars: 300, promptTokens: 120, completionTokens: 45, totalTokens: 165 });
     database.recordModelCall({ gameId: "telemetry-game", role: "intent", model: "test-model", status: "failure", latencyMs: 80, promptChars: 200, outputChars: 0, errorCode: "timeout" });

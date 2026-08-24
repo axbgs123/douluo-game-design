@@ -8,6 +8,7 @@ import { toThirdPersonNarrative } from "./narrative.js";
 import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSuggestions, selectNarrativeRules } from "./story-rules.js";
 import { formatSoulCoins } from "../../shared/currency.js";
 import { createSpecialSystemView, goldFingerByName, isGoldFinger } from "../data/gold-fingers.js";
+import { heirloomByName } from "../../shared/heirlooms.js";
 
 interface DifficultyRules {
   training: number;
@@ -3525,6 +3526,73 @@ function impossible(reason: string, suggestions = ["检查当前状态", "换一
   };
 }
 
+function heirloomActionResolution(game: StoredGame): ActionResolution | undefined {
+  const active = game.view.activeHeirloom;
+  if (!active?.actionCommand) return undefined;
+  if (active.status === "本局已触发") return impossible(`${active.name}在本局已经使用过。`, ["查看遗物栏位", "继续当前计划", "检查任务"]);
+  const definition = heirloomByName(active.name);
+  if (!definition) return impossible("这件遗物的效果资料缺失。");
+  active.status = "本局已触发";
+  if (definition.effectKind === "anomalyCompass") {
+    const target = game.view.map.find((item) => item.discovered && !item.current && item.objective) ?? game.view.map.find((item) => item.discovered && !item.current);
+    if (!target) { active.status = "等待触发"; return impossible("还没有第二个已发现地点可供罗盘比较。", ["探索附近地点", "查看地图", "稍后再用"]); }
+    game.view.tasks.push({ id: `heirloom-compass-${game.actionIndex}`, title: `调查星痕罗盘指向的${target.name}`, kind: "线索", detail: `罗盘在比较已走过的路线后持续偏向${target.name}；异常仍需亲自核验。`, status: "进行中", destinationId: target.id });
+    return { intent: "使用遗物", minutes: 5, ruleSummary: `星痕罗盘从已发现地点中指向${target.name}，生成一条可调查线索；本局次数已消耗。`, fallbackNarrative: `指针先是乱晃，随后越过北方，牢牢压向${target.name}。它没有说明那里有什么，只在我转开手腕时又倔强地偏了回去。`, suggestions: [`前往${target.name}`, "对照地图核验路线", "先调查当地消息"] };
+  }
+  if (definition.effectKind === "causalReview") {
+    const records = game.world.actionLedger.slice(-3);
+    if (!records.length) { active.status = "等待触发"; return impossible("还没有已完成的行动可供回看。", ["先完成一次行动", "查看当前目标", "稍后再用"]); }
+    const cause = records.map((item) => `行动${item.index}“${item.action}”→${item.result}`).join("；");
+    return { intent: "使用遗物", minutes: 5, ruleSummary: `因果残线回看最近${records.length}项记录：${cause}`, fallbackNarrative: `细线从指间滑出去，依次缠住最近留下的三处痕迹。最后绷紧的不是最显眼的结果，而是更早那次看似普通的选择。`, suggestions: ["根据前因补救", "向当事人核实", "把线索写入计划"] };
+  }
+  const snapshot = `${game.view.worldTime?.year ?? 0}年第${game.view.worldTime?.day ?? 1}日，${game.view.location}；目标：${game.view.chapterObjective?.title ?? game.view.lifeGoal ?? "尚未确定"}；未决：${game.storyMemory.openThreads.slice(0, 4).join("、") || "无"}`;
+  game.storyMemory.openThreads = [`岁月锚点：${snapshot}`, ...game.storyMemory.openThreads].slice(0, 12);
+  return { intent: "使用遗物", minutes: 5, ruleSummary: `岁月锚钉已把当前时间、地点、目标与未决事项写入长期故事记忆：${snapshot}`, fallbackNarrative: `钉身上的刻痕一寸寸发热。我把眼前的人、地点和还没有做完的事重新默念一遍，直到那点热意沉进掌心。`, suggestions: ["继续当前目标", "查看故事手记", "处理一项未决事项"] };
+}
+
+function applyHeirloomEffect(game: StoredGame, action: string, resolution: ActionResolution): void {
+  const active = game.view.activeHeirloom;
+  if (!active || active.status === "本局已触发" || /无法完成|规则阻止/.test(resolution.intent)) return;
+  const definition = heirloomByName(active.name);
+  if (!definition || definition.actionCommand) return;
+  let message = "";
+  switch (definition.effectKind) {
+    case "huntIntel":
+      if (!/魂兽|猎魂|追踪/.test(`${action}${resolution.intent}`)) return;
+      game.world.metrics.discoveries += 1;
+      recordIntelligence(game, { subjectType: "物品", subjectId: `heirloom-hunt-${game.actionIndex}`, title: `${active.name}补充的生态线索`, detail: "旧记录标出目标常用的饮水方向、活动时段与撤退路径，需要结合现场痕迹复核。", source: active.name, confidence: 78, status: "确定" });
+      message = "额外取得一条可靠魂兽生态线索，发现数 +1"; break;
+    case "travelGuide":
+      if (resolution.intent !== "旅行") return;
+      { const saved = Math.max(1, Math.round(resolution.minutes * .15)); resolution.minutes -= saved; message = `核验旧路，旅行耗时减少 ${saved} 分钟`; } break;
+    case "trainingCalm":
+      if (!/修炼|训练/.test(resolution.intent)) return;
+      game.world.fatiguePoints = Math.max(0, game.world.fatiguePoints - 10); message = "呼吸稳定，疲劳降低 10 点"; break;
+    case "tradeInsight":
+      if (!/购买|交易|经济|询价|市场/.test(`${action}${resolution.intent}`)) return;
+      game.view.character!.coins += 2; message = "识别正规商路价格并返还 2 金魂币"; break;
+    case "factionIntroduction":
+      if (!/入学|加入势力|势力申请|学院/.test(`${action}${resolution.intent}`)) return;
+      { const relation = game.view.relations.find((item) => item.category === "势力"); if (relation) { relation.dimensions ??= relationDimensions(relation.strength); relation.dimensions.respect = Math.min(100, relation.dimensions.respect + 10); } message = "获得一次正式陈述机会，接待者敬重 +10（不保证录取）"; } break;
+    case "mentalRescue":
+      if (game.world.fatiguePoints < 80) return;
+      game.world.fatiguePoints = Math.max(0, game.world.fatiguePoints - 25); message = "温魂灯芯亮起，疲劳降低 25 点"; break;
+    case "ringAssessment":
+      if (!/猎魂|魂环|吸收/.test(`${action}${resolution.intent}`)) return;
+      message = `承载评估：当前魂力 ${game.view.character!.soulRank} 级、体魄${game.view.character!.abilityDescriptors.physique}；仍须满足等级瓶颈、目标年限与安全护持`; break;
+    case "promiseWitness":
+      if (resolution.intent !== "作出承诺") return;
+      game.world.flags.heirloomPromiseEvidence = `行动${game.actionIndex}：${action.slice(0, 100)}`; message = "承诺原话、日期与对象已形成额外履约证据"; break;
+    case "craftSalvage":
+      if (!/制作|锻造|炼制/.test(`${action}${resolution.intent}`) || !/失败|报废|崩裂/.test(resolution.ruleSummary)) return;
+      game.view.inventory.push("遗物回收材料"); message = "从失败成品中回收 1 份材料"; break;
+    default: return;
+  }
+  active.status = "本局已触发";
+  resolution.systemMessages = [...(resolution.systemMessages ?? []), `${active.name} · ${message}`];
+  resolution.ruleSummary += ` 遗物触发：${message}。`;
+}
+
 function updatePersonality(game: StoredGame, action: string): void {
   const profile = game.personalityProfile;
   const changes: Array<[RegExp, string, number]> = [
@@ -3546,7 +3614,9 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   let resolution: ActionResolution;
   const guarded = guardActionByStoryRules(game, action);
   const huntingActive = game.view.hunting && game.view.hunting.stage !== "完成";
-  if (guarded) resolution = guarded;
+  const activeHeirloom = game.view.activeHeirloom;
+  if (activeHeirloom?.actionCommand && action.includes(activeHeirloom.actionCommand)) resolution = heirloomActionResolution(game)!;
+  else if (guarded) resolution = guarded;
   else if (/切换|换成|改用|主修/.test(action) && /武魂/.test(action)) resolution = switchMartialSoulResolution(game, action);
   else if (/升灵台/.test(action)) resolution = spiritAscensionResolution(game, action);
   else if (/(?:学习|练习|实训|认证|考核|委托|订单|接单).*(?:斗铠设计|机甲设计|机甲制造|机甲维修|机甲修理|锻造师)|(?:斗铠设计师|机甲设计师|机甲制造师|机甲修理师|锻造师).*(?:学习|练习|实训|认证|考核|委托|订单|接单)/.test(action)) resolution = eraThreeCareerResolution(game, action);
@@ -3601,6 +3671,8 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
     game.world.flags.goldFingerPotentialPoints = Math.min(30, Number(game.world.flags.goldFingerPotentialPoints ?? 0) + gain);
     resolution.systemMessages = [...(resolution.systemMessages ?? []), `加点面板 · 潜能 +${gain}`];
   }
+
+  applyHeirloomEffect(game, action, resolution);
 
   resolution.appliedRuleIds ??= selectNarrativeRules(game, action, resolution).map((rule) => rule.id);
 

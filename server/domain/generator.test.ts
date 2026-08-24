@@ -385,7 +385,7 @@ describe("candidate generation", () => {
     expect(martialSoulMultiplicity(0.005, "神话", true)).toBe(3);
   });
 
-  it("reveals every awakened soul type before life-goal selection", () => {
+  it("keeps additional martial souls private until the player chooses disclosure and primary cultivation", () => {
     const game = createGame({ gender: "女", difficulty: "标准", seed: "multi-awakening-view" });
     const hidden = game.hiddenCandidates[0];
     hidden.martialSouls = [hidden.martialSoul, { ...hidden.martialSoul, id: "second-test-soul", name: "测试副武魂", category: "本体武魂" }];
@@ -393,8 +393,13 @@ describe("candidate generation", () => {
     finalizeCharacterShaping(game, { keywords: ["谨慎", "好奇", "坚韧"], answers: {} });
     awakenCharacter(game);
     expect(game.view.character?.martialSouls).toHaveLength(2);
-    expect(game.view.narrative.at(-1)?.text).toContain("双生武魂");
-    expect(game.view.narrative.at(-1)?.text).toContain("这是本体武魂");
+    expect(game.view.character?.publiclyKnownMartialSoulIndices).toEqual([0]);
+    expect(game.view.narrative.at(-1)?.text).not.toContain("双生武魂");
+    expect(game.view.narrative.at(-1)?.text).toContain("执事正转身去取水晶球，没有看见");
+    selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0], { activeMartialSoulIndex: 1, publiclyKnownMartialSoulIndices: [0] });
+    expect(game.view.character?.martialSoul.name).toBe("测试副武魂");
+    expect(game.view.character?.martialSouls[1].cultivationState).toBe("主修");
+    expect(game.view.narrative.at(-1)?.text).toContain("阵外的人只看见");
   });
 
   it("explains the gameplay impact of identity-fixed traits", () => {
@@ -414,7 +419,7 @@ describe("candidate generation", () => {
     expect(game.world.flags.awakeningAttention).toBe("最高优先");
     expect(game.view.tasks.some((task) => task.id === "awakening-recruitment")).toBe(true);
     expect(game.world.dynamicEvents.some((event) => /内部培养评估/.test(event.title) && event.status === "可介入")).toBe(true);
-    expect(game.view.narrative.at(-1)?.text).toMatch(/内部档案|重点天赋上报/);
+    expect(game.view.narrative.at(-1)?.text).toMatch(/叫停了下一人的仪式|队伍晚走半个时辰/);
   });
 
   it("carries a settled worldline into the next era without copying combat power", () => {

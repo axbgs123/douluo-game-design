@@ -192,7 +192,7 @@ export default function App() {
         shaping={game.shaping}
         busy={busy}
         onReroll={(lockedSlots) => run(() => rerollCharacterShaping(game.id, "goals", lockedSlots))}
-        onComplete={(lifeGoal) => run(() => selectLifeGoal(game.id, lifeGoal))}
+        onComplete={(input) => run(() => selectLifeGoal(game.id, input))}
       />}
 
       {game && (game.status === "awakening" || game.status === "playing" || game.status === "ended") && <StoryScreen

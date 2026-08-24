@@ -241,6 +241,7 @@ export interface CharacterPublic extends CandidatePublic {
   injuries: string[];
   soulRings: SoulRingView[];
   activeMartialSoulIndex: number;
+  publiclyKnownMartialSoulIndices?: number[];
   soulRingSets: SoulRingView[][];
   soulSpirits?: SoulSpiritView[];
   battleArmors?: BattleArmorView[];
@@ -248,6 +249,17 @@ export interface CharacterPublic extends CandidatePublic {
   personalityTraits: string[];
   revealedGift?: string;
   specialSystem?: SpecialSystemView;
+}
+
+export interface ActiveHeirloomView {
+  id: string;
+  name: string;
+  rarity: Extract<MartialSoulRarity, "紫色" | "金色" | "红色">;
+  description: string;
+  effect: string;
+  trigger: string;
+  status: "等待触发" | "本局已触发";
+  actionCommand?: string;
 }
 
 export interface SpecialSystemView {
@@ -875,6 +887,7 @@ export interface GameView {
   reputations: ReputationNetworkView[];
   tasks: TaskView[];
   inventory: string[];
+  activeHeirloom?: ActiveHeirloomView;
   inventoryLoad: InventoryLoadView;
   professions: ProfessionView[];
   soulSpiritContract?: SoulSpiritContractView;
@@ -923,6 +936,17 @@ export interface MartialSoulCodexEntryView {
   enabled: boolean;
   initialSoulPowers: number[];
   growthRoutes: string[];
+  favorite?: boolean;
+}
+
+export interface MetaSummonHistoryEntryView {
+  id: string;
+  kind: "martialSoul" | "heirloom";
+  name: string;
+  rarity: MartialSoulRarity;
+  description: string;
+  duplicate: boolean;
+  drawnAt: string;
 }
 
 export interface SaveSummary {
@@ -974,6 +998,7 @@ export interface MetaProgressionView {
   summonGoldPity: number;
   summonRedPity: number;
   summonRainbowPity: number;
+  summonHistory: MetaSummonHistoryEntryView[];
   difficultyBudgets: Record<Difficulty, number>;
   difficultyMultipliers: Record<Difficulty, number>;
 }

@@ -29,8 +29,8 @@ interface StoryScreenProps {
   onMapPinRemove: (pinId: string) => Promise<void>;
 }
 
-type Panel = "人物" | "武魂" | "时代" | "背包" | "地图" | "关系" | "任务" | "情报" | "手记" | "猎魂" | "世界";
-const PANELS: Panel[] = ["人物", "武魂", "时代", "背包", "地图", "关系", "任务", "情报", "手记", "猎魂", "世界"];
+type Panel = "人物" | "武魂" | "遗物" | "时代" | "背包" | "地图" | "关系" | "任务" | "情报" | "手记" | "猎魂" | "世界";
+const PANELS: Panel[] = ["人物", "武魂", "遗物", "时代", "背包", "地图", "关系", "任务", "情报", "手记", "猎魂", "世界"];
 
 function panelBadge(game: GameView, panel: Panel): string | undefined {
   if (panel === "人物" && game.character?.injuries.length) return String(game.character.injuries.length);
@@ -39,6 +39,7 @@ function panelBadge(game: GameView, panel: Panel): string | undefined {
   if (panel === "情报") return String(Math.min(9, game.intelligence.filter((item) => item.freshness === "新鲜").length) || "");
   if (panel === "手记" && game.storyArchive.openThreads.length) return String(Math.min(9, game.storyArchive.openThreads.length));
   if (panel === "猎魂" && game.hunting && game.hunting.stage !== "完成") return "!";
+  if (panel === "遗物" && game.activeHeirloom?.status === "等待触发") return "!";
   if (panel === "世界" && (game.activeEvents.length || game.news.length)) return game.activeEvents.length ? "!" : String(Math.min(9, game.news.length));
   return undefined;
 }
@@ -104,6 +105,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
           <div className="panel-content">
             {panel === "人物" && <CharacterPanel game={game} submit={submit} busy={busy} />}
             {panel === "武魂" && <SoulPanel game={game} submit={submit} busy={busy} />}
+            {panel === "遗物" && <HeirloomPanel game={game} submit={submit} busy={busy} />}
             {panel === "时代" && <EraPanel game={game} submit={submit} busy={busy} />}
             {panel === "背包" && <InventoryPanel game={game} submit={submit} busy={busy} />}
             {panel === "地图" && <MapPanel game={game} submit={submit} busy={busy} onMapPin={onMapPin} onMapPinRemove={onMapPinRemove} />}
@@ -119,6 +121,20 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
       </div>
     </main>
   );
+}
+
+function HeirloomPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
+  const heirloom = game.activeHeirloom;
+  if (!heirloom) return <LockedPanel text="本局没有携带遗物。可在局外成长的遗物库中选择下一局携带的遗物。" />;
+  return <div className="detail-stack heirloom-slot-panel">
+    <article className={`heirloom-slot rarity-${heirloom.rarity}`}>
+      <header><span>{heirloom.rarity}遗物</span><strong>{heirloom.name}</strong></header>
+      <p>{heirloom.description}</p>
+      <dl><div><dt>实际效果</dt><dd>{heirloom.effect}</dd></div><div><dt>触发条件</dt><dd>{heirloom.trigger}</dd></div><div><dt>本局状态</dt><dd>{heirloom.status}</dd></div></dl>
+      {heirloom.actionCommand && <button type="button" disabled={busy || heirloom.status === "本局已触发"} onClick={() => submit(heirloom.actionCommand!)}>{heirloom.status === "本局已触发" ? "本局已使用" : heirloom.actionCommand}</button>}
+    </article>
+    <p className="panel-note">被动遗物会在条件首次满足时自动结算，并写入本次行动的系统消息与判定记录。</p>
+  </div>;
 }
 
 function EraActionButton({ busy, onClick, children }: { busy: boolean; onClick: () => void; children: ReactNode }) {

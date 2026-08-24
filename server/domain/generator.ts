@@ -23,6 +23,7 @@ import { refreshStoryArchive } from "./story-rules.js";
 import { worldMapPoint } from "../../shared/world-map.js";
 import { EXPANDED_ORIGINS } from "../data/expanded-origins.js";
 import { metaSoulById } from "../data/meta-martial-souls.js";
+import { heirloomByName } from "../../shared/heirlooms.js";
 import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 import { ERA_MARTIAL_SOULS } from "../data/era-martial-souls.js";
 import { ORIGINAL_MARTIAL_SOULS } from "../data/original-martial-souls.js";
@@ -1506,10 +1507,34 @@ export function finalizeCharacterShaping(game: StoredGame, input: { personalityI
   game.view.updatedAt = new Date().toISOString();
 }
 
-export function selectLifeGoal(game: StoredGame, lifeGoal: string): void {
+export function selectLifeGoal(game: StoredGame, lifeGoal: string, options?: { activeMartialSoulIndex?: number; publiclyKnownMartialSoulIndices?: number[] }): void {
   if (game.view.status !== "life_goal_selection" || !game.view.character) throw new Error("当前不处于人生目标选择阶段");
   const goal = lifeGoal.trim();
   if (goal.length < 6) throw new Error("人生目标需要写得更具体");
+  const souls = game.view.character.martialSouls;
+  const activeIndex = Math.min(souls.length - 1, Math.max(0, options?.activeMartialSoulIndex ?? 0));
+  const publicIndices = [...new Set([0, ...(options?.publiclyKnownMartialSoulIndices ?? [0])])].filter((index) => index >= 0 && index < souls.length);
+  game.view.character.activeMartialSoulIndex = activeIndex;
+  game.view.character.publiclyKnownMartialSoulIndices = publicIndices;
+  game.view.character.martialSoul = souls[activeIndex];
+  game.view.character.soulRings = game.view.character.soulRingSets[activeIndex] ?? [];
+  game.view.character.martialSouls = souls.map((soul, index) => ({ ...soul, cultivationState: index === activeIndex ? "主修" : "未修炼" }));
+  const hiddenNames = souls.filter((_soul, index) => !publicIndices.includes(index)).map((soul) => soul.name);
+  const exposedNames = souls.filter((_soul, index) => publicIndices.includes(index)).map((soul) => soul.name);
+  if (souls.length > 1) {
+    game.view.narrative.push(createEntry("narration", hiddenNames.length
+      ? `${game.view.character.name}没有顺着体内的第二股悸动继续放开魂力。${hiddenNames.join("、")}的轮廓停在意识深处，阵外的人只看见${exposedNames.join("、")}。等执事落笔时，${game.view.character.name}已经决定先从${souls[activeIndex].name}练起。`
+      : `${game.view.character.name}没有收住第二股魂力。${exposedNames.join("、")}先后在阵中显形，门外的低语一下断了。执事把刚写好的记录划掉重写，又叫人关门、取备用水晶。${game.view.character.name}则先选定${souls[activeIndex].name}作为眼下的修炼起点。`));
+    if (publicIndices.length > 1) {
+      const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId)!;
+      const context = awakeningContext(candidate);
+      game.world.flags.awakeningAttention = "最高优先";
+      const existing = game.view.tasks.find((task) => task.id === "awakening-recruitment");
+      if (existing) existing.detail = `${context.officiant}已经亲眼确认${publicIndices.length}个武魂；所属势力会立即复核培养、保密与魂环路线。公开不等于必须效忠，但消息一旦进入档案便无法当作从未发生。`;
+      else game.view.tasks.push({ id: "awakening-recruitment", title: `回应${context.factionName}的多武魂培养复核`, kind: "线索", detail: `${context.officiant}已经亲眼确认${publicIndices.length}个武魂；需要谈清保密范围、培养资源和归属。`, status: "进行中", destinationId: game.view.locationId, deadline: "觉醒当日" });
+      game.view.character.reputation = `${context.factionName}最高优先记录的多武魂天才`;
+    }
+  }
   game.view.lifeGoal = goal;
   game.view.runProgress.lifeGoal = goal;
   game.view.tasks = [
@@ -1822,7 +1847,9 @@ function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityP
     .replaceAll("你", pronoun);
   const reaction = profile.scores.courage >= 2 ? "脚尖已经朝向阵法" : profile.scores.patience >= 2 ? "目光沿着六块黑石慢慢看了一圈" : "指甲在掌心掐出一道浅印";
   const specialIdentity = /亲传|嫡系|少宗主|封号|封爵|竞争子嗣|转生者|穿越者|少主|余脉|养子/.test(candidate.public.originName);
-  const identityLine = `${specialIdentity ? `${candidate.public.name}的身份是${candidate.public.originName}` : `${candidate.public.name}生在${candidate.public.originName}`}。${thirdPersonOrigin}`;
+  const identityLine = candidate.originId === "void-arrival-unbound"
+    ? `${candidate.public.name}低头看过自己的手。身体只有六岁，记忆却仍属于另一个世界；昨夜一起落在荒地上的，除了一身旧衣，再没有别的东西。`
+    : `${specialIdentity ? `${candidate.public.name}的身份是${candidate.public.originName}` : `${candidate.public.name}生在${candidate.public.originName}`}。${thirdPersonOrigin}`;
   const scenes: Record<string, [string, string, string]> = {
     "seven-treasure-core": [
       "七宝城堡的内院刚开门，觉醒厅外已经站着宗门教习和几名同龄孩子。宁风致没有坐主位，只在屏风后留了一盏茶。",
@@ -1870,9 +1897,9 @@ function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityP
       `岩叔以魂力依次点亮阵石，没有许诺武魂强大便能留在核心区，也没有替${candidate.public.name}选择要不要走向人类世界。`,
     ],
     "void-arrival-unbound": [
-      `昨夜，${candidate.public.name}还不属于这片大陆。天亮时，${pronoun}沿荒道看见一支去乡村主持公共觉醒的队伍。`,
-      `没有名册、监护人或本地钱币能证明身份。${candidate.public.name}${reaction}，决定先借这次仪式确认六岁身体里究竟有什么。`,
-      `巡查执事允许${pronoun}站到队尾，但只登记了一个口述姓名；这不是收养、招募或任何关系承诺。`,
+      `天亮以后，一支挂着武魂殿铜牌的车队停在荒道边。带队执事正催车夫赶去下一个村子，忽然看见路旁站着个衣着古怪的孩子。`,
+      `“名字？”执事问。${candidate.public.name}只答得出这一个问题。${pronoun}${reaction}，视线越过车辕，落在箱子里露出一角的六块黑石上。`,
+      `执事盯了${pronoun}片刻，把名册翻到末页：“跟上。到了村里站最后一个。测完以后，你得把来处重新说一遍。”`,
     ],
     "underworld-heir": [
       "黑槐会包下了武魂分殿后厅。刑堂主带来的人守住两扇门，登记执事收了钱，脸色仍不好看。",
@@ -1983,6 +2010,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     injuries: [],
     soulRings: [],
     activeMartialSoulIndex: 0,
+    publiclyKnownMartialSoulIndices: [0],
     soulRingSets: [[]],
     soulSpirits: [],
     battleArmors: [],
@@ -2042,7 +2070,11 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   game.world.flags.destinyPressure = selected.originStart?.pressure ?? 1;
   game.world.flags.originAdvantage = selected.originStart?.advantage ?? selected.public.originAdvantage;
   game.world.flags.originBurden = selected.originStart?.burden ?? selected.public.originBurden;
-  if (game.legacy.equippedHeirloom) game.view.inventory.push(game.legacy.equippedHeirloom);
+  if (game.legacy.equippedHeirloom) {
+    game.view.inventory.push(game.legacy.equippedHeirloom);
+    const heirloom = heirloomByName(game.legacy.equippedHeirloom);
+    if (heirloom) game.view.activeHeirloom = { id: heirloom.id, name: heirloom.name, rarity: heirloom.rarity, description: heirloom.description, effect: heirloom.effect, trigger: heirloom.trigger, status: "等待触发", actionCommand: heirloom.actionCommand };
+  }
   const inheritance = game.legacy.worldInheritance;
   if (inheritance && !game.view.inventory.includes(inheritance.legacyArtifact)) game.view.inventory.push(inheritance.legacyArtifact);
   const foundationLevel = game.legacy.upgrades["稳固根基"] ?? 0;
@@ -2081,11 +2113,12 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   if (selected.originId === "fierce-beast-raised") game.view.tasks.push({ id: "choose-human-world", title: "决定是否接触人类世界", kind: "计划", detail: "兽群不会替他决定归属；进入人类社会也不会自动获得合法身份与信任。", status: "进行中" });
   if (selected.originId === "evil-soul-remnant") game.view.tasks.push({ id: "forbidden-choice", title: "决定是否接触家族禁术", kind: "计划", detail: "戒律、收益和代价都已经知道，是否修炼仍由角色决定。", status: "进行中" });
   if ((selected.originStart?.pressure ?? 1) >= 3) game.view.tasks.push({ id: "identity-burden", title: "处理身份带来的第一场麻烦", kind: "线索", detail: selected.originStart?.burden ?? selected.public.originBurden, status: "进行中", destinationId: selected.public.locationId });
-  const soulGrades = soulViews.map((soul) => MARTIAL_SOUL_GRADE_ORDER.indexOf(soul.grade ?? "平凡"));
-  const highAttention = selected.innateSoulPower >= 7 || (selected.innateSoulPower > 0 && (soulViews.length > 1 || Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("传奇")));
+  const publicSoulViews = soulViews.slice(0, 1);
+  const soulGrades = publicSoulViews.map((soul) => MARTIAL_SOUL_GRADE_ORDER.indexOf(soul.grade ?? "平凡"));
+  const highAttention = selected.innateSoulPower >= 7 || (selected.innateSoulPower > 0 && Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("传奇"));
   if (highAttention) {
     const beastAwakening = selected.originId === "fierce-beast-raised";
-    const attentionLevel = selected.innateSoulPower === 10 || soulViews.length > 1 || Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("神话") ? "最高优先" : "重点";
+    const attentionLevel = selected.innateSoulPower === 10 || Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("神话") ? "最高优先" : "重点";
     game.world.flags.awakeningAttention = attentionLevel;
     let awakeningRelation = game.view.relations.find((relation) => relation.faction === awakening.factionName || /觉醒/.test(`${relation.relation}${relation.name}`));
     if (!awakeningRelation) {
@@ -2094,7 +2127,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     }
     if (awakeningRelation) {
       awakeningRelation.impression = beastAwakening ? "确认孩子已经具备离开领地或继续留在兽群修炼的选择资格" : `将觉醒结果列入${awakening.factionName}内部培养评估`;
-      awakeningRelation.history = [...(awakeningRelation.history ?? []), { date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `${selected.innateSoulPower}级先天魂力与${soulViews.length > 1 ? `${soulViews.length}生武魂` : soulViews[0].name}引起注意`, changes: `${awakening.factionName}关注提升至${attentionLevel}` }];
+      awakeningRelation.history = [...(awakeningRelation.history ?? []), { date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `${selected.innateSoulPower}级先天魂力与公开显露的${publicSoulViews[0].name}引起注意`, changes: `${awakening.factionName}关注提升至${attentionLevel}` }];
     }
     game.view.tasks.push({ id: "awakening-recruitment", title: beastAwakening ? "与养育者商量觉醒后的去向" : `回应${awakening.factionName}的培养评估`, kind: "线索", detail: beastAwakening ? "兽群能提供森林生存与魂兽知识，却没有人类学院、户籍或公开导师资格；是否离开必须由角色自己决定。" : `${awakening.officiant}会先向${awakening.factionName}内部上报，由所属势力提供学院、导师、魂环与身份安排；其他势力不会无视归属直接接管。`, status: "进行中", destinationId: selected.public.locationId, deadline: beastAwakening ? "没有强制期限" : selected.innateSoulPower === 10 ? "今日内会有高层过问" : "约十日内会有正式答复" });
     const year = game.view.worldTime?.year ?? 0;
@@ -2104,7 +2137,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     if (awakening.notableNpc) {
       revealNpc(game, awakening.notableNpc.id);
       const npc = game.world.npcs[awakening.notableNpc.id];
-      if (npc) npc.memoryOfPlayer.push(`因${soulViews.map((soul) => soul.name).join("、")}与${selected.innateSoulPower}级先天魂力，收到觉醒堂的优先报告`);
+      if (npc) npc.memoryOfPlayer.push(`因公开显露的${publicSoulViews.map((soul) => soul.name).join("、")}与${selected.innateSoulPower}级先天魂力，收到觉醒堂的优先报告`);
       game.view.tasks.push({ id: "lineage-notable-attention", title: `接受${awakening.notableNpc.name}的亲自复核`, kind: "线索", detail: `相同武魂会引起直接关注，但不自动等于收徒、血亲或无条件庇护。`, status: "进行中", destinationId: selected.public.locationId, deadline: selected.innateSoulPower === 10 ? "觉醒当日" : "三日内" });
     }
     character.reputation = selected.innateSoulPower === 10 ? `${awakening.factionName}最高优先记录的先天满魂力` : `${awakening.factionName}记录的${selected.innateSoulPower}级先天魂力新秀`;
@@ -2131,7 +2164,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   game.storyMemory.openThreads = selected.innateSoulPower > 0
     ? [originThread, "获得第一魂环"]
     : [originThread, "理解觉醒结果"];
-  game.storyMemory.summary = `${selected.public.name}在${selected.public.location}完成武魂觉醒，${soulViews.length === 1 ? "武魂" : soulViews.length === 2 ? "双生武魂" : "三生武魂"}为${soulViews.map((soul) => soul.name).join("、")}，先天魂力${selected.innateSoulPower}级。`;
+  game.storyMemory.summary = `${selected.public.name}在${selected.public.location}完成觉醒。现场只看见${publicSoulViews[0].name}，先天魂力${selected.innateSoulPower}级；${soulViews.length > 1 ? `本人还察觉到${soulViews.slice(1).map((soul) => soul.name).join("、")}，是否公开尚未决定。` : "没有需要隐藏的第二武魂。"}`;
   game.view.narrative.push(createEntry("narration", buildAwakeningResult(selected, awakening)));
   game.view.suggestions = selected.innateSoulPower > 0
     ? highAttention ? [`询问${awakening.factionName}能够提供哪些具体培养条件`, "先和家人或所属势力商量立场", "测试主武魂并记录其限制"] : [`询问${selected.innateSoulPower}级先天魂力该怎么修炼`, "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
@@ -2149,37 +2182,38 @@ function buildAwakeningResult(candidate: HiddenCandidate, awakening: AwakeningCo
   const pronoun = candidate.public.gender === "女" ? "她" : "他";
   const beastRaised = candidate.originId === "fierce-beast-raised";
   const unbound = candidate.originId === "void-arrival-unbound";
-  const powerText = candidate.innateSoulPower === 10
-    ? `手掌刚贴上水晶球，白光便猛地涨开。${awakening.officiant}立刻换备用水晶又测了一次。先天满魂力。`
-    : candidate.innateSoulPower > 0
-      ? `水晶球亮了，刻度停在先天魂力 ${candidate.innateSoulPower} 级。${awakening.officiant}低头记下数字。`
-      : `水晶球一直没亮。${awakening.officiant}等了两息，才把它从${pronoun}手下抽走。`;
-
   const souls = candidate.martialSouls?.length ? candidate.martialSouls : [candidate.martialSoul];
-  const soulCountText = souls.length === 1 ? "武魂" : souls.length === 2 ? "双生武魂" : "三生武魂";
-  const soulLines = souls.map((soul, index) => `${index === 0 ? `${pronoun}的掌心里` : `紧接着，第 ${index + 1} 道魂力轮廓中`}出现了${soul.name}。这是${soul.category}。${soul.description}`);
-  const attentionText = candidate.innateSoulPower === 10 || souls.length > 1
+  const firstSoul = souls[0];
+  const hiddenPulse = souls.length > 1
+    ? `就在阵光将散未散的一瞬，${name}又感觉到${souls.length === 2 ? "另一道" : "另外两道"}轮廓从意识深处顶了上来。${pronoun}本能地蜷起手指，把那股冲动压在掌心之下。执事正转身去取水晶球，没有看见。`
+    : "";
+  const powerText = candidate.innateSoulPower === 10
+    ? `手掌贴上水晶球，白光猛地冲到顶端。执事的手僵了一下，随即把水晶抽走，又从箱底取出备用的一颗。第二次，光仍旧一分不少。\n\n“先天满魂力。”他念出这五个字时，门口挤着的人先静了一瞬，紧接着便炸开了低语。有人踮脚往阵里看，有人已经拉住自家孩子，追问刚才究竟觉醒了什么。`
+    : candidate.innateSoulPower > 0
+      ? `水晶球从${pronoun}掌下亮起来，光停在第 ${candidate.innateSoulPower} 道刻度。执事念出数字，笔尖在名册上停了停，门边立刻有人压低声音议论。`
+      : `水晶球没有亮。执事等了两息，又让${pronoun}换手测了一次，才慢慢把水晶收回去。`;
+  const attentionText = candidate.innateSoulPower === 10
     ? beastRaised
-      ? `岩叔没有替${name}庆祝或许诺力量，只叫来兽群中几名长者讨论：继续留在核心区最安全，去人类世界才可能学到完整的魂师体系。`
+      ? `岩叔蹲下来检查阵石，又朝林中发出一声短促低吼。几道强横气息很快逼近古树，却没有谁替${name}决定去留。第一次争论已经开始：把这个孩子继续藏在核心区，还是送去接触人类的修炼方法。`
       : unbound
-        ? `${awakening.officiant}把异常结果和“无户籍”分开登记。武魂殿会提出培养条件，但这份记录不等于收养、效忠或已经建立的人情。`
-        : `${awakening.officiant}没有当众议论，只把记录封进${awakening.factionName}内部档案，要求家人与孩子暂时别走。培养评估会在今天开始。${awakening.notableNpc ? `${awakening.notableNpc.name}会收到第一份复核通知。` : ""}`
+        ? `执事啪地合上名册，叫助手拦住正要收阵石的人。\n\n“队伍晚走半个时辰。”他扫了一眼门外，又看回${name}，“先给这孩子拿水和吃的。小刘，你骑马回分殿报信，再找里正来作见证。”\n\n他没有立刻许诺收留，只把自己那张临时通行条压在桌上：“今晚以前，你至少不会再睡荒地。至于身份和培养条件，分殿的人来了再谈。”`
+        : `${awakening.officiant}当场叫停了下一人的仪式，家属和无关人员被请到门外。备用水晶、觉醒记录和孩子的身份凭证被依次复核。${awakening.notableNpc ? `一封写给${awakening.notableNpc.name}的急报已经送出。` : `负责培养的人被要求今日到场。`}门没有再开，新的条件必须在这里谈清楚。`
     : candidate.innateSoulPower >= 7
       ? beastRaised
-        ? `岩叔记住了魂力强度，却只承诺说明森林中哪些地方不能去；人类学院和培养路线仍要${name}自己寻找。`
+        ? `岩叔把数字重复了一遍，随后叫来两名熟悉人类道路的长者。是否离开森林仍由${name}决定，但从这一刻起，去向已经成了必须商量的事。`
         : unbound
-          ? `${awakening.officiant}把天赋与无户籍状态分别登记，愿意转交培养申请，但没有替${name}虚构监护人与来历。`
-          : `${awakening.officiant}在魂力等级下面画了两道线，说明这份记录会作为重点天赋上报${awakening.factionName}，之后会有人来谈学院与培养条件。`
+          ? `执事把${name}叫到桌边，先给了半块饼，又让助手去请村长作证。天赋足够让分殿认真接手这件事，来历不明却仍要一项项核实。`
+          : `${awakening.officiant}在魂力数字下面画了两道线，当场留下${name}与家人。学院名额、第一魂环和培养责任，今天便要有人给出答复。`
       : "";
   return [
-    `${name}踩进六角阵。金色光点贴着小腿往上钻，皮肤又麻又痒。右手忽然一沉，${pronoun}差点把胳膊甩出去。`,
-    souls.length > 1 ? `阵中的光没有立刻散去。${beastRaised ? "主持仪式的凶兽" : "负责觉醒的魂师"}重新数了一遍魂力轮廓——${soulCountText}。` : "",
-    ...soulLines,
+    `${name}踩进六角阵。金色光点贴着小腿往上钻，麻痒一路爬到肩头。右手骤然一沉，${pronoun}险些把胳膊甩出阵外。`,
+    `${pronoun}摊开手。${firstSoul.name}托在掌心，${firstSoul.category}特有的气息沿着指缝散开。${awakening.officiant}俯身看了片刻，先问${pronoun}能不能自行收放，又让记录员把形态一笔笔画下来。`,
+    hiddenPulse,
     powerText,
     attentionText,
-    beastRaised ? `林间没有围观的人，只有远近不同的兽瞳。${name}第一次意识到，觉醒之后要面对的也许不是修炼，而是去哪里生活。`
-      : unbound ? `公共觉醒队继续赶路，围观者很快散去。没有家人在门外等${pronoun}，也没有任何关系会替${pronoun}安排今晚住在哪里。`
-        : `门外有人踮脚往里看。家里人还不知道结果，${pronoun}先听见自己喘了一口气。`,
+    candidate.innateSoulPower === 10 ? `原本只需几分钟的觉醒仪式，就这样改变了屋里每个人接下来的安排。${name}站在仍未熄灭的阵纹中央，听见门栓落下，也知道自己再不可能像来时那样无人过问。`
+      : beastRaised ? `林间没有掌声，只有远近不同的兽瞳。${name}第一次意识到，觉醒以后最先要决定的，也许不是怎么变强，而是往哪里去。`
+        : `执事把名册转了半圈，示意${name}确认自己的名字。阵外的人还在等，${pronoun}的下一步却已经和进来以前不同。`,
   ].filter(Boolean).join("\n\n");
 }
 

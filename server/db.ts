@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, MetaSummonResultView, ModelUsageView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
 import type { MartialSoulTemplate } from "./domain/model.js";
 import { META_MARTIAL_SOULS, metaSoulById } from "./data/meta-martial-souls.js";
@@ -187,6 +187,7 @@ const defaultMetaProgression: MetaProgressionView = {
   summonGoldPity: 0,
   summonRedPity: 0,
   summonRainbowPity: 0,
+  summonHistory: [],
   difficultyBudgets: { 爽: 120, 简单: 80, 标准: 50, 困难: 25, 地狱: 10 },
   difficultyMultipliers: { 爽: 0.5, 简单: 0.75, 标准: 1, 困难: 1.5, 地狱: 2.25 },
 };
@@ -338,7 +339,7 @@ export function getMetaProgression(): MetaProgressionView {
   const row = database.prepare("SELECT state_json FROM meta_profile WHERE id = 'local'").get() as { state_json: string };
   const stored = JSON.parse(row.state_json) as Partial<MetaProgressionView>;
   const legacyPity = stored.martialSoulDrawPity ?? 0;
-  const martialSoulCodex = stored.martialSoulCodex ?? [];
+  const martialSoulCodex = (stored.martialSoulCodex ?? []).map((item) => ({ ...item, favorite: item.favorite ?? false }));
   const historicalDraws = martialSoulCodex.reduce((sum, item) => sum + item.charges + (item.completedRuns > 0 ? 1 : 0), 0);
   const hasRedOrBetter = martialSoulCodex.some((item) => item.rarity === "红色" || item.rarity === "七彩");
   const hasRainbow = martialSoulCodex.some((item) => item.rarity === "七彩");
@@ -351,6 +352,7 @@ export function getMetaProgression(): MetaProgressionView {
     summonGoldPity: stored.summonGoldPity ?? legacyPity,
     summonRedPity: stored.summonRedPity ?? (hasRedOrBetter ? legacyPity : Math.min(39, Math.max(legacyPity, historicalDraws))),
     summonRainbowPity: stored.summonRainbowPity ?? (hasRainbow ? legacyPity : Math.min(79, Math.max(legacyPity, historicalDraws))),
+    summonHistory: stored.summonHistory ?? [],
   };
 }
 
@@ -385,6 +387,7 @@ export function drawMetaMartialSoul(random: () => number = randomUnit): MetaSumm
     const duplicate = meta.unlockedHeirlooms.includes(definition.name);
     if (duplicate) meta.martialSoulDrawTickets += 1;
     else meta.unlockedHeirlooms.push(definition.name);
+    meta.summonHistory = [{ id: randomUUID(), kind: "heirloom" as const, name: definition.name, rarity: definition.rarity, description: definition.description, duplicate, drawnAt: new Date().toISOString() }, ...meta.summonHistory].slice(0, 5);
     meta.summonGoldPity += 1;
     meta.summonRedPity += 1;
     meta.summonRainbowPity += 1;
@@ -416,6 +419,7 @@ export function drawMetaMartialSoul(random: () => number = randomUnit): MetaSumm
   };
   drawn.charges += 1;
   if (!existing) meta.martialSoulCodex.push(drawn);
+  meta.summonHistory = [{ id: randomUUID(), kind: "martialSoul" as const, name: drawn.name, rarity: drawn.rarity, description: drawn.description, duplicate: Boolean(existing), drawnAt: new Date().toISOString() }, ...meta.summonHistory].slice(0, 5);
   const isGold = ["金色", "红色", "七彩"].includes(definition.metaRarity);
   const isRed = ["红色", "七彩"].includes(definition.metaRarity);
   const isRainbow = definition.metaRarity === "七彩";
@@ -443,6 +447,24 @@ export function toggleCodexMartialSoul(id: string, enabled: boolean): MetaProgre
   const entry = meta.martialSoulCodex.find((item) => item.id === id);
   if (!entry || entry.completedRuns < 1) throw new Error("使用这个武魂通关后才能设置随机出场");
   entry.enabled = enabled;
+  return saveMetaProgression(meta);
+}
+
+export function favoriteCodexMartialSoul(id: string, favorite: boolean): MetaProgressionView {
+  const meta = getMetaProgression();
+  const entry = meta.martialSoulCodex.find((item) => item.id === id);
+  if (!entry) throw new Error("武魂仓库中没有这项记录");
+  entry.favorite = favorite;
+  return saveMetaProgression(meta);
+}
+
+export function deleteCodexMartialSoul(id: string): MetaProgressionView {
+  const meta = getMetaProgression();
+  const entry = meta.martialSoulCodex.find((item) => item.id === id);
+  if (!entry) throw new Error("武魂仓库中没有这项记录");
+  meta.martialSoulCodex = meta.martialSoulCodex.filter((item) => item.id !== id);
+  if (meta.equippedMartialSoulId === id) meta.equippedMartialSoulId = undefined;
+  meta.discoveredMartialSouls = meta.martialSoulCodex.length;
   return saveMetaProgression(meta);
 }
 
