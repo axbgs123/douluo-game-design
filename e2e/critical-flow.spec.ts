@@ -373,7 +373,9 @@ test("玩家可以完成角色创建、推进故事并管理存档", async ({ pa
 
 test("玩家可以从界面进入斗四且出生地图不会显示斗一地标", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByRole("img", { name: "同一幻想大陆从森林村落演变到星际文明的原创全景" })).toBeVisible();
   await page.getByRole("button", { name: "斗四" }).click();
+  await expect(page.locator(".era-panorama-4")).toContainText("星际舰队、行星航路与宇宙文明");
   await expect(page.getByRole("heading", { name: "终极斗罗" })).toBeVisible();
   await page.getByRole("button", { name: "抽取三名角色" }).click();
   await expect(page.getByRole("heading", { name: "选择角色" })).toBeVisible();

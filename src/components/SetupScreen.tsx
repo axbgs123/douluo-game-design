@@ -19,6 +19,13 @@ const DIFFICULTY_COPY: Record<Difficulty, string> = {
   地狱: "无兜底",
 };
 
+const ERA_VISUAL_COPY: Record<GameEra, string> = {
+  1: "森林、村落与初醒的武魂时代",
+  2: "学院、魂导技术与大陆新秩序",
+  3: "联邦城市、职业体系与现代魂师",
+  4: "星际舰队、行星航路与宇宙文明",
+};
+
 export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
   const [era, setEra] = useState<GameEra>(1);
   const [gender, setGender] = useState<Gender>("男");
@@ -31,6 +38,10 @@ export function SetupScreen({ busy, onCreate }: SetupScreenProps) {
         <p className="eyebrow">斗罗同人世界 · 第 {era} 部时代</p>
         <h1>{era === 1 ? "武魂觉醒" : era === 2 ? "绝世唐门" : era === 3 ? "龙王传说" : "终极斗罗"}</h1>
         <p className="intro-copy">这里只决定性别和难度。身份抽出来以后，再按那个人的家庭、秘密和处境决定性格。</p>
+        <figure className={`era-panorama era-panorama-${era}`}>
+          <img src="/assets/era-panorama.webp" alt="同一幻想大陆从森林村落演变到星际文明的原创全景" />
+          <figcaption><span>时代切片</span>{ERA_VISUAL_COPY[era]}</figcaption>
+        </figure>
       </section>
 
       <form
