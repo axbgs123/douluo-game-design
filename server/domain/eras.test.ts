@@ -490,6 +490,11 @@ describe("multi-era foundations", () => {
       recordEvidence(evidence);
       expect(commit("向传灵塔推进机构事务").intent).toBe("推进机构事务");
     }
+    expect(commit("向传灵塔交付机构事务").intent).toBe("无法完成");
+    expect(game.view.spiritAscensionMembership.taskPoints).toBe(0);
+    expect(commit("询问冷澄当前验收异议").intent).toBe("与机构复核人协商");
+    expect(commit("询问许遥当前验收异议").intent).toBe("与机构复核人协商");
+    expect(commit("提交共同复核协调方案").intent).toBe("协调机构派系");
     const delivery = commit("向传灵塔交付机构事务");
     expect(delivery.intent).toBe("交付机构事务");
     expect(delivery.ruleSummary).toContain("传灵塔任务点");

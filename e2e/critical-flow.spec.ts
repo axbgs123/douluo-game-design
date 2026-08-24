@@ -44,6 +44,28 @@ async function seedMediaAccountabilityGame() {
   database.saveGame(game, "e2e.media-fixture");
 }
 
+async function seedInstitutionFactionConflictGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, actions, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/domain/actions.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 3, gender: "男", difficulty: "标准", seed: "e2e-institution-factions" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "派系复核验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.affiliations = [{ id: "e2e-faction-pagoda", name: "传灵塔", role: "外围成员", reputation: "生疏", joinedAt: "验收", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
+  const commit = (action: string, result = actions.resolveAction(game, action)) => actions.applyActionResult(game, action, result, result.fallbackNarrative, result.suggestions);
+  const evidence = (action: string) => commit(action, { intent: "魂灵审计行动", minutes: 60, ruleSummary: "形成带时间、对象与来源的独立审计收据。", fallbackNarrative: "审计材料按发生顺序归入档案。", suggestions: [] });
+  commit("向传灵塔领取机构事务");
+  evidence("调查魂灵来源与授权档案");
+  commit("向传灵塔推进机构事务");
+  evidence("完成魂灵适配评估");
+  commit("向传灵塔推进机构事务");
+  if (game.view.tasks.find((task) => task.institutionAssignment)?.institutionAssignment?.conflictStatus !== "待复核") throw new Error("机构派系 E2E 夹具未触发双复核冲突");
+  database.saveGame(game, "e2e.institution-factions-fixture");
+}
+
 async function seedFourPersonFormationGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -405,6 +427,33 @@ test("机构分支、失败代价与具名复核人会谈会持久显示到任�
   await reviewer.getByRole("button", { name: "询问异议" }).click();
   await expect(page.locator("blockquote.player-entry").last()).toContainText("当前验收异议");
   await expect(reviewer).toContainText("会谈 1");
+});
+
+test("机构双复核派系冲突必须分别会谈并基于阶段证据共同协调", async ({ page }) => {
+  await seedInstitutionFactionConflictGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "派系复核验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await page.getByRole("button", { name: /^任务/ }).click();
+  const ledger = page.locator(".player-relation-ledger");
+  const primary = ledger.locator("article").filter({ hasText: "冷澄" });
+  const counter = ledger.locator("article").filter({ hasText: "许遥" });
+  const factions = ledger.locator("article").filter({ hasText: "机构内部复核" });
+  await expect(primary).toContainText("主审 · 魂灵来源复核员");
+  await expect(primary).toContainText("来源合规组");
+  await expect(counter).toContainText("独立复核 · 适配复核员");
+  await expect(counter).toContainText("适配服务组");
+  await expect(factions).toContainText("待复核");
+  await factions.getByRole("button", { name: "共同协调" }).click();
+  await expect(factions).toContainText("待复核");
+  await primary.getByRole("button", { name: "询问异议" }).click();
+  await counter.getByRole("button", { name: "询问异议" }).click();
+  await factions.getByRole("button", { name: "共同协调" }).click();
+  await expect(factions).toContainText("已协调");
+  await expect(factions).toContainText("双方基于2条阶段证据签署联合复核边界");
+  await expect(primary).toContainText("会谈 1");
+  await expect(counter).toContainText("会谈 1");
 });
 
 test("固定连携训练会在浏览器显示熟练度、战术分支与失败复盘", async ({ page }) => {

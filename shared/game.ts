@@ -441,15 +441,31 @@ export interface InstitutionAssignmentView {
   stageIndex: number;
   stageStartedActionIndex: number;
   stages: Array<{ title: string; detail: string; evidenceKeywords: string[] }>;
-  reviewer?: {
-    name: string;
-    role: string;
-    stance: string;
-    trust: number;
-    objections: number;
-    meetings: number;
-    evidence: string[];
-  };
+  reviewer?: InstitutionReviewerView;
+  counterReviewer?: InstitutionReviewerView;
+  factions?: InstitutionFactionView[];
+  conflictStatus?: "未触发" | "待复核" | "已协调" | "保留分歧";
+  playerAlignment?: string;
+  resolutionEvidence?: string[];
+}
+
+export interface InstitutionReviewerView {
+  name: string;
+  role: string;
+  stance: string;
+  factionName?: string;
+  trust: number;
+  objections: number;
+  meetings: number;
+  evidence: string[];
+}
+
+export interface InstitutionFactionView {
+  name: string;
+  priority: string;
+  influence: number;
+  playerTrust: number;
+  evidence: string[];
 }
 
 export interface LogisticsContractView {

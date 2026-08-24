@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { CheckpointSummary, GameSpeed, GameView, HuntingView, MapLevel } from "../../shared/game";
 import { formatSoulCoins } from "../../shared/currency";
 import { worldMapPoint } from "../../shared/world-map";
@@ -301,14 +301,18 @@ function InstitutionReviewerPanel({ game, submit, busy }: { game: GameView; subm
   const assignments = game.tasks.filter((task) => task.status === "进行中" && task.institutionAssignment?.reviewer);
   if (!assignments.length) return null;
   return <div className="player-relation-ledger">{assignments.map((task) => {
-    const reviewer = task.institutionAssignment!.reviewer!;
-    return <article key={`${task.id}-reviewer`}><header><strong>{reviewer.name}</strong><span>{reviewer.role}</span></header><p>{reviewer.stance}</p><small>信任 {reviewer.trust} · 异议 {reviewer.objections} · 会谈 {reviewer.meetings}</small>{reviewer.evidence.at(-1) && <em>{reviewer.evidence.at(-1)}</em>}<button type="button" disabled={busy} onClick={() => submit(`询问${reviewer.name}当前验收异议`)}>询问异议</button></article>;
+    const chain = task.institutionAssignment!;
+    const reviewers = [chain.reviewer!, ...(chain.counterReviewer ? [chain.counterReviewer] : [])];
+    return <Fragment key={`${task.id}-reviewers`}>
+      {reviewers.map((reviewer, index) => <article key={`${task.id}-reviewer-${reviewer.name}`}><header><strong>{reviewer.name}</strong><span>{index === 0 ? "主审" : "独立复核"} · {reviewer.role}</span></header><p>{reviewer.stance}</p>{reviewer.factionName && <small>派系 · {reviewer.factionName}</small>}<small>信任 {reviewer.trust} · 异议 {reviewer.objections} · 会谈 {reviewer.meetings}</small>{reviewer.evidence.at(-1) && <em>{reviewer.evidence.at(-1)}</em>}<button type="button" disabled={busy} onClick={() => submit(`询问${reviewer.name}当前验收异议`)}>询问异议</button></article>)}
+      {chain.factions && <article key={`${task.id}-factions`}><header><strong>机构内部复核</strong><span>{chain.conflictStatus ?? "未触发"}</span></header>{chain.factions.map((faction) => <p key={faction.name}>{faction.name} · 影响 {faction.influence} · 玩家信任 {faction.playerTrust} · {faction.priority}</p>)}{chain.playerAlignment && <small>已采纳 · {chain.playerAlignment}</small>}{chain.resolutionEvidence?.at(-1) && <em>{chain.resolutionEvidence.at(-1)}</em>}{chain.conflictStatus === "待复核" && <div><button type="button" disabled={busy} onClick={() => submit("提交共同复核协调方案")}>共同协调</button>{chain.factions.map((faction) => <button key={faction.name} type="button" disabled={busy} onClick={() => submit(`支持${faction.name}处理机构复核冲突`)}>支持{faction.name}</button>)}</div>}</article>}
+    </Fragment>;
   })}</div>;
 }
 
 function TaskPanel({ game }: { game: GameView }) {
   if (!game.tasks.length) return <LockedPanel text="暂无记录" />;
-  return <div className="task-timeline">{game.tasks.map((task, index) => { const destination = task.destinationId ? game.map.find((location) => location.id === task.destinationId)?.name : undefined; return <article key={task.id ?? `${task.title}-${index}`} className={`task-${task.status ?? "进行中"}`}><i>{task.status === "完成" ? "✓" : task.status === "失败" ? "×" : index + 1}</i><div><span>{task.kind} · {task.status ?? "进行中"}</span><strong>{task.title}</strong><p>{task.detail}</p>{task.institutionAssignment && <small>阶段 · {task.institutionAssignment.stageIndex}/{task.institutionAssignment.stages.length} · {task.institutionAssignment.route}{task.institutionAssignment.specialization ? ` · ${task.institutionAssignment.specialization}分支` : ""}</small>}{task.institutionAssignment?.risk && <small>失败代价 · {task.institutionAssignment.risk}</small>}{destination && <small>目的地 · {destination}</small>}{task.deadline && <small>{task.deadline}</small>}{task.progressEvidence?.length ? <small>履约依据 · {task.progressEvidence.at(-1)}</small> : null}</div></article>; })}</div>;
+  return <div className="task-timeline">{game.tasks.map((task, index) => { const destination = task.destinationId ? game.map.find((location) => location.id === task.destinationId)?.name : undefined; return <article key={task.id ?? `${task.title}-${index}`} className={`task-${task.status ?? "进行中"}`}><i>{task.status === "完成" ? "✓" : task.status === "失败" ? "×" : index + 1}</i><div><span>{task.kind} · {task.status ?? "进行中"}</span><strong>{task.title}</strong><p>{task.detail}</p>{task.institutionAssignment && <small>阶段 · {task.institutionAssignment.stageIndex}/{task.institutionAssignment.stages.length} · {task.institutionAssignment.route}{task.institutionAssignment.specialization ? ` · ${task.institutionAssignment.specialization}分支` : ""}</small>}{task.institutionAssignment?.conflictStatus && <small>双复核 · {task.institutionAssignment.conflictStatus}{task.institutionAssignment.playerAlignment ? ` · 采纳${task.institutionAssignment.playerAlignment}` : ""}</small>}{task.institutionAssignment?.risk && <small>失败代价 · {task.institutionAssignment.risk}</small>}{destination && <small>目的地 · {destination}</small>}{task.deadline && <small>{task.deadline}</small>}{task.progressEvidence?.length ? <small>履约依据 · {task.progressEvidence.at(-1)}</small> : null}</div></article>; })}</div>;
 }
 
 function IntelligencePanel({ game }: { game: GameView }) {

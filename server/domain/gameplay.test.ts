@@ -1148,6 +1148,14 @@ describe("第一部世界资料", () => {
     expect(commitAction("向日月皇家魂导师学院推进机构事务").ruleSummary).toContain("进度 2/5");
     commitAction("购买魂导核心晶体");
     expect(commitAction("向日月皇家魂导师学院推进机构事务").ruleSummary).toContain("进度 3/5");
+    const institutionTask = game.view.tasks.find((item) => item.institutionAssignment)!;
+    expect(institutionTask.institutionAssignment).toMatchObject({ conflictStatus: "待复核", reviewer: { factionName: "安全审查组" }, counterReviewer: { name: "明策", factionName: "工程推进组", objections: 1 } });
+    expect(commitAction("提交共同复核协调方案").intent).toBe("无法完成");
+    expect(commitAction("询问明序当前验收异议").intent).toBe("与机构复核人协商");
+    expect(commitAction("询问明策当前验收异议").intent).toBe("与机构复核人协商");
+    expect(commitAction("提交共同复核协调方案").intent).toBe("协调机构派系");
+    expect(institutionTask.institutionAssignment).toMatchObject({ conflictStatus: "已协调", playerAlignment: undefined });
+    expect(institutionTask.institutionAssignment!.factions?.every((faction) => faction.playerTrust === 2)).toBe(true);
 
     const profession = game.view.professions.find((item) => item.name === "魂导器研究")!;
     profession.progress = 100;
@@ -1165,6 +1173,7 @@ describe("第一部世界资料", () => {
 
     const delivery = resolveAction(game, "向日月皇家魂导师学院交付机构事务");
     expect(delivery.intent).toBe("交付机构事务");
+    expect(delivery.ruleSummary).toContain("双复核已协调");
     expect(game.view.affiliations[0].contribution).toBeGreaterThan(0);
     expect(game.view.economy.transactions.at(-1)?.note).toContain("验收报酬");
 
@@ -1202,6 +1211,13 @@ describe("第一部世界资料", () => {
     commit("重新调查情报目标并核对委托对象", { intent: "调查情报", minutes: 90, ruleSummary: "调查目标完成，委托对象和知识边界已经核对。", fallbackNarrative: "这次记录能与名册对上。", suggestions: [] });
     expect(resolveAction(game, "向七宝琉璃宗推进机构事务").ruleSummary).toContain("进度 1/4");
     expect(task.institutionAssignment!.reviewer).toMatchObject({ trust: 50, objections: 1, meetings: 1 });
+
+    commit("观察取得第一来源并查阅账册", { intent: "取得情报来源", minutes: 90, ruleSummary: "现场观察与账册形成第一来源。", fallbackNarrative: "现场记录和账册能够互相对照。", suggestions: [] });
+    expect(commit("向七宝琉璃宗推进机构事务").ruleSummary).toContain("待复核");
+    expect(task.institutionAssignment).toMatchObject({ conflictStatus: "待复核", counterReviewer: { name: "宁衡", factionName: "外务应变派", objections: 1 } });
+    expect(commit("支持宗产审计派处理机构复核冲突").intent).toBe("选择机构派系立场");
+    expect(task.institutionAssignment).toMatchObject({ conflictStatus: "保留分歧", playerAlignment: "宗产审计派" });
+    expect(task.institutionAssignment!.counterReviewer).toMatchObject({ trust: 46, objections: 2 });
 
     const support = awakened("sect-explicit-support-assignment");
     support.view.affiliations = [{ id: "clear-sky", name: "昊天宗", role: "外围成员", reputation: "生疏", joinedAt: "测试", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
