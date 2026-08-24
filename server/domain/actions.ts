@@ -2000,9 +2000,10 @@ function inheritanceResolution(game: StoredGame, action: string): ActionResoluti
   const inheritance = game.view.worldInheritance!;
   const institution = inheritance.institutions.find((item) => action.includes(item.name));
   const branch = inheritance.branches?.find((item) => action.includes(item.name));
+  const historyEvent = inheritance.chronology?.find((item) => action.includes(item.title));
   const lineageSubject = inheritance.lineage.find((item) => action.includes(item.name)) ?? inheritance.lineage.at(-1)!;
-  const subject = institution ?? branch ?? lineageSubject;
-  const subjectName = institution?.name ?? (branch ? `${branch.name}的旁支记录` : `${lineageSubject.name}的生平记录`);
+  const subject = institution ?? branch ?? historyEvent ?? lineageSubject;
+  const subjectName = institution?.name ?? (branch ? `${branch.name}的旁支记录` : historyEvent?.title ?? `${lineageSubject.name}的生平记录`);
 
   if (institution) {
     institution.currentEvidence ??= [];
@@ -2060,6 +2061,8 @@ function inheritanceResolution(game: StoredGame, action: string): ActionResoluti
     ? [`在当前时代的机构目录中找到“${institution.name}”的异名或残卷索引`, `地方账册、谱牒或遗址记录与旧世档案出现两处可交叉对应的细节`]
     : branch
       ? [`当前时代谱牒找到${branch.name}与第${branch.sourceGeneration}代家庭册相符的转交索引`, `独立登记确认${branch.name}以${branch.route}进入家庭的记录存在，但不证明能力或财产继承`]
+      : historyEvent
+        ? [`当前时代年代目录把“${historyEvent.title}”限定在原作${historyEvent.year}年前后一段可审查范围`, `一份独立保管记录与“${historyEvent.title}”的来源描述出现可交叉对应的编号或转交印记`, `材料年代测定与目录层级共同排除了把后世抄本误当原件的可能`]
       : [`当前时代的地方谱牒记录了${lineageSubject.name}档案的转交链`, `一份独立年代记录与旧世结算摘要中的地点、身份和后果能够互相印证`];
   const nextEvidence = evidenceSteps.find((item) => !subject.evidence.includes(item));
   if (!nextEvidence) return {
@@ -2071,12 +2074,13 @@ function inheritanceResolution(game: StoredGame, action: string): ActionResoluti
   };
   subject.evidence.push(nextEvidence);
   subject.verification = subject.evidence.length >= 3 ? "已核验" : "部分核验";
+  if (historyEvent) historyEvent.confidence = subject.verification === "已核验" ? Math.max(historyEvent.confidence, 75) : Math.max(historyEvent.confidence, 50);
   const task = game.view.tasks.find((item) => item.id === "inherited-worldline");
   if (task) {
     task.progressEvidence ??= [];
     task.progressEvidence.push(`${subjectName}：${nextEvidence}`);
     task.progressEvidence = task.progressEvidence.slice(-8);
-    if (!institution && !branch && lineageSubject.name === inheritance.ancestorName && subject.verification === "已核验") task.status = "完成";
+    if (!institution && !branch && !historyEvent && lineageSubject.name === inheritance.ancestorName && subject.verification === "已核验") task.status = "完成";
   }
   game.world.metrics.discoveries += 1;
   return {
@@ -3167,7 +3171,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/使用|服用|吃下|吃掉/.test(action)) resolution = useItemResolution(game, action);
   else if (/购买|买|采购/.test(action)) resolution = buyResolution(game, action);
   else if (/打工|工作|赚钱|干活/.test(action)) resolution = workResolution(game, action);
-  else if (game.view.worldInheritance && (/旧世|祖先|档案|家谱|谱牒|旧产业|历史权益|旁支/.test(action) || game.view.worldInheritance.institutions.some((item) => action.includes(item.name)) || game.view.worldInheritance.branches?.some((item) => action.includes(item.name))) && /核验|查证|调查|追查|验证|提交|申请|主张|听证|审理|裁定|投资|复建|经营/.test(action)) resolution = inheritanceResolution(game, action);
+  else if (game.view.worldInheritance && (/旧世|祖先|档案|家谱|谱牒|旧产业|历史权益|旁支|年表|历史节点|转交|衰减|再发现/.test(action) || game.view.worldInheritance.institutions.some((item) => action.includes(item.name)) || game.view.worldInheritance.branches?.some((item) => action.includes(item.name)) || game.view.worldInheritance.chronology?.some((item) => action.includes(item.title))) && /核验|查证|调查|追查|验证|提交|申请|主张|听证|审理|裁定|投资|复建|经营/.test(action)) resolution = inheritanceResolution(game, action);
   else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
   else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验|责任编辑|核验编辑|采访.*编辑|提交.*补充.*(?:证据|材料)|独家.*(?:证据|材料|线索)|对比.*(?:媒体|两家)|比较.*(?:报道|媒体)/.test(action)) resolution = mediaResolution(game, action);

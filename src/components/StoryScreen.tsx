@@ -111,7 +111,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
             {panel === "情报" && <IntelligencePanel game={game} />}
             {panel === "手记" && <><KnownRecordSearch game={game} /><ArchivePanel game={game} /></>}
             {panel === "猎魂" && <HuntPanel game={game} submit={submit} busy={busy} />}
-            {panel === "世界" && <><MediaAccountabilityPanel game={game} submit={submit} busy={busy} /><WorldPanel game={game} submit={submit} busy={busy} /></>}
+            {panel === "世界" && <><MediaAccountabilityPanel game={game} submit={submit} busy={busy} /><ChronologyPanel game={game} submit={submit} busy={busy} /><WorldPanel game={game} submit={submit} busy={busy} /></>}
           </div>
           <footer className="panel-footer"><span>{game.difficulty}</span><span>{game.speed}</span></footer>
         </aside>
@@ -387,6 +387,20 @@ function MediaAccountabilityPanel({ game, submit, busy }: { game: GameView; subm
       <header><strong>{outlet.name}</strong><span>{outlet.status} · {outlet.trustScore}</span></header>
       <p>{outlet.stance}</p>
       {outlet.responsibleEditor ? <><small>{outlet.responsibleEditor.role} · {outlet.responsibleEditor.name} · 来源信任 {outlet.responsibleEditor.sourceTrust} · 对主角信任 {outlet.responsibleEditor.playerTrust ?? 0}</small><em>处理 {outlet.responsibleEditor.handledReports} 篇 · 互动 {outlet.responsibleEditor.interactions ?? 0} 次 · {outlet.responsibleEditor.responsibility}</em><div><button type="button" disabled={busy} onClick={() => submit(`联系${outlet.responsibleEditor!.name}责任编辑询问选稿依据`)}>采访编辑</button><button type="button" disabled={busy || outlet.responsibleEditor.requestedEvidenceAtActionIndex === undefined} onClick={() => submit(`向${outlet.responsibleEditor!.name}责任编辑提交补充证据`)}>补交材料</button>{game.mediaCompetitions?.some((item) => item.outlets.includes(outlet.name)) && <button type="button" disabled={busy || outlet.responsibleEditor.requestedEvidenceAtActionIndex === undefined} onClick={() => submit(`向${outlet.responsibleEditor!.name}责任编辑提交独家补充证据`)}>独家交线索</button>}</div></> : <small>旧档案尚无可核验责任编辑</small>}
+    </article>)}</div>
+  </section>;
+}
+
+function ChronologyPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
+  const chronology = game.worldInheritance?.chronology ?? [];
+  if (!chronology.length) return null;
+  return <section className="detail-stack chronology-panel">
+    <h3 className="panel-title">时代间可审查年表</h3>
+    <div className="lineage-list">{chronology.map((event) => <article key={event.id}>
+      <header><strong>原作 {event.year} 年 · {event.title}</strong><span>{event.verification} · 可信 {event.confidence}%</span></header>
+      <p>{event.kind} · {event.detail}</p>
+      <small>来源：{event.source}</small>
+      <button type="button" disabled={busy || event.verification === "已核验"} onClick={() => submit(`调查年表节点${event.title}`)}>核验节点</button>
     </article>)}</div>
   </section>;
 }

@@ -1415,7 +1415,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 20,
+    schemaVersion: 21,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1563,6 +1563,16 @@ export function createEraSuccessor(parent: StoredGame, meta?: MetaProgressionVie
     ...(parent.view.economy.business ? [{ id: `legacy-business-${sourceEra}-${parent.view.economy.business}`, name: parent.view.economy.business, sourceEra, formerRole: "祖辈经营产业", state: "仅存传闻" as const, verification: "传闻" as const, evidence: ["旧账末页留下了产业名称，但没有可直接兑现的产权凭据"], currentEvidence: [], claimStatus: "未主张" as const, claimEvidence: [] }] : []),
   ];
   const institutions = [...carriedInstitutions, ...newInstitutions].filter((institution, index, all) => all.findIndex((item) => item.name === institution.name) === index);
+  const priorChronology = parent.view.worldInheritance?.chronology ?? [];
+  const endingYear = parent.view.worldTime?.year ?? ERA_BASE_YEARS[sourceEra];
+  const targetYear = ERA_BASE_YEARS[targetEra];
+  const gap = Math.max(1, targetYear - endingYear);
+  const chronology = [...priorChronology, ...[
+    { id: `inter-era-${priorGeneration + 1}-sealed`, year: endingYear, kind: "终章封存" as const, title: `${ancestor.name}终章封存`, detail: `结算摘要记载“${parent.view.runProgress.settlement.ending}”，但后世只能从封存件核验当时影响。`, source: legacyArtifact, confidence: 65, verification: "部分核验" as const, evidence: [`旧世结算在原作${endingYear}年形成封存摘要`] },
+    { id: `inter-era-${priorGeneration + 1}-transfer`, year: endingYear + Math.floor(gap / 3), kind: "档案转交" as const, title: `${legacyArtifact}中期转交`, detail: "系统按年代间隔生成的调查假说：档案可能在保管机构、家庭或地方目录之间转交，具体经手人未知。", source: "系统推演假说（待转交印记验证）", confidence: 30, verification: "传闻" as const, evidence: [] },
+    { id: `inter-era-${priorGeneration + 1}-decay`, year: endingYear + Math.floor(gap * 2 / 3), kind: "制度衰减" as const, title: `旧世机构记录衰减`, detail: institutions.length ? `${institutions.map((item) => item.name).join("、")}的连续记录出现断层；状态只描述史料完整度，不推断其实际灭亡年份。` : "没有发现可连续追踪的旧世机构记录，不能据此断言机构存续或灭亡。", source: "机构档案完整度模型（非原著事实）", confidence: 25, verification: "传闻" as const, evidence: [] },
+    { id: `inter-era-${priorGeneration + 1}-rediscovery`, year: targetYear - 20, kind: "当代再发现" as const, title: `${legacyArtifact}进入当代目录`, detail: "系统按新角色可接触档案的前提生成的索引假说；只有找到当代目录号和保管记录后才能确认。", source: "系统推演假说（待当代目录验证）", confidence: 35, verification: "传闻" as const, evidence: [] },
+  ]].filter((event, index, all) => all.findIndex((item) => item.id === event.id) === index).sort((a, b) => a.year - b.year);
   const worldInheritance = {
     generation: priorGeneration + 1,
     sourceEra,
@@ -1575,6 +1585,7 @@ export function createEraSuccessor(parent: StoredGame, meta?: MetaProgressionVie
     echoes: inheritedEchoes,
     lineage,
     branches,
+    chronology,
     institutions,
   } as const;
   const successor = createGame({ era: targetEra, gender: ancestor.gender, difficulty: parent.view.difficulty, seed: `${parent.view.seed}:generation:${targetEra}:${parent.revision}` }, meta);

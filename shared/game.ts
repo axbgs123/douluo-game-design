@@ -704,7 +704,20 @@ export interface WorldInheritanceView {
   echoes: string[];
   lineage: LineageRecordView[];
   branches: LineageBranchView[];
+  chronology: InterEraHistoryEventView[];
   institutions: InheritedInstitutionView[];
+}
+
+export interface InterEraHistoryEventView {
+  id: string;
+  year: number;
+  kind: "终章封存" | "档案转交" | "制度衰减" | "当代再发现";
+  title: string;
+  detail: string;
+  source: string;
+  confidence: number;
+  verification: "传闻" | "部分核验" | "已核验";
+  evidence: string[];
 }
 
 export interface LineageRecordView {

@@ -302,6 +302,9 @@ describe("candidate generation", () => {
     expect(successor.view.worldInheritance).toMatchObject({ ancestorName: "顾远", sourceEra: 1, targetEra: 2, highestSoulRank: 72 });
     expect(successor.view.worldInheritance?.lineage.map((item) => item.name)).toEqual(["顾远"]);
     expect(successor.view.worldInheritance?.branches).toEqual([]);
+    expect(successor.view.worldInheritance?.chronology).toHaveLength(4);
+    expect(successor.view.worldInheritance?.chronology.map((event) => event.year)).toEqual([...successor.view.worldInheritance!.chronology.map((event) => event.year)].sort((a, b) => a - b));
+    expect(successor.view.worldInheritance?.chronology.filter((event) => event.source.includes("系统推演假说"))).toHaveLength(2);
     expect(successor.view.worldInheritance?.institutions.map((item) => item.name)).toEqual(["远山门", "远山药材行"]);
     expect(successor.view.managedFactions).toHaveLength(0);
     expect(successor.view.economy.business).toBeUndefined();
@@ -324,6 +327,7 @@ describe("candidate generation", () => {
     secondEraInstitution.recognizedRight = "斗二档案查阅权";
     const thirdEra = createEraSuccessor(successor);
     expect(thirdEra.view.worldInheritance?.lineage).toHaveLength(2);
+    expect(thirdEra.view.worldInheritance?.chronology).toHaveLength(8);
     expect(thirdEra.view.worldInheritance?.lineage[0].name).toBe("顾远");
     expect(thirdEra.view.worldInheritance?.lineage[1].name).toBe(successor.view.character!.name);
     expect(thirdEra.view.worldInheritance?.institutions.find((item) => item.name === "远山门")?.state).toBe("碎片传承");

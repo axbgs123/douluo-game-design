@@ -985,7 +985,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 20;
+  legacy.schemaVersion = 21;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -1075,6 +1075,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   if (game.view.worldInheritance) {
     game.view.worldInheritance.lineage ??= [{ generation: game.view.worldInheritance.generation, era: game.view.worldInheritance.sourceEra, name: game.view.worldInheritance.ancestorName, ending: game.view.worldInheritance.ending, highestSoulRank: game.view.worldInheritance.highestSoulRank, historicalImpact: game.view.worldInheritance.historicalImpact, verification: "传闻", evidence: [`${game.view.worldInheritance.legacyArtifact}保存了旧世摘要`] }];
     game.view.worldInheritance.branches ??= [];
+    game.view.worldInheritance.chronology ??= [];
     game.view.worldInheritance.institutions ??= [];
     for (const institution of game.view.worldInheritance.institutions) {
       institution.currentEvidence ??= [];

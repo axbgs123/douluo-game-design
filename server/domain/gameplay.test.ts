@@ -539,7 +539,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "城市告示处", stance: "地方治安", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(20);
+    expect(migrated.schemaVersion).toBe(21);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -1282,6 +1282,14 @@ describe("第一部世界资料", () => {
     awakenCharacter(successor);
 
     expect(successor.view.managedFactions).toHaveLength(0);
+    const transferEvent = successor.view.worldInheritance!.chronology.find((event) => event.kind === "档案转交")!;
+    expect(transferEvent).toMatchObject({ verification: "传闻", confidence: 30 });
+    expect(resolveAction(successor, `调查年表节点${transferEvent.title}`).intent).toBe("核验旧世档案");
+    expect(transferEvent).toMatchObject({ verification: "部分核验", confidence: 50 });
+    resolveAction(successor, `继续查证历史节点${transferEvent.title}`);
+    expect(transferEvent).toMatchObject({ verification: "部分核验", confidence: 50 });
+    resolveAction(successor, `再次核验年表节点${transferEvent.title}`);
+    expect(transferEvent).toMatchObject({ verification: "已核验", confidence: 75 });
     const ancestor = successor.view.worldInheritance!.lineage[0];
     expect(ancestor.verification).toBe("传闻");
     expect(resolveAction(successor, `核验祖先${ancestor.name}的旧世档案`).intent).toBe("核验旧世档案");

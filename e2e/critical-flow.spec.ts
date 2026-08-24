@@ -867,7 +867,12 @@ test("旧世机构在浏览器中必须经过主张、听证和付费新设主�
   await expect(save).toBeVisible();
   await save.locator("button").first().click();
   await page.getByRole("button", { name: /^世界/ }).click();
-  const institution = page.locator(".lineage-list article").filter({ hasText: "青册门" });
+  const chronology = page.locator(".chronology-panel");
+  await expect(chronology).toContainText("时代间可审查年表");
+  await expect(chronology).toContainText("系统推演假说");
+  await chronology.getByRole("button", { name: "核验节点" }).nth(1).click();
+  await expect(chronology.locator("article").nth(1)).toContainText("部分核验 · 可信 50%");
+  const institution = page.locator(".world-panel .lineage-list article").filter({ hasText: "青册门" });
   await expect(institution).toContainText("主张：未主张");
   await institution.getByRole("button", { name: "提交主张" }).click();
   await expect(institution).toContainText("主张：待审理");
@@ -902,8 +907,9 @@ test("有效结算可以在同一存档开启下一时代并核验累积谱系",
   await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
   await page.getByRole("button", { name: /^世界/ }).click();
   await expect(page.getByText("连续世代谱系", { exact: true })).toBeVisible();
-  await expect(page.locator(".lineage-list").first()).toContainText("第 1 代");
-  await page.locator(".lineage-list").first().getByRole("button", { name: "核验" }).click();
+  const lineage = page.locator(".world-panel .lineage-list").first();
+  await expect(lineage).toContainText("第 1 代");
+  await lineage.getByRole("button", { name: "核验" }).click();
   await expect(page.locator("blockquote.player-entry").last()).toContainText("旧世档案");
-  await expect(page.locator(".lineage-list").first()).toContainText("部分核验");
+  await expect(lineage).toContainText("部分核验");
 });
