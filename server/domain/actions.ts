@@ -1287,20 +1287,19 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
 }
 
 const allianceCandidateProfiles = {
-  1: { outlet: "跨城见证核验社", stance: "跨城见证记录与来源独立性", editorName: "叶闻" },
   2: { outlet: "魂导公共查证台", stance: "魂导记录复核与公共证据开放", editorName: "苏澄" },
   3: { outlet: "大陆独立事实核验站", stance: "跨城事实核验与来源透明", editorName: "裴真" },
   4: { outlet: "星域公共证据联合站", stance: "跨星区证据互认与责任追踪", editorName: "罗序" },
 } as const;
 
 const allianceReplacementProfiles = {
-  1: { outlet: "山河档案公证所", stance: "地方档案公证与退出责任追踪", editorName: "方谨" },
   2: { outlet: "联城魂导证据台", stance: "跨城魂导证据复核与责任留档", editorName: "卓宁" },
   3: { outlet: "联邦公共查证协作社", stance: "公共查证协作与编辑独立签署", editorName: "乔衡" },
   4: { outlet: "星海独立档案节点", stance: "跨星区独立档案与退出责任追踪", editorName: "卫岚" },
 } as const;
 
 function mediaResolution(game: StoredGame, action: string): ActionResolution {
+  if (game.view.era === 1) return impossible("斗一时代没有可供调用的记者、责任编辑、媒体联盟或跨地区新闻机构。公开消息只能通过地方告示、口耳传闻、商旅消息或所属势力通告传播。", ["调查消息最初从谁口中传出", "请地方管事张贴具名告示", "向所属势力提交有凭据的通告"]);
   const locationId = game.view.locationId ?? "local";
   const alias = game.world.flags.activeAliasLocationId === locationId ? String(game.world.flags.activeAlias ?? "") : "";
   const publicName = alias || game.view.character!.name;

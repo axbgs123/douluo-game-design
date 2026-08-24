@@ -404,7 +404,7 @@ function HuntPanel({ game, submit, busy }: { game: GameView; submit: (value: str
 }
 
 function MediaAccountabilityPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
-  if (!game.mediaOutlets.length) return null;
+  if (game.era === 1 || !game.mediaOutlets.length) return null;
   return <section className="detail-stack media-accountability-panel">
     <h3 className="panel-title">媒体责任档案</h3>
     {game.mediaAlliances?.length > 0 && <><p className="panel-label">跨地区核验联盟</p><div className="player-relation-ledger">{game.mediaAlliances.map((alliance) => <article key={alliance.id}>

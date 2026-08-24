@@ -66,6 +66,13 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
   if (age < 18 && /结婚|成婚|求婚|订婚|成为伴侣|确认恋爱|组建家庭|生育|收养孩子/.test(action)) {
     return impossible(game, `${name}的年龄、法律身份和社会权限不足以完成婚姻决定。`, ["表达珍视但不作成人承诺", "与家人或导师交谈", "等年龄与关系成熟后再决定"], [621, 631, 691]);
   }
+  if ((game.view.era ?? 1) === 1 && /记者|责任编辑|编辑部|媒体联盟|新闻机构|报社|报刊|报纸|新闻台/.test(action)) {
+    return impossible(game,
+      "斗一时代没有这些后世新闻机构与职业。公开消息只能依靠地方告示、当面转述、商旅带话或所属势力通告，而且传播速度和可信度都受见证链限制。",
+      ["追查最初的见证者", "请地方管事张贴具名告示", "向所属势力提交有凭据的通告"],
+      [451, 461, 691, 931],
+    );
+  }
   if (/^(?:先)?(?:试探一下(?:他|她|对方)?|处理一下|想办法|采取行动|随便做点准备)[。！]?$/u.test(action) && (game.view.combat || game.world.dynamicEvents.some((event) => event.status === "可介入"))) {
     return impossible(game, "这句话在当前情境下可能代表多种后果差异很大的做法，程序不能替玩家选择风险和底线。", ["保持距离，用言语试探", "先调查对方掌握的情报", "明确说明自己的目标与退路"], [681, 691, 921]);
   }
@@ -176,7 +183,7 @@ export function violatesCanonChronology(text: string, year: number): boolean {
   if (year < 12 && /(唐门).{0,12}(已经建立|成立|宗主|总部|弟子招募)/.test(compact)) return true;
   const era = year >= 25_000 ? 4 : year >= 15_000 ? 3 : year >= 5_000 ? 2 : 1;
   const unavailableTechnology = era === 1
-    ? "斗铠|机甲|星舰|宇宙飞船|传灵塔|升灵台|定装魂导炮|魂导汽车"
+    ? "斗铠|机甲|星舰|宇宙飞船|传灵塔|升灵台|定装魂导炮|魂导汽车|记者|责任编辑|编辑部|媒体联盟|新闻机构|报社|报刊|报纸|新闻台|媒体报道"
     : era === 2
       ? `斗铠|星舰|宇宙飞船|升灵台${year < 10_012 ? "|传灵塔" : ""}`
       : era === 3

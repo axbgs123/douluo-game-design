@@ -84,6 +84,10 @@ export interface SocialRumorState {
   status: "待传播" | "已传播";
   confidence?: number;
   sourceKind?: "现场目击" | "公开登记";
+  earlyCirculationChannel?: "地方告示" | "口耳传闻" | "商旅消息" | "势力通告";
+  earlyCirculationStatus?: "仅本地" | "待扩散" | "已扩散";
+  earlyCirculationSpreadsAtOrdinal?: number;
+  earlyCirculationBasis?: string;
   mediaChannel?: string;
   mediaOutlet?: string;
   editorialStance?: string;

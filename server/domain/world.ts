@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { GameView, IntelligenceView, KnownFigureView, MapHierarchyView, MapLocationView, NpcRelationEvidenceView, WorldEventView, WorldNewsView } from "../../shared/game.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationActiveAtYear, locationById } from "../data/world.js";
-import type { HiddenWorldState, NpcMemoryEntry, StoredGame, WorldNpcState } from "./model.js";
+import type { HiddenWorldState, NpcMemoryEntry, SocialRumorState, StoredGame, WorldNpcState } from "./model.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { refreshStoryArchive } from "./story-rules.js";
 import { createRandom, integer, pick } from "./random.js";
@@ -494,10 +494,7 @@ function addNews(game: StoredGame, eventId: string, title: string, detail: strin
   game.view.news = game.view.news.slice(0, 30);
 }
 
-function mediaProfile(era: 1 | 2 | 3 | 4, publicRegistry: boolean, valence: -1 | 1): { channel: string; outlet: string; stance: string } {
-  if (era === 1) return publicRegistry && valence > 0
-    ? { channel: "城市告示与商会公报", outlet: "商会公报编辑处", stance: "契约与商业信用" }
-    : { channel: "城市告示与商会公报", outlet: "城市告示处", stance: "地方治安与可核验风险" };
+function mediaProfile(era: 2 | 3 | 4, publicRegistry: boolean, valence: -1 | 1): { channel: string; outlet: string; stance: string } {
   if (era === 2) return publicRegistry && valence > 0
     ? { channel: "报刊与魂导广播", outlet: "地方魂师报刊编辑部", stance: "机构履历与魂师公共事务" }
     : { channel: "报刊与魂导广播", outlet: "魂导广播新闻台", stance: "城市安全与即时见证" };
@@ -509,8 +506,7 @@ function mediaProfile(era: 1 | 2 | 3 | 4, publicRegistry: boolean, valence: -1 |
     : { channel: "联邦公共信息网", outlet: "星域安全通报频道", stance: "星际交通与公共安全" };
 }
 
-function secondaryMediaProfile(era: 1 | 2 | 3 | 4): { outlet: string; stance: string } {
-  if (era === 1) return { outlet: "行旅商讯抄报", stance: "商路影响与交易风险" };
+function secondaryMediaProfile(era: 2 | 3 | 4): { outlet: string; stance: string } {
   if (era === 2) return { outlet: "城市公共广播栏", stance: "听众安全与事件时效" };
   if (era === 3) return { outlet: "地方民生频道", stance: "居民影响与公共问责" };
   return { outlet: "星域民生观察频道", stance: "公共服务影响与跨星区问责" };
@@ -518,9 +514,6 @@ function secondaryMediaProfile(era: 1 | 2 | 3 | 4): { outlet: string; stance: st
 
 function responsibleEditor(outlet: string): { name: string; role: "责任编辑" | "值班核验编辑" } {
   const profiles: Record<string, { name: string; role: "责任编辑" | "值班核验编辑" }> = {
-    城市告示处: { name: "沈砚", role: "值班核验编辑" },
-    商会公报编辑处: { name: "姜禾", role: "责任编辑" },
-    行旅商讯抄报: { name: "程路", role: "责任编辑" },
     地方魂师报刊编辑部: { name: "霍青", role: "责任编辑" },
     魂导广播新闻台: { name: "云翎", role: "值班核验编辑" },
     城市公共广播栏: { name: "陆声", role: "责任编辑" },
@@ -530,11 +523,9 @@ function responsibleEditor(outlet: string): { name: string; role: "责任编辑"
     联邦公共信息网: { name: "周序", role: "值班核验编辑" },
     星域安全通报频道: { name: "闻启", role: "值班核验编辑" },
     星域民生观察频道: { name: "夏遥", role: "责任编辑" },
-    跨城见证核验社: { name: "叶闻", role: "责任编辑" },
     魂导公共查证台: { name: "苏澄", role: "值班核验编辑" },
     大陆独立事实核验站: { name: "裴真", role: "责任编辑" },
     星域公共证据联合站: { name: "罗序", role: "值班核验编辑" },
-    山河档案公证所: { name: "方谨", role: "责任编辑" },
     联城魂导证据台: { name: "卓宁", role: "值班核验编辑" },
     联邦公共查证协作社: { name: "乔衡", role: "责任编辑" },
     星海独立档案节点: { name: "卫岚", role: "值班核验编辑" },
@@ -543,6 +534,7 @@ function responsibleEditor(outlet: string): { name: string; role: "责任编辑"
 }
 
 export function recordMediaOutletReputation(game: StoredGame, input: { name: string; stance: string; trustDelta: number; publication?: boolean; correction?: boolean; linkedReport?: boolean; evidence: string }): void {
+  if (game.view.era === 1) return;
   let outlet = game.view.mediaOutlets.find((item) => item.name === input.name);
   if (!outlet) {
     outlet = { name: input.name, stance: input.stance, trustScore: 60, publications: 0, corrections: 0, linkedReports: 0, status: "待观察", evidence: [] };
@@ -568,6 +560,7 @@ export function recordMediaOutletReputation(game: StoredGame, input: { name: str
 }
 
 export function recordMediaCompetition(game: StoredGame, input: { primary: string; secondary: string; primaryDelta: number; secondaryDelta: number; evidence: string; status: "首发竞争" | "核验拉锯" | "更正问责"; newTopic?: boolean; topicId?: string; topic?: string; playerChoice?: string }): void {
+  if (game.view.era === 1) return;
   game.view.mediaCompetitions ??= [];
   const outlets = [input.primary, input.secondary].sort((left, right) => left.localeCompare(right, "zh-CN")) as [string, string];
   const id = `media-competition:${outlets.join(":")}`;
@@ -611,19 +604,34 @@ export function queueSocialRumor(game: StoredGame, input: string, intent: string
   const factionIds = [...new Set(witnesses.flatMap((npc) => npc.factionIds))];
   const createdOrdinal = ordinal(game.view.worldTime?.year ?? 0, game.view.worldTime?.day ?? 1);
   const era = game.view.era ?? 1;
-  const media = mediaProfile(era, publicRegistry, valence);
   const mediaEligible = publicRegistry || (witnesses.length >= 3 && factionIds.length > 0);
   const corroborationCount = publicRegistry ? 2 : witnesses.length;
   const verificationStatus = publicRegistry ? "双记录核验" : witnesses.length >= 5 && factionIds.length >= 2 ? "跨关系网交叉核验" : mediaEligible ? "同源多证待复核" : "来源不足";
-  const editorialDecision = publicRegistry
-    ? "公开登记含承办与验收两类记录，符合机构履历选稿线"
-    : mediaEligible
-      ? `${witnesses.length}名现场见证者且存在可追踪组织关系，按公共风险线刊发`
-      : `仅有${witnesses.length}名现场见证者，缺少公开登记或可追踪组织关系，暂不跨地区刊发`;
   const localDelay = 1 + (game.actionIndex % 3);
-  const mediaDelay = ({ 1: 14, 2: 7, 3: 3, 4: 2 } as const)[era];
-  const mediaSpreadsAtOrdinal = createdOrdinal + localDelay + mediaDelay;
-  game.world.socialRumors.push({ id: `rumor-${game.actionIndex}-${game.world.socialRumors.length}`, publicName, locationId, summary: valence > 0 ? `${publicName}完成了有公开凭据的${intent}` : `${publicName}卷入了受到质疑的${intent}`, valence, witnessNpcIds: witnesses.map((npc) => npc.id), factionIds, createdOrdinal, spreadsAtOrdinal: createdOrdinal + localDelay, status: "待传播", confidence: publicRegistry ? 92 : Math.min(85, 35 + witnesses.length * 7), sourceKind: publicRegistry ? "公开登记" : "现场目击", mediaChannel: media.channel, mediaOutlet: media.outlet, editorialStance: media.stance, editorialDecision, corroborationCount, verificationStatus, mediaSpreadsAtOrdinal, secondaryMediaSpreadsAtOrdinal: mediaEligible && verificationStatus !== "同源多证待复核" ? mediaSpreadsAtOrdinal + ({ 1: 3, 2: 2, 3: 1, 4: 1 } as const)[era] : undefined, mediaStatus: mediaEligible ? "待刊发" : "不刊发", mediaVersions: [], correctionEvidence: [] });
+  const baseRumor: SocialRumorState = { id: `rumor-${game.actionIndex}-${game.world.socialRumors.length}`, publicName, locationId, summary: valence > 0 ? `${publicName}完成了有公开凭据的${intent}` : `${publicName}卷入了受到质疑的${intent}`, valence, witnessNpcIds: witnesses.map((npc) => npc.id), factionIds, createdOrdinal, spreadsAtOrdinal: createdOrdinal + localDelay, status: "待传播", confidence: publicRegistry ? 92 : Math.min(85, 35 + witnesses.length * 7), sourceKind: publicRegistry ? "公开登记" : "现场目击", corroborationCount, verificationStatus, correctionEvidence: [] };
+  if (era === 1) {
+    const earlyCirculationChannel = publicRegistry ? (factionIds.length ? "势力通告" : "地方告示") : mediaEligible ? "商旅消息" : "口耳传闻";
+    game.world.socialRumors.push({
+      ...baseRumor,
+      earlyCirculationChannel,
+      earlyCirculationStatus: mediaEligible ? "待扩散" : "仅本地",
+      earlyCirculationSpreadsAtOrdinal: mediaEligible ? createdOrdinal + localDelay + 14 : undefined,
+      earlyCirculationBasis: publicRegistry
+        ? "承办人与验收人留下两类公开记录"
+        : mediaEligible
+          ? `${witnesses.length}名见证者及其势力或商旅关系能够继续传话`
+          : `只有${witnesses.length}名本地见证者，消息停留在口耳相传`,
+    });
+  } else {
+    const media = mediaProfile(era, publicRegistry, valence);
+    const editorialDecision = publicRegistry
+      ? "公开登记含承办与验收两类记录，符合机构履历选稿线"
+      : mediaEligible
+        ? `${witnesses.length}名现场见证者且存在可追踪组织关系，按公共风险线刊发`
+        : `仅有${witnesses.length}名现场见证者，缺少公开登记或可追踪组织关系，暂不跨地区刊发`;
+    const mediaSpreadsAtOrdinal = createdOrdinal + localDelay + ({ 2: 7, 3: 3, 4: 2 } as const)[era];
+    game.world.socialRumors.push({ ...baseRumor, mediaChannel: media.channel, mediaOutlet: media.outlet, editorialStance: media.stance, editorialDecision, mediaSpreadsAtOrdinal, secondaryMediaSpreadsAtOrdinal: mediaEligible && verificationStatus !== "同源多证待复核" ? mediaSpreadsAtOrdinal + ({ 2: 2, 3: 1, 4: 1 } as const)[era] : undefined, mediaStatus: mediaEligible ? "待刊发" : "不刊发", mediaVersions: [] });
+  }
   game.world.socialRumors = game.world.socialRumors.slice(-60);
 }
 
@@ -656,6 +664,23 @@ function propagateSocialRumors(game: StoredGame, currentOrdinal: number): string
     addNews(game, rumor.id, `${scope}口碑变化`, `${rumor.summary}；消息经${rumor.witnessNpcIds.length ? "现场见证者" : "公开登记"}传播，未自动扩散到无关系地区。`);
     messages.push(`口碑 · ${rumor.publicName} · ${scope}`);
   }
+  for (const rumor of game.world.socialRumors.filter((item) => item.earlyCirculationStatus === "待扩散" && (item.earlyCirculationSpreadsAtOrdinal ?? Number.POSITIVE_INFINITY) <= currentOrdinal)) {
+    rumor.earlyCirculationStatus = "已扩散";
+    const channel = rumor.earlyCirculationChannel ?? "口耳传闻";
+    const origin = locationById(rumor.locationId)?.name ?? game.view.location ?? "来源地不明";
+    const factionNames = rumor.factionIds.map((id) => FACTIONS.find((faction) => faction.id === id)?.name).filter(Boolean);
+    const coverage = channel === "商旅消息" ? `${origin}周边商路` : factionNames.length ? `${factionNames.join("、")}内部关系网` : `${origin}及邻近聚居地`;
+    addNews(game, `${rumor.id}-circulation`, `${channel} · ${rumor.publicName}`, `${rumor.summary}。消息依据：${rumor.earlyCirculationBasis ?? "来源边界不明"}；可信度 ${rumor.confidence ?? 50}%；传递范围：${coverage}。传话、告示或势力通告都不等于事实已经最终核实。`);
+    const recipients = Object.values(game.world.npcs).filter((npc) => npc.alive && !rumor.witnessNpcIds.includes(npc.id) && (rumor.factionIds.length === 0 ? npc.knownToPlayer : npc.factionIds.some((id) => rumor.factionIds.includes(id)))).slice(0, 20);
+    for (const npc of recipients) {
+      const text = `从${channel}获知（可信度${rumor.confidence ?? 50}%）：${rumor.summary}`;
+      npc.memoryOfPlayer.push(text);
+      npc.memoryOfPlayer = npc.memoryOfPlayer.slice(-12);
+      npc.episodicMemory.push({ id: randomUUID(), text, year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1, actionIndex: game.actionIndex, significance: 1, source: "传闻传播", witnessed: false });
+      npc.episodicMemory = npc.episodicMemory.slice(-24);
+    }
+    messages.push(`${channel} · ${rumor.publicName}`);
+  }
   for (const rumor of game.world.socialRumors.filter((item) => item.status === "已传播" && item.mediaStatus === "待刊发" && (item.mediaSpreadsAtOrdinal ?? Number.POSITIVE_INFINITY) <= currentOrdinal)) {
     rumor.mediaStatus = "已刊发";
     const origin = locationById(rumor.locationId)?.name ?? "来源地不明";
@@ -675,7 +700,8 @@ function propagateSocialRumors(game: StoredGame, currentOrdinal: number): string
     messages.push(`媒体 · ${rumor.mediaOutlet ?? rumor.mediaChannel} · ${rumor.publicName}`);
   }
   for (const rumor of game.world.socialRumors.filter((item) => item.mediaStatus === "已刊发" && item.secondaryMediaSpreadsAtOrdinal !== undefined && item.secondaryMediaSpreadsAtOrdinal <= currentOrdinal && !(item.mediaVersions?.length))) {
-    const secondary = secondaryMediaProfile(game.view.era ?? 1);
+    if (game.view.era === 1) continue;
+    const secondary = secondaryMediaProfile(game.view.era);
     const framing = rumor.valence > 0
       ? "转载原始登记与核验等级，不扩写未公开细节；重点追问履历对普通成员和当地资源的实际影响"
       : "保留原报道的质疑措辞，不把转述改写成定论；重点区分亲历证词、组织转述与仍未知部分";
@@ -1024,6 +1050,7 @@ function repairLegacyUnboundAwakening(game: StoredGame): void {
 
 export function ensureGameState(game: StoredGame): StoredGame {
   const legacy = game as StoredGame & { schemaVersion?: number; world?: HiddenWorldState };
+  const previousSchemaVersion = legacy.schemaVersion ?? 1;
   const migrateNarrative = (legacy.schemaVersion ?? 1) < 4;
   const candidate = game.view.candidates[0];
   const startYear = game.view.worldTime?.year ?? candidate?.birthYearOffset ?? 0;
@@ -1039,7 +1066,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 26;
+  legacy.schemaVersion = 27;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -1051,15 +1078,33 @@ export function ensureGameState(game: StoredGame): StoredGame {
   for (const rumor of legacy.world.socialRumors) {
     rumor.confidence ??= rumor.witnessNpcIds.length ? Math.min(85, 35 + rumor.witnessNpcIds.length * 7) : 92;
     rumor.sourceKind ??= rumor.witnessNpcIds.length ? "现场目击" : "公开登记";
-    rumor.mediaStatus ??= "不刊发";
-    const profile = mediaProfile(game.view.era ?? 1, rumor.sourceKind === "公开登记", rumor.valence);
-    rumor.mediaChannel ??= profile.channel;
-    rumor.mediaOutlet ??= profile.outlet;
-    rumor.editorialStance ??= profile.stance;
     rumor.corroborationCount ??= rumor.sourceKind === "公开登记" ? 2 : rumor.witnessNpcIds.length;
-    rumor.verificationStatus ??= rumor.sourceKind === "公开登记" ? "双记录核验" : rumor.witnessNpcIds.length >= 5 && rumor.factionIds.length >= 2 ? "跨关系网交叉核验" : rumor.mediaStatus === "不刊发" ? "来源不足" : "同源多证待复核";
-    rumor.editorialDecision ??= rumor.mediaStatus === "不刊发" ? "旧记录缺少跨地区刊发所需来源" : "旧记录按当时已有来源刊发";
-    rumor.mediaVersions ??= [];
+    if (game.view.era === 1) {
+      const wasDistributed = rumor.mediaStatus === "已刊发" || rumor.mediaStatus === "已更正";
+      const wasPending = rumor.mediaStatus === "待刊发";
+      rumor.earlyCirculationChannel ??= rumor.sourceKind === "公开登记" ? (rumor.factionIds.length ? "势力通告" : "地方告示") : rumor.witnessNpcIds.length >= 3 && rumor.factionIds.length ? "商旅消息" : "口耳传闻";
+      rumor.earlyCirculationStatus ??= wasDistributed ? "已扩散" : wasPending ? "待扩散" : "仅本地";
+      rumor.earlyCirculationSpreadsAtOrdinal ??= wasPending ? rumor.mediaSpreadsAtOrdinal : undefined;
+      rumor.earlyCirculationBasis ??= rumor.sourceKind === "公开登记" ? "旧存档中的承办与验收记录" : `${rumor.witnessNpcIds.length}名现场见证者留下的转述链`;
+      rumor.verificationStatus ??= rumor.sourceKind === "公开登记" ? "双记录核验" : rumor.witnessNpcIds.length >= 5 && rumor.factionIds.length >= 2 ? "跨关系网交叉核验" : "来源不足";
+      delete rumor.mediaChannel;
+      delete rumor.mediaOutlet;
+      delete rumor.editorialStance;
+      delete rumor.editorialDecision;
+      delete rumor.mediaSpreadsAtOrdinal;
+      delete rumor.secondaryMediaSpreadsAtOrdinal;
+      delete rumor.mediaStatus;
+      delete rumor.mediaVersions;
+    } else {
+      rumor.mediaStatus ??= "不刊发";
+      const profile = mediaProfile(game.view.era, rumor.sourceKind === "公开登记", rumor.valence);
+      rumor.mediaChannel ??= profile.channel;
+      rumor.mediaOutlet ??= profile.outlet;
+      rumor.editorialStance ??= profile.stance;
+      rumor.verificationStatus ??= rumor.sourceKind === "公开登记" ? "双记录核验" : rumor.witnessNpcIds.length >= 5 && rumor.factionIds.length >= 2 ? "跨关系网交叉核验" : rumor.mediaStatus === "不刊发" ? "来源不足" : "同源多证待复核";
+      rumor.editorialDecision ??= rumor.mediaStatus === "不刊发" ? "旧记录缺少跨地区刊发所需来源" : "旧记录按当时已有来源刊发";
+      rumor.mediaVersions ??= [];
+    }
     rumor.correctionEvidence ??= [];
   }
   legacy.world.lastAutonomyOrdinal ??= ordinal(startYear, game.view.worldTime?.day ?? 1);
@@ -1080,6 +1125,16 @@ export function ensureGameState(game: StoredGame): StoredGame {
   const missingMediaCompetitions = !game.view.mediaCompetitions;
   game.view.mediaCompetitions ??= [];
   game.view.mediaAlliances ??= [];
+  if (game.view.era === 1) {
+    game.view.mediaOutlets = [];
+    game.view.mediaCompetitions = [];
+    game.view.mediaAlliances = [];
+    if (previousSchemaVersion < 27) {
+      game.view.news = game.view.news.map((item) => /(?:-media|-secondary|-correction)$/.test(item.id)
+        ? { ...item, title: "旧版传播记录已校正", detail: "这条旧存档记录曾误用后世新闻机构结构，现只保留为来源边界不明的历史传播痕迹，不再证明斗一存在记者、编辑部或媒体联盟。" }
+        : item);
+    }
+  }
   for (const alliance of game.view.mediaAlliances) {
     alliance.recoveryEvidence ??= [];
     alliance.suspendedOutletNames ??= [];
