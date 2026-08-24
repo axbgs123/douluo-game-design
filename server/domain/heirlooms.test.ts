@@ -19,7 +19,7 @@ describe("局外遗物", () => {
     expect(game.view.activeHeirloom).toMatchObject({ name: "静心木珠", status: "等待触发" });
     game.world.fatiguePoints = 30;
     const first = resolveAction(game, "安静冥想修炼");
-    expect(first.systemMessages?.some((item) => item.includes("静心木珠 · 呼吸稳定，疲劳降低25点并恢复5点健康 · 剩余2次"))).toBe(true);
+    expect(first.systemMessages?.some((item) => item.includes("静心木珠 · 呼吸稳定，疲劳降低50点并恢复15点健康 · 剩余2次"))).toBe(true);
     expect(game.view.activeHeirloom).toMatchObject({ status: "等待触发", remainingUses: 2, maxUses: 3 });
     resolveAction(game, "继续冥想修炼");
     resolveAction(game, "再完成一次冥想修炼");
@@ -30,12 +30,12 @@ describe("局外遗物", () => {
 
   it("lets an active relic write a real long-term story anchor", () => {
     const game = awakenedGame("岁月锚钉");
-    const result = resolveAction(game, "使用岁月锚钉固定三次行动");
+    const result = resolveAction(game, "使用岁月锚钉固定五次行动");
     expect(result.intent).toBe("使用遗物");
     expect(game.view.activeHeirloom).toMatchObject({ status: "本局已触发", remainingUses: 0 });
     expect(game.storyMemory.openThreads[0]).toContain("岁月锚点");
     const training = resolveAction(game, "冥想修炼");
     expect(training.ruleSummary).toContain("岁月锚钉令本次非战斗行动");
-    expect(game.world.flags.heirloomTimeAnchorActions).toBe(2);
+    expect(game.world.flags.heirloomTimeAnchorActions).toBe(4);
   });
 });

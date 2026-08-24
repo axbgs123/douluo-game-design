@@ -20,6 +20,7 @@ import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } 
 import type { MetaProgressionView } from "../../shared/game.js";
 import { fixedTraitEffect } from "./traits.js";
 import { auditNarrative, sanitizeNarrativeSuggestions } from "./story-rules.js";
+import { META_MARTIAL_SOUL_POOL_SIZE, META_MARTIAL_SOULS } from "../data/meta-martial-souls.js";
 
 const personality = {
   keywords: ["谨慎", "重情", "好学", "坚韧", "自由"],
@@ -36,6 +37,11 @@ const personality = {
 };
 
 describe("candidate generation", () => {
+  it("provides at least three hundred distinct summonable warehouse souls", () => {
+    expect(META_MARTIAL_SOUL_POOL_SIZE).toBeGreaterThanOrEqual(300);
+    expect(new Set(META_MARTIAL_SOULS.map((item) => item.name)).size).toBe(META_MARTIAL_SOULS.length);
+    expect(META_MARTIAL_SOULS.every((item) => item.growthRoutes.length >= 3)).toBe(true);
+  });
   it("repeats exactly for the same seed and reroll index", () => {
     const first = generateCandidates("fixed-seed", 0, "男");
     const second = generateCandidates("fixed-seed", 0, "男");
@@ -432,7 +438,7 @@ describe("candidate generation", () => {
     expect(game.view.tasks.some((task) => task.id === "awakening-recruitment")).toBe(true);
     expect(game.world.dynamicEvents.some((event) => /内部培养评估/.test(event.title) && event.status === "可介入")).toBe(true);
     expect(game.view.narrative.at(-1)?.text).toMatch(/叫停了下一人的仪式|队伍晚走半个时辰/);
-    expect(game.view.suggestions.some((suggestion) => /复测与上报流程/.test(suggestion))).toBe(true);
+    expect(game.view.suggestions.some((suggestion) => /备用水晶复测魂力/.test(suggestion))).toBe(true);
     expect(game.view.suggestions.every((suggestion) => !/查看地图|查看新事件|观察周围|继续行动/.test(suggestion))).toBe(true);
   });
 
@@ -450,6 +456,31 @@ describe("candidate generation", () => {
     );
     expect(suggestions).toEqual(game.view.suggestions);
     expect(suggestions).toHaveLength(3);
+  });
+
+  it("replaces vague screenshot-style choices with canon-grounded awakening actions", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "canon-grounded-awakening-buttons" });
+    game.hiddenCandidates[0].innateSoulPower = 10;
+    selectCandidate(game, game.hiddenCandidates[0].public.id);
+    finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(game);
+    const suggestions = sanitizeNarrativeSuggestions(game, [], ["把眼前的事情做完", "回应身边正在等的人", `当场召出${game.view.character!.martialSoul.name}，请主持者指出第一处缺陷`]);
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions).toEqual(expect.arrayContaining(["请主持者用备用水晶复测魂力"]));
+    expect(suggestions.every((item) => !/把眼前|正在等的人|指出第一处缺陷/.test(item))).toBe(true);
+  });
+
+  it("uses each later era's actual awakening follow-up instead of recycling the era-one buttons", () => {
+    const expected = { 2: /精神属性/, 3: /魂师班资格/, 4: /登记魂力与能力方向/ } as const;
+    for (const era of [2, 3, 4] as const) {
+      const game = createGame({ era, gender: "女", difficulty: "标准", seed: `era-awakening-choice-${era}` });
+      game.hiddenCandidates[0].innateSoulPower = 3;
+      selectCandidate(game, game.hiddenCandidates[0].public.id);
+      finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+      awakenCharacter(game);
+      expect(game.view.suggestions.some((item) => expected[era].test(item))).toBe(true);
+      expect(game.view.suggestions.every((item) => !/把眼前|正在等的人|指出第一处缺陷/.test(item))).toBe(true);
+    }
   });
 
   it("audits a full-soul-power awakening that produces no social or institutional reaction", () => {

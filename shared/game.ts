@@ -995,6 +995,7 @@ export interface MetaProgressionView {
   purchasedUpgrades: Record<string, number>;
   equippedHeirloom?: string;
   martialSoulCodex: MartialSoulCodexEntryView[];
+  martialSoulSummonPoolSize: number;
   equippedMartialSoulId?: string;
   martialSoulDrawTickets: number;
   martialSoulDrawPity: number;

@@ -4,13 +4,13 @@ import { DatabaseSync } from "node:sqlite";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, MetaSummonResultView, ModelUsageView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
 import type { MartialSoulTemplate } from "./domain/model.js";
-import { META_MARTIAL_SOULS, metaSoulById } from "./data/meta-martial-souls.js";
+import { META_MARTIAL_SOULS, META_MARTIAL_SOUL_POOL_SIZE, metaSoulById } from "./data/meta-martial-souls.js";
 import { META_HEIRLOOMS } from "./data/meta-heirlooms.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "./data/world.js";
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
 import { ensureGameState } from "./domain/world.js";
-import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_STATS } from "./domain/generator.js";
+import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_NAMES } from "./domain/generator.js";
 
 const databasePath = process.env.DOULUO_DATA_DIR
   ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
@@ -182,6 +182,7 @@ const defaultMetaProgression: MetaProgressionView = {
   weightPreferences: { origin: "均衡", martialSoul: "均衡", gift: "均衡" },
   purchasedUpgrades: {},
   martialSoulCodex: [],
+  martialSoulSummonPoolSize: META_MARTIAL_SOUL_POOL_SIZE,
   martialSoulDrawTickets: 1,
   martialSoulDrawPity: 0,
   summonGoldPity: 0,
@@ -349,6 +350,7 @@ export function getMetaProgression(): MetaProgressionView {
     weightPreferences: { ...defaultMetaProgression.weightPreferences, ...stored.weightPreferences },
     purchasedUpgrades: { ...defaultMetaProgression.purchasedUpgrades, ...stored.purchasedUpgrades },
     martialSoulCodex,
+    martialSoulSummonPoolSize: META_MARTIAL_SOUL_POOL_SIZE,
     summonGoldPity: stored.summonGoldPity ?? legacyPity,
     summonRedPity: stored.summonRedPity ?? (hasRedOrBetter ? legacyPity : Math.min(39, Math.max(legacyPity, historicalDraws))),
     summonRainbowPity: stored.summonRainbowPity ?? (hasRainbow ? legacyPity : Math.min(79, Math.max(legacyPity, historicalDraws))),
@@ -658,7 +660,7 @@ function tableCount(table: string): number {
 export function getWorldCatalogStats(): WorldCatalogStatsView {
   return {
     birthProfiles: BIRTH_PROFILE_COUNT,
-    martialSouls: MARTIAL_SOUL_CATALOG_STATS.total + META_MARTIAL_SOULS.length,
+    martialSouls: new Set([...MARTIAL_SOUL_CATALOG_NAMES, ...META_MARTIAL_SOULS.map((item) => item.name)]).size,
     characters: tableCount("canon_characters"),
     powerSnapshots: tableCount("canon_power_snapshots"),
     factions: tableCount("canon_factions"),

@@ -592,6 +592,7 @@ export const MARTIAL_SOUL_CATALOG_STATS = {
   total: MARTIAL_SOULS.length,
   bySource: Object.fromEntries([1, 2, 3, 4, "原创"].map((source) => [source, MARTIAL_SOULS.filter((soul) => soul.sourceEra === source).length])),
 };
+export const MARTIAL_SOUL_CATALOG_NAMES = MARTIAL_SOULS.map((soul) => soul.name);
 
 const TRAIT_LABELS: Record<string, [string, string]> = {
   courage: ["谨慎", "勇敢"],

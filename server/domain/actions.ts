@@ -1155,7 +1155,7 @@ function absorbRing(game: StoredGame): ActionResolution {
   const healthFactor = game.world.healthPoints / 100;
   const fatigueFactor = 1 - game.world.fatiguePoints / 180;
   const ringRulerActive = game.view.activeHeirloom?.id === "heirloom-ring-ruler" && game.view.activeHeirloom.remainingUses > 0;
-  const effectiveLimit = Math.max(80, (baseLimit + physique) * healthFactor * fatigueFactor * (ringRulerActive ? 1.25 : 1));
+  const effectiveLimit = Math.max(80, (baseLimit + physique) * healthFactor * fatigueFactor * (ringRulerActive ? 1.75 : 1));
   const overRatio = years / effectiveLimit;
   const rules = DIFFICULTY_RULES[game.view.difficulty];
   const successChance = Math.max(0.03, Math.min(0.98, 1.12 - Math.max(0, overRatio - 0.75) * 0.9 + rules.safety));
@@ -1184,7 +1184,7 @@ function absorbRing(game: StoredGame): ActionResolution {
         ? "魂环刚入体就失去了控制。热流顶进胸口，我连第一轮都没撑完，喉咙里全是血腥味。醒来时魂环已经散了，手指还在不受控制地发抖。"
         : "魂力冲了几轮，始终没能稳下来。最后那圈光从我身上剥开，散进空气里。我趴在地上缓了很久，胸口每次起伏都疼。",
       suggestions: game.view.status === "ended" ? [] : ["立刻处理伤势", "返回聚居地", "检查是否留下后遗症"],
-      systemMessages: ringRulerActive ? [`魂环量尺 · 承载上限提高25% · 剩余${game.view.activeHeirloom!.remainingUses}次`] : [],
+      systemMessages: ringRulerActive ? [`魂环量尺 · 承载上限提高75% · 剩余${game.view.activeHeirloom!.remainingUses}次`] : [],
     };
   }
 
@@ -1213,7 +1213,7 @@ function absorbRing(game: StoredGame): ActionResolution {
     ruleSummary: `成功吸收 ${years} 年${beast.name}魂环，获得魂技 ${skillName}，魂力 ${character.soulRank} 级。`,
     fallbackNarrative: nonLethalSource ? `最难受的那一阵过去后，散乱的灵魂力量终于沿着武魂收拢。${ring.color}色魂环停在脚下，它的来历没有被这次融合抹去。${skillName}的用法随魂力一同浮现。` : `最难受的那一阵过去后，体内的力量终于沿着同一个方向转起来。${ring.color}色魂环停在脚下，${skillName}的用法随魂力一同浮进脑海。我睁眼时，天已经偏了。`,
     suggestions: ["测试新魂技", "处理疲劳和伤势", "收拾物资返回"],
-    systemMessages: [`魂环 · ${ring.color}色 · ${beast.name} · ${years} 年`, `魂技 · ${skillName}`, ...(ringRulerActive ? [`魂环量尺 · 承载上限提高25% · 剩余${game.view.activeHeirloom!.remainingUses}次`] : [])],
+    systemMessages: [`魂环 · ${ring.color}色 · ${beast.name} · ${years} 年`, `魂技 · ${skillName}`, ...(ringRulerActive ? [`魂环量尺 · 承载上限提高75% · 剩余${game.view.activeHeirloom!.remainingUses}次`] : [])],
   };
 }
 
@@ -3542,18 +3542,18 @@ function heirloomActionResolution(game: StoredGame): ActionResolution | undefine
   if (definition.effectKind === "anomalyCompass") {
     game.world.flags.heirloomCompassRoute = true;
     consumeHeirloomUse(active);
-    return { intent: "使用遗物", minutes: 5, ruleSummary: `星痕罗盘已为下一次普通旅行压出捷径，届时耗时降低60%；剩余${active.remainingUses}次。`, fallbackNarrative: `罗盘里的指针沿着大陆轮廓转了一圈，最后把几条旧路叠成一道细亮的线。下一次上路时，只要沿着它走，就能省下大半绕行时间。`, suggestions: ["选择已知地点立即出发", "先处理随身负重", "把捷径留给下一次远行"] };
+    return { intent: "使用遗物", minutes: 5, ruleSummary: `星痕罗盘已为下一次普通旅行压出捷径，届时耗时降低85%；剩余${active.remainingUses}次。`, fallbackNarrative: `罗盘里的指针沿着大陆轮廓转了一圈，最后把几条旧路叠成一道细亮的线。下一次上路时，只要沿着它走，就能省下大半绕行时间。`, suggestions: ["选择已知地点立即出发", "先处理随身负重", "把捷径留给下一次远行"] };
   }
   if (definition.effectKind === "causalReview") {
     game.world.flags.heirloomCausalProtection = true;
     consumeHeirloomUse(active);
-    return { intent: "使用遗物", minutes: 5, ruleSummary: "因果残线已护住下一次非死亡失败；届时恢复40点健康、降低40点疲劳并移除一项最新伤势，但不改变胜负。", fallbackNarrative: "细线钻进手腕后便看不见了。它没有替我抹掉已经做过的选择，只在最坏的结果旁边留出一条能保住身体的窄缝。", suggestions: ["继续当前高风险行动", "先确认失败代价", "把保护留给关键尝试"] };
+    return { intent: "使用遗物", minutes: 5, ruleSummary: "因果残线已护住下一次非死亡失败；届时健康恢复至满值、疲劳清零并移除最近两项伤势，但不改变胜负。", fallbackNarrative: "细线钻进手腕后便看不见了。它没有替我抹掉已经做过的选择，只在最坏的结果旁边留出一条能保住身体的窄缝。", suggestions: ["继续当前高风险行动", "先确认失败代价", "把保护留给关键尝试"] };
   }
   const snapshot = `${game.view.worldTime?.year ?? 0}年第${game.view.worldTime?.day ?? 1}日，${game.view.location}；目标：${game.view.chapterObjective?.title ?? game.view.lifeGoal ?? "尚未确定"}；未决：${game.storyMemory.openThreads.slice(0, 4).join("、") || "无"}`;
   game.storyMemory.openThreads = [`岁月锚点：${snapshot}`, ...game.storyMemory.openThreads].slice(0, 12);
-  game.world.flags.heirloomTimeAnchorActions = 3;
+  game.world.flags.heirloomTimeAnchorActions = 5;
   consumeHeirloomUse(active);
-  return { intent: "使用遗物", minutes: 5, ruleSummary: `岁月锚钉已固定当前节点；接下来3次非战斗行动耗时减半，并持续写入长期记忆。`, fallbackNarrative: `钉身上的日期刻痕一寸寸发热。周围没有停下，只是接下来要做的三件事忽然多出了从容周转的余地。`, suggestions: ["推进当前人生目标", "处理一项关系承诺", "完成一次成长行动"] };
+  return { intent: "使用遗物", minutes: 5, ruleSummary: `岁月锚钉已固定当前节点；接下来5次非战斗行动耗时降低80%，并持续写入长期记忆。`, fallbackNarrative: `钉身上的日期刻痕一寸寸发热。周围没有停下，只是接下来要做的几件事忽然多出了从容周转的余地。`, suggestions: ["推进当前人生目标", "处理一项关系承诺", "完成一次成长行动"] };
 }
 
 function applyHeirloomEffect(game: StoredGame, action: string, resolution: ActionResolution): void {
@@ -3565,32 +3565,32 @@ function applyHeirloomEffect(game: StoredGame, action: string, resolution: Actio
   switch (definition.effectKind) {
     case "huntIntel":
       if (!/魂兽|猎魂|追踪/.test(`${action}${resolution.intent}`)) return;
-      game.world.metrics.discoveries += 2;
+      game.world.metrics.discoveries += 5;
       recordIntelligence(game, { subjectType: "物品", subjectId: `heirloom-hunt-${game.actionIndex}`, title: `${active.name}补充的生态线索`, detail: "旧记录标出目标常用的饮水方向、活动时段与撤退路径，需要结合现场痕迹复核。", source: active.name, confidence: 78, status: "确定" });
-      message = "额外取得一条高可信魂兽生态线索，发现进度 +2"; break;
+      message = "额外取得一条高可信魂兽生态线索，发现进度 +5"; break;
     case "travelGuide":
       if (resolution.intent !== "旅行") return;
-      { const saved = Math.max(1, Math.round(resolution.minutes * .35)); resolution.minutes -= saved; message = `核验旧路，旅行耗时减少 ${saved} 分钟`; } break;
+      { const saved = Math.max(1, Math.round(resolution.minutes * .7)); resolution.minutes -= saved; message = `核验旧路，旅行耗时减少 ${saved} 分钟`; } break;
     case "trainingCalm":
       if (!/修炼|训练/.test(resolution.intent)) return;
-      game.world.fatiguePoints = Math.max(0, game.world.fatiguePoints - 25); game.world.healthPoints = Math.min(100, game.world.healthPoints + 5); message = "呼吸稳定，疲劳降低25点并恢复5点健康"; break;
+      game.world.fatiguePoints = Math.max(0, game.world.fatiguePoints - 50); game.world.healthPoints = Math.min(100, game.world.healthPoints + 15); message = "呼吸稳定，疲劳降低50点并恢复15点健康"; break;
     case "tradeInsight":
       if (!/购买|交易|经济|询价|市场/.test(`${action}${resolution.intent}`)) return;
-      game.view.character!.coins += 8; message = "识别正规商路价格并返还8金魂币"; break;
+      game.view.character!.coins += 30; message = "识别正规商路价格并返还30金魂币"; break;
     case "factionIntroduction":
       if (!/入学|加入势力|势力申请|学院/.test(`${action}${resolution.intent}`)) return;
-      { const relation = game.view.relations.find((item) => item.category === "势力"); if (relation) { relation.dimensions ??= relationDimensions(relation.strength); relation.dimensions.respect = Math.min(100, relation.dimensions.respect + 25); relation.dimensions.trust = Math.min(100, relation.dimensions.trust + 10); } message = "获得正式面谈，接待者敬重+25、信任+10（不保证录取）"; } break;
+      { const relation = game.view.relations.find((item) => item.category === "势力"); if (relation) { relation.dimensions ??= relationDimensions(relation.strength); relation.dimensions.respect = Math.min(100, relation.dimensions.respect + 50); relation.dimensions.trust = Math.min(100, relation.dimensions.trust + 25); } message = "获得正式面谈，接待者敬重+50、信任+25（不保证录取）"; } break;
     case "mentalRescue":
-      if (game.world.fatiguePoints < 65) return;
-      game.world.fatiguePoints = Math.max(0, game.world.fatiguePoints - 45); game.world.healthPoints = Math.min(100, game.world.healthPoints + 10); message = "温魂灯芯亮起，疲劳降低45点并恢复10点健康"; break;
+      if (game.world.fatiguePoints < 50) return;
+      game.world.fatiguePoints = Math.max(0, game.world.fatiguePoints - 80); game.world.healthPoints = Math.min(100, game.world.healthPoints + 30); message = "温魂灯芯亮起，疲劳降低80点并恢复30点健康"; break;
     case "ringAssessment":
       return;
     case "promiseWitness":
       if (resolution.intent !== "作出承诺") return;
-      game.world.flags.heirloomPromiseEvidence = `行动${game.actionIndex}：${action.slice(0, 100)}`; { const target = game.view.relations.find((item) => action.includes(item.name)); if (target) { target.dimensions ??= relationDimensions(target.strength); target.dimensions.trust = Math.min(100, target.dimensions.trust + 15); } } message = "承诺形成额外履约证据，承诺对象信任+15"; break;
+      game.world.flags.heirloomPromiseEvidence = `行动${game.actionIndex}：${action.slice(0, 100)}`; { const target = game.view.relations.find((item) => action.includes(item.name)); if (target) { target.dimensions ??= relationDimensions(target.strength); target.dimensions.trust = Math.min(100, target.dimensions.trust + 35); } } message = "承诺形成额外履约证据，承诺对象信任+35"; break;
     case "craftSalvage":
       if (!/制作|锻造|炼制/.test(`${action}${resolution.intent}`) || !/失败|报废|崩裂/.test(resolution.ruleSummary)) return;
-      game.view.inventory.push("遗物回收材料", "遗物回收材料"); { const profession = game.view.professions.find((item) => /锻造|炼器|制作/.test(item.name)); if (profession) profession.progress = Math.min(100, profession.progress + 5); } message = "从失败成品中回收2份材料，相关职业进度+5"; break;
+      game.view.inventory.push("遗物回收材料", "遗物回收材料", "遗物回收材料", "遗物回收材料"); { const profession = game.view.professions.find((item) => /锻造|炼器|制作/.test(item.name)); if (profession) profession.progress = Math.min(100, profession.progress + 15); } message = "从失败成品中回收4份材料，相关职业进度+15"; break;
     default: return;
   }
   consumeHeirloomUse(active);
@@ -3680,7 +3680,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   applyHeirloomEffect(game, action, resolution);
 
   if (game.world.flags.heirloomCompassRoute && resolution.intent === "旅行") {
-    const saved = Math.max(1, Math.round(resolution.minutes * .6));
+    const saved = Math.max(1, Math.round(resolution.minutes * .85));
     resolution.minutes -= saved;
     game.world.flags.heirloomCompassRoute = false;
     resolution.ruleSummary += ` 星痕罗盘捷径额外节省${saved}分钟。`;
@@ -3688,18 +3688,18 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   }
   const timeAnchorActions = Number(game.world.flags.heirloomTimeAnchorActions ?? 0);
   if (timeAnchorActions > 0 && !/战斗|使用遗物|规则阻止|无法完成/.test(resolution.intent)) {
-    const saved = Math.max(1, Math.floor(resolution.minutes / 2));
+    const saved = Math.max(1, Math.floor(resolution.minutes * .8));
     resolution.minutes -= saved;
     game.world.flags.heirloomTimeAnchorActions = timeAnchorActions - 1;
     resolution.ruleSummary += ` 岁月锚钉令本次非战斗行动节省${saved}分钟。`;
     resolution.systemMessages = [...(resolution.systemMessages ?? []), `岁月锚钉 · 节省${saved}分钟 · 还剩${timeAnchorActions - 1}次行动`];
   }
   if (game.world.flags.heirloomCausalProtection && game.world.healthPoints > 0 && !game.view.runProgress.ending && resolution.intent !== "使用遗物" && /失败|受伤/.test(`${resolution.intent}${resolution.ruleSummary}`)) {
-    game.world.healthPoints = Math.min(100, game.world.healthPoints + 40);
-    game.world.fatiguePoints = Math.max(0, game.world.fatiguePoints - 40);
-    const removedInjury = game.view.character!.injuries.pop();
+    game.world.healthPoints = 100;
+    game.world.fatiguePoints = 0;
+    const removedInjuries = game.view.character!.injuries.splice(Math.max(0, game.view.character!.injuries.length - 2));
     game.world.flags.heirloomCausalProtection = false;
-    resolution.ruleSummary += ` 因果残线截断部分身体后果：恢复40点健康、降低40点疲劳${removedInjury ? `并移除“${removedInjury}”` : ""}；原本的胜负与结果不变。`;
+    resolution.ruleSummary += ` 因果残线截断身体后果：健康恢复至满值、疲劳清零${removedInjuries.length ? `并移除“${removedInjuries.join("、")}”` : ""}；原本的胜负与结果不变。`;
     resolution.systemMessages = [...(resolution.systemMessages ?? []), "因果残线 · 截断一次非死亡失败的身体后果"];
   }
 

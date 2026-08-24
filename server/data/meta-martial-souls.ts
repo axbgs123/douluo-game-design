@@ -1,5 +1,7 @@
 import type { MartialSoulRarity } from "../../shared/game.js";
 import type { MartialSoulTemplate } from "../domain/model.js";
+import { ERA_MARTIAL_SOULS } from "./era-martial-souls.js";
+import { ORIGINAL_MARTIAL_SOULS } from "./original-martial-souls.js";
 
 export interface MetaMartialSoulDefinition extends MartialSoulTemplate {
   metaRarity: MartialSoulRarity;
@@ -17,7 +19,7 @@ const soul = (
   omens: [`靠近与${name}相合的环境时，魂力会出现轻微共鸣`, `梦中曾短暂看见${name}的轮廓`],
 });
 
-export const META_MARTIAL_SOULS: MetaMartialSoulDefinition[] = [
+const CURATED_META_MARTIAL_SOULS: MetaMartialSoulDefinition[] = [
   soul("white-stone-shield", "河纹石盾", "器武魂", "白色", "结构朴素、根基稳定的防御武魂。", [1, 5], ["纯防御", "反震", "阵地守护"], 70),
   soul("white-reed", "风芦", "植物", "白色", "常见芦草的变异种，擅长感知气流。", [1, 5], ["风感", "缠绕", "轻身辅助"], 70),
   soul("white-hound", "灰脊犬", "兽武魂", "白色", "嗅觉与追踪突出，正面上限普通。", [1, 5], ["追踪", "协同", "近战撕咬"], 70),
@@ -51,6 +53,38 @@ export const META_MARTIAL_SOULS: MetaMartialSoulDefinition[] = [
   soul("rainbow-pangu-axe", "盘古斧影", "器武魂", "七彩", "只是一道受世界压制的开天意象，初期连完整斧形都无法维持。", [9, 10], ["极致破甲", "空间切割", "开天真意"], 0.05),
   soul("rainbow-dao-body", "先天道体", "本体武魂", "七彩", "对相容修炼体系有极高理解力，但力量仍必须逐级修炼。", [9, 10], ["万法亲和", "悟道", "道域"], 0.04),
 ];
+
+const META_RARITY_BY_GRADE = {
+  平凡: "紫色", 优秀: "紫色", 稀有: "紫色", 传奇: "金色", 神话: "红色",
+} as const satisfies Record<NonNullable<MartialSoulTemplate["grade"]>, MartialSoulRarity>;
+
+const META_WEIGHT_BY_GRADE = { 平凡: 14, 优秀: 11, 稀有: 8, 传奇: 3.2, 神话: .55 } as const;
+
+function catalogSoulToMeta(definition: MartialSoulTemplate): MetaMartialSoulDefinition {
+  const grade = definition.grade ?? "稀有";
+  const tags = [...new Set(definition.affinityTags ?? [])].slice(0, 4);
+  const routeBase = tags.length ? tags.join("、") : definition.category;
+  return soul(
+    `catalog-${definition.id}`,
+    definition.name,
+    definition.category,
+    META_RARITY_BY_GRADE[grade],
+    definition.description,
+    definition.soulPowerRange,
+    [`基础路线：${routeBase}`, `魂环路线：围绕${routeBase}逐级补齐控制、输出或辅助能力`, `高阶路线：由实际魂环、职业与战斗选择决定`],
+    META_WEIGHT_BY_GRADE[grade],
+  );
+}
+
+const expandedMetaSouls = [...ORIGINAL_MARTIAL_SOULS, ...ERA_MARTIAL_SOULS]
+  .filter((definition) => !definition.lineageBound)
+  .map(catalogSoulToMeta);
+
+const seenMetaSoulNames = new Set<string>();
+export const META_MARTIAL_SOULS: MetaMartialSoulDefinition[] = [...CURATED_META_MARTIAL_SOULS, ...expandedMetaSouls]
+  .filter((definition) => seenMetaSoulNames.has(definition.name) ? false : (seenMetaSoulNames.add(definition.name), true));
+
+export const META_MARTIAL_SOUL_POOL_SIZE = META_MARTIAL_SOULS.filter((item) => ["紫色", "金色", "红色", "七彩"].includes(item.metaRarity)).length;
 
 export function metaSoulById(id: string): MetaMartialSoulDefinition | undefined {
   return META_MARTIAL_SOULS.find((item) => item.id === id);

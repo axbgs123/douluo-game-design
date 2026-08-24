@@ -412,10 +412,18 @@ test("局外召唤区直接提供武魂仓库与遗物仓库", async ({ page }) 
   await seedUnlimitedMartialSoulWarehouse();
   await page.goto("/");
   await page.getByRole("button", { name: "✦ 局外成长 传承与图鉴" }).click();
+  const poolText = await page.locator(".soul-draw-rules").innerText();
+  expect(Number(poolText.match(/武魂池\s+(\d+)\s+种/)?.[1] ?? 0)).toBeGreaterThanOrEqual(300);
   await expect(page.getByTestId("summon-tab-souls")).toBeVisible();
   await expect(page.getByTestId("summon-tab-heirlooms")).toBeVisible();
   await expect(page.locator(".soul-warehouse-section")).toBeVisible();
   await expect(page.locator(".soul-warehouse-section")).toContainText("永久无限");
+  await page.getByRole("button", { name: "收起仓库", exact: true }).click();
+  await expect(page.locator(".martial-soul-codex")).not.toBeVisible();
+  await page.getByRole("button", { name: "展开仓库", exact: true }).click();
+  const raritySelect = page.locator(".soul-warehouse-section select");
+  await raritySelect.selectOption("紫色");
+  expect(await raritySelect.evaluate((element) => (element as HTMLSelectElement).value)).toBe("紫色");
   await page.getByTestId("summon-tab-heirlooms").click();
   await expect(page.locator(".heirloom-warehouse-section")).toBeVisible();
   await expect(page.locator(".heirloom-warehouse-section")).toContainText("每局发动次数限制");

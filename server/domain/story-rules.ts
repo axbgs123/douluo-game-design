@@ -248,7 +248,7 @@ export function auditNarrative(game: StoredGame, text: string): string[] {
   return issues;
 }
 
-const GENERIC_SUGGESTION = /^(?:查看地图|查看新事件|观察周围|继续行动|想办法|保持谨慎|深入了解|进一步探索|先做准备|暂时退开|了解情况)[。！]?$/;
+const GENERIC_SUGGESTION = /^(?:查看地图|查看新事件|观察周围|继续行动|想办法|保持谨慎|深入了解|进一步探索|先做准备|暂时退开|了解情况|把眼前的事情做完|回应身边正在等的人|转去推进当前人生目标)[。！]?$/;
 
 function normalizedSuggestion(value: string): string {
   return value.replace(/[，。！？、；：\s]/g, "").replace(/^(?:先|尝试|主动|立即|继续)/, "");
@@ -288,28 +288,39 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
   const character = game.view.character;
   if (!character) return [];
   const awakeningTask = game.view.tasks.find((task) => task.status !== "完成" && /觉醒|培养评估|亲自复核/.test(`${task.id}${task.title}${task.detail}`));
-  if (game.view.status === "awakening" || awakeningTask) {
+  if (game.view.status === "awakening" || game.view.status === "life_goal_selection" || awakeningTask) {
     const awakeningRelation = game.view.relations.find((relation) => /觉醒主持|觉醒/.test(`${relation.relation}${relation.impression}`));
-    const officiant = awakeningRelation?.name ?? "主持觉醒的魂师";
     const faction = awakeningRelation?.faction;
     const { publicNames, hiddenNames } = publicAndHiddenSoulNames(game);
     const mainSoul = publicNames[0] ?? character.martialSoul.name;
     const originText = `${character.originName}${character.originSummary}${character.knownBackground}${character.originBurden}`;
     const unbound = /凭空|异界|无户籍|没有亲人|无牵无挂|来历不明/.test(originText);
     const guardian = game.view.relations.find((relation) => relation.category === "亲属" || /父|母|祖|养父|养母|监护|叔|婶/.test(relation.relation));
+    const era = game.view.era ?? 1;
     const growth = character.innateSoulPower >= 10
-      ? `请${officiant}说明满魂力的复测与上报流程`
-      : `请${officiant}说明${mainSoul}的第一魂环方向`;
+      ? "请主持者用备用水晶复测魂力"
+      : ({ 1: "请主持者说明第一魂环的适配方向", 2: "请主持者复测魂力与精神属性", 3: "请传灵师确认魂力与魂师班资格", 4: "请觉醒中心登记魂力与能力方向" } as const)[era];
+    const guardianPlan = guardian ? ({
+      1: `和${guardian.name}商量学院名额、路费与猎魂帮助`,
+      2: `和${guardian.name}商量学院报名、食宿与第一魂环`,
+      3: `把觉醒结果告诉${guardian.name}，确认魂师班与学费`,
+      4: `和${guardian.name}确认学院报名、体检与档案范围`,
+    } as const)[era] : ({
+      1: "追问工读名额、路费与猎魂协助",
+      2: "询问学院报名、住处与第一魂环帮助",
+      3: "询问魂师班报到时间与家庭费用",
+      4: "询问学院报名、体检与档案权限",
+    } as const)[era];
     const institution = unbound
-      ? `请${officiant}写下临时身份与今晚安置`
+      ? "请主持者先落实临时身份和今晚住处"
       : faction
-        ? `追问${faction}愿意提供哪些培养条件`
-        : guardian
-          ? `把结果告诉${guardian.name}，商量入学与猎魂花费`
-          : "追问工读名额、路费与猎魂协助";
+        ? `听完${faction}的培养条件再表态`
+        : guardianPlan;
     const secret = hiddenNames.length
       ? "暂不显露第二武魂，回住处后单独测试"
-      : `当场召出${mainSoul}，请主持者指出第一处缺陷`;
+      : character.innateSoulPower >= 7 || ["传奇", "神话"].includes(character.martialSoul.grade ?? "平凡")
+        ? "请求主持者暂缓外传武魂细节"
+        : era === 4 ? "完成体检后再参加学院能力评估" : `回住处练习${mainSoul}的收放与魂力消耗`;
     return [growth, institution, secret];
   }
   if (game.view.combat) return ["拉开距离观察对手起手", "利用地形掩护侧翼", "保留退路试探一次弱点"];
@@ -491,6 +502,7 @@ export function sanitizeNarrativeSuggestions(game: StoredGame, suggestions: stri
     .filter(Boolean)
     .filter((item) => !violatesCanonChronology(item, game.view.worldTime?.year ?? 0))
     .filter((item) => !/直接获得|必定成功|保证成功|无代价|立刻成神/.test(item))
+    .filter((item) => !/指出第一处缺陷/.test(item))
     .filter((item) => !GENERIC_SUGGESTION.test(item))
     .filter((item) => !leaksUnavailableKnowledge(game, item));
   const ordered = [...sanitize(fallback), ...sanitize(groundedNarrativeSuggestions(game)), ...sanitize(suggestions)];
