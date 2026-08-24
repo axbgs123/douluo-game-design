@@ -68,6 +68,7 @@ async function seedMediaAccountabilityGame() {
   actions.applyActionResult(game, "在街口公开抢劫", crime, crime.fallbackNarrative, crime.suggestions);
   world.advanceWorldTime(game, 20 * 1_440);
   if (!game.world.socialRumors.some((rumor) => rumor.mediaStatus === "已刊发" && rumor.valence < 0)) throw new Error("媒体 E2E 夹具未形成已刊发负面报道");
+  world.recordMediaCompetition(game, { primary: "城市告示处", secondary: "行旅商讯抄报", primaryDelta: 0, secondaryDelta: 0, newTopic: true, topicId: "e2e-market-supply", topic: "外城药材供应中断", status: "首发竞争", evidence: "公开市场登记形成第二个跨地区议题，尚未决定优先级" });
   database.saveGame(game, "e2e.media-fixture");
 }
 
@@ -518,16 +519,34 @@ test("责任编辑采访、独立补证与更正会形成完整浏览器责任�
   await save.locator("button").first().click();
   await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
   await page.getByRole("button", { name: /^世界/ }).click();
-  const competition = page.locator(".media-accountability-panel article").filter({ hasText: "城市告示处 ↔ 行旅商讯抄报" });
+  const competition = page.locator(".media-accountability-panel article").filter({ has: page.getByRole("button", { name: "对比核验链" }) });
   await expect(competition).toContainText("首发竞争");
   await expect(competition).toContainText("城市告示处领先");
   await competition.getByRole("button", { name: "对比核验链" }).click();
   await expect(page.getByText("媒体竞争核验 · 城市告示处 / 行旅商讯抄报", { exact: true })).toBeVisible();
+  await competition.getByRole("button", { name: "提议核验联盟" }).click();
+  const alliance = page.locator(".media-accountability-panel article").filter({ hasText: "跨地区核验联盟" });
+  await expect(alliance).toContainText("提议中");
+  await alliance.getByRole("button", { name: "启动试运行" }).click();
+  await expect(alliance).toContainText("提议中");
   const editor = page.locator(".media-accountability-panel article").filter({ hasText: "沈砚" });
   await expect(editor).toBeVisible();
   await editor.getByRole("button", { name: "采访编辑" }).click();
   await expect(page.locator("blockquote.player-entry").last()).toContainText("询问选稿依据");
   await expect(editor).toContainText("互动 1 次");
+  const secondaryEditor = page.locator(".media-accountability-panel article").filter({ hasText: "程路" });
+  await secondaryEditor.getByRole("button", { name: "采访编辑" }).click();
+  await expect(secondaryEditor).toContainText("互动 1 次");
+  await alliance.getByRole("button", { name: "启动试运行" }).click();
+  await expect(alliance).toContainText("试运行");
+  await expect(alliance).toContainText("共享核验资源 2");
+  const supplyAgenda = alliance.locator(".alliance-agenda").filter({ hasText: "外城药材供应中断" });
+  await supplyAgenda.getByRole("button", { name: "设为优先" }).click();
+  await expect(alliance).toContainText("资源冲突");
+  await expect(alliance).toContainText("1 个议题因资源有限延后");
+  await alliance.getByRole("button", { name: "共同核验" }).click();
+  await expect(supplyAgenda).toContainText("共同核验");
+  await expect(alliance).toContainText("共享核验资源 1");
   await submitAction(page, "调查报道来源和现场记录");
   await editor.getByRole("button", { name: "独家交线索" }).click();
   await expect(page.locator("blockquote.player-entry").last()).toContainText("提交独家补充证据");
@@ -540,6 +559,8 @@ test("责任编辑采访、独立补证与更正会形成完整浏览器责任�
   await expect(editor).toContainText("已签发更正");
   await expect(competition).toContainText("更正问责");
   await expect(competition).toContainText("行旅商讯抄报领先");
+  await expect(alliance).toContainText("暂停合作");
+  await expect(alliance).toContainText("共享核验资源 0");
   await expect(page.locator(".news-list")).toContainText("更正说明");
   await expect(page.locator(".news-list")).toContainText("旧消息");
 });

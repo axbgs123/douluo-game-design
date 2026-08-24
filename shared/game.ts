@@ -791,6 +791,29 @@ export interface MediaCompetitionView {
   status: "并列观察" | "首发竞争" | "核验拉锯" | "更正问责";
   playerChoice?: string;
   evidence: string[];
+  topics: MediaAgendaView[];
+}
+
+export interface MediaAgendaView {
+  id: string;
+  title: string;
+  sourceRumorId: string;
+  status: "候选议题" | "优先排期" | "延后排期" | "共同核验";
+  priorityScores: Record<string, number>;
+  evidence: string[];
+}
+
+export interface MediaAllianceView {
+  id: string;
+  name: string;
+  competitionId: string;
+  outlets: [string, string];
+  status: "提议中" | "试运行" | "资源冲突" | "暂停合作";
+  sharedVerificationPool: number;
+  priorityAgendaId?: string;
+  delayedAgendaIds: string[];
+  agendas: MediaAgendaView[];
+  evidence: string[];
 }
 
 export interface GameView {
@@ -838,6 +861,7 @@ export interface GameView {
   news: WorldNewsView[];
   mediaOutlets: MediaOutletReputationView[];
   mediaCompetitions: MediaCompetitionView[];
+  mediaAlliances: MediaAllianceView[];
   activeEvents: WorldEventView[];
   canonInfluences: CanonInfluenceView[];
   storyArchive: StoryArchiveView;

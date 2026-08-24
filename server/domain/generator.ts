@@ -1415,7 +1415,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 21,
+    schemaVersion: 22,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1465,6 +1465,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       news: [],
       mediaOutlets: [],
       mediaCompetitions: [],
+      mediaAlliances: [],
       activeEvents: [],
       canonInfluences: [],
       storyArchive: {

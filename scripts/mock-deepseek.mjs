@@ -41,6 +41,7 @@ const server = createServer((request, response) => {
       // Narration prompts are not required to contain the semantic payload.
     }
     const accountableHistory = /旧世|档案|年表|历史权益|听证|旧址线索|当前产权/.test(playerInput);
+    const accountableMedia = /媒体联盟|核验联盟|共享核验|优先议题|共同核验/.test(playerInput);
     const historyNarrative = /听证/.test(playerInput)
       ? `审理人把旧档和当代登记分开核对，听完异议才在裁定页落笔：${fixedRuleResult}`
       : /重新投资|复建|重新经营/.test(playerInput)
@@ -48,11 +49,16 @@ const server = createServer((request, response) => {
         : /提交|申请/.test(playerInput) && /主张|历史权益/.test(playerInput)
           ? `受理员逐页编号旧档、权属调查和送达材料，收下费用后签出回单：${fixedRuleResult}`
           : `他沿着目录号查到保管记录，把档案年代、转交印记和独立证据逐项对齐：${fixedRuleResult}`;
+    const mediaNarrative = /优先议题|优先核验/.test(playerInput)
+      ? `两位编辑把候选议题重新排期，优先项和因人力不足延后的条目都留在公开板上：${fixedRuleResult}`
+      : /共同核验/.test(playerInput)
+        ? `两家编辑分别签收同一份异地查证回函，没有共用标题或结论：${fixedRuleResult}`
+        : `两家机构把联盟提案、共享核验额度和各自责任逐栏写清后分别签字：${fixedRuleResult}`;
     const content = prompt.includes("行动语义整理器")
       ? JSON.stringify({ ruleAction: playerInput })
       : JSON.stringify({
-          narrative: accountableHistory
-            ? historyNarrative
+          narrative: accountableHistory || accountableMedia
+            ? accountableHistory ? historyNarrative : mediaNarrative
             : "晨光沿着窗纸落进屋里，他把昨夜散乱的东西重新收好，在安静中等过了一天。院外偶尔传来脚步声，除此之外没有新的变故。",
           suggestions: ["查看屋外的动静", "整理随身物品", "询问附近的住民"],
           memory: { summary: "他在住处平静地等过了一天。", openThreads: [], keyChoice: "", npcNotes: {}, chapterTitle: "初醒" },

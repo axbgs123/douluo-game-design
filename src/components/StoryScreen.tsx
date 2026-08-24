@@ -377,11 +377,18 @@ function MediaAccountabilityPanel({ game, submit, busy }: { game: GameView; subm
   if (!game.mediaOutlets.length) return null;
   return <section className="detail-stack media-accountability-panel">
     <h3 className="panel-title">媒体责任档案</h3>
+    {game.mediaAlliances?.length > 0 && <><p className="panel-label">跨地区核验联盟</p><div className="player-relation-ledger">{game.mediaAlliances.map((alliance) => <article key={alliance.id}>
+      <header><strong>{alliance.name}</strong><span>{alliance.status}</span></header>
+      <p>{alliance.outlets.join(" ↔ ")} · 共享核验资源 {alliance.sharedVerificationPool}</p>
+      <small>{alliance.delayedAgendaIds.length ? `${alliance.delayedAgendaIds.length} 个议题因资源有限延后` : "尚无延后议题"} · 共享查证不等于共享结论</small>
+      <div>{alliance.status === "提议中" && <button type="button" disabled={busy} onClick={() => submit("与两家责任编辑协商启动共享核验资源")}>启动试运行</button>}<button type="button" disabled={busy || alliance.status === "提议中" || !alliance.priorityAgendaId || alliance.sharedVerificationPool < 1} onClick={() => submit("让媒体联盟共同核验优先议题")}>共同核验</button></div>
+      {alliance.agendas.map((agenda) => <section key={agenda.id} className="alliance-agenda"><strong>{agenda.title}</strong><span>{agenda.status}</span><small>{alliance.outlets.map((name) => `${name} 优先 ${agenda.priorityScores[name] ?? 0}`).join(" · ")}</small><button type="button" disabled={busy || alliance.status === "提议中" || agenda.status === "共同核验"} onClick={() => submit(`把${agenda.title}设为联盟优先议题`)}>设为优先</button></section>)}
+    </article>)}</div></>}
     {game.mediaCompetitions?.length > 0 && <><p className="panel-label">跨媒体竞争</p><div className="player-relation-ledger">{game.mediaCompetitions.map((competition) => <article key={competition.id}>
       <header><strong>{competition.outlets.join(" ↔ ")}</strong><span>{competition.status}</span></header>
       <p>{competition.outlets.map((name) => `${name} ${competition.scores[name] ?? 0}分`).join(" · ")}</p>
       <small>共同议题 {competition.sharedTopics} 次 · {competition.leader ? `${competition.leader}领先` : "暂时并列"}{competition.playerChoice ? ` · 最近独家线索交给${competition.playerChoice}` : ""}</small>
-      <button type="button" disabled={busy} onClick={() => submit("对比两家媒体的报道与核验记录")}>对比核验链</button>
+      <div><button type="button" disabled={busy} onClick={() => submit("对比两家媒体的报道与核验记录")}>对比核验链</button><button type="button" disabled={busy || competition.topics.length < 2 || game.mediaAlliances.some((item) => item.competitionId === competition.id)} onClick={() => submit(`提议${competition.outlets.join("与")}建立跨地区核验联盟`)}>提议核验联盟</button></div>
     </article>)}</div></>}
     <div className="player-relation-ledger">{game.mediaOutlets.map((outlet) => <article key={outlet.name}>
       <header><strong>{outlet.name}</strong><span>{outlet.status} · {outlet.trustScore}</span></header>

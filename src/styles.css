@@ -450,6 +450,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .lineage-list header { display: flex; justify-content: space-between; gap: 12px; }
 .lineage-list p { margin: 0; color: var(--muted); font-size: 12px; }
 .lineage-list button { justify-self: start; }
+.alliance-agenda { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 9px; border: 1px solid rgba(138,103,37,.2); background: rgba(255,255,255,.35); }
+.alliance-agenda small { grid-column: 1 / -1; }
+.alliance-agenda button { justify-self: start; }
 .simple-list { list-style: none; padding: 0; }
 .simple-list li { padding: 10px 0; border-bottom: 1px solid var(--line); color: #554c40; font-size: 11px; }
 .panel-label { color: var(--gold); font-size: 11px; letter-spacing: .12em; margin: 18px 0 6px; }

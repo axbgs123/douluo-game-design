@@ -68,6 +68,8 @@ describe("增强小说引擎", () => {
     expect(auditResolutionAlignment("受理员核过送达名册，收下费用并签出待审回单。", { ...ordinaryResolution, intent: "提交历史权益主张" })).toEqual([]);
     expect(auditResolutionAlignment("裁定只承认档案查阅权，没有移交旧产权。", { ...ordinaryResolution, intent: "参加历史权益听证" })).toEqual([]);
     expect(auditResolutionAlignment("他租下今天的铺面，付清启动款，为新主体登记。", { ...ordinaryResolution, intent: "投资成立当代新主体" })).toEqual([]);
+    expect(auditResolutionAlignment("两家编辑把一个议题排到最前，另一个因人力不足延后。", { ...ordinaryResolution, intent: "设置媒体联盟议程" })).toEqual([]);
+    expect(auditResolutionAlignment("他在屋里安静等过了一天。", { ...ordinaryResolution, intent: "媒体联盟共同核验" })).toContain("正文没有呈现联盟共同核验");
   });
 
   it("automatically regenerates with the previous audit reasons", async () => {

@@ -122,6 +122,10 @@ export function auditResolutionAlignment(text: string, resolution: ActionResolut
     [/提交历史权益主张/, /受理|提交|主张|送达|公示|费用|待审/, "正文没有呈现历史权益受理"],
     [/参加历史权益听证/, /听证|审理|裁定|承认|驳回|异议/, "正文没有呈现听证裁定"],
     [/投资成立当代新主体/, /投资|登记|新主体|新社|铺面|场地|启动/, "正文没有呈现当代投资与新设主体"],
+    [/提议跨地区媒体联盟/, /联盟|提案|共同议题|异地查证/, "正文没有呈现媒体联盟提案"],
+    [/启动媒体核验联盟/, /联盟|试运行|共享|签字|核验资源/, "正文没有呈现媒体联盟启动"],
+    [/设置媒体联盟议程/, /优先|排期|延后|议题/, "正文没有呈现媒体议程取舍"],
+    [/媒体联盟共同核验/, /共同核验|查证|回函|签收|共享资源/, "正文没有呈现联盟共同核验"],
   ];
   const requirement = requiredByIntent.find(([intent]) => intent.test(resolution.intent));
   return requirement && !requirement[1].test(text) ? [requirement[2]] : [];

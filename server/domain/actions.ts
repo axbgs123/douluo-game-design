@@ -1287,6 +1287,58 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
   const alias = game.world.flags.activeAliasLocationId === locationId ? String(game.world.flags.activeAlias ?? "") : "";
   const publicName = alias || game.view.character!.name;
   const publishedRumor = [...game.world.socialRumors].reverse().find((item) => item.publicName === publicName && (item.mediaStatus === "已刊发" || item.mediaStatus === "已更正"));
+  if (/提议|建立/.test(action) && /媒体联盟|核验联盟/.test(action)) {
+    const competition = game.view.mediaCompetitions?.at(-1);
+    if (!competition || competition.topics.length < 2) return impossible("至少需要两家媒体围绕两个有来源的共同议题留下竞争记录，才能讨论跨地区核验联盟。", ["等待第二个共同议题", "对比两家媒体核验链", "继续调查来源"]);
+    const outlets = competition.outlets.map((name) => game.view.mediaOutlets.find((item) => item.name === name));
+    if (outlets.some((outlet) => !outlet || outlet.trustScore < 58)) return impossible("参与机构中有一家尚未达到稳定信誉，联盟不能用低可信机构互相背书。", ["分别核验两家报道", "推动证据化更正", "暂缓联盟"]);
+    const id = `media-alliance:${competition.id}`;
+    if (game.view.mediaAlliances.some((item) => item.id === id)) return impossible("这组媒体已经有联盟提案或试运行档案，不能重复建立。", ["查看联盟状态", "联系双方责任编辑", "安排优先议题"]);
+    const alliance = { id, name: `${competition.outlets.join("—")}跨地区核验联盟`, competitionId: competition.id, outlets: [...competition.outlets] as [string, string], status: "提议中" as const, sharedVerificationPool: 0, delayedAgendaIds: [], agendas: competition.topics.map((topic) => ({ ...topic, priorityScores: { ...topic.priorityScores }, evidence: [...topic.evidence] })), evidence: [`行动${game.actionIndex}：基于${competition.sharedTopics}个共同议题提出联盟，不自动互认报道真实性`] };
+    game.view.mediaAlliances.push(alliance);
+    return { intent: "提议跨地区媒体联盟", minutes: 60, ruleSummary: `${alliance.name}进入提议中；联盟尚无共享核验资源，必须完成竞争链对比并分别取得两名责任编辑同意。`, fallbackNarrative: "两家机构的名字第一次出现在同一份提案上。提案只列共享目录、异地查证和责任边界，没有写相互背书；两位责任编辑都还要单独签字。", suggestions: ["分别采访两家责任编辑", "对比两家媒体核验链", "协商启动共享核验资源"] };
+  }
+  if (/协商|启动/.test(action) && /共享核验|媒体联盟|核验联盟/.test(action)) {
+    const alliance = game.view.mediaAlliances.at(-1);
+    if (!alliance) return impossible("当前没有可协商的媒体联盟提案。", ["提议建立跨地区核验联盟", "对比两家媒体核验链", "查看媒体责任档案"]);
+    if (alliance.status !== "提议中") return impossible(`${alliance.name}当前为“${alliance.status}”，不需要重复启动。`, ["安排联盟优先议题", "共同核验优先议题", "查看联盟证据"]);
+    const competition = game.view.mediaCompetitions.find((item) => item.id === alliance.competitionId)!;
+    const editors = alliance.outlets.map((name) => game.view.mediaOutlets.find((item) => item.name === name)?.responsibleEditor);
+    if (!competition.evidence.some((item) => item.includes("玩家对比"))) return impossible("玩家尚未逐栏对比两家机构的来源、转载与更正责任。", ["对比两家媒体的报道与核验记录", "查看报道版本", "暂缓联盟"]);
+    if (editors.some((editor) => !editor || (editor.interactions ?? 0) < 1)) return impossible("两家机构的责任编辑尚未分别接受来源边界访谈，不能由一方替另一方同意。", ["分别采访两家责任编辑", "查看编辑署名", "暂缓联盟"]);
+    alliance.status = "试运行";
+    alliance.sharedVerificationPool = 2;
+    alliance.evidence.push(`行动${game.actionIndex}：${editors.map((editor) => editor!.name).join("与")}分别同意共享两份异地查证额度，原机构各自承担刊发责任`);
+    return { intent: "启动媒体核验联盟", minutes: 90, ruleSummary: `${alliance.name}进入试运行，共享核验资源 ${alliance.sharedVerificationPool} 份；共享查证不等于共享结论或免责。`, fallbackNarrative: "两位编辑在同一页的不同栏签了名。共享的是异地目录和两次查证额度，标题、结论和出错后的更正责任仍各归各家。", suggestions: ["选择联盟优先议题", "查看候选议题", "让联盟共同核验优先议题"] };
+  }
+  if (/设为.*优先议题|优先核验/.test(action) && /联盟|议题/.test(action)) {
+    const alliance = game.view.mediaAlliances.at(-1);
+    if (!alliance || alliance.status === "提议中") return impossible("联盟尚未进入试运行，不能分配共享核验资源。", ["协商启动共享核验资源", "分别采访两家责任编辑", "查看联盟提案"]);
+    const agenda = alliance.agendas.find((item) => action.includes(item.title));
+    if (!agenda) return impossible("需要明确选择联盟档案中的一个具名议题。", alliance.agendas.slice(0, 3).map((item) => `把${item.title}设为联盟优先议题`));
+    alliance.priorityAgendaId = agenda.id;
+    alliance.delayedAgendaIds = alliance.agendas.filter((item) => item.id !== agenda.id && item.status !== "共同核验").map((item) => item.id);
+    for (const item of alliance.agendas) {
+      item.status = item.id === agenda.id ? "优先排期" : item.status === "共同核验" ? item.status : "延后排期";
+      if (item.id === agenda.id) for (const outlet of alliance.outlets) item.priorityScores[outlet] = (item.priorityScores[outlet] ?? 0) + 1;
+    }
+    alliance.status = alliance.delayedAgendaIds.length ? "资源冲突" : "试运行";
+    alliance.evidence.push(`行动${game.actionIndex}：把“${agenda.title}”设为优先，${alliance.delayedAgendaIds.length}个议题因共享人力有限延后`);
+    return { intent: "设置媒体联盟议程", minutes: 45, ruleSummary: `“${agenda.title}”成为优先议题；${alliance.delayedAgendaIds.length}个议题延后，联盟状态为“${alliance.status}”。优先级不提高事实可信度。`, fallbackNarrative: "排期板只能把一个议题推到最上方。它旁边多了两道核验签位，其他条目则被移到下一栏；没人把“先查”改写成“已经属实”。", suggestions: ["让媒体联盟共同核验优先议题", "查看延后议题", "重新安排联盟优先议题"] };
+  }
+  if (/联盟.*共同核验|共同核验.*优先议题/.test(action)) {
+    const alliance = game.view.mediaAlliances.at(-1);
+    const agenda = alliance?.agendas.find((item) => item.id === alliance.priorityAgendaId);
+    if (!alliance || !agenda) return impossible("联盟尚未选出一个明确的优先议题。", ["选择联盟优先议题", "查看候选议题", "暂缓共享核验"]);
+    if (alliance.sharedVerificationPool < 1) return impossible("共享核验额度已经用完，不能凭联盟名义制造新的来源。", ["等待下一轮资源", "由单家机构独立调查", "查看已核验议题"]);
+    alliance.sharedVerificationPool -= 1;
+    agenda.status = "共同核验";
+    agenda.evidence.push(`行动${game.actionIndex}：两家责任编辑分别签收同一份异地目录查证结果，仍保留各自结论权`);
+    alliance.evidence.push(`${agenda.title}消耗1份共享核验额度，剩余${alliance.sharedVerificationPool}`);
+    for (const outlet of alliance.outlets) recordMediaOutletReputation(game, { name: outlet, stance: game.view.mediaOutlets.find((item) => item.name === outlet)?.stance ?? "公共信息核验", trustDelta: 1, evidence: `${agenda.id}：联盟共享异地查证，但未互相复制结论` });
+    recordMediaCompetition(game, { primary: alliance.outlets[0], secondary: alliance.outlets[1], primaryDelta: 1, secondaryDelta: 1, status: "核验拉锯", evidence: `${agenda.id}：双方共同取得查证材料，各自承担使用与更正责任` });
+    return { intent: "媒体联盟共同核验", minutes: 180, ruleSummary: `联盟用1份共享资源完成“${agenda.title}”的异地查证，剩余 ${alliance.sharedVerificationPool}；两家机构各自决定是否刊发并分别承担错误责任。`, fallbackNarrative: "同一份异地回函送到两张编辑桌上，签收号能够互相对照。两家人各自圈出不同段落，没有共用标题，也没有在责任栏替对方签名。", suggestions: ["分别询问两家编辑结论", "查看延后议题", "继续独立调查"] };
+  }
   if (/对比.*(?:媒体|两家).*(?:报道|核验|记录)|比较.*(?:报道|媒体)/.test(action)) {
     const competition = game.view.mediaCompetitions?.at(-1);
     if (!competition) return impossible("当前还没有两家媒体围绕同一事件形成可比较的报道链。", ["查看近日消息", "等待关联报道", "检查媒体责任档案"]);
@@ -1370,6 +1422,14 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
       outletTrust.responsibleEditor.playerTrust = Math.min(100, (outletTrust.responsibleEditor.playerTrust ?? 0) + 4);
       outletTrust.responsibleEditor.evidence.push(`${rumor.id}：接受${publicName}提交的独立调查并签发更正`);
       outletTrust.responsibleEditor.evidence = outletTrust.responsibleEditor.evidence.slice(-12);
+    }
+    for (const alliance of game.view.mediaAlliances.filter((item) => item.outlets.some((name) => name === (rumor.mediaOutlet ?? rumor.mediaChannel) || (rumor.mediaVersions ?? []).some((version) => version.outlet === name)))) {
+      const unstable = alliance.outlets.filter((name) => (game.view.mediaOutlets.find((item) => item.name === name)?.trustScore ?? 0) < 58);
+      if (unstable.length) {
+        alliance.status = "暂停合作";
+        alliance.sharedVerificationPool = 0;
+        alliance.evidence.push(`${rumor.id}更正后${unstable.join("、")}跌出稳定信誉，联盟暂停且未使用额度全部失效`);
+      }
     }
     game.view.news.unshift({ id: `${rumor.id}-correction`, title: `${rumor.mediaOutlet ?? rumor.mediaChannel ?? "本地公报"} · 更正说明`, detail: `关于${publicName}的旧消息已附加更正：${rumor.correctionEvidence.join("；")}。核验状态：${rumor.verificationStatus}；累计${rumor.corroborationCount}项来源；机构信誉调整为${outletTrust?.trustScore ?? 52}（${outletTrust?.status ?? "待观察"}）。${outletTrust?.responsibleEditor?.role ?? "责任编辑"}${outletTrust?.responsibleEditor?.name ?? "当班编辑"}签发更正，个人来源信任调整为${outletTrust?.responsibleEditor?.sourceTrust ?? 52}。更正降低原消息可信度，但不会抹除已经发生的传播。`, date: relationshipDate(game) });
     game.view.news = game.view.news.slice(0, 30);
@@ -3174,7 +3234,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (game.view.worldInheritance && (/旧世|祖先|档案|家谱|谱牒|旧产业|历史权益|旁支|年表|历史节点|转交|衰减|再发现/.test(action) || game.view.worldInheritance.institutions.some((item) => action.includes(item.name)) || game.view.worldInheritance.branches?.some((item) => action.includes(item.name)) || game.view.worldInheritance.chronology?.some((item) => action.includes(item.title))) && /核验|查证|调查|追查|验证|提交|申请|主张|听证|审理|裁定|投资|复建|经营/.test(action)) resolution = inheritanceResolution(game, action);
   else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
-  else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验|责任编辑|核验编辑|采访.*编辑|提交.*补充.*(?:证据|材料)|独家.*(?:证据|材料|线索)|对比.*(?:媒体|两家)|比较.*(?:报道|媒体)/.test(action)) resolution = mediaResolution(game, action);
+  else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验|责任编辑|核验编辑|采访.*编辑|提交.*补充.*(?:证据|材料)|独家.*(?:证据|材料|线索)|对比.*(?:媒体|两家)|比较.*(?:报道|媒体)|媒体联盟|核验联盟|共享核验|优先议题|共同核验/.test(action)) resolution = mediaResolution(game, action);
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);
   else if (/调查|搜索|观察周围|查找|研究/.test(action)) resolution = investigateResolution(game, action);
   else if (/等待|快进|过去一天|过去一月|过去一年|休整一/.test(action)) resolution = waitResolution(game, action);
