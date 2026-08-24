@@ -992,7 +992,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 23;
+  legacy.schemaVersion = 24;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -1037,6 +1037,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     alliance.recoveryEvidence ??= [];
     alliance.suspendedOutletNames ??= [];
     alliance.probationVerificationsRemaining ??= 0;
+    alliance.resourceRefillCount ??= 0;
   }
   if (missingMediaCompetitions) {
     for (const rumor of legacy.world.socialRumors) {

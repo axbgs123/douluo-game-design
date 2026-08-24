@@ -578,6 +578,15 @@ test("责任编辑采访、独立补证与更正会形成完整浏览器责任�
   await expect(alliance).toContainText("试运行");
   await expect(alliance).toContainText("观察期剩余 0 次");
   await expect(alliance).toContainText("共享核验资源 0");
+  await alliance.getByRole("button", { name: "申请补充资源" }).click();
+  await expect(alliance).toContainText("共享核验资源 0");
+  await editor.getByRole("button", { name: "采访编辑" }).click();
+  await secondaryEditor.getByRole("button", { name: "采访编辑" }).click();
+  await submitAction(page, "调查联盟耗尽后的异地回函");
+  await submitAction(page, "调查联盟耗尽后的另一来源");
+  await alliance.getByRole("button", { name: "申请补充资源" }).click();
+  await expect(alliance).toContainText("共享核验资源 1");
+  await expect(alliance).toContainText("已审计补充 1 次");
   await expect(page.locator(".news-list")).toContainText("更正说明");
   await expect(page.locator(".news-list")).toContainText("旧消息");
 });

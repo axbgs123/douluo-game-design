@@ -1327,6 +1327,23 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     alliance.evidence.push(`修复审核以2项独立调查和双编辑复核进入受限恢复；完成观察期核验前不得恢复常规合作`);
     return { intent: "媒体联盟受限恢复", minutes: 120, ruleSummary: `${alliance.name}进入受限恢复，仅补充1份共享核验资源；必须用在尚未共同核验的议题，观察期完成前仍不恢复常规合作。`, fallbackNarrative: "两位编辑在各自的复核栏签字，调查编号也逐项对上。资源室只发回一枚临时核验签，封条写得清楚：先完成一项可追溯的观察期查证，再谈恢复。", suggestions: ["选择尚未共同核验的议题", "完成观察期共同核验", "查看修复证据"] };
   }
+  if (/申请|补充|追加/.test(action) && /联盟.*(?:核验资源|共享资源|核验额度)|(?:核验资源|共享资源|核验额度).*联盟/.test(action)) {
+    const alliance = game.view.mediaAlliances.at(-1);
+    if (!alliance || !["试运行", "资源冲突"].includes(alliance.status)) return impossible("联盟当前不处于可补充常规资源的运行状态。", ["查看联盟状态", "完成启动或修复流程", "由单家机构调查"]);
+    if (alliance.sharedVerificationPool > 0) return impossible(`联盟仍有${alliance.sharedVerificationPool}份核验资源，不能提前囤积额度。`, ["使用现有额度", "查看优先议题", "继续独立调查"]);
+    if (alliance.resourceDepletedAtActionIndex === undefined) return impossible("联盟没有可审计的资源耗尽记录，不能凭空补发额度。", ["查看资源记录", "由单家机构调查", "保持零额度"]);
+    const editors = alliance.outlets.map((name) => ({ name, editor: game.view.mediaOutlets.find((item) => item.name === name)?.responsibleEditor }));
+    const missingReviews = editors.filter(({ name, editor }) => !editor || (editor.interactions ?? 0) <= (alliance.resourceDepletionInteractionCounts?.[name] ?? 0));
+    if (missingReviews.length) return impossible(`${missingReviews.map((item) => item.editor?.name ?? item.name).join("、")}尚未在额度耗尽后重新复核，不能补发共享资源。`, ["分别采访两家责任编辑", "查看额度耗尽记录", "继续独立调查"]);
+    const investigations = game.world.actionLedger.filter((entry) => entry.index > alliance.resourceDepletedAtActionIndex! && /调查|取得证据/.test(entry.intent) && !/登记|无法完成|规则阻止/.test(entry.intent));
+    if (investigations.length < 2) return impossible(`额度耗尽后只有${investigations.length}项新调查，至少需要2项才能补回1份资源。`, ["继续调查报道来源", "寻找另一项独立证据", "保持零额度"]);
+    alliance.sharedVerificationPool = 1;
+    alliance.resourceRefillCount = (alliance.resourceRefillCount ?? 0) + 1;
+    alliance.evidence.push(`行动${game.actionIndex}：以双编辑事后复核和${investigations.length}项耗尽后调查补充1份资源；累计补充${alliance.resourceRefillCount}次`);
+    alliance.resourceDepletedAtActionIndex = undefined;
+    alliance.resourceDepletionInteractionCounts = undefined;
+    return { intent: "补充媒体联盟核验资源", minutes: 120, ruleSummary: `${alliance.name}依据双编辑事后复核和至少两项新调查补充1份共享核验资源；不能提前囤积，也不提高任何议题的事实可信度。`, fallbackNarrative: "资源室核对了耗尽页之后的两份调查编号，又让两位编辑分别签字，只补回一枚核验签。它能支付下一次异地查证，却没有在任何报道旁盖上“属实”。", suggestions: ["选择尚未共同核验的议题", "使用补充的核验资源", "查看资源补充记录"] };
+  }
   if (/协商|启动/.test(action) && /共享核验|媒体联盟|核验联盟/.test(action)) {
     const alliance = game.view.mediaAlliances.at(-1);
     if (!alliance) return impossible("当前没有可协商的媒体联盟提案。", ["提议建立跨地区核验联盟", "对比两家媒体核验链", "查看媒体责任档案"]);
@@ -1375,6 +1392,11 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
       const stable = alliance.outlets.every((name) => (game.view.mediaOutlets.find((item) => item.name === name)?.trustScore ?? 0) >= 58);
       alliance.status = stable ? "试运行" : "受限恢复";
       alliance.evidence.push(`观察期共同核验完成；${stable ? "双方恢复稳定信誉，转回试运行" : "仍有机构未达稳定信誉，继续受限且不补发额度"}`);
+    }
+    if (alliance.sharedVerificationPool === 0) {
+      alliance.resourceDepletedAtActionIndex = game.actionIndex;
+      alliance.resourceDepletionInteractionCounts = Object.fromEntries(alliance.outlets.map((name) => [name, game.view.mediaOutlets.find((item) => item.name === name)?.responsibleEditor?.interactions ?? 0]));
+      alliance.evidence.push(`行动${game.actionIndex}：共享核验资源耗尽；后续补充必须重新取得双编辑复核和两项新调查`);
     }
     return { intent: probation ? "媒体联盟观察期核验" : "媒体联盟共同核验", minutes: 180, ruleSummary: `联盟用1份共享资源完成“${agenda.title}”的异地查证，剩余 ${alliance.sharedVerificationPool}；${probation ? `观察期结果为“${alliance.status}”，` : ""}两家机构各自决定是否刊发并分别承担错误责任。`, fallbackNarrative: probation ? "临时核验签随着异地回函一并归档。两家编辑分别写下判断，复核人只确认来源链完整，没有替任何一家背书；信誉达到门槛后，常规合作才重新开放。" : "同一份异地回函送到两张编辑桌上，签收号能够互相对照。两家人各自圈出不同段落，没有共用标题，也没有在责任栏替对方签名。", suggestions: ["分别询问两家编辑结论", "查看延后议题", "继续独立调查"] };
   }

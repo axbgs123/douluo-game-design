@@ -818,6 +818,9 @@ export interface MediaAllianceView {
   suspendedOutletNames?: string[];
   probationVerificationsRemaining?: number;
   recoveryEvidence?: string[];
+  resourceDepletedAtActionIndex?: number;
+  resourceDepletionInteractionCounts?: Record<string, number>;
+  resourceRefillCount?: number;
   evidence: string[];
 }
 

@@ -72,6 +72,7 @@ describe("增强小说引擎", () => {
     expect(auditResolutionAlignment("他在屋里安静等过了一天。", { ...ordinaryResolution, intent: "媒体联盟共同核验" })).toContain("正文没有呈现联盟共同核验");
     expect(auditResolutionAlignment("更正编号保留在修复页，两名编辑各有独立复核栏。", { ...ordinaryResolution, intent: "登记媒体联盟修复计划" })).toEqual([]);
     expect(auditResolutionAlignment("他们只是重新开会。", { ...ordinaryResolution, intent: "媒体联盟受限恢复" })).toContain("正文没有呈现联盟受限恢复");
+    expect(auditResolutionAlignment("资源室核对新调查和双编辑复核后，只补回一枚核验签。", { ...ordinaryResolution, intent: "补充媒体联盟核验资源" })).toEqual([]);
   });
 
   it("automatically regenerates with the previous audit reasons", async () => {
