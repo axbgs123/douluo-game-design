@@ -345,6 +345,8 @@ async function createPlayingCharacter(page: import("@playwright/test").Page, era
   await expect(page.getByRole("heading", { name: "选择角色" })).toBeVisible();
   await page.locator(".select-button").first().click();
   await expect(page.getByRole("heading", { name: "性格底色" })).toBeVisible();
+  await expect(page.getByTestId("character-portrait")).toBeVisible();
+  await expect(page.getByTestId("character-portrait").locator("img")).toHaveAttribute("src", `/assets/candidate-era-${era}-male.webp`);
   for (const question of await page.locator(".question-card").all()) await question.locator("label").first().click();
   await page.getByRole("button", { name: "确认性格，进入觉醒" }).click();
   await expect(page.getByRole("button", { name: "觉醒武魂" })).toBeVisible();
@@ -352,6 +354,7 @@ async function createPlayingCharacter(page: import("@playwright/test").Page, era
   await expect(page.getByRole("heading", { name: "看清武魂后，再定此生所求" })).toBeVisible();
   await page.getByRole("button", { name: "确定目标，开始故事" }).click();
   await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await expect(page.getByTestId("character-portrait")).toContainText(`六岁建档肖像 · 斗${era}`);
 }
 
 async function submitAction(page: import("@playwright/test").Page, action: string) {
@@ -404,6 +407,7 @@ test("玩家可以从界面进入斗四且出生地图不会显示斗一地标",
   await page.goto("/");
   await expect(page.getByRole("img", { name: "同一幻想大陆从森林村落演变到星际文明的原创全景" })).toBeVisible();
   await page.getByRole("button", { name: "斗四" }).click();
+  await page.getByRole("button", { name: "女", exact: true }).click();
   await expect(page.locator(".era-panorama-4")).toContainText("星际舰队、行星航路与宇宙文明");
   await expect(page.getByRole("heading", { name: "终极斗罗" })).toBeVisible();
   await page.getByRole("button", { name: "抽取三名角色" }).click();
@@ -415,6 +419,8 @@ test("玩家可以从界面进入斗四且出生地图不会显示斗一地标",
   await expect(page.getByText("天罗星", { exact: true })).toBeVisible();
   await expect(page.getByText("天斗星", { exact: true })).toBeVisible();
   await expect(page.getByText("天斗帝国", { exact: true })).toHaveCount(0);
+  await page.locator(".select-button").first().click();
+  await expect(page.getByTestId("character-portrait").locator("img")).toHaveAttribute("src", "/assets/candidate-era-4-female.webp");
 });
 
 test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状态", async ({ page }) => {
