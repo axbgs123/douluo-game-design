@@ -208,8 +208,44 @@ describe("candidate generation", () => {
     expect(game.view.shaping?.lifeGoalOptions.every((goal) => goal.length >= 18)).toBe(true);
 
     const previousGoals = game.view.shaping!.lifeGoalOptions;
-    rerollCharacterShaping(game, "goals");
+    rerollCharacterShaping(game, "goals", [0]);
+    expect(game.view.shaping!.lifeGoalOptions[0]).toBe(previousGoals[0]);
+    expect(new Set(game.view.shaping!.lifeGoalOptions).size).toBe(3);
     expect(game.view.shaping!.lifeGoalOptions).not.toEqual(previousGoals);
+  });
+
+  it("keeps combat martial souls away from support-only life goals", () => {
+    for (let index = 0; index < 24; index += 1) {
+      const game = createGame({ gender: "男", difficulty: "标准", seed: `combat-goal-fit-${index}` });
+      const hidden = game.hiddenCandidates[0];
+      hidden.martialSoul = { id: "combat-sword", name: "重锋战剑", category: "器武魂", description: "纯粹强攻、破甲与近战爆发", rarity: 5, soulPowerRange: [5, 9], omens: [], affinityTags: ["强攻", "攻击"] };
+      hidden.martialSouls = [hidden.martialSoul];
+      selectCandidate(game, hidden.public.id);
+      finalizeCharacterShaping(game, { keywords: ["勇敢", "好胜", "专注"], answers: {} });
+      awakenCharacter(game);
+      expect(game.view.shaping!.lifeGoalOptions).not.toContain("成为大陆公认的第一辅助魂师，让强攻系封号斗罗主动请求合作");
+    }
+  });
+
+  it("lets the owning sect conduct awakening and alerts the matching canon expert", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "seven-treasure-seven-kill" });
+    const hidden = game.hiddenCandidates[0];
+    hidden.originId = "seven-treasure-core";
+    hidden.roleTags = ["七宝琉璃宗", "内门"];
+    hidden.public.originName = "七宝琉璃宗内门子弟";
+    hidden.public.location = "七宝琉璃宗城堡";
+    hidden.public.startingRelations = [{ name: "七宝觉醒教习", relation: "所属势力觉醒魂师", impression: "等待结果", faction: "七宝琉璃宗", strength: 20, category: "势力" }];
+    hidden.martialSoul = { id: "test-seven-kill", name: "七杀剑", category: "器武魂", description: "纯攻击剑武魂", rarity: 1, soulPowerRange: [10, 10], omens: [], grade: "传奇", sourceEra: 1, affinityTags: ["七宝琉璃宗", "剑"] };
+    hidden.martialSouls = [hidden.martialSoul];
+    hidden.innateSoulPower = 10;
+    selectCandidate(game, hidden.public.id);
+    finalizeCharacterShaping(game, { keywords: ["勇敢", "专注"], answers: {} });
+    awakenCharacter(game);
+    expect(game.view.tasks.find((task) => task.id === "awakening-recruitment")?.title).toContain("七宝琉璃宗");
+    expect(game.view.tasks.find((task) => task.id === "awakening-recruitment")?.detail).not.toContain("武魂殿");
+    expect(game.view.tasks.find((task) => task.id === "lineage-notable-attention")?.title).toContain("尘心");
+    expect(game.world.dynamicEvents.at(-1)?.participantIds).toContain("chen-xin");
+    expect(game.view.character?.reputation).toContain("七宝琉璃宗");
   });
 
   it("makes powerful martial souls more likely to draw harder life goals", () => {
@@ -238,7 +274,7 @@ describe("candidate generation", () => {
   });
 
   it("loads martial souls recorded across all four eras", () => {
-    expect(MARTIAL_SOUL_CATALOG_STATS.total).toBeGreaterThanOrEqual(110);
+    expect(MARTIAL_SOUL_CATALOG_STATS.total).toBeGreaterThanOrEqual(500);
     for (const era of [1, 2, 3, 4]) expect(MARTIAL_SOUL_CATALOG_STATS.bySource[era]).toBeGreaterThanOrEqual(12);
   });
 
@@ -278,8 +314,8 @@ describe("candidate generation", () => {
     awakenCharacter(game);
     expect(game.world.flags.awakeningAttention).toBe("最高优先");
     expect(game.view.tasks.some((task) => task.id === "awakening-recruitment")).toBe(true);
-    expect(game.world.dynamicEvents.some((event) => /武魂殿/.test(event.title) && event.status === "可介入")).toBe(true);
-    expect(game.view.narrative.at(-1)?.text).toMatch(/上报主殿|内部培养评估/);
+    expect(game.world.dynamicEvents.some((event) => /内部培养评估/.test(event.title) && event.status === "可介入")).toBe(true);
+    expect(game.view.narrative.at(-1)?.text).toMatch(/内部档案|重点天赋上报/);
   });
 
   it("carries a settled worldline into the next era without copying combat power", () => {

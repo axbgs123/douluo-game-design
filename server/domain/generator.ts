@@ -26,6 +26,7 @@ import { metaSoulById } from "../data/meta-martial-souls.js";
 import { buildSystemCoreOrigins } from "../data/system-core-origins.js";
 import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 import { ERA_MARTIAL_SOULS } from "../data/era-martial-souls.js";
+import { ORIGINAL_MARTIAL_SOULS } from "../data/original-martial-souls.js";
 import { fixedTraitEffect } from "./traits.js";
 
 interface OriginTemplate {
@@ -578,7 +579,7 @@ const BASE_MARTIAL_SOULS: MartialSoulTemplate[] = [
 ];
 
 const seenSoulNames = new Set<string>();
-const MARTIAL_SOULS: MartialSoulTemplate[] = [...BASE_MARTIAL_SOULS, ...ERA_MARTIAL_SOULS].map((soul) => {
+const MARTIAL_SOULS: MartialSoulTemplate[] = [...BASE_MARTIAL_SOULS, ...ERA_MARTIAL_SOULS, ...ORIGINAL_MARTIAL_SOULS].map((soul) => {
   const name = normalizeMartialSoulName(soul.name);
   const sourceEra = soul.sourceEra ?? (/蓝银草|七宝琉璃塔|蓝电霸王龙|昊天锤/.test(name) ? 1 : "原创");
   return { ...soul, name, sourceEra, grade: soul.grade ?? martialSoulGrade(name, soul.metaRarity, soul.soulPowerRange[1]) };
@@ -942,7 +943,17 @@ function specificOrigin(
     "家臣监护": { summary: `父母或身份核心人物并不负责日常生活，由${guardian}这名家臣长期监护。`, members: [{ name: guardian, role: "家臣监护人", note: "忠诚首先指向家族或势力" }], relations: [{ name: guardian, relation: "家臣监护人", impression: "照顾细致，但遇到家族命令时会优先服从上级", strength: 62, category: "势力" }] },
   };
   const genericHousehold = genericHouseholds[householdStructure];
-  const startingRelations = specialStartingRelations ?? [...genericHousehold.relations, { name: officer, relation: "武魂殿巡查执事", impression: "只按名册与觉醒结果办事", faction: "武魂殿", strength: 8, category: "势力" }];
+  const authorityText = `${authority}${origin.name}${(origin.roleTags ?? []).join("")}`;
+  const awakeningFaction = /七宝/.test(authorityText) ? "七宝琉璃宗"
+    : /蓝电/.test(authorityText) ? "蓝电霸王龙宗"
+      : /昊天/.test(authorityText) ? "昊天宗"
+        : /星罗|朱氏/.test(authorityText) ? "星罗帝国"
+          : /天斗|王府/.test(authorityText) ? "天斗帝国"
+            : /武魂殿|教皇殿|长老殿/.test(authorityText) ? "武魂殿" : undefined;
+  const awakeningContact = awakeningFaction
+    ? { name: `${awakeningFaction}觉醒教习`, relation: "所属势力觉醒魂师", impression: "依本势力名册主持觉醒并评估培养路线", faction: awakeningFaction, strength: 18, category: "势力" as const }
+    : { name: officer, relation: "武魂殿巡查执事", impression: "按地方公共觉醒名册办事", faction: "武魂殿", strength: 8, category: "势力" as const };
+  const startingRelations = specialStartingRelations ?? [...genericHousehold.relations, awakeningContact];
   const householdMembers = specialStartingRelations
     ? specialStartingRelations.filter((item) => item.category === "亲属" || /监护|养父|养母|父亲|母亲/.test(item.relation)).map((item) => ({ name: item.name, role: item.relation, note: item.impression }))
     : genericHousehold.members;
@@ -1252,7 +1263,15 @@ function martialSoulGoalPotential(candidate: HiddenCandidate): number {
   return Math.min(12, strongest + Math.floor(candidate.innateSoulPower / 5) + Math.max(0, souls.length - 1));
 }
 
-function goalWeight(candidate: HiddenCandidate, goal: string, tailored: Set<string>): number {
+function soulRole(candidate: HiddenCandidate): "辅助" | "战斗" | "混合" {
+  const souls = candidate.martialSouls?.length ? candidate.martialSouls : [candidate.martialSoul];
+  const text = souls.map((soul) => `${soul.name}${soul.category}${soul.description}${(soul.affinityTags ?? []).join("")}`).join(" ");
+  const support = /辅助|治疗|食物|恢复|增幅|净化|后勤/.test(text);
+  const combat = /强攻|敏攻|攻击|战斗|破甲|穿透|切割|爆发|防御/.test(text);
+  return support && combat ? "混合" : support ? "辅助" : "战斗";
+}
+
+function goalWeight(candidate: HiddenCandidate, goal: string, tailored: Set<string>, personality: PersonalityProfile): number {
   const potential = martialSoulGoalPotential(candidate);
   const difficulty = lifeGoalDifficulty(goal);
   const base = potential >= 11
@@ -1260,18 +1279,26 @@ function goalWeight(candidate: HiddenCandidate, goal: string, tailored: Set<stri
     : potential >= 8
       ? ({ 普通: 2, 困难: 5, 极难: 3 } as const)[difficulty]
       : ({ 普通: 6, 困难: 2.5, 极难: 0.7 } as const)[difficulty];
-  return base * (tailored.has(goal) ? 2.4 : 1);
+  const role = soulRole(candidate);
+  const supportOnly = /第一辅助魂师|治疗|救援|后勤|增幅/.test(goal);
+  const combatHeavy = /杀戮之都|精锐魂师队|帝国级战争|夺取|追杀|吞并|大赛前三|战斗小队/.test(goal);
+  const roleFit = supportOnly ? (role === "战斗" ? .01 : 3.2) : combatHeavy ? (role === "辅助" ? .45 : 1.5) : 1;
+  const scores = personality.scores;
+  const personalityFit = (/家人|救下|保护|平民|弟子|救援/.test(goal) ? Math.max(.45, 1 + (scores.empathy ?? 0) * .12) : 1)
+    * (/掌控|统一|第一|封号|继承|吞并|战争/.test(goal) ? Math.max(.45, 1 + (scores.ambition ?? 0) * .12) : 1)
+    * (/研究|整理|图鉴|验证|调查|查清/.test(goal) ? Math.max(.55, 1 + (scores.patience ?? 0) * .1) : 1);
+  return base * (tailored.has(goal) ? 2.4 : 1) * roleFit * personalityFit;
 }
 
-function lifeGoalOptions(candidate: HiddenCandidate, seed: string, rerollIndex: number): string[] {
+function lifeGoalOptions(candidate: HiddenCandidate, seed: string, rerollIndex: number, personality: PersonalityProfile, excluded = new Set<string>(), count = 3): string[] {
   const random = createRandom(`${seed}:goals:${candidate.public.id}:${rerollIndex}`);
   const tailored = new Set(ORIGIN_GOALS[candidate.originId] ?? []);
   const year = candidate.public.birthYearOffset ?? 0;
   const era: GameEra = year >= 25000 ? 4 : year >= 15000 ? 3 : year >= 5000 ? 2 : 1;
-  const remaining = [...new Set([...tailored, ...ERA_LIFE_GOALS[era]])];
+  const remaining = [...new Set([...tailored, ...ERA_LIFE_GOALS[era]])].filter((goal) => !excluded.has(goal));
   const selected: string[] = [];
-  while (selected.length < 3 && remaining.length) {
-    const choice = weightedPick(random, remaining.map((goal) => ({ goal, weight: goalWeight(candidate, goal, tailored) })));
+  while (selected.length < count && remaining.length) {
+    const choice = weightedPick(random, remaining.map((goal) => ({ goal, weight: goalWeight(candidate, goal, tailored, personality) })));
     selected.push(choice.goal);
     remaining.splice(remaining.indexOf(choice.goal), 1);
   }
@@ -1300,8 +1327,11 @@ function personalityOptions(candidate: HiddenCandidate, seed: string, rerollInde
 function buildShaping(game: StoredGame, goalRerollIndex = 0, personalityRerollIndex = 0, goalLocks: boolean[] = [false, false, false], previousGoals?: string[], includeGoals = true): CharacterShapingView {
   const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId);
   if (!candidate) throw new Error("请先选择角色");
-  const freshGoals = includeGoals ? lifeGoalOptions(candidate, game.view.seed, goalRerollIndex) : [];
-  const goals = freshGoals.map((goal, index) => goalLocks[index] && previousGoals?.[index] ? previousGoals[index] : goal);
+  const lockedGoals = goalLocks.map((locked, index) => locked ? previousGoals?.[index] : undefined);
+  const reserved = new Set(lockedGoals.filter((goal): goal is string => Boolean(goal)));
+  const freshGoals = includeGoals ? lifeGoalOptions(candidate, game.view.seed, goalRerollIndex, game.personalityProfile, reserved, 3 - reserved.size) : [];
+  let freshIndex = 0;
+  const goals = includeGoals ? [0, 1, 2].map((index) => lockedGoals[index] ?? freshGoals[freshIndex++]).filter((goal): goal is string => Boolean(goal)) : [];
   return {
     goalRerollIndex,
     personalityRerollIndex,
@@ -1737,11 +1767,33 @@ function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityP
   return [scene[0], identityLine, scene[1], scene[2]].join("\n\n");
 }
 
+interface AwakeningContext {
+  factionId: string;
+  factionName: string;
+  officiant: string;
+  venue: string;
+  notableNpc?: { id: string; name: string };
+}
+
+function awakeningContext(selected: HiddenCandidate): AwakeningContext {
+  const text = `${selected.originId}${selected.public.originName}${selected.roleTags.join("")}`;
+  const souls = selected.martialSouls?.length ? selected.martialSouls : [selected.martialSoul];
+  const soulNames = souls.map((soul) => soul.name);
+  if (/七宝/.test(text)) return { factionId: "seven-treasure", factionName: "七宝琉璃宗", officiant: "七宝琉璃宗觉醒教习", venue: "宗门觉醒堂", notableNpc: soulNames.includes("七杀剑") ? { id: "chen-xin", name: "尘心" } : soulNames.includes("骨龙") ? { id: "gu-rong", name: "古榕" } : soulNames.some((name) => /七宝琉璃塔|九宝琉璃塔/.test(name)) ? { id: "ning-fengzhi", name: "宁风致" } : undefined };
+  if (/蓝电/.test(text)) return { factionId: "blue-lightning", factionName: "蓝电霸王龙宗", officiant: "蓝电霸王龙宗雷池教习", venue: "宗门觉醒石台" };
+  if (/昊天/.test(text)) return { factionId: "clear-sky", factionName: "昊天宗", officiant: "昊天宗支脉长老", venue: "支脉觉醒堂", notableNpc: soulNames.includes("昊天锤") ? { id: "tang-xiao", name: "唐啸" } : undefined };
+  if (/星罗|朱氏/.test(text)) return { factionId: "star-luo", factionName: "星罗帝国", officiant: "所属家族觉醒教官", venue: "家族觉醒场" };
+  if (/天斗|王府/.test(text)) return { factionId: "heaven-dou", factionName: "天斗帝国", officiant: "宫廷觉醒魂师", venue: "王府觉醒厅" };
+  if (/武魂殿|教皇殿|长老殿/.test(text)) return { factionId: "spirit-hall", factionName: "武魂殿", officiant: "武魂殿觉醒执事", venue: "武魂殿觉醒厅" };
+  return { factionId: "spirit-hall", factionName: "武魂殿", officiant: "地方武魂殿巡查执事", venue: "地方公共觉醒点" };
+}
+
 export function awakenCharacter(game: StoredGame): CharacterPublic {
   const selected = game.hiddenCandidates.find(
     (candidate) => candidate.public.id === game.view.selectedCandidateId,
   );
   if (!selected) throw new Error("请先选择角色");
+  const awakening = awakeningContext(selected);
 
   const soulTemplates = selected.martialSouls?.length ? selected.martialSouls : [selected.martialSoul];
   const identityText = `${selected.originId} ${selected.public.originName} ${selected.public.originSummary} ${selected.public.route} ${selected.roleTags.join(" ")}`;
@@ -1868,20 +1920,29 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   const soulGrades = soulViews.map((soul) => MARTIAL_SOUL_GRADE_ORDER.indexOf(soul.grade ?? "平凡"));
   const highAttention = selected.innateSoulPower >= 7 || (selected.innateSoulPower > 0 && (soulViews.length > 1 || Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("传奇")));
   if (highAttention) {
-    const isHallIdentity = selected.roleTags.some((tag) => /武魂殿/.test(tag)) || game.view.affiliations.some((affiliation) => affiliation.id === "spirit-hall");
-    const hasMajorFaction = game.view.affiliations.some((affiliation) => ["seven-treasure", "blue-lightning", "clear-sky", "star-luo", "heaven-dou", "taixuan-sword"].includes(affiliation.id));
     const attentionLevel = selected.innateSoulPower === 10 || soulViews.length > 1 || Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("神话") ? "最高优先" : "重点";
     game.world.flags.awakeningAttention = attentionLevel;
-    const awakeningRelation = game.view.relations.find((relation) => /觉醒|执事|武魂殿/.test(`${relation.relation}${relation.name}${relation.faction ?? ""}`));
-    if (awakeningRelation) {
-      awakeningRelation.impression = isHallIdentity ? "将觉醒结果列入内部培养评估" : hasMajorFaction ? "既想上报天赋，也在衡量所属势力的态度" : "已经封存觉醒记录，准备上报主殿并正式接触";
-      awakeningRelation.history = [...(awakeningRelation.history ?? []), { date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `${selected.innateSoulPower}级先天魂力与${soulViews.length > 1 ? `${soulViews.length}生武魂` : soulViews[0].name}引起注意`, changes: `武魂殿关注提升至${attentionLevel}` }];
+    let awakeningRelation = game.view.relations.find((relation) => relation.faction === awakening.factionName || /觉醒/.test(`${relation.relation}${relation.name}`));
+    if (!awakeningRelation) {
+      awakeningRelation = { name: awakening.officiant, relation: "觉醒主持者", impression: "已按所属势力流程封存觉醒记录", faction: awakening.factionName, strength: 18, category: "势力", dimensions: { closeness: 0, trust: 12, respect: 18, sharedInterest: 15, vigilance: 5, hostility: 0, favorDebt: 0, identityKnowledge: 70 }, history: [] };
+      game.view.relations.push(awakeningRelation);
     }
-    game.view.tasks.push({ id: "awakening-recruitment", title: isHallIdentity ? "回应武魂殿内部培养评估" : "决定如何回应武魂殿的正式接触", kind: "线索", detail: isHallIdentity ? "长老殿、教皇殿或地方主殿会重新核定培养路线；接受哪一方仍由角色决定。" : hasMajorFaction ? "武魂殿会登记并提出接触，原属势力也会介入条件谈判。" : "当地执事会向主殿上报，并提供登记、学院、导师或加入武魂殿的条件。", status: "进行中", destinationId: selected.public.locationId, deadline: "约十日内会有正式来人" });
+    if (awakeningRelation) {
+      awakeningRelation.impression = `将觉醒结果列入${awakening.factionName}内部培养评估`;
+      awakeningRelation.history = [...(awakeningRelation.history ?? []), { date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `${selected.innateSoulPower}级先天魂力与${soulViews.length > 1 ? `${soulViews.length}生武魂` : soulViews[0].name}引起注意`, changes: `${awakening.factionName}关注提升至${attentionLevel}` }];
+    }
+    game.view.tasks.push({ id: "awakening-recruitment", title: `回应${awakening.factionName}的培养评估`, kind: "线索", detail: `${awakening.officiant}会先向${awakening.factionName}内部上报，由所属势力提供学院、导师、魂环与身份安排；其他势力不会无视归属直接接管。`, status: "进行中", destinationId: selected.public.locationId, deadline: selected.innateSoulPower === 10 ? "今日内会有高层过问" : "约十日内会有正式答复" });
     const year = game.view.worldTime?.year ?? 0;
     const day = game.view.worldTime?.day ?? 1;
-    game.world.dynamicEvents.push({ id: `awakening-attention-${game.view.id}`, title: isHallIdentity ? "武魂殿内部培养评估" : "武魂殿的正式接触", kind: "势力", locationId: selected.public.locationId, participantIds: [], detail: isHallIdentity ? "觉醒记录已进入内部渠道，不同派系会给出不同培养条件。" : hasMajorFaction ? "地方武魂殿已上报结果；来人既会招揽，也会试探原属势力底线。" : "地方执事已封存觉醒记录并上报主殿，正式招揽不会只停留在口头夸赞。", stakes: attentionLevel === "最高优先" ? 5 : 3, status: "可介入", createdYear: year, createdDay: day, expiresOrdinal: year * 360 + day + 10 });
-    character.reputation = selected.innateSoulPower === 10 ? "武魂殿重点记录的先天满魂力" : `${selected.innateSoulPower}级先天魂力新秀`;
+    const participantIds = awakening.notableNpc ? [awakening.notableNpc.id] : [];
+    game.world.dynamicEvents.push({ id: `awakening-attention-${game.view.id}`, title: `${awakening.factionName}内部培养评估`, kind: "势力", locationId: selected.public.locationId, participantIds, detail: awakening.notableNpc ? `${awakening.notableNpc.name}因相同或直接相关的武魂传承被列为第一过问人；是否收徒、亲近或投入资源仍取决于后续观察。` : `觉醒记录已进入${awakening.factionName}内部渠道，培养条件将按天赋、武魂路线与身份共同核定。`, stakes: attentionLevel === "最高优先" ? 5 : 3, status: "可介入", createdYear: year, createdDay: day, expiresOrdinal: year * 360 + day + 10 });
+    if (awakening.notableNpc) {
+      revealNpc(game, awakening.notableNpc.id);
+      const npc = game.world.npcs[awakening.notableNpc.id];
+      if (npc) npc.memoryOfPlayer.push(`因${soulViews.map((soul) => soul.name).join("、")}与${selected.innateSoulPower}级先天魂力，收到觉醒堂的优先报告`);
+      game.view.tasks.push({ id: "lineage-notable-attention", title: `接受${awakening.notableNpc.name}的亲自复核`, kind: "线索", detail: `相同武魂会引起直接关注，但不自动等于收徒、血亲或无条件庇护。`, status: "进行中", destinationId: selected.public.locationId, deadline: selected.innateSoulPower === 10 ? "觉醒当日" : "三日内" });
+    }
+    character.reputation = selected.innateSoulPower === 10 ? `${awakening.factionName}最高优先记录的先天满魂力` : `${awakening.factionName}记录的${selected.innateSoulPower}级先天魂力新秀`;
   }
   game.view.chapterObjective = {
     title: selected.innateSoulPower > 0 ? "让觉醒结果真正变成第一步" : "确认无魂力之后仍有哪些路",
@@ -1903,9 +1964,9 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     ? ["家人与出身中尚未说清的细节", "获得第一魂环"]
     : ["家人与出身中尚未说清的细节", "理解觉醒结果"];
   game.storyMemory.summary = `${selected.public.name}在${selected.public.location}完成武魂觉醒，${soulViews.length === 1 ? "武魂" : soulViews.length === 2 ? "双生武魂" : "三生武魂"}为${soulViews.map((soul) => soul.name).join("、")}，先天魂力${selected.innateSoulPower}级。`;
-  game.view.narrative.push(createEntry("narration", buildAwakeningResult(selected)));
+  game.view.narrative.push(createEntry("narration", buildAwakeningResult(selected, awakening)));
   game.view.suggestions = selected.innateSoulPower > 0
-    ? highAttention ? ["询问武魂殿能够提供哪些具体培养条件", "先和家人或所属势力商量立场", "测试主武魂并记录其限制"] : [`询问${selected.innateSoulPower}级先天魂力该怎么修炼`, "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
+    ? highAttention ? [`询问${awakening.factionName}能够提供哪些具体培养条件`, "先和家人或所属势力商量立场", "测试主武魂并记录其限制"] : [`询问${selected.innateSoulPower}级先天魂力该怎么修炼`, "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
     : ["追问是否存在重新检测的方法", "观察武魂本身还有没有异常", "先接受结果，回去查找其他道路"];
   game.view.updatedAt = new Date().toISOString();
   game.view.runProgress.highestSoulRank = character.soulRank;
@@ -1915,25 +1976,22 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   return character;
 }
 
-function buildAwakeningResult(candidate: HiddenCandidate): string {
+function buildAwakeningResult(candidate: HiddenCandidate, awakening: AwakeningContext): string {
   const name = candidate.public.name;
   const pronoun = candidate.public.gender === "女" ? "她" : "他";
   const powerText = candidate.innateSoulPower === 10
-    ? `手掌刚贴上水晶球，白光便猛地涨开。执事抓住${pronoun}的手腕又测了一次。先天满魂力。`
+    ? `手掌刚贴上水晶球，白光便猛地涨开。${awakening.officiant}立刻换备用水晶又测了一次。先天满魂力。`
     : candidate.innateSoulPower > 0
-      ? `水晶球亮了，刻度停在先天魂力 ${candidate.innateSoulPower} 级。执事低头记下数字。`
-      : `水晶球一直没亮。执事等了两息，才把它从${pronoun}手下抽走。`;
+      ? `水晶球亮了，刻度停在先天魂力 ${candidate.innateSoulPower} 级。${awakening.officiant}低头记下数字。`
+      : `水晶球一直没亮。${awakening.officiant}等了两息，才把它从${pronoun}手下抽走。`;
 
   const souls = candidate.martialSouls?.length ? candidate.martialSouls : [candidate.martialSoul];
   const soulCountText = souls.length === 1 ? "武魂" : souls.length === 2 ? "双生武魂" : "三生武魂";
   const soulLines = souls.map((soul, index) => `${index === 0 ? `${pronoun}的掌心里` : `紧接着，第 ${index + 1} 道魂力轮廓中`}出现了${soul.name}。这是${soul.category}。${soul.description}`);
-  const hallIdentity = candidate.roleTags.some((tag) => /武魂殿/.test(tag));
   const attentionText = candidate.innateSoulPower === 10 || souls.length > 1
-    ? hallIdentity
-      ? "执事没有当众议论，只把记录纸折进带封印的夹层，示意旁边的人立刻送往主殿。内部培养评估会在今天开始。"
-      : "执事把水晶球又测了一遍，随后封住记录，要求家人暂时别走。这样的结果必须上报主殿，武魂殿会派人正式谈培养与归属。"
+    ? `${awakening.officiant}没有当众议论，只把记录封进${awakening.factionName}内部档案，要求家人与孩子暂时别走。培养评估会在今天开始。${awakening.notableNpc ? `${awakening.notableNpc.name}会收到第一份复核通知。` : ""}`
     : candidate.innateSoulPower >= 7
-      ? "执事在魂力等级下面画了两道线，说明这份记录会作为重点天赋上报，之后会有人来谈学院与培养条件。"
+      ? `${awakening.officiant}在魂力等级下面画了两道线，说明这份记录会作为重点天赋上报${awakening.factionName}，之后会有人来谈学院与培养条件。`
       : "";
   return [
     `${name}踩进六角阵。金色光点贴着小腿往上钻，皮肤又麻又痒。右手忽然一沉，${pronoun}差点把胳膊甩出去。`,

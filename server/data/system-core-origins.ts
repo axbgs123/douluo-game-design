@@ -59,7 +59,7 @@ const ROLES: RoleAxis[] = [
   { id: "river-engineer", title: "水利机关师家庭", livelihood: "维护水闸、灌渠、码头绞盘和抵御水系魂技的泄洪结构", advantage: "掌握水流、机关、民生工程与地方组织", item: "水闸机括图", categories: ["器武魂", "植物"], trait: "责任感", route: "水利与民生", coin: 32, innate: 1 },
   { id: "poison-tester", title: "药堂验毒师家庭", livelihood: "用试纸、动物和微量魂力辨认药中毒性与相克反应", advantage: "懂常见毒物、解毒次序和安全试验方法", item: "七格验毒盒", categories: ["植物", "本体武魂"], trait: "谨慎", route: "毒理与解毒", coin: 34, innate: 1 },
   { id: "training-dummy-maker", title: "魂师训练器具匠家庭", livelihood: "制造负重、移动靶、魂技承压木偶和简易拟态训练器", advantage: "能把抽象训练要求转成可重复的器具方案", item: "活动木偶关节", categories: ["器武魂", "本体武魂"], trait: "巧思", route: "训练与制造", coin: 36, innate: 1 },
-  { id: "rumor-editor", title: "魂师小报编录人家庭", livelihood: "收集斗魂、宗门、通缉和商路传闻，再判断哪些能公开刊印", advantage: "消息灵通，能追查传闻来源并影响地方舆论", item: "未刊传闻稿", categories: ["器武魂", "本体武魂"], trait: "好奇", route: "舆论与调查", coin: 28, innate: 1 },
+  { id: "notice-copyist", title: "城门告示抄录人家庭", livelihood: "替城防与行会誊写通缉、商路和征募告示，并按官印逐张张贴", advantage: "识字且熟悉公开告示、官印和城内道路", item: "旧告示底稿", categories: ["器武魂", "本体武魂"], trait: "好奇", route: "告示与调查", coin: 28, innate: 1 },
 ];
 
 const AFFILIATIONS: AffiliationAxis[] = [
@@ -122,4 +122,3 @@ export function buildSystemCoreOrigins(limit: number): ExpandedOriginTemplate[] 
   }
   return generated;
 }
-
