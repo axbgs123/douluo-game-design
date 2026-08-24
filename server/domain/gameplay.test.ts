@@ -1176,6 +1176,11 @@ describe("第一部世界资料", () => {
     expect(delivery.ruleSummary).toContain("双复核已协调");
     expect(game.view.affiliations[0].contribution).toBeGreaterThan(0);
     expect(game.view.economy.transactions.at(-1)?.note).toContain("验收报酬");
+    expect(game.view.affiliations[0].institutionFactions?.every((faction) => faction.playerTrust === 2)).toBe(true);
+    expect(game.view.affiliations[0].institutionPoliticalHistory?.at(-1)).toContain("完成交付（已协调）");
+    expect(commitAction("向日月皇家魂导师学院领取机构事务").intent).toBe("领取机构事务");
+    const nextInstitutionTask = game.view.tasks.find((item) => item.status === "进行中" && item.institutionAssignment)!;
+    expect(nextInstitutionTask.institutionAssignment).toMatchObject({ reviewer: { factionName: "安全审查组", trust: 52 }, counterReviewer: { factionName: "工程推进组", trust: 52 } });
 
     game.view.affiliations[0].contribution = 20;
     game.view.affiliations[0].completedAssignments = 2;
@@ -1218,6 +1223,8 @@ describe("第一部世界资料", () => {
     expect(commit("支持宗产审计派处理机构复核冲突").intent).toBe("选择机构派系立场");
     expect(task.institutionAssignment).toMatchObject({ conflictStatus: "保留分歧", playerAlignment: "宗产审计派" });
     expect(task.institutionAssignment!.counterReviewer).toMatchObject({ trust: 46, objections: 2 });
+    expect(game.view.affiliations[0].institutionFactions).toEqual(expect.arrayContaining([expect.objectContaining({ name: "宗产审计派", playerTrust: 5, influence: 52 }), expect.objectContaining({ name: "外务应变派", playerTrust: -4, influence: 50 })]));
+    expect(game.view.affiliations[0].institutionPoliticalHistory?.at(-1)).toContain("宗产审计派");
 
     const support = awakened("sect-explicit-support-assignment");
     support.view.affiliations = [{ id: "clear-sky", name: "昊天宗", role: "外围成员", reputation: "生疏", joinedAt: "测试", contribution: 0, completedAssignments: 0, rankEvidence: [] }];

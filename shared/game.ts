@@ -268,6 +268,8 @@ export interface AffiliationView {
   militaryRank?: MilitaryRank;
   militaryMerit?: number;
   flightHours?: number;
+  institutionFactions?: InstitutionFactionView[];
+  institutionPoliticalHistory?: string[];
 }
 
 export type MilitaryRank = "列兵" | "下士" | "中士" | "少尉" | "中尉" | "上尉" | "少校" | "中校" | "上校" | "大校" | "少将";

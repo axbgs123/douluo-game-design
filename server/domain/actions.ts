@@ -1601,6 +1601,17 @@ function institutionFactionProfileFor(affiliationName: string, route: string): {
   };
 }
 
+function cloneInstitutionFactions(factions: NonNullable<InstitutionAssignmentView["factions"]>): NonNullable<InstitutionAssignmentView["factions"]> {
+  return factions.map((faction) => ({ ...faction, evidence: [...faction.evidence] }));
+}
+
+function syncInstitutionPolitics(affiliation: StoredGame["view"]["affiliations"][number], chain: InstitutionAssignmentView, history?: string): void {
+  if (chain.factions) affiliation.institutionFactions = cloneInstitutionFactions(chain.factions);
+  affiliation.institutionPoliticalHistory ??= [];
+  if (history) affiliation.institutionPoliticalHistory.push(history);
+  affiliation.institutionPoliticalHistory = affiliation.institutionPoliticalHistory.slice(-20);
+}
+
 function institutionResolution(game: StoredGame, action: string): ActionResolution {
   const affiliation = game.view.affiliations.find((item) => action.includes(item.name)) ?? game.view.affiliations[0];
   if (!affiliation) return impossible("我还没有任何能够发放正式事务的在册机构身份。", ["加入当地机构", "申请学院", "先完成外围委托"]);
@@ -1622,6 +1633,7 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
     chain.reviewer.trust = Math.min(100, chain.reviewer.trust + 3);
     chain.counterReviewer.trust = Math.min(100, chain.counterReviewer.trust + 3);
     for (const faction of chain.factions) { faction.playerTrust += 2; faction.evidence.push(resolution); }
+    syncInstitutionPolitics(affiliation, chain, resolution);
     return { intent: "协调机构派系", minutes: 120, ruleSummary: `${chain.reviewer.factionName}与${chain.counterReviewer.factionName}基于${active.progressEvidence!.length}条阶段证据完成联合复核；冲突转为“已协调”，没有删除任何一方异议，也没有替代剩余阶段。`, fallbackNarrative: "两份批注摊在同一张桌上。我先逐条读出彼此真正冲突的地方，再把已经做过的行动记录放到中间。没有人撤回立场，但双方终于在一条可执行的验收边界上共同签名。", suggestions: ["继续完成剩余阶段", `向${affiliation.name}推进机构事务`, "查看联合复核记录"] };
   }
   if (/支持|采纳|站在|选择.*(?:派|组)|按.*意见/.test(action)) {
@@ -1646,6 +1658,7 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
     dissentingReviewer.trust = Math.max(0, dissentingReviewer.trust - 4);
     dissentingReviewer.objections += 1;
     dissentingReviewer.evidence.push(`对${resolution}保留书面异议`);
+    syncInstitutionPolitics(affiliation, chain, resolution);
     return { intent: "选择机构派系立场", minutes: 60, ruleSummary: `明确采纳${selected.name}的“${selected.priority}”口径；${other.name}保留书面分歧。任务可以继续，但最终贡献会因未形成共同复核而扣减。`, fallbackNarrative: "我没有把选择包装成所有人都满意。支持的一方收下签字，另一方把异议钉在档案末页；这会影响以后谁愿意替我说话，也会跟着任务进入最终验收。", suggestions: ["继续完成剩余阶段", "查看保留异议", "承担站队后的验收后果"] };
   }
   if (/询问.*(?:异议|验收|复核)|协商.*(?:验收|复核)|查看.*(?:复核人|验收人)/.test(action)) {
@@ -1663,7 +1676,10 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
     const assignment = institutionAssignmentFor(game, affiliation.name, action);
     const reviewer = institutionReviewerFor(affiliation, assignment);
     const factionProfile = institutionFactionProfileFor(affiliation.name, assignment.route);
+    if (affiliation.institutionFactions?.length === factionProfile.factions.length && factionProfile.factions.every((faction) => affiliation.institutionFactions!.some((saved) => saved.name === faction.name))) factionProfile.factions = cloneInstitutionFactions(affiliation.institutionFactions);
     reviewer.factionName = factionProfile.factions[0].name;
+    reviewer.trust = Math.max(0, Math.min(100, reviewer.trust + factionProfile.factions[0].playerTrust));
+    factionProfile.counterReviewer.trust = Math.max(0, Math.min(100, factionProfile.counterReviewer.trust + factionProfile.factions[1].playerTrust));
     ensureTask(game, { id: `institution-${affiliation.id}-${game.actionIndex}`, title: assignment.route, kind: "计划", detail: `当前阶段 1/${assignment.stages.length}：${assignment.stages[0].title}；${assignment.stages[0].detail}`, status: "进行中", ownerId: affiliation.id, institutionAssignment: { route: assignment.route, specialization: assignment.specialization, risk: assignment.risk, stageIndex: 0, stageStartedActionIndex: game.actionIndex, stages: assignment.stages, reviewer, counterReviewer: factionProfile.counterReviewer, factions: factionProfile.factions, conflictStatus: "未触发", resolutionEvidence: [] } });
     return { intent: "领取机构事务", minutes: 30, ruleSummary: `从${affiliation.name}领取“${assignment.route}”共 ${assignment.stages.length} 个阶段${assignment.specialization ? `；分支为${assignment.specialization}` : ""}${assignment.risk ? `；失败代价：${assignment.risk}` : ""}。${reviewer.role}${reviewer.name}代表${reviewer.factionName}主审，${factionProfile.counterReviewer.role}${factionProfile.counterReviewer.name}代表${factionProfile.counterReviewer.factionName}独立复核；当前尚无冲突。当前为“${assignment.stages[0].title}”，尚未获得贡献或报酬。`, fallbackNarrative: `事务牌不再只有一句结果。${reviewer.name}把每一段的开始时间、验收关键词和责任签字逐项标出，独立复核人的名字也在末页；前一页没盖章，后一页就不能假装已经做完。`, suggestions: [assignment.stages[0].detail, `询问${reviewer.name}的验收异议`, `查看${factionProfile.counterReviewer.name}的复核立场`] };
   }
@@ -1742,6 +1758,7 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
       membership.authorizationEvidence = membership.authorizationEvidence.slice(-20);
       ascensionReward = `；传灵塔任务点 +${taskPoints}`;
     }
+    if (active.institutionAssignment) syncInstitutionPolitics(affiliation, active.institutionAssignment, `${game.view.worldTime?.year ?? 0}年第${game.view.worldTime?.day ?? 1}日：${active.title}完成交付（${active.institutionAssignment.conflictStatus ?? "旧制单审"}）`);
     return { intent: "交付机构事务", minutes: 60, ruleSummary: `${affiliation.name}依据${evidence.length}条行动证据验收“${active.title}”，${coordinated ? "双复核已协调" : active.institutionAssignment?.conflictStatus === "保留分歧" ? `按${active.institutionAssignment.playerAlignment}口径交付并保留另一方异议` : "按单一验收链交付"}；贡献 +${contribution}，获得${formatSoulCoins(reward)}${ascensionReward}。`, fallbackNarrative: `验收人没有听我复述结果，而是把行动记录、成品或值勤签名逐项对过。最后一个章落下，派系协调或保留异议也随档案一同封存；报酬和贡献分别记进两本账。`, suggestions: ["申请下一项事务", "查看贡献与岗位", "申请晋升"] };
   }
   if (/晋升|升职|转正/.test(action)) {

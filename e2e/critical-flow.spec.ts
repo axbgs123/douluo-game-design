@@ -454,6 +454,15 @@ test("机构双复核派系冲突必须分别会谈并基于阶段证据共同�
   await expect(factions).toContainText("双方基于2条阶段证据签署联合复核边界");
   await expect(primary).toContainText("会谈 1");
   await expect(counter).toContainText("会谈 1");
+  await page.getByRole("button", { name: "人物", exact: true }).click();
+  const affiliation = page.locator(".affiliation-list article").filter({ hasText: "传灵塔" });
+  await expect(affiliation).toContainText("来源合规组 · 影响 50 · 信任 2");
+  await expect(affiliation).toContainText("适配服务组 · 影响 50 · 信任 2");
+  await expect(affiliation).toContainText("政治记录");
+  await page.reload();
+  await page.locator(".save-shelf article").filter({ hasText: "派系复核验收" }).locator("button").first().click();
+  await page.getByRole("button", { name: "人物", exact: true }).click();
+  await expect(page.locator(".affiliation-list article").filter({ hasText: "传灵塔" })).toContainText("来源合规组 · 影响 50 · 信任 2");
 });
 
 test("固定连携训练会在浏览器显示熟练度、战术分支与失败复盘", async ({ page }) => {
