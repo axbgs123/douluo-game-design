@@ -57,6 +57,7 @@ export const EXPANDED_FACTIONS: FactionDefinition[] = [
 
   faction("d4-federal-fleet", "斗罗联邦舰队", "星际军方", "mother-ship-port", "三万年后的联邦星际舰队。", 29800),
   faction("d4-first-fleet", "斗罗联邦第一舰队", "母星近域驻防舰队", "mother-ship-port", "长期驻守母星附近小行星基地；组合战舰以牺牲持续性换取极限攻击，终极武器一次发射后需要长时间恢复。", 29800),
+  faction("d4-second-fleet", "斗罗联邦第二舰队", "联邦宇宙舰队", "mother-ship-port", "七大舰队之一；曾与第一舰队向龙马星系靠拢，作为第七舰队闪电战的接应力量。现有文本未给出司令与详细编制。", 30012),
   faction("d4-third-fleet", "斗罗联邦第三舰队", "龙马方向攻坚舰队", "mother-ship-port", "曾在天龙星外太空执行压制作战；组合主炮重视远距离切割、持续攻击与分割战场。", 29800),
   faction("d4-fourth-fleet", "斗罗联邦第四舰队", "星域警戒舰队", "mother-ship-port", "老牌舰队，曾负责龙马联邦与斗罗联邦连接星域的警戒、识别和驱逐。", 29800),
   faction("d4-fifth-fleet", "斗罗联邦第五舰队", "控制与毁伤舰队", "mother-ship-port", "组合舰队可形成环形结构，终极组合主炮兼具强控制与毁伤能力。", 29800),
@@ -363,6 +364,7 @@ export const EXPANDED_EVENTS: CanonEventDefinition[] = ([
   ["d4-elf-star", 30007, "精灵星生命亲和考验", "elf-planet", ["lan-mengqin", "lan-xuanyu"], 4, "生命能量改变部分队员机缘。"],
   ["d4-fleet-entry", 30012, "十八岁的蓝轩宇团队进入联邦舰队", "mother-ship-port", ["lan-xuanyu", "bai-xiuxiu"], 4, "故事进入星际军事阶段。"],
   ["d4-seventh-fleet-rescue", 30012, "联邦第七舰队参与恒星救援", undefined, ["lan-xuanyu", "bai-ling-admiral"], 4, "最新服役的第七舰队由白凌大将指挥，以行星级母舰及完整编队执行恒星附近救援。"],
+  ["d4-first-second-fleet-support", 30012, "第一、第二宇宙舰队向龙马星系靠拢", undefined, [], 3, "第一、第二宇宙舰队作为接应力量靠近龙马星系，配合第七舰队的闪电战行动；第二舰队司令与详细编制仍未公开。"],
   ["d4-dragon-horse-infiltration", 30013, "潜入龙马星系", "dragon-horse-star", ["lan-xuanyu", "bai-xiuxiu"], 5, "蓝轩宇以龙族身份进入天龙星。"],
   ["d4-rising-dragon", 30014, "升龙大赛", "dragon-horse-star", ["lan-xuanyu", "huang-yuanlang"], 4, "龙族青年围绕资源和地位竞争。"],
   ["d4-future-rookies", 30015, "未来新秀挑战赛", "dragon-horse-star", ["lan-xuanyu", "bai-xiuxiu"], 4, "龙马联邦青年强者集中交锋。"],

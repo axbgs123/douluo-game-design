@@ -142,18 +142,28 @@ describe("multi-era foundations", () => {
     expect(rescue?.participantIds).toEqual(["lan-xuanyu", "bai-ling-admiral"]);
   });
 
-  it("keeps only source-supported numbered fleet roles and does not invent the second fleet", () => {
+  it("keeps numbered fleet roles within source-supported boundaries", () => {
     const supported = new Map([
       ["d4-first-fleet", "母星附近小行星基地"],
+      ["d4-second-fleet", "接应力量"],
       ["d4-third-fleet", "天龙星外太空"],
       ["d4-fourth-fleet", "连接星域"],
       ["d4-fifth-fleet", "环形结构"],
       ["d4-sixth-fleet", "陨石与星雷环境"],
     ]);
     for (const [id, evidence] of supported) expect(FACTIONS.find((item) => item.id === id)?.description).toContain(evidence);
-    expect(FACTIONS.some((item) => item.id === "d4-second-fleet" || item.name === "斗罗联邦第二舰队")).toBe(false);
-    for (const fleet of FACTIONS.filter((item) => /^d4-(?:first|third|fourth|fifth|sixth)-fleet$/.test(item.id))) {
-      expect(fleet.description).not.toMatch(/司令|大将/);
+    const second = FACTIONS.find((item) => item.id === "d4-second-fleet")!;
+    expect(factionActiveAtYear(second, 30011)).toBe(false);
+    expect(factionActiveAtYear(second, 30012)).toBe(true);
+    expect(second.description).toContain("未给出司令与详细编制");
+    expect(CANON_EVENTS.find((item) => item.id === "d4-first-second-fleet-support")?.publicSummary).toContain("接应力量");
+    const game = playingGame(4, "second-fleet-source-boundary");
+    game.view.worldTime = { year: 30012, day: 1, time: "08:00", season: "春", era: "第七舰队服役阶段" };
+    const knowledge = buildSceneKnowledgePack(game, "打听斗罗联邦第二舰队的公开职责和司令");
+    expect(knowledge.entries.find((item) => item.kind === "势力" && item.name === "斗罗联邦第二舰队")?.fact).toContain("接应力量");
+    expect(knowledge.entries.find((item) => item.name === "斗罗联邦第二舰队")?.fact).toContain("未给出司令");
+    for (const fleet of FACTIONS.filter((item) => /^d4-(?:first|second|third|fourth|fifth|sixth)-fleet$/.test(item.id))) {
+      expect(fleet.description).not.toMatch(/司令为|由.+司令|大将/);
     }
   });
 
