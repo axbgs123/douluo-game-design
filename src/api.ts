@@ -5,6 +5,7 @@ import type {
   GameView,
   Gender,
   MetaProgressionView,
+  MetaSummonResultView,
   ModelUsageView,
   PersonalitySetup,
   SaveSummary,
@@ -191,7 +192,7 @@ export function getWorldCatalogStats(): Promise<WorldCatalogStatsView> {
   return request("/api/world/catalog/stats");
 }
 
-export function drawMetaMartialSoul(): Promise<{ meta: MetaProgressionView; drawn: MetaProgressionView["martialSoulCodex"][number]; cost: number }> {
+export function drawMetaMartialSoul(): Promise<MetaSummonResultView> {
   return request("/api/meta/martial-souls/draw", { method: "POST" });
 }
 

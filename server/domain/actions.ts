@@ -7,7 +7,7 @@ import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, c
 import { toThirdPersonNarrative } from "./narrative.js";
 import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSuggestions, selectNarrativeRules } from "./story-rules.js";
 import { formatSoulCoins } from "../../shared/currency.js";
-import { createSpecialSystemView, isGoldFinger } from "../data/gold-fingers.js";
+import { createSpecialSystemView, goldFingerByName, isGoldFinger } from "../data/gold-fingers.js";
 
 interface DifficultyRules {
   training: number;
@@ -1761,6 +1761,79 @@ function specialSystemResolution(game: StoredGame, action: string): ActionResolu
     return { intent: "图鉴扫描", minutes: 15, ruleSummary: `${fresh ? "新增" : "复核"}${subject}记录；图鉴仅给出已观察到的结构与适配线索，系统进度${progress}%。`, fallbackNarrative: `细线一样的标记从${subject}表面掠过。图鉴没有补全未知部分，只把我亲眼见到的特征一项项写进空白页。`, suggestions: ["查看图鉴记录", "寻找新的样本", "验证适配建议"], systemMessages: fresh ? [`图鉴新增 · ${subject}`] : [] };
   }
 
+  const definition = goldFingerByName(system.name);
+  if (definition) {
+    const { mechanic } = definition;
+    const lastAction = game.world.actionLedger.at(-1);
+    const materialIndex = game.view.inventory.findIndex((item) => /药|草|矿|铁|木|皮|骨|样本|材料/.test(item));
+    const triggerReady: Record<typeof mechanic.trigger, boolean> = {
+      "随时": true,
+      "每日": true,
+      "新地点": game.world.discoveredLocations.includes(game.view.locationId ?? ""),
+      "训练后": Boolean(lastAction && /修炼|训练|课程|实战/.test(`${lastAction.intent}${lastAction.action}`)),
+      "失败后": Boolean(lastAction && /失败|未通过|受挫|无法完成/.test(`${lastAction.intent}${lastAction.result}`)),
+      "受伤时": game.world.healthPoints < 100 || character.injuries.length > 0,
+      "疲劳时": game.world.fatiguePoints >= 20,
+      "任务中": game.view.tasks.some((item) => item.status === "进行中"),
+      "战斗中": Boolean(game.view.combat),
+      "调查时": Boolean(lastAction && /调查|研究|鉴定|查证/.test(`${lastAction.intent}${lastAction.action}`)),
+      "交易时": Boolean(lastAction && /交易|购买|经营|拍卖|行情/.test(`${lastAction.intent}${lastAction.action}`)),
+      "制作时": Boolean(lastAction && /制作|锻造|炼制|修复|实验/.test(`${lastAction.intent}${lastAction.action}`)),
+      "旅行时": Boolean(lastAction && /旅行|前往|迁居|行程/.test(`${lastAction.intent}${lastAction.action}`)),
+      "关系中": game.view.relations.length > 0 || game.view.npcRelations.length > 0,
+      "魂环前": character.soulRank >= 10 && character.soulRings.length < Math.floor(character.soulRank / 10),
+      "夜间": /夜|戌|亥|子|丑/.test(game.view.worldTime?.time ?? ""),
+      "持有物品": game.view.inventory.length > 0,
+      "加入势力": game.view.affiliations.length > 0,
+      "重大选择": game.view.tasks.some((item) => item.status === "进行中") || game.world.dynamicEvents.some((item) => item.status === "可介入"),
+      "新样本": game.world.metrics.discoveries > 0 || game.world.discoveredLocations.length > 1,
+    };
+    if (!triggerReady[mechanic.trigger]) return impossible(`${definition.name}尚未满足“${mechanic.trigger}”触发条件。${mechanic.constraint}`, [definition.actionCommand, "继续当前计划", "查看金手指说明"]);
+    const ordinal = (game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
+    const cooldownKey = `goldFingerCooldown:${definition.id}`;
+    const lastUsed = Number(game.world.flags[cooldownKey] ?? -1_000_000_000);
+    if (mechanic.cooldownDays > 0 && ordinal - lastUsed < mechanic.cooldownDays) return impossible(`${definition.name}仍在冷却，还需 ${mechanic.cooldownDays - (ordinal - lastUsed)} 天。`, ["继续当前计划", "等待一天", "查看金手指说明"]);
+    if (mechanic.cost === "魂币" && character.coins < 2) return impossible("这次发动需要2枚金魂币，目前余额不足。", ["工作赚钱", "出售物品", "继续当前计划"]);
+    if (mechanic.cost === "体力" && game.world.healthPoints <= 25) return impossible("当前身体状态无法支付这次体力代价。", ["休息", "疗伤", "继续当前计划"]);
+    if (mechanic.cost === "材料" && materialIndex < 0) return impossible("这次发动需要一份真实材料或样本，行囊中目前没有。", ["调查附近材料", "购买材料", "继续当前计划"]);
+    if (mechanic.cost === "魂币") character.coins -= 2;
+    if (mechanic.cost === "体力") game.world.healthPoints = Math.max(1, game.world.healthPoints - 6);
+    if (mechanic.cost === "疲劳") game.world.fatiguePoints = Math.min(100, game.world.fatiguePoints + 8);
+    if (mechanic.cost === "材料") game.view.inventory.splice(materialIndex, 1);
+    game.world.flags[cooldownKey] = ordinal;
+
+    const rewardDetails: Record<typeof mechanic.reward, string> = {
+      "系统进度": "核心机制得到一次有效验证",
+      "潜能": "潜能点 +1",
+      "情报": "获得一条待核验的可靠提示",
+      "发现": "世界发现 +1",
+      "恢复": "身体与精神状态得到小幅恢复",
+      "魂币": `获得${formatSoulCoins(3)}`,
+      "声望": "相关关系留下正向证据",
+      "物品": "获得一份机制产物",
+      "训练效率": "下一阶段训练准备 +2",
+      "风险标记": "当前风险被标记并写入记录",
+    };
+    if (mechanic.reward === "潜能") game.world.flags.goldFingerPotentialPoints = Math.min(30, Number(game.world.flags.goldFingerPotentialPoints ?? 0) + 1);
+    if (mechanic.reward === "情报" || mechanic.reward === "发现") game.world.metrics.discoveries += 1;
+    if (mechanic.reward === "恢复") { game.world.healthPoints = Math.min(100, game.world.healthPoints + 8); game.world.fatiguePoints = Math.max(0, game.world.fatiguePoints - 10); }
+    if (mechanic.reward === "魂币") character.coins += 3;
+    if (mechanic.reward === "声望") game.world.metrics.relationshipsBuilt += 1;
+    if (mechanic.reward === "物品") game.view.inventory.push(`${definition.name}·机制产物`);
+    if (mechanic.reward === "训练效率") game.world.trainingPoints += 2;
+    if (mechanic.reward === "风险标记") game.world.flags[`goldFingerRisk:${definition.id}`] = `${game.view.location}存在待核验风险`;
+    const progress = advanceSystem(mechanic.reward === "系统进度" ? 12 : 7);
+    if (progress >= 35 && !system.abilities.includes(`${definition.name}·稳定运转`)) system.abilities.push(`${definition.name}·稳定运转`);
+    return {
+      intent: `金手指·${definition.name}`,
+      minutes: mechanic.cost === "材料" ? 60 : mechanic.cost === "疲劳" ? 30 : 15,
+      ruleSummary: `${definition.hint}${rewardDetails[mechanic.reward]}；系统进度${progress}%。边界：${mechanic.constraint}。`,
+      fallbackNarrative: `只有我能察觉的${definition.name}短暂展开。它没有替我跳过过程，而是按照已经满足的条件完成了一次结算：${rewardDetails[mechanic.reward]}。那条限制仍清楚地留在最后一行。`,
+      suggestions: [definition.actionCommand, "验证本次反馈", "继续当前计划"],
+      systemMessages: [`${definition.name} · ${mechanic.trigger} · ${mechanic.reward}`],
+    };
+  }
+
   let progress = Number(game.world.flags[key] ?? 0);
   const resourceReady = /炼丹|炼器/.test(action) ? game.view.inventory.some((item) => /药|矿|铁|草/.test(item)) : true;
   const gain = resourceReady ? integer(random, 7, 14) : integer(random, 2, 5);
@@ -3499,7 +3572,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|推进.*机构事务|登记.*阶段|提交.*阶段|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正|询问.*(?:异议|验收|复核)|协商.*(?:验收|复核|派系)|提交.*(?:共同复核|联合复核|协调方案)|支持.*(?:派|组)|采纳.*(?:派|组)|查看.*(?:复核人|验收人)/.test(action)) resolution = institutionResolution(game, action);
   else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克|舰队|联邦|传灵塔|战神/.test(action)) resolution = factionResolution(game, action);
   else if (/拜师|拜.*为师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
-  else if (/签到|加点面板|查看面板|潜能|给.*加点|人生模拟|命运模拟|模拟未来|系统任务|图鉴扫描|扫描.*(?:武魂|魂兽|图鉴)|查看图鉴/.test(action)) resolution = specialSystemResolution(game, action);
+  else if ((goldFingerByName(game.view.character.specialSystem?.name ?? "")?.actionCommand && action.includes(goldFingerByName(game.view.character.specialSystem?.name ?? "")!.actionCommand)) || /签到|加点面板|查看面板|潜能|给.*加点|人生模拟|命运模拟|模拟未来|系统任务|图鉴扫描|扫描.*(?:武魂|魂兽|图鉴)|查看图鉴|查看金手指/.test(action)) resolution = specialSystemResolution(game, action);
   else if (/成为朋友|确认朋友|建立友情|长期关系|成为伴侣|确认恋爱|表达.*心意|求婚|婚姻|结婚|成婚|婚礼|组建家庭|家庭住所|共同住所|家庭准备|生育|收养.*孩子|孩子.*加入家庭|孩子出生/.test(action)) resolution = relationshipResolution(game, action);
   else if (/训练|排练|复盘/.test(action) && /连携|合击|组合技|阵型|生命防线|锁定爆发|破绽突袭|封锁阵线|攻守枢纽|生息铁壁|猎杀三角|四象战阵|逐影围猎|五环协战阵|六芒轮转阵|七星全域战阵/.test(action) && !game.view.combat) resolution = comboTrainingResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);

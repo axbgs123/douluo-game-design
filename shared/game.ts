@@ -256,6 +256,7 @@ export interface SpecialSystemView {
   progress: string;
   abilities: string[];
   resourceHint: string;
+  actions?: Array<{ label: string; command: string }>;
 }
 
 export interface AffiliationView {
@@ -970,9 +971,24 @@ export interface MetaProgressionView {
   equippedMartialSoulId?: string;
   martialSoulDrawTickets: number;
   martialSoulDrawPity: number;
+  summonGoldPity: number;
+  summonRedPity: number;
+  summonRainbowPity: number;
   difficultyBudgets: Record<Difficulty, number>;
   difficultyMultipliers: Record<Difficulty, number>;
 }
+
+export interface MetaSummonHeirloomView {
+  id: string;
+  name: string;
+  rarity: Extract<MartialSoulRarity, "紫色" | "金色" | "红色">;
+  description: string;
+  duplicate: boolean;
+}
+
+export type MetaSummonResultView =
+  | { kind: "martialSoul"; meta: MetaProgressionView; drawn: MartialSoulCodexEntryView; cost: number }
+  | { kind: "heirloom"; meta: MetaProgressionView; drawn: MetaSummonHeirloomView; cost: number };
 
 export interface WorldCatalogStatsView {
   birthProfiles: number;

@@ -16,6 +16,40 @@ afterAll(() => {
 });
 
 describe("存档数据库", () => {
+  it("summons only purple-or-better martial souls and maintains independent rainbow pity", () => {
+    const meta = database.getMetaProgression();
+    meta.legacyPoints = 1_000;
+    meta.martialSoulDrawTickets = 0;
+    meta.summonGoldPity = 0;
+    meta.summonRedPity = 0;
+    meta.summonRainbowPity = 79;
+    database.saveMetaProgression(meta);
+
+    const rainbow = database.drawMetaMartialSoul(() => 0.999);
+    expect(rainbow.kind).toBe("martialSoul");
+    if (rainbow.kind === "martialSoul") expect(rainbow.drawn.rarity).toBe("七彩");
+    expect(rainbow.meta.summonRainbowPity).toBe(0);
+
+    const ordinary = database.drawMetaMartialSoul(() => 0.999);
+    expect(ordinary.kind).toBe("martialSoul");
+    if (ordinary.kind === "martialSoul") expect(["紫色", "金色", "红色", "七彩"]).toContain(ordinary.drawn.rarity);
+  });
+
+  it("can summon a relic and adds it to the heirloom collection", () => {
+    const meta = database.getMetaProgression();
+    meta.legacyPoints = 1_000;
+    meta.martialSoulDrawTickets = 0;
+    meta.summonGoldPity = 0;
+    meta.summonRedPity = 0;
+    meta.summonRainbowPity = 0;
+    meta.unlockedHeirlooms = [];
+    database.saveMetaProgression(meta);
+
+    const result = database.drawMetaMartialSoul(() => 0.01);
+    expect(result.kind).toBe("heirloom");
+    if (result.kind === "heirloom") expect(result.meta.unlockedHeirlooms).toContain(result.drawn.name);
+  });
+
   it("records model cost telemetry without storing prompts or generated prose", () => {
     database.recordModelCall({ gameId: "telemetry-game", role: "narrator", model: "test-model", status: "success", latencyMs: 321, promptChars: 900, outputChars: 300, promptTokens: 120, completionTokens: 45, totalTokens: 165 });
     database.recordModelCall({ gameId: "telemetry-game", role: "intent", model: "test-model", status: "failure", latencyMs: 80, promptChars: 200, outputChars: 0, errorCode: "timeout" });

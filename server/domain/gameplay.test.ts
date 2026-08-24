@@ -445,6 +445,22 @@ describe("完整游玩规则", () => {
     expect(resolveAction(simulator, "人生模拟下一次重要选择").intent).toBe("无法完成");
   });
 
+  it("新增金手指会按各自前置条件、代价和反馈执行", () => {
+    const meta = { weightPreferences: { origin: "均衡", martialSoul: "均衡", gift: "百炼熟练度" }, purchasedUpgrades: {}, martialSoulCodex: [] } as unknown as MetaProgressionView;
+    const game = createGame({ gender: "男", difficulty: "标准", personality, seed: "mastery-gold-finger" }, meta);
+    selectCandidate(game, game.view.candidates[0].id);
+    const draft = game.view.shaping!.personalityOptions[0];
+    finalizeCharacterShaping(game, { personalityId: draft.id, keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])) });
+    awakenCharacter(game);
+    expect(game.view.character!.specialSystem!.name).toBe("百炼熟练度");
+    expect(resolveAction(game, "查看熟练度").intent).toBe("无法完成");
+    const training = resolveAction(game, "安静冥想修炼");
+    applyActionResult(game, "安静冥想修炼", training, training.fallbackNarrative, training.suggestions);
+    const result = resolveAction(game, "查看熟练度");
+    expect(result.intent).toBe("金手指·百炼熟练度");
+    expect(result.ruleSummary).toContain("潜能点 +1");
+  });
+
   it("行动提交后保留可重载的规则判定收据", () => {
     const game = awakened("action-receipt");
     const result = resolveAction(game, "安静冥想修炼");

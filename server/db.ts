@@ -2,9 +2,10 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes } from "node:crypto";
-import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, ModelUsageView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
+import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, MetaSummonResultView, ModelUsageView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
 import type { MartialSoulTemplate } from "./domain/model.js";
 import { META_MARTIAL_SOULS, metaSoulById } from "./data/meta-martial-souls.js";
+import { META_HEIRLOOMS } from "./data/meta-heirlooms.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "./data/world.js";
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
@@ -183,6 +184,9 @@ const defaultMetaProgression: MetaProgressionView = {
   martialSoulCodex: [],
   martialSoulDrawTickets: 1,
   martialSoulDrawPity: 0,
+  summonGoldPity: 0,
+  summonRedPity: 0,
+  summonRainbowPity: 0,
   difficultyBudgets: { 爽: 120, 简单: 80, 标准: 50, 困难: 25, 地狱: 10 },
   difficultyMultipliers: { 爽: 0.5, 简单: 0.75, 标准: 1, 困难: 1.5, 地狱: 2.25 },
 };
@@ -333,12 +337,20 @@ export function restoreCheckpoint(gameId: string, checkpointId: number): StoredG
 export function getMetaProgression(): MetaProgressionView {
   const row = database.prepare("SELECT state_json FROM meta_profile WHERE id = 'local'").get() as { state_json: string };
   const stored = JSON.parse(row.state_json) as Partial<MetaProgressionView>;
+  const legacyPity = stored.martialSoulDrawPity ?? 0;
+  const martialSoulCodex = stored.martialSoulCodex ?? [];
+  const historicalDraws = martialSoulCodex.reduce((sum, item) => sum + item.charges + (item.completedRuns > 0 ? 1 : 0), 0);
+  const hasRedOrBetter = martialSoulCodex.some((item) => item.rarity === "红色" || item.rarity === "七彩");
+  const hasRainbow = martialSoulCodex.some((item) => item.rarity === "七彩");
   return {
     ...defaultMetaProgression,
     ...stored,
     weightPreferences: { ...defaultMetaProgression.weightPreferences, ...stored.weightPreferences },
     purchasedUpgrades: { ...defaultMetaProgression.purchasedUpgrades, ...stored.purchasedUpgrades },
-    martialSoulCodex: stored.martialSoulCodex ?? [],
+    martialSoulCodex,
+    summonGoldPity: stored.summonGoldPity ?? legacyPity,
+    summonRedPity: stored.summonRedPity ?? (hasRedOrBetter ? legacyPity : Math.min(39, Math.max(legacyPity, historicalDraws))),
+    summonRainbowPity: stored.summonRainbowPity ?? (hasRainbow ? legacyPity : Math.min(79, Math.max(legacyPity, historicalDraws))),
   };
 }
 
@@ -346,9 +358,9 @@ function randomUnit(): number {
   return Number(BigInt.asUintN(53, BigInt(`0x${randomBytes(8).toString("hex")}`))) / 9_007_199_254_740_992;
 }
 
-function weightedMetaSoul(pool: typeof META_MARTIAL_SOULS) {
+function weightedMetaSoul<T extends { drawWeight: number }>(pool: readonly T[], random: () => number = randomUnit): T {
   const total = pool.reduce((sum, item) => sum + item.drawWeight, 0);
-  let cursor = randomUnit() * total;
+  let cursor = random() * total;
   for (const item of pool) {
     cursor -= item.drawWeight;
     if (cursor <= 0) return item;
@@ -356,19 +368,39 @@ function weightedMetaSoul(pool: typeof META_MARTIAL_SOULS) {
   return pool.at(-1)!;
 }
 
-export function drawMetaMartialSoul(): { meta: MetaProgressionView; drawn: MartialSoulCodexEntryView; cost: number } {
+export function drawMetaMartialSoul(random: () => number = randomUnit): MetaSummonResultView {
   const meta = getMetaProgression();
   const cost = meta.martialSoulDrawTickets > 0 ? 0 : 20;
-  if (cost && meta.legacyPoints < cost) throw new Error(`传承点不足，武魂召唤需要 ${cost} 点`);
+  if (cost && meta.legacyPoints < cost) throw new Error(`传承点不足，召唤需要 ${cost} 点`);
   if (cost) meta.legacyPoints -= cost;
   else meta.martialSoulDrawTickets -= 1;
-  const pity = meta.martialSoulDrawPity;
-  const pool = pity >= 39
-    ? META_MARTIAL_SOULS.filter((item) => item.metaRarity === "红色" || item.metaRarity === "七彩")
-    : pity >= 9
-      ? META_MARTIAL_SOULS.filter((item) => ["金色", "红色", "七彩"].includes(item.metaRarity))
-      : META_MARTIAL_SOULS;
-  const definition = weightedMetaSoul(pool);
+  const forcedRainbow = meta.summonRainbowPity >= 79;
+  const forcedRed = meta.summonRedPity >= 39;
+  const forcedGold = meta.summonGoldPity >= 9;
+  const relicRoll = !forcedRainbow && !forcedRed && !forcedGold && random() < 0.08;
+  if (relicRoll) {
+    const unowned = META_HEIRLOOMS.filter((item) => !meta.unlockedHeirlooms.includes(item.name));
+    const pool = unowned.length > 0 ? unowned : META_HEIRLOOMS;
+    const definition = weightedMetaSoul(pool, random);
+    const duplicate = meta.unlockedHeirlooms.includes(definition.name);
+    if (duplicate) meta.martialSoulDrawTickets += 1;
+    else meta.unlockedHeirlooms.push(definition.name);
+    meta.summonGoldPity += 1;
+    meta.summonRedPity += 1;
+    meta.summonRainbowPity += 1;
+    meta.martialSoulDrawPity = meta.summonGoldPity;
+    saveMetaProgression(meta);
+    return { kind: "heirloom", meta, cost, drawn: { id: definition.id, name: definition.name, rarity: definition.rarity, description: definition.description, duplicate } };
+  }
+  const eligible = META_MARTIAL_SOULS.filter((item) => ["紫色", "金色", "红色", "七彩"].includes(item.metaRarity));
+  const pool = forcedRainbow
+    ? eligible.filter((item) => item.metaRarity === "七彩")
+    : forcedRed
+      ? eligible.filter((item) => item.metaRarity === "红色" || item.metaRarity === "七彩")
+      : forcedGold
+        ? eligible.filter((item) => ["金色", "红色", "七彩"].includes(item.metaRarity))
+        : eligible;
+  const definition = weightedMetaSoul(pool, random);
   const existing = meta.martialSoulCodex.find((item) => item.id === definition.id);
   const drawn: MartialSoulCodexEntryView = existing ?? {
     id: definition.id,
@@ -384,10 +416,16 @@ export function drawMetaMartialSoul(): { meta: MetaProgressionView; drawn: Marti
   };
   drawn.charges += 1;
   if (!existing) meta.martialSoulCodex.push(drawn);
-  meta.martialSoulDrawPity = ["金色", "红色", "七彩"].includes(definition.metaRarity) ? 0 : pity + 1;
+  const isGold = ["金色", "红色", "七彩"].includes(definition.metaRarity);
+  const isRed = ["红色", "七彩"].includes(definition.metaRarity);
+  const isRainbow = definition.metaRarity === "七彩";
+  meta.summonGoldPity = isGold ? 0 : meta.summonGoldPity + 1;
+  meta.summonRedPity = isRed ? 0 : meta.summonRedPity + 1;
+  meta.summonRainbowPity = isRainbow ? 0 : meta.summonRainbowPity + 1;
+  meta.martialSoulDrawPity = meta.summonGoldPity;
   meta.discoveredMartialSouls = meta.martialSoulCodex.length;
   saveMetaProgression(meta);
-  return { meta, drawn, cost };
+  return { kind: "martialSoul", meta, drawn, cost };
 }
 
 export function equipCodexMartialSoul(id?: string): MetaProgressionView {

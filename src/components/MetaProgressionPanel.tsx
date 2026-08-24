@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { DIFFICULTIES, type MetaProgressionView, type WorldCatalogStatsView } from "../../shared/game";
+import { GOLD_FINGERS } from "../../shared/gold-fingers";
 import { drawMetaMartialSoul, equipMetaHeirloom, equipMetaMartialSoul, getMetaProgression, getWorldCatalogStats, purchaseMetaUpgrade, saveMetaPreferences, toggleMetaMartialSoul } from "../api";
 
 interface MetaProgressionPanelProps { open: boolean; onClose: () => void }
@@ -11,8 +12,9 @@ function UnlockList({ title, items, empty }: { title: string; items: string[]; e
 const PREFERENCE_OPTIONS = {
   origin: ["均衡", "平民", "魂师家庭", "宗门开局", "隐世宗门", "漂泊", "权贵", "天骄", "反派", "穿越", "特殊", "凶兽养成", "无羁绊"],
   martialSoul: ["均衡", "器武魂", "兽武魂", "植物", "本体武魂"],
-  gift: ["均衡", "朴素", "奇遇", "异界体系", "系统流", "签到系统", "加点面板", "人生模拟器", "任务系统", "图鉴系统"],
+  gift: ["均衡", "朴素", "奇遇", "异界体系", "系统流"],
 };
+const GOLD_FINGER_CATEGORIES = [...new Set(GOLD_FINGERS.map((item) => item.category))];
 
 export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProps) {
   const [meta, setMeta] = useState<MetaProgressionView | null>(null);
@@ -47,8 +49,14 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
   const drawSoul = async () => {
     try {
       const result = await drawMetaMartialSoul();
-      setMeta(result.meta); setLastDrawId(result.drawn.id);
-      setMessage(`${result.drawn.rarity}武魂 · ${result.drawn.name}。获得 1 次使用机会${result.cost ? `，消耗 ${result.cost} 传承点` : "，本次使用召唤券"}。`);
+      setMeta(result.meta);
+      if (result.kind === "martialSoul") {
+        setLastDrawId(result.drawn.id);
+        setMessage(`${result.drawn.rarity}武魂 · ${result.drawn.name}。获得 1 次使用机会${result.cost ? `，消耗 ${result.cost} 传承点` : "，本次使用召唤券"}。`);
+      } else {
+        setLastDrawId(undefined);
+        setMessage(`${result.drawn.rarity}遗物 · ${result.drawn.name}：${result.drawn.description}${result.drawn.duplicate ? " 已拥有，返还 1 张召唤券。" : " 已加入遗物库。"}`);
+      }
     } catch (caught) { setMessage(caught instanceof Error ? caught.message : "召唤失败"); }
   };
 
@@ -75,8 +83,8 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
         </section>
 
         <section className="meta-section soul-draw-section">
-          <div className="meta-section-heading"><div><h3>命运武魂召唤</h3><p>红色与七彩武魂只从这里首次获得。抽到后可使用一次；用它通关后会永久写入图鉴。</p></div><button type="button" className="soul-draw-button" onClick={() => void drawSoul()}>{meta.martialSoulDrawTickets > 0 ? `使用召唤券 · ${meta.martialSoulDrawTickets}` : "召唤一次 · 20 传承点"}</button></div>
-          <div className="soul-draw-rules"><span>10 抽内至少金色</span><span>40 抽内至少红色</span><span>当前累计 {meta.martialSoulDrawPity} 抽</span><span>七彩为独立极低概率</span></div>
+          <div className="meta-section-heading"><div><h3>召唤</h3><p>只会出现紫色及以上武魂，并有 8% 概率出现遗物。武魂获得一次使用机会，通关后永久写入图鉴。</p></div><button type="button" className="soul-draw-button" onClick={() => void drawSoul()}>{meta.martialSoulDrawTickets > 0 ? `使用召唤券 · ${meta.martialSoulDrawTickets}` : "召唤一次 · 20 传承点"}</button></div>
+          <div className="soul-draw-rules"><span>最低紫色</span><span>金色保底 {10 - meta.summonGoldPity} 抽</span><span>红色保底 {40 - meta.summonRedPity} 抽</span><span>七彩保底 {80 - meta.summonRainbowPity} 抽</span><span>遗物概率 8%</span></div>
           {meta.equippedMartialSoulId && <div className="equipped-soul-line"><span>下局指定</span><strong>{meta.martialSoulCodex.find((item) => item.id === meta.equippedMartialSoulId)?.name}</strong><button type="button" onClick={() => void equipSoul()}>取消</button></div>}
           <div className="martial-soul-codex">
             {meta.martialSoulCodex.length ? meta.martialSoulCodex.map((entry) => <article key={entry.id} className={`codex-soul-card soul-rarity-${entry.rarity} ${lastDrawId === entry.id ? "new-draw" : ""}`}>
@@ -85,12 +93,12 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
               <dl><div><dt>可用次数</dt><dd>{entry.completedRuns > 0 ? "已永久解锁" : entry.charges}</dd></div><div><dt>通关</dt><dd>{entry.completedRuns} 次</dd></div><div><dt>初始魂力记录</dt><dd>{entry.initialSoulPowers.length ? entry.initialSoulPowers.map((value) => `${value}级`).join("、") : "通关后记录"}</dd></div></dl>
               <div className="codex-routes">{entry.completedRuns > 0 ? entry.growthRoutes.slice(-3).map((route) => <span key={route}>{route}</span>) : <span>成长路线尚未写入</span>}</div>
               <footer><button type="button" disabled={entry.charges < 1 && entry.completedRuns < 1} className={meta.equippedMartialSoulId === entry.id ? "active" : ""} onClick={() => void equipSoul(meta.equippedMartialSoulId === entry.id ? undefined : entry.id)}>{meta.equippedMartialSoulId === entry.id ? "已指定下局" : entry.completedRuns > 0 ? "用它再开一局" : "使用一次"}</button><label><input type="checkbox" checked={entry.enabled} disabled={entry.completedRuns < 1} onChange={(event) => void toggleSoul(entry.id, event.target.checked)} />允许随机出场</label></footer>
-            </article>) : <p className="meta-empty-copy">尚未召唤武魂。新档案自带一张免费召唤券。</p>}
+            </article>) : <p className="meta-empty-copy">尚未召唤到武魂。新档案自带一张免费召唤券。</p>}
           </div>
         </section>
 
         <section className="meta-section"><div className="meta-section-heading"><h3>下轮偏好</h3><p>只增加出现概率，不锁定结果。</p></div><div className="preference-grid">
-          {(Object.keys(PREFERENCE_OPTIONS) as Array<keyof typeof PREFERENCE_OPTIONS>).map((key) => <label key={key}><span>{key === "origin" ? "出身" : key === "martialSoul" ? "武魂" : "奇遇"}</span><select value={preferences[key]} onChange={(event) => setPreferences({ ...preferences, [key]: event.target.value })}>{PREFERENCE_OPTIONS[key].map((item) => <option key={item}>{item}</option>)}</select></label>)}
+          {(Object.keys(PREFERENCE_OPTIONS) as Array<keyof typeof PREFERENCE_OPTIONS>).map((key) => <label key={key}><span>{key === "origin" ? "出身" : key === "martialSoul" ? "武魂" : "奇遇"}</span><select value={preferences[key]} onChange={(event) => setPreferences({ ...preferences, [key]: event.target.value })}>{PREFERENCE_OPTIONS[key].map((item) => <option key={item}>{item}</option>)}{key === "gift" && GOLD_FINGER_CATEGORIES.map((category) => <optgroup key={category} label={`${category} · 10种`}>{GOLD_FINGERS.filter((item) => item.category === category).map((item) => <option key={item.id} value={item.preference}>{item.name}</option>)}</optgroup>)}</select></label>)}
           <button type="button" className="primary-button" onClick={() => void save()}>保存偏好</button>
         </div></section>
 
