@@ -162,6 +162,13 @@ describe("multi-era foundations", () => {
     const knowledge = buildSceneKnowledgePack(game, "打听斗罗联邦第二舰队的公开职责和司令");
     expect(knowledge.entries.find((item) => item.kind === "势力" && item.name === "斗罗联邦第二舰队")?.fact).toContain("接应力量");
     expect(knowledge.entries.find((item) => item.name === "斗罗联邦第二舰队")?.fact).toContain("未给出司令");
+    game.view.character!.age = 18;
+    game.view.character!.soulRank = 30;
+    game.view.worldTime.year = 30011;
+    expect(resolveAction(game, "申请加入第二舰队").intent).toBe("无法完成");
+    game.view.worldTime.year = 30012;
+    expect(resolveAction(game, "申请加入第二舰队").intent).toBe("加入势力");
+    expect(game.view.affiliations.at(-1)).toMatchObject({ id: "d4-second-fleet", name: "斗罗联邦第二舰队", role: "现役士兵", militaryRank: "列兵" });
     for (const fleet of FACTIONS.filter((item) => /^d4-(?:first|second|third|fourth|fifth|sixth)-fleet$/.test(item.id))) {
       expect(fleet.description).not.toMatch(/司令为|由.+司令|大将/);
     }

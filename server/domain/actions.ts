@@ -1492,6 +1492,13 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
       { pattern: /战神殿/, id: "war-god-temple", name: "战神殿", rank: 40 }, { pattern: /史莱克/, id: "shrek-inner-court", name: "史莱克学院内院", rank: 30 },
     ],
     4: [
+      { pattern: /第一舰队/, id: "d4-first-fleet", name: "斗罗联邦第一舰队", rank: 20 },
+      { pattern: /第二舰队/, id: "d4-second-fleet", name: "斗罗联邦第二舰队", rank: 20 },
+      { pattern: /第三舰队/, id: "d4-third-fleet", name: "斗罗联邦第三舰队", rank: 20 },
+      { pattern: /第四舰队/, id: "d4-fourth-fleet", name: "斗罗联邦第四舰队", rank: 20 },
+      { pattern: /第五舰队/, id: "d4-fifth-fleet", name: "斗罗联邦第五舰队", rank: 20 },
+      { pattern: /第六舰队/, id: "d4-sixth-fleet", name: "斗罗联邦第六舰队", rank: 20 },
+      { pattern: /第七舰队/, id: "d4-seventh-fleet", name: "斗罗联邦第七舰队", rank: 20 },
       { pattern: /舰队|联邦/, id: "d4-federal-fleet", name: "斗罗联邦舰队", rank: 20 }, { pattern: /史莱克/, id: "shrek-space-command", name: "史莱克星际体系", rank: 20 },
       { pattern: /传灵塔/, id: "spirit-pagoda", name: "传灵塔", rank: 10 }, { pattern: /森罗星|魂兽自治/, id: "senluo-planet", name: "森罗星魂兽自治体系", rank: 20 },
     ],
@@ -1499,7 +1506,7 @@ function factionResolution(game: StoredGame, action: string): ActionResolution {
   const localChoice = { pattern: /宗门|势力|组织|行会|武馆/, id: `local-${game.view.locationId}`, name: localOrganizations[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}自由魂师互助队`, rank: 10 };
   const choices = [...eraChoices[game.view.era ?? 1], localChoice];
   const target = choices.find((item) => item.pattern.test(action)) ?? choices.at(-1)!;
-  const activeFleet = (game.view.era ?? 1) === 4 && target.id === "d4-federal-fleet";
+  const activeFleet = (game.view.era ?? 1) === 4 && (target.id === "d4-federal-fleet" || /^d4-(?:first|second|third|fourth|fifth|sixth|seventh)-fleet$/.test(target.id));
   if (activeFleet && character.age < 18) return impossible("联邦舰队现役军籍至少要求十八岁；未成年人只能走星际学院、少年训练与受监护模拟课程。", ["申请联邦星际学院", "继续星舰基础训练", "等待达到现役年龄"]);
   const faction = FACTIONS.find((item) => item.id === target.id);
   const year = game.view.worldTime?.year ?? 0;
