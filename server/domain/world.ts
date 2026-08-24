@@ -546,6 +546,27 @@ export function recordMediaOutletReputation(game: StoredGame, input: { name: str
   outlet.evidence = outlet.evidence.slice(-20);
 }
 
+export function recordMediaCompetition(game: StoredGame, input: { primary: string; secondary: string; primaryDelta: number; secondaryDelta: number; evidence: string; status: "首发竞争" | "核验拉锯" | "更正问责"; newTopic?: boolean; playerChoice?: string }): void {
+  game.view.mediaCompetitions ??= [];
+  const outlets = [input.primary, input.secondary].sort((left, right) => left.localeCompare(right, "zh-CN")) as [string, string];
+  const id = `media-competition:${outlets.join(":")}`;
+  let competition = game.view.mediaCompetitions.find((item) => item.id === id);
+  if (!competition) {
+    competition = { id, outlets, scores: { [outlets[0]]: 0, [outlets[1]]: 0 }, sharedTopics: 0, status: "并列观察", evidence: [] };
+    game.view.mediaCompetitions.push(competition);
+  }
+  competition.scores[input.primary] = Math.max(-100, Math.min(100, (competition.scores[input.primary] ?? 0) + input.primaryDelta));
+  competition.scores[input.secondary] = Math.max(-100, Math.min(100, (competition.scores[input.secondary] ?? 0) + input.secondaryDelta));
+  if (input.newTopic) competition.sharedTopics += 1;
+  competition.status = input.status;
+  if (input.playerChoice) competition.playerChoice = input.playerChoice;
+  const [left, right] = competition.outlets;
+  const difference = (competition.scores[left] ?? 0) - (competition.scores[right] ?? 0);
+  competition.leader = difference === 0 ? undefined : difference > 0 ? left : right;
+  competition.evidence.push(input.evidence);
+  competition.evidence = competition.evidence.slice(-20);
+}
+
 export function queueSocialRumor(game: StoredGame, input: string, intent: string, result: string): void {
   if (/无法完成|规则阻止/.test(intent)) return;
   const publicRegistry = /交付机构事务|交付悬赏|交付运输合同|机构晋升|军衔晋升/.test(intent);
@@ -634,6 +655,7 @@ function propagateSocialRumors(game: StoredGame, currentOrdinal: number): string
     rumor.mediaVersions ??= [];
     rumor.mediaVersions.push(version);
     recordMediaOutletReputation(game, { name: version.outlet, stance: version.stance, trustDelta: 1, publication: true, linkedReport: true, evidence: `${rumor.id}：明确关联${rumor.mediaOutlet ?? rumor.mediaChannel}并保留来源边界` });
+    recordMediaCompetition(game, { primary: rumor.mediaOutlet ?? rumor.mediaChannel ?? "未名媒体", secondary: version.outlet, primaryDelta: 2, secondaryDelta: 1, newTopic: true, status: "首发竞争", evidence: `${rumor.id}：前者完成首发，后者透明关联转载且未扩写未知事实` });
     const outletTrust = game.view.mediaOutlets.find((item) => item.name === version.outlet);
     addNews(game, version.id, `${version.outlet} · 关联报道`, `关联原报道：${rumor.mediaOutlet ?? rumor.mediaChannel}。${rumor.summary}。机构立场：${version.stance}；机构信誉：${outletTrust?.trustScore ?? 60}（${outletTrust?.status ?? "待观察"}）；${outletTrust?.responsibleEditor?.role ?? "责任编辑"}：${outletTrust?.responsibleEditor?.name ?? "当班编辑"}；编辑框架：${version.framing}；核验：${version.verificationStatus}；可信度 ${version.confidence}%。本版本没有新增未公开事实。`);
     messages.push(`媒体转载 · ${version.outlet} · ${rumor.publicName}`);
@@ -963,7 +985,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 18;
+  legacy.schemaVersion = 19;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -1001,6 +1023,16 @@ export function ensureGameState(game: StoredGame): StoredGame {
   }
   game.view.reputations ??= [];
   game.view.mediaOutlets ??= [];
+  const missingMediaCompetitions = !game.view.mediaCompetitions;
+  game.view.mediaCompetitions ??= [];
+  if (missingMediaCompetitions) {
+    for (const rumor of legacy.world.socialRumors) {
+      for (const version of rumor.mediaVersions ?? []) {
+        const corrected = version.verificationStatus === "更正证据已核验";
+        recordMediaCompetition(game, { primary: rumor.mediaOutlet ?? rumor.mediaChannel ?? "未名媒体", secondary: version.outlet, primaryDelta: corrected ? -2 : 2, secondaryDelta: corrected ? 2 : 1, newTopic: true, status: corrected ? "更正问责" : "首发竞争", evidence: `${rumor.id}：由旧存档中的关联报道${corrected ? "及更正责任" : ""}重建竞争记录` });
+      }
+    }
+  }
   for (const outlet of game.view.mediaOutlets) {
     const profile = responsibleEditor(outlet.name);
     outlet.responsibleEditor ??= { ...profile, sourceTrust: outlet.trustScore ?? 60, handledReports: outlet.publications ?? 0, responsibility: outlet.corrections > 0 ? "已签发更正" : outlet.publications > 0 ? "在岗核验" : "待复核", evidence: [...(outlet.evidence ?? [])].slice(-12), playerTrust: 0, interactions: 0 };

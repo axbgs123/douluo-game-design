@@ -3,7 +3,7 @@ import type { CompanionRole, ConditionLabel, HuntingStage, InstitutionAssignment
 import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, factionActiveAtYear, locationById, soulBeastById } from "../data/world.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
-import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, canDiscoverNpc, inferLocationId, queueSocialRumor, recordCanonInfluence, recordIntelligence, recordMediaOutletReputation, rememberNpcInteraction, revealNpc } from "./world.js";
+import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, canDiscoverNpc, inferLocationId, queueSocialRumor, recordCanonInfluence, recordIntelligence, recordMediaCompetition, recordMediaOutletReputation, rememberNpcInteraction, revealNpc } from "./world.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSuggestions, selectNarrativeRules } from "./story-rules.js";
 import { formatSoulCoins } from "../../shared/currency.js";
@@ -1287,9 +1287,20 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
   const alias = game.world.flags.activeAliasLocationId === locationId ? String(game.world.flags.activeAlias ?? "") : "";
   const publicName = alias || game.view.character!.name;
   const publishedRumor = [...game.world.socialRumors].reverse().find((item) => item.publicName === publicName && (item.mediaStatus === "已刊发" || item.mediaStatus === "已更正"));
+  if (/对比.*(?:媒体|两家).*(?:报道|核验|记录)|比较.*(?:报道|媒体)/.test(action)) {
+    const competition = game.view.mediaCompetitions?.at(-1);
+    if (!competition) return impossible("当前还没有两家媒体围绕同一事件形成可比较的报道链。", ["查看近日消息", "等待关联报道", "检查媒体责任档案"]);
+    const [left, right] = competition.outlets;
+    const leader = competition.leader ? `${competition.leader}暂时领先` : "双方暂时并列";
+    competition.evidence.push(`行动${game.actionIndex}：玩家对比两家媒体的来源、核验等级与更正记录`);
+    competition.evidence = competition.evidence.slice(-20);
+    return { intent: "对比媒体竞争记录", minutes: 45, ruleSummary: `${left} ${competition.scores[left] ?? 0}分，${right} ${competition.scores[right] ?? 0}分；${leader}。分数来自首发、透明转载、独立补证与更正责任，不等于报道内容自动为真。`, fallbackNarrative: "我把两家机构的首发时间、原始来源、转载标记和更正页逐栏排开。谁快、谁肯标明来源、谁在证据推翻旧稿后承担责任，一眼都能看见；声量没有被当成真实性。", suggestions: ["分别采访两家责任编辑", "调查报道来源和现场记录", "选择一家提交独家补充证据"], systemMessages: [`媒体竞争核验 · ${left} / ${right}`] };
+  }
   if (/联系.*(?:责任编辑|核验编辑)|采访.*编辑|询问.*编辑|请求.*编辑.*说明/.test(action)) {
     if (!publishedRumor) return impossible(`当前没有以“${publicName}”刊发且可找到责任编辑的报道。`, ["查看近日消息", "检查本地口碑", "等待报道刊发"]);
-    const outlet = game.view.mediaOutlets.find((item) => item.name === (publishedRumor.mediaOutlet ?? publishedRumor.mediaChannel));
+    const participatingNames = [publishedRumor.mediaOutlet ?? publishedRumor.mediaChannel, ...(publishedRumor.mediaVersions ?? []).map((item) => item.outlet)].filter(Boolean);
+    const outlet = game.view.mediaOutlets.find((item) => participatingNames.includes(item.name) && action.includes(item.responsibleEditor?.name ?? "\0"))
+      ?? game.view.mediaOutlets.find((item) => item.name === (publishedRumor.mediaOutlet ?? publishedRumor.mediaChannel));
     const editor = outlet?.responsibleEditor;
     if (!outlet || !editor) return impossible("这份旧报道没有保存可核验的责任编辑档案，不能凭空建立采访关系。", ["查看报道署名", "联系媒体机构", "调查报道来源"]);
     editor.interactions = (editor.interactions ?? 0) + 1;
@@ -1303,7 +1314,8 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     return { intent: "责任编辑采访", minutes: 60, ruleSummary: `${editor.role}${editor.name}说明了“${publishedRumor.summary}”的来源边界，并登记补充证据请求；采访本身不改稿、不撤稿。`, fallbackNarrative: `${editor.name}把刊发页和来源表并排摊开，没有因为我到场就改标题。${editor.role}逐项说明哪些来自登记、哪些来自见证者，最后新开一栏，让我提交能被独立复核的材料。`, suggestions: ["调查报道来源和现场记录", "向责任编辑提交补充证据", publishedRumor.valence < 0 ? "取得证据后申请更正" : "查看编辑责任记录"], systemMessages: [`媒体采访 · ${outlet.name} · ${editor.name}`] };
   }
   if (/向.*(?:责任编辑|核验编辑|编辑).*提交.*(?:证据|材料)|提交.*补充.*(?:证据|材料)/.test(action)) {
-    const outlet = [...game.view.mediaOutlets].reverse().find((item) => item.responsibleEditor?.activeRumorId);
+    const outlet = game.view.mediaOutlets.find((item) => item.responsibleEditor?.activeRumorId && action.includes(item.responsibleEditor.name))
+      ?? [...game.view.mediaOutlets].reverse().find((item) => item.responsibleEditor?.activeRumorId);
     const editor = outlet?.responsibleEditor;
     const activeRumor = editor?.activeRumorId ? game.world.socialRumors.find((item) => item.id === editor.activeRumorId) : undefined;
     if (!outlet || !editor || !activeRumor || editor.requestedEvidenceAtActionIndex === undefined) return impossible("尚未与该报道的责任编辑完成来源访谈和补证登记。", ["联系责任编辑说明报道", "查看报道署名", "调查消息来源"]);
@@ -1319,7 +1331,10 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     editor.requestedEvidenceAtActionIndex = undefined;
     activeRumor.corroborationCount = (activeRumor.corroborationCount ?? 0) + submitted.length;
     activeRumor.confidence = Math.min(100, (activeRumor.confidence ?? 50) + 5);
-    return { intent: "向责任编辑补充证据", minutes: 90, ruleSummary: `${editor.name}收录${submitted.length}条访谈后独立调查记录；来源信任调整为${editor.sourceTrust}，但是否更正或追加报道仍需单独结算。`, fallbackNarrative: `${editor.name}逐页核过调查时间、地点和来源，把能追溯的部分编进补充材料。那一栏有了编号，却还不是新报道；是否改稿，要走下一道复核。`, suggestions: [activeRumor.valence < 0 ? "提交证据申请更正" : "等待补充报道复核", "查看编辑责任记录", "继续调查独立来源"], systemMessages: [`媒体补证 · ${outlet.name} · ${submitted.length}条`] };
+    const exclusive = /独家/.test(action);
+    const rivalName = [activeRumor.mediaOutlet ?? activeRumor.mediaChannel, ...(activeRumor.mediaVersions ?? []).map((item) => item.outlet)].find((name) => name && name !== outlet.name);
+    if (exclusive && rivalName) recordMediaCompetition(game, { primary: outlet.name, secondary: rivalName, primaryDelta: 3, secondaryDelta: 0, status: "核验拉锯", playerChoice: outlet.name, evidence: `${activeRumor.id}：玩家把${submitted.length}条独立调查线索优先交给${outlet.name}` });
+    return { intent: exclusive ? "提交独家媒体线索" : "向责任编辑补充证据", minutes: 90, ruleSummary: `${editor.name}收录${submitted.length}条访谈后独立调查记录；来源信任调整为${editor.sourceTrust}${exclusive ? `，${outlet.name}在本轮核验竞争中取得线索优势` : ""}，但是否更正或追加报道仍需单独结算。`, fallbackNarrative: `${editor.name}逐页核过调查时间、地点和来源，把能追溯的部分编进补充材料。那一栏有了编号，却还不是新报道；是否改稿，要走下一道复核。`, suggestions: [activeRumor.valence < 0 ? "提交证据申请更正" : "等待补充报道复核", "对比两家媒体报道与核验记录", "继续调查独立来源"], systemMessages: [`媒体补证 · ${outlet.name} · ${submitted.length}条`] };
   }
   const rumor = [...game.world.socialRumors].reverse().find((item) => item.publicName === publicName && item.valence < 0 && item.status === "已传播" && item.mediaStatus !== "已更正");
   if (!rumor) return impossible(`当前没有以“${publicName}”传播且可核验的负面消息。`, ["查看近日消息", "检查本地口碑", "调查其他事件"]);
@@ -1342,6 +1357,7 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
       version.verificationStatus = "更正证据已核验";
       version.confidence = Math.max(10, version.confidence - 35);
       recordMediaOutletReputation(game, { name: version.outlet, stance: version.stance, trustDelta: -4, correction: true, evidence: `${rumor.id}：关联原报道的更正同步` });
+      recordMediaCompetition(game, { primary: rumor.mediaOutlet ?? rumor.mediaChannel ?? "未名媒体", secondary: version.outlet, primaryDelta: -4, secondaryDelta: 1, status: "更正问责", evidence: `${rumor.id}：首发机构承担较高更正责任，透明关联机构保留来源边界` });
     }
     for (const reputation of game.view.reputations.filter((item) => item.publicName === publicName)) {
       reputation.heat = Math.max(0, reputation.heat - 15);
@@ -3091,7 +3107,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (game.view.worldInheritance && (/旧世|祖先|档案|家谱|谱牒|旧产业|历史权益/.test(action) || game.view.worldInheritance.institutions.some((item) => action.includes(item.name))) && /核验|查证|调查|追查|验证/.test(action)) resolution = inheritanceResolution(game, action);
   else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
-  else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验|责任编辑|核验编辑|采访.*编辑|提交.*补充.*(?:证据|材料)/.test(action)) resolution = mediaResolution(game, action);
+  else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验|责任编辑|核验编辑|采访.*编辑|提交.*补充.*(?:证据|材料)|独家.*(?:证据|材料|线索)|对比.*(?:媒体|两家)|比较.*(?:报道|媒体)/.test(action)) resolution = mediaResolution(game, action);
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);
   else if (/调查|搜索|观察周围|查找|研究/.test(action)) resolution = investigateResolution(game, action);
   else if (/等待|快进|过去一天|过去一月|过去一年|休整一/.test(action)) resolution = waitResolution(game, action);

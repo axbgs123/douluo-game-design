@@ -376,10 +376,16 @@ function MediaAccountabilityPanel({ game, submit, busy }: { game: GameView; subm
   if (!game.mediaOutlets.length) return null;
   return <section className="detail-stack media-accountability-panel">
     <h3 className="panel-title">媒体责任档案</h3>
+    {game.mediaCompetitions?.length > 0 && <><p className="panel-label">跨媒体竞争</p><div className="player-relation-ledger">{game.mediaCompetitions.map((competition) => <article key={competition.id}>
+      <header><strong>{competition.outlets.join(" ↔ ")}</strong><span>{competition.status}</span></header>
+      <p>{competition.outlets.map((name) => `${name} ${competition.scores[name] ?? 0}分`).join(" · ")}</p>
+      <small>共同议题 {competition.sharedTopics} 次 · {competition.leader ? `${competition.leader}领先` : "暂时并列"}{competition.playerChoice ? ` · 最近独家线索交给${competition.playerChoice}` : ""}</small>
+      <button type="button" disabled={busy} onClick={() => submit("对比两家媒体的报道与核验记录")}>对比核验链</button>
+    </article>)}</div></>}
     <div className="player-relation-ledger">{game.mediaOutlets.map((outlet) => <article key={outlet.name}>
       <header><strong>{outlet.name}</strong><span>{outlet.status} · {outlet.trustScore}</span></header>
       <p>{outlet.stance}</p>
-      {outlet.responsibleEditor ? <><small>{outlet.responsibleEditor.role} · {outlet.responsibleEditor.name} · 来源信任 {outlet.responsibleEditor.sourceTrust} · 对主角信任 {outlet.responsibleEditor.playerTrust ?? 0}</small><em>处理 {outlet.responsibleEditor.handledReports} 篇 · 互动 {outlet.responsibleEditor.interactions ?? 0} 次 · {outlet.responsibleEditor.responsibility}</em><div><button type="button" disabled={busy} onClick={() => submit(`联系${outlet.responsibleEditor!.name}责任编辑询问选稿依据`)}>采访编辑</button><button type="button" disabled={busy || outlet.responsibleEditor.requestedEvidenceAtActionIndex === undefined} onClick={() => submit(`向${outlet.responsibleEditor!.name}责任编辑提交补充证据`)}>补交材料</button></div></> : <small>旧档案尚无可核验责任编辑</small>}
+      {outlet.responsibleEditor ? <><small>{outlet.responsibleEditor.role} · {outlet.responsibleEditor.name} · 来源信任 {outlet.responsibleEditor.sourceTrust} · 对主角信任 {outlet.responsibleEditor.playerTrust ?? 0}</small><em>处理 {outlet.responsibleEditor.handledReports} 篇 · 互动 {outlet.responsibleEditor.interactions ?? 0} 次 · {outlet.responsibleEditor.responsibility}</em><div><button type="button" disabled={busy} onClick={() => submit(`联系${outlet.responsibleEditor!.name}责任编辑询问选稿依据`)}>采访编辑</button><button type="button" disabled={busy || outlet.responsibleEditor.requestedEvidenceAtActionIndex === undefined} onClick={() => submit(`向${outlet.responsibleEditor!.name}责任编辑提交补充证据`)}>补交材料</button>{game.mediaCompetitions?.some((item) => item.outlets.includes(outlet.name)) && <button type="button" disabled={busy || outlet.responsibleEditor.requestedEvidenceAtActionIndex === undefined} onClick={() => submit(`向${outlet.responsibleEditor!.name}责任编辑提交独家补充证据`)}>独家交线索</button>}</div></> : <small>旧档案尚无可核验责任编辑</small>}
     </article>)}</div>
   </section>;
 }

@@ -752,6 +752,17 @@ export interface MediaOutletReputationView {
   };
 }
 
+export interface MediaCompetitionView {
+  id: string;
+  outlets: [string, string];
+  scores: Record<string, number>;
+  sharedTopics: number;
+  leader?: string;
+  status: "并列观察" | "首发竞争" | "核验拉锯" | "更正问责";
+  playerChoice?: string;
+  evidence: string[];
+}
+
 export interface GameView {
   id: string;
   seed: string;
@@ -796,6 +807,7 @@ export interface GameView {
   mapPins: MapPinView[];
   news: WorldNewsView[];
   mediaOutlets: MediaOutletReputationView[];
+  mediaCompetitions: MediaCompetitionView[];
   activeEvents: WorldEventView[];
   canonInfluences: CanonInfluenceView[];
   storyArchive: StoryArchiveView;
