@@ -1092,9 +1092,11 @@ export function generateCandidates(
     };
     const lineage = lineageSurnames[origin.id];
     if (lineage) name = `${pick(random, lineage)}${name.slice(1)}`;
+    if (origin.id === "fierce-beast-raised") name = pick(random, ["岩芽", "青叶", "小岚", "灰耳", "石果", "溪羽", "阿藤", "月枝", "霜爪", "青角", "木生", "星苔"]);
     for (let attempt = 0; usedNames.has(name) && attempt < 12; attempt += 1) {
       name = generateName(random, gender);
       if (lineage) name = `${pick(random, lineage)}${name.slice(1)}`;
+      if (origin.id === "fierce-beast-raised") name = pick(random, ["岩芽", "青叶", "小岚", "灰耳", "石果", "溪羽", "阿藤", "月枝", "霜爪", "青角", "木生", "星苔"]);
     }
     usedNames.add(name);
     const concreteOrigin = specificOrigin(random, origin, pick(random, origin.locations), name);
