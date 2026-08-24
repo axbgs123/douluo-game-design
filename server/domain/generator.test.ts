@@ -42,6 +42,13 @@ describe("candidate generation", () => {
     expect(second).toEqual(first);
   });
 
+  it("keeps every martial soul at the same quality when a multi-soul character appears", () => {
+    const candidates = generateCandidates("multi-quality-38", 0, "男", { origin: "特殊", martialSoul: "均衡", gift: "均衡" });
+    const multiSoul = candidates.find((candidate) => (candidate.martialSouls?.length ?? 1) > 1);
+    expect(multiSoul).toBeDefined();
+    expect(new Set(multiSoul!.martialSouls!.map((soul) => soul.grade))).toEqual(new Set([multiSoul!.martialSoul.grade]));
+  });
+
   it("keeps martial souls out of the public candidate cards", () => {
     const game = createGame({ gender: "女", difficulty: "标准", personality, seed: "public-view" });
     expect(game.view.candidates).toHaveLength(3);

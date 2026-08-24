@@ -45,7 +45,7 @@ describe("增强小说引擎", () => {
     expect(packet.protagonistContract).toMatchObject({ desire: "调查觉醒记录", action: "调查", fixedConsequence: "核对了主持者签名，但没有取得封存原件。" });
     expect(packet.continuityContract.requiredStateChanges).toContain("时间推进 45 分钟");
     expect(packet.continuityContract.forbiddenInventions).toContain("让 NPC 知道隐藏武魂、系统、未来事件或未公开身份");
-    expect(packet.reactionChain.requiredTraces.at(-1)).toContain("可行动问题、责任或风险");
+    expect(packet.reactionChain.requiredTraces.at(-1)).toContain("不强制制造谜题");
     expect(auditNarrativeLogicPacket(packet)).toEqual([]);
   });
 

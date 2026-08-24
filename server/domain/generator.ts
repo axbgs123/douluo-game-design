@@ -744,7 +744,7 @@ function resolvedOriginTier(origin: OriginTemplate): CandidateRarity {
   return origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "优秀" : "平凡");
 }
 
-function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences, excludedIds: string[] = [], era: GameEra = 1): MartialSoulTemplate {
+function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences, excludedIds: string[] = [], era: GameEra = 1, requiredGrade?: CandidateRarity): MartialSoulTemplate {
   const preferredCategory = preferences?.martialSoul;
   const originSoulIds: Record<string, string[]> = {
     "seven-treasure-core": ["seven-treasure-pagoda", "clear-mirror", "star-book"],
@@ -763,8 +763,10 @@ function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: 
   const forcedSource = forced ? MARTIAL_SOULS.filter((soul) => forced.includes(soul.id) && !excludedIds.includes(soul.id)) : [];
   const eraCompatible = (soul: MartialSoulTemplate) => soul.sourceEra === undefined || soul.sourceEra === "原创" || soul.sourceEra === "局外" || (typeof soul.sourceEra === "number" && soul.sourceEra <= era);
   const baseSource = forcedSource.length ? forcedSource.filter(eraCompatible) : MARTIAL_SOULS.filter((soul) => !excludedIds.includes(soul.id) && eraCompatible(soul));
+  const allEraCompatible = MARTIAL_SOULS.filter((soul) => !excludedIds.includes(soul.id) && eraCompatible(soul));
+  const exactGradeSource = requiredGrade ? allEraCompatible.filter((soul) => (soul.grade ?? "平凡") === requiredGrade) : [];
   const compatibleSource = baseSource.filter((soul) => MARTIAL_SOUL_GRADE_ORDER.indexOf(soul.grade ?? "平凡") >= identityIndex);
-  const source = compatibleSource.length ? compatibleSource : baseSource;
+  const source = requiredGrade && exactGradeSource.length ? exactGradeSource : compatibleSource.length ? compatibleSource : baseSource;
   const identityText = `${origin.id} ${origin.name} ${origin.summary} ${origin.route ?? ""} ${(origin.roleTags ?? []).join(" ")} ${origin.locations.join(" ")}`;
   const choices = source.map((soul) => ({
     ...soul,
@@ -801,8 +803,22 @@ function martialSoulCount(random: () => number, origin: OriginTemplate): 1 | 2 |
 function chooseMartialSouls(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences, era: GameEra = 1): MartialSoulTemplate[] {
   const count = martialSoulCount(random, origin);
   const selected: MartialSoulTemplate[] = [];
-  for (let index = 0; index < count; index += 1) selected.push(chooseSoul(random, origin, preferences, selected.map((soul) => soul.id), era));
+  for (let index = 0; index < count; index += 1) selected.push(chooseSoul(random, origin, preferences, selected.map((soul) => soul.id), era, selected[0]?.grade));
   return selected;
+}
+
+function harmonizeMultiSoulQuality(random: () => number, candidate: HiddenCandidate, era: GameEra): void {
+  const souls = candidate.martialSouls?.length ? candidate.martialSouls : [candidate.martialSoul];
+  if (souls.length < 2) return;
+  const targetGrade = candidate.martialSoul.grade ?? martialSoulGrade(candidate.martialSoul.name, candidate.martialSoul.metaRarity, candidate.martialSoul.soulPowerRange[1]);
+  const origin = originPool(undefined, era).find((item) => item.id === candidate.originId);
+  if (!origin) return;
+  const harmonized = [candidate.martialSoul];
+  for (let index = 1; index < souls.length; index += 1) {
+    const soul = souls[index];
+    harmonized.push((soul.grade ?? "平凡") === targetGrade ? soul : chooseSoul(random, origin, undefined, harmonized.map((item) => item.id), era, targetGrade));
+  }
+  candidate.martialSouls = harmonized;
 }
 
 function eraRelation(year: number, era: GameEra): string {
@@ -1579,13 +1595,14 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
     };
     candidate.martialSoul = { ...replacement, sourceEra: replacement.sourceEra ?? "局外", grade: martialSoulGrade(replacement.name, replacement.metaRarity, replacement.soulPowerRange[1]) };
     candidate.martialSouls = [candidate.martialSoul, ...(candidate.martialSouls ?? []).filter((soul) => soul.id !== candidate.martialSoul.id).slice(0, 2)];
+    harmonizeMultiSoulQuality(codexRandom, candidate, era);
     candidate.innateSoulPower = Math.max(candidate.innateSoulPower, integer(codexRandom, candidate.martialSoul.soulPowerRange[0], candidate.martialSoul.soulPowerRange[1]));
   }
 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 27,
+    schemaVersion: 28,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1807,6 +1824,7 @@ export function selectCandidate(game: StoredGame, candidateId: string, customNam
   if (forcedSoul) {
     candidate.martialSoul = { ...forcedSoul, sourceEra: forcedSoul.sourceEra ?? "局外", grade: forcedSoul.grade ?? martialSoulGrade(forcedSoul.name, forcedSoul.metaRarity, forcedSoul.soulPowerRange[1]) };
     candidate.martialSouls = [candidate.martialSoul, ...(candidate.martialSouls ?? []).filter((soul) => soul.id !== candidate.martialSoul.id).slice(0, 2)];
+    harmonizeMultiSoulQuality(createRandom(`${game.view.seed}:codex-soul-quality:${forcedSoul.id}`), candidate, game.view.era ?? 1);
     candidate.innateSoulPower = Math.max(candidate.innateSoulPower, integer(createRandom(`${game.view.seed}:codex-soul:${forcedSoul.id}`), forcedSoul.soulPowerRange[0], forcedSoul.soulPowerRange[1]));
     candidate.public.omens[0] = thirdPersonClue(forcedSoul.omens[0] ?? `${forcedSoul.name}的轮廓曾在梦里出现`, candidate.public.name, candidate.public.gender);
     game.legacy.plannedMartialSoulId = forcedSoul.id;
@@ -2073,7 +2091,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   if (game.legacy.equippedHeirloom) {
     game.view.inventory.push(game.legacy.equippedHeirloom);
     const heirloom = heirloomByName(game.legacy.equippedHeirloom);
-    if (heirloom) game.view.activeHeirloom = { id: heirloom.id, name: heirloom.name, rarity: heirloom.rarity, description: heirloom.description, effect: heirloom.effect, trigger: heirloom.trigger, status: "等待触发", actionCommand: heirloom.actionCommand };
+    if (heirloom) game.view.activeHeirloom = { id: heirloom.id, name: heirloom.name, rarity: heirloom.rarity, description: heirloom.description, effect: heirloom.effect, trigger: heirloom.trigger, status: "等待触发", maxUses: heirloom.maxUses, remainingUses: heirloom.maxUses, actionCommand: heirloom.actionCommand };
   }
   const inheritance = game.legacy.worldInheritance;
   if (inheritance && !game.view.inventory.includes(inheritance.legacyArtifact)) game.view.inventory.push(inheritance.legacyArtifact);

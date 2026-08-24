@@ -394,6 +394,17 @@ test("候选页只显示人工身份并保证三张开局流派不同", async ({
   expect((await page.locator(".candidate-origin").allTextContents()).every((name) => !name.includes("护阵房学徒家庭"))).toBe(true);
 });
 
+test("局外召唤区直接提供武魂仓库与遗物仓库", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "✦ 局外成长 传承与图鉴" }).click();
+  await expect(page.getByTestId("summon-tab-souls")).toBeVisible();
+  await expect(page.getByTestId("summon-tab-heirlooms")).toBeVisible();
+  await expect(page.locator(".soul-warehouse-section")).toBeVisible();
+  await page.getByTestId("summon-tab-heirlooms").click();
+  await expect(page.locator(".heirloom-warehouse-section")).toBeVisible();
+  await expect(page.locator(".heirloom-warehouse-section")).toContainText("每局发动次数限制");
+});
+
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {
   const saved = await request.post("/api/meta/preferences", { data: { origin: "均衡", martialSoul: "均衡", gift: "签到系统" } });
   expect(saved.ok()).toBeTruthy();

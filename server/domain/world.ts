@@ -1066,7 +1066,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 27;
+  legacy.schemaVersion = 28;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -1245,7 +1245,13 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.legacy ??= { upgrades: {} };
   if (!game.view.activeHeirloom && game.legacy.equippedHeirloom && game.view.character) {
     const heirloom = heirloomByName(game.legacy.equippedHeirloom);
-    if (heirloom) game.view.activeHeirloom = { id: heirloom.id, name: heirloom.name, rarity: heirloom.rarity, description: heirloom.description, effect: heirloom.effect, trigger: heirloom.trigger, status: "等待触发", actionCommand: heirloom.actionCommand };
+    if (heirloom) game.view.activeHeirloom = { id: heirloom.id, name: heirloom.name, rarity: heirloom.rarity, description: heirloom.description, effect: heirloom.effect, trigger: heirloom.trigger, status: "等待触发", maxUses: heirloom.maxUses, remainingUses: heirloom.maxUses, actionCommand: heirloom.actionCommand };
+  }
+  if (game.view.activeHeirloom) {
+    const definition = heirloomByName(game.view.activeHeirloom.name);
+    game.view.activeHeirloom.maxUses ??= definition?.maxUses ?? 1;
+    game.view.activeHeirloom.remainingUses ??= game.view.activeHeirloom.status === "本局已触发" ? 0 : game.view.activeHeirloom.maxUses;
+    game.view.activeHeirloom.status = game.view.activeHeirloom.remainingUses > 0 ? "等待触发" : "本局已触发";
   }
   legacy.personalityProfile.evidence ??= [];
   const allCandidates = [...game.hiddenCandidates.map((item) => item.public), ...game.view.candidates];

@@ -130,10 +130,10 @@ function HeirloomPanel({ game, submit, busy }: { game: GameView; submit: (value:
     <article className={`heirloom-slot rarity-${heirloom.rarity}`}>
       <header><span>{heirloom.rarity}遗物</span><strong>{heirloom.name}</strong></header>
       <p>{heirloom.description}</p>
-      <dl><div><dt>实际效果</dt><dd>{heirloom.effect}</dd></div><div><dt>触发条件</dt><dd>{heirloom.trigger}</dd></div><div><dt>本局状态</dt><dd>{heirloom.status}</dd></div></dl>
-      {heirloom.actionCommand && <button type="button" disabled={busy || heirloom.status === "本局已触发"} onClick={() => submit(heirloom.actionCommand!)}>{heirloom.status === "本局已触发" ? "本局已使用" : heirloom.actionCommand}</button>}
+      <dl><div><dt>实际效果</dt><dd>{heirloom.effect}</dd></div><div><dt>触发条件</dt><dd>{heirloom.trigger}</dd></div><div><dt>本局次数</dt><dd>{heirloom.remainingUses}/{heirloom.maxUses}</dd></div></dl>
+      {heirloom.actionCommand && <button type="button" disabled={busy || heirloom.remainingUses < 1} onClick={() => submit(heirloom.actionCommand!)}>{heirloom.remainingUses < 1 ? "本局次数耗尽" : heirloom.actionCommand}</button>}
     </article>
-    <p className="panel-note">被动遗物会在条件首次满足时自动结算，并写入本次行动的系统消息与判定记录。</p>
+    <p className="panel-note">被动遗物会在条件满足时自动结算，直到本局次数耗尽；每次发动都会写入系统消息与判定记录。</p>
   </div>;
 }
 

@@ -25,6 +25,7 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
   const [lastDrawId, setLastDrawId] = useState<string>();
   const [soulSearch, setSoulSearch] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [summonTab, setSummonTab] = useState<"history" | "souls" | "heirlooms">("souls");
 
   useEffect(() => {
     if (!open) return;
@@ -54,9 +55,11 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
       const result = await drawMetaMartialSoul();
       setMeta(result.meta);
       if (result.kind === "martialSoul") {
+        setSummonTab("souls");
         setLastDrawId(result.drawn.id);
         setMessage(`${result.drawn.rarity}武魂 · ${result.drawn.name}。获得 1 次使用机会${result.cost ? `，消耗 ${result.cost} 传承点` : "，本次使用召唤券"}。`);
       } else {
+        setSummonTab("heirlooms");
         setLastDrawId(undefined);
         setMessage(`${result.drawn.rarity}遗物 · ${result.drawn.name}：${result.drawn.description}${result.drawn.duplicate ? " 已拥有，返还 1 张召唤券。" : " 已加入遗物库。"}`);
       }
@@ -99,10 +102,11 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
         <section className="meta-section soul-draw-section">
           <div className="meta-section-heading"><div><h3>召唤</h3><p>只会出现紫色及以上武魂，并有 8% 概率出现遗物。武魂获得一次使用机会，通关后永久写入图鉴。</p></div><button type="button" className="soul-draw-button" onClick={() => void drawSoul()}>{meta.martialSoulDrawTickets > 0 ? `使用召唤券 · ${meta.martialSoulDrawTickets}` : "召唤一次 · 20 传承点"}</button></div>
           <div className="soul-draw-rules"><span>最低紫色</span><span>金色保底 {10 - meta.summonGoldPity} 抽</span><span>红色保底 {40 - meta.summonRedPity} 抽</span><span>七彩保底 {80 - meta.summonRainbowPity} 抽</span><span>遗物概率 8%</span></div>
-          <div className="summon-history"><h4>最近五次</h4>{meta.summonHistory.length ? meta.summonHistory.map((entry) => <article key={entry.id} className={`summon-history-card soul-rarity-${entry.rarity}`}><span>{entry.rarity} · {entry.kind === "martialSoul" ? "武魂" : "遗物"}</span><strong>{entry.name}</strong><p>{entry.description}</p><small>{entry.duplicate ? "重复获得" : "首次获得"} · {new Date(entry.drawnAt).toLocaleString("zh-CN")}</small></article>) : <p className="meta-empty-copy">还没有召唤记录。</p>}</div>
+          <nav className="summon-tabs" aria-label="召唤仓库"><button data-testid="summon-tab-history" type="button" className={summonTab === "history" ? "active" : ""} onClick={() => setSummonTab("history")}>召唤记录 · {meta.summonHistory.length}</button><button data-testid="summon-tab-souls" type="button" className={summonTab === "souls" ? "active" : ""} onClick={() => setSummonTab("souls")}>武魂仓库 · {meta.martialSoulCodex.length}</button><button data-testid="summon-tab-heirlooms" type="button" className={summonTab === "heirlooms" ? "active" : ""} onClick={() => setSummonTab("heirlooms")}>遗物仓库 · {meta.unlockedHeirlooms.length}</button></nav>
+          {summonTab === "history" && <div className="summon-history"><h4>最近五次</h4>{meta.summonHistory.length ? meta.summonHistory.map((entry) => <article key={entry.id} className={`summon-history-card soul-rarity-${entry.rarity}`}><span>{entry.rarity} · {entry.kind === "martialSoul" ? "武魂" : "遗物"}</span><strong>{entry.name}</strong><p>{entry.description}</p><small>{entry.duplicate ? "重复获得" : "首次获得"} · {new Date(entry.drawnAt).toLocaleString("zh-CN")}</small></article>) : <p className="meta-empty-copy">还没有召唤记录。</p>}</div>}
         </section>
 
-        <section className="meta-section soul-warehouse-section">
+        {summonTab === "souls" && <section className="meta-section soul-warehouse-section">
           <div className="meta-section-heading"><div><h3>武魂仓库</h3><p>召唤结果保存在这里。支持搜索、收藏、指定下局、随机出场与永久删除。</p></div></div>
           {meta.equippedMartialSoulId && <div className="equipped-soul-line"><span>下局指定</span><strong>{meta.martialSoulCodex.find((item) => item.id === meta.equippedMartialSoulId)?.name}</strong><button type="button" onClick={() => void equipSoul()}>取消</button></div>}
           <div className="warehouse-tools"><input value={soulSearch} onChange={(event) => setSoulSearch(event.target.value)} placeholder="搜索名称、类别、稀有度或描述" /><label><input type="checkbox" checked={favoritesOnly} onChange={(event) => setFavoritesOnly(event.target.checked)} />只看收藏</label><span>{meta.martialSoulCodex.length} 种</span></div>
@@ -116,7 +120,9 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
             </article>)}
             {!meta.martialSoulCodex.length && <p className="meta-empty-copy">仓库为空。召唤获得的武魂会出现在这里。</p>}
           </div>
-        </section>
+        </section>}
+
+        {summonTab === "heirlooms" && <section className="meta-section heirloom-warehouse-section"><div className="meta-section-heading"><div><h3>遗物仓库</h3><p>遗物能力允许明显超出常规成长，但受严格触发条件和每局发动次数限制；每局只能携带一件。</p></div><span>{meta.unlockedHeirlooms.length} 件</span></div>{meta.equippedHeirloom && <div className="equipped-soul-line"><span>下局携带</span><strong>{meta.equippedHeirloom}</strong><button type="button" onClick={() => void equip()}>卸下</button></div>}<div className="heirloom-list">{meta.unlockedHeirlooms.length ? meta.unlockedHeirlooms.map((item) => { const definition = heirloomByName(item); return <article key={item} className={meta.equippedHeirloom === item ? "active" : ""}><header><strong>{item}</strong><span>{definition?.rarity ?? "已解锁"} · 每局{definition?.maxUses ?? 1}次</span></header><p>{definition?.description ?? "一件来自旧周目的遗物。"}</p><small>{definition?.effect ?? "携带后会在符合条件时发挥作用。"}</small><em>触发：{definition?.trigger ?? "满足遗物条件"}</em><button type="button" onClick={() => void equip(meta.equippedHeirloom === item ? undefined : item)}>{meta.equippedHeirloom === item ? "已携带 · 点击卸下" : "下局携带"}</button></article>; }) : <p className="meta-empty-copy">遗物仓库为空。召唤出现遗物后会直接存入这里。</p>}</div></section>}
 
         <section className="meta-section"><div className="meta-section-heading"><h3>下轮偏好</h3><p>只增加出现概率，不锁定结果。</p></div><div className="preference-grid">
           {(Object.keys(PREFERENCE_OPTIONS) as Array<keyof typeof PREFERENCE_OPTIONS>).map((key) => <label key={key}><span>{key === "origin" ? "出身" : key === "martialSoul" ? "武魂" : "奇遇"}</span><select value={preferences[key]} onChange={(event) => setPreferences({ ...preferences, [key]: event.target.value })}>{PREFERENCE_OPTIONS[key].map((item) => <option key={item}>{item}</option>)}{key === "gift" && GOLD_FINGER_CATEGORIES.map((category) => <optgroup key={category} label={`${category} · 10种`}>{GOLD_FINGERS.filter((item) => item.category === category).map((item) => <option key={item.id} value={item.preference}>{item.name}</option>)}</optgroup>)}</select></label>)}
@@ -129,7 +135,7 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
           {([{"name":"命运余量","cost":30,"copy":"提高特殊开局与隐藏传承的权重"},{"name":"稳固根基","cost":40,"copy":"提高开局根基和濒死后的承载能力"},{"name":"旧世见闻","cost":50,"copy":"开局认出更多身边的重要人物"}] as const).map((upgrade) => { const level = meta.purchasedUpgrades[upgrade.name] ?? 0; const cost = upgrade.cost * (level + 1); return <article key={upgrade.name}><span>等级 {level}/3</span><strong>{upgrade.name}</strong><p>{upgrade.copy}</p><button type="button" disabled={level >= (upgrade.name === "旧世见闻" ? 2 : 3) || meta.legacyPoints < cost} onClick={() => void purchase(upgrade.name)}>{level >= (upgrade.name === "旧世见闻" ? 2 : 3) ? "已满" : `${cost} 点提升`}</button></article>; })}
         </div></section>
 
-        <section className="meta-section"><div className="meta-section-heading"><h3>已解锁</h3></div><div className="meta-unlocks"><UnlockList title="出身" items={meta.unlockedOrigins} empty="暂无" /><UnlockList title="武魂" items={meta.unlockedMartialSouls} empty="暂无" /><UnlockList title="特质" items={meta.unlockedTraits} empty="暂无" /><article className="meta-unlock-card heirloom-library"><h3>遗物</h3>{meta.unlockedHeirlooms.length ? <div className="heirloom-list">{meta.unlockedHeirlooms.map((item) => { const definition = heirloomByName(item); return <article key={item} className={meta.equippedHeirloom === item ? "active" : ""}><header><strong>{item}</strong><span>{definition?.rarity ?? "已解锁"}</span></header><p>{definition?.description ?? "一件来自旧周目的遗物。"}</p><small>{definition?.effect ?? "携带后会在符合条件时发挥作用。"}</small><button type="button" onClick={() => void equip(meta.equippedHeirloom === item ? undefined : item)}>{meta.equippedHeirloom === item ? "已携带 · 点击卸下" : "下局携带"}</button></article>; })}</div> : <p>暂无</p>}</article><UnlockList title="魂兽图鉴" items={meta.codexEntries} empty="暂无" /></div></section>
+        <section className="meta-section"><div className="meta-section-heading"><h3>已解锁</h3></div><div className="meta-unlocks"><UnlockList title="出身" items={meta.unlockedOrigins} empty="暂无" /><UnlockList title="武魂" items={meta.unlockedMartialSouls} empty="暂无" /><UnlockList title="特质" items={meta.unlockedTraits} empty="暂无" /><UnlockList title="魂兽图鉴" items={meta.codexEntries} empty="暂无" /></div></section>
 
         {catalog && <section className="meta-section"><div className="meta-section-heading"><h3>世界资料库</h3><p>人物随年份变化，叙事规则按当前行动自动启用。</p></div><div className="catalog-grid"><article><strong>{catalog.birthProfiles}</strong><span>具体出生档案</span></article><article><strong>{catalog.martialSouls}</strong><span>可觉醒武魂</span></article><article><strong>{catalog.characters}</strong><span>重要人物与凶兽</span></article><article><strong>{catalog.powerSnapshots}</strong><span>实力节点</span></article><article><strong>{catalog.factions}</strong><span>势力</span></article><article><strong>{catalog.locations}</strong><span>地点</span></article><article><strong>{catalog.events}</strong><span>历史事件</span></article><article><strong>{catalog.soulBeasts}</strong><span>魂兽</span></article><article><strong>{catalog.narrativeRules}</strong><span>叙事规则</span></article></div><details className="catalog-help"><summary>这些数字分别代表什么</summary><dl><div><dt>出生档案</dt><dd>人工核心身份与家庭气氛、具体住处等参数组成的可复现档案数量；不会用职业和矛盾做千条换词式组合。</dd></div><div><dt>可觉醒武魂</dt><dd>四部原作收录、原创武魂和局外图鉴武魂的当前总数。</dd></div><div><dt>重要人物与凶兽</dt><dd>拥有独立位置、目标、状态和时间变化的可交互实体。</dd></div><div><dt>实力节点</dt><dd>人物在特定原作年份的等级或实力记录，年份之间由程序推算。</dd></div><div><dt>势力与地点</dt><dd>可用于身份、关系、旅行、地图和事件推演的结构化节点。</dd></div><div><dt>历史事件</dt><dd>带原作年份与参与者的关键节点；只有玩家真实影响相关因果后才可能改变。</dd></div><div><dt>魂兽</dt><dd>猎魂、调查和生态遭遇使用的魂兽种类模板；有名字的高智慧凶兽另计入人物。</dd></div><div><dt>叙事规则</dt><dd>四个时代各一千条写作检查项，按当前行动检索，不会一次全部塞给模型。</dd></div></dl></details></section>}
       </>}

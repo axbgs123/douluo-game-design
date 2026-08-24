@@ -259,6 +259,8 @@ export interface ActiveHeirloomView {
   effect: string;
   trigger: string;
   status: "等待触发" | "本局已触发";
+  maxUses: number;
+  remainingUses: number;
   actionCommand?: string;
 }
 

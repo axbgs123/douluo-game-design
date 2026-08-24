@@ -460,7 +460,7 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
       authorityHolders,
       interestsAtStake: [...new Set(participantRelations.map((relation) => `${relation.name}：${relation.faction ?? relation.relation}的职责、利益、关系或风险`))],
       requiredImmediateReactions,
-      requiredTraces: [...requiredStateChanges, "正文结尾必须保留一个由本次后果产生的可行动问题、责任或风险"],
+      requiredTraces: [...requiredStateChanges, "正文结尾落在本次生活变化上：可以是成长回报、关系变化、情绪余波、下一步目标或风险，不强制制造谜题"],
       sceneScaleRule: participants.length >= 3 ? `本场至少有${participants.length}名重要在场者，不得在中段塌缩成只有主角与一名 NPC 的双人对白` : "保持实际在场人数；不得凭空增减见证者",
     },
     continuityContract: {

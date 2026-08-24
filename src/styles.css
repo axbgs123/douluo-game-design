@@ -37,6 +37,9 @@
 .soul-draw-button { border: 0; background: linear-gradient(135deg, #7d5d22, #c7a75c); color: white; padding: .85rem 1.2rem; cursor: pointer; white-space: nowrap; }
 .soul-draw-rules { display: flex; flex-wrap: wrap; gap: .55rem; margin: 1rem 0; }
 .soul-draw-rules span { border: 1px solid #ddd2bd; padding: .42rem .7rem; font-size: .78rem; color: #706552; background: rgba(255,255,255,.5); }
+.summon-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: .55rem; margin-top: 1rem; }
+.summon-tabs button { border: 1px solid var(--line); background: rgba(255,255,255,.46); padding: .72rem .8rem; color: var(--muted); cursor: pointer; }
+.summon-tabs button.active { border-color: var(--gold); background: #efe2bd; color: var(--ink); box-shadow: inset 0 -3px var(--gold); }
 .equipped-soul-line { display: flex; align-items: center; gap: .8rem; padding: .85rem 1rem; background: #f0e5c8; border-left: 3px solid #9b7429; margin-bottom: 1rem; }
 .equipped-soul-line button { margin-left: auto; }
 .martial-soul-codex { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1rem; }
@@ -695,6 +698,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .heirloom-list header { display: flex; justify-content: space-between; gap: 1rem; }
 .heirloom-list p { margin: .45rem 0; }
 .heirloom-list small { display: block; margin-bottom: .65rem; }
+.heirloom-list em { display: block; margin: -.25rem 0 .75rem; color: var(--faint); font-size: .76rem; font-style: normal; }
 .awakening-soul-controls { display: grid; gap: .35rem; margin-top: .8rem; padding-top: .7rem; border-top: 1px solid var(--line); }
 .awakening-soul-controls label { display: flex; gap: .45rem; align-items: center; cursor: pointer; }
 .awakened-soul-card.selected-primary-soul { box-shadow: 0 0 0 2px var(--gold); }
