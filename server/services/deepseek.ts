@@ -21,6 +21,46 @@ export interface NarrationResult {
   };
 }
 
+export interface CanonNarrativeProfile {
+  era: 1 | 2 | 3 | 4;
+  sceneMode: "生活成长" | "学院势力" | "修炼突破" | "战斗猎魂" | "调查悬疑";
+  eraTexture: string;
+  sceneRhythm: string;
+  interiority: string;
+  exposition: string;
+}
+
+export function buildCanonNarrativeProfile(game: StoredGame, playerInput: string, resolution: ActionResolution): CanonNarrativeProfile {
+  const scene = `${playerInput}${resolution.intent}${resolution.ruleSummary}`;
+  const sceneMode = /调查|追查|线索|秘密|失踪|证据|真相|阴谋|核验/.test(scene) ? "调查悬疑"
+    : /战斗|攻击|防御|魂兽|猎魂|魂环|撤退/.test(scene) ? "战斗猎魂"
+      : /修炼|训练|突破|冥想|锻造|制作/.test(scene) ? "修炼突破"
+        : /学院|入学|宗门|势力|拜师|课程|舰队/.test(scene) ? "学院势力" : "生活成长";
+  const era = game.view.era ?? 1;
+  const eraTexture = ({
+    1: "斗一的奇异感从村庄、家庭生计、铁匠铺、学院名额、路费与猎魂手令等日常门槛中长出来；魂师身份尊贵，但普通人仍要吃饭、干活、赶路和求人。",
+    2: "斗二先写个人匮乏、谋生本领、同伴相遇与学院竞争，再让魂导器、魂灵研究和万年制度变化进入人物选择；弱小阶段的每份资源都应有重量。",
+    3: "斗三重视童年愿望、家庭安慰、学校生活、职业劳动、身体异变与同龄竞争；大设定先落到孩子的失望、饭量、工资、训练和朋友关系上。",
+    4: "斗四的联邦科技必须通过岗位命令、设备操作、军衔责任和家庭/同事关系显形；制度场景里也要有人情、玩笑、偏心、疲惫和生活安排。",
+  } as const)[era];
+  return {
+    era,
+    sceneMode,
+    eraTexture,
+    sceneRhythm: sceneMode === "调查悬疑"
+      ? "先写人物为什么非查不可，再写具体查法、受阻与证据变化；线索只服务当前人物欲望。"
+      : "先写人物此刻想得到或避免什么，再让行动撞上具体人和现实门槛，最后把结果落到身体、资源、身份待遇或关系上；不额外制造谜题。",
+    interiority: "允许清楚写主角当下的期盼、失望、满足、好胜、羞耻与判断，只要这些来自既有性格和现场结果；限知不等于把心理全部藏起来。",
+    exposition: "必要设定应由正在办事的人、眼前制度、训练过程或主角已有常识自然带出。先有生活动作和利害，再解释一小段；不要像百科、配置表或审稿报告。",
+  };
+}
+
+export function auditCanonNarrativeVoice(text: string, profile: CanonNarrativeProfile): string[] {
+  if (profile.sceneMode === "调查悬疑") return [];
+  const mysteryHits = ["神秘的旧物", "来历不明的线索", "背后隐藏着什么", "新的谜团", "必须调查清楚", "一切都没有那么简单"].filter((phrase) => text.includes(phrase));
+  return mysteryHits.length >= 2 ? ["非调查场景被写成了解密或谜团推进"] : [];
+}
+
 export class NarrativeAuditError extends Error {
   constructor(public readonly issues: string[]) {
     super(`正文未通过审校：${issues.join("、")}`);
@@ -194,6 +234,7 @@ export async function narrateWithDeepSeek(
   const pacing = narrativePacing(game, playerInput, resolution);
   const sceneKnowledge = buildSceneKnowledgePack(game, playerInput);
   const narrativeLogicPacket = buildNarrativeLogicPacket(game, playerInput, resolution, sceneKnowledge);
+  const canonNarrativeProfile = buildCanonNarrativeProfile(game, playerInput, resolution);
   const logicIssues = auditNarrativeLogicPacket(narrativeLogicPacket);
   if (logicIssues.length) throw new NarrativeLogicPreflightError(logicIssues);
   const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
@@ -204,7 +245,7 @@ export async function narrateWithDeepSeek(
       max_tokens: 4096,
       thinking: { type: "disabled" },
       response_format: { type: "json_object" },
-      temperature: 0.8,
+      temperature: 0.72,
       messages: [
         {
           role: "system",
@@ -224,6 +265,7 @@ export async function narrateWithDeepSeek(
             "本作前台体验是代入式斗罗成长小说，不默认采用悬疑或解密结构。除非 playerInput、fixedRuleResult 或当前事件明确要求调查秘密、证据、失踪与阴谋，否则不要制造神秘符号、来源不明的旧物、故意遮掩的 NPC 或必须追查的谜题。",
             "优先让玩家感到自己正在大陆上生活和成长：写主角想要的东西、当下的得失、身体感受、身份待遇、人与人的亲疏、力量兑现和选择后的滋味。日常、修炼、入学、交易、交友与胜利都可以直接给回报，不必一律转成新线索。",
             "章末可以落在满足、尴尬、疲惫、关系变化、拿到资源或明确的下一步目标上；只有真正的悬疑场景才用疑问和证据断章。",
+            "canonNarrativeProfile 来自斗一至斗四原著的结构抽样，只学习场景进入、人物欲望、制度落地与节奏机制，不模仿或复述原著句子。必须遵守其中的时代生活质感、场景节拍、心理距离和设定讲法。",
             "建议必须是角色眼下做得到的动作。若程序给出了建议，优先沿用其含义。",
             "按中国男频互动网文设计选项：三项分别推进成长/资源、关系/势力、秘密/风险；写成动作+明确对象+近期目的，不能用查看地图、查看新事件、观察周围或继续行动占位。",
             "每个重要反应都要通过欲望、信息、权限、资源、行动、后果六环。异常天赋必须引发符合目击者利益和权限的复测、上报、谈条件、争夺或戒备，不能只惊叹一句便散场。",
@@ -274,6 +316,7 @@ export async function narrateWithDeepSeek(
             fixedSuggestions: resolution.suggestions,
             sceneLogicCard: buildChineseWebnovelSceneCard(game, resolution),
             narrativeLogicPacket,
+            canonNarrativeProfile,
             pacing,
             activeFanfictionRules: activeRules.map((rule) => ({ id: rule.id, section: rule.sectionName, rule: rule.text })),
             activeNarrativeModules: novelEngine.activeModules,
@@ -291,7 +334,7 @@ export async function narrateWithDeepSeek(
   if (violatesCanonChronology(chronologyText, game.view.worldTime?.year ?? 0)) throw new Error("DeepSeek 生成内容违反当前原作时间线，已改用安全叙事");
   const auditIssues = auditNarrative(game, parsed.narrative);
   const novelEngineIssues = auditNovelEngineNarrative(game, parsed.narrative, novelEngine);
-  const allAuditIssues = [...auditIssues, ...novelEngineIssues, ...auditResolutionAlignment(parsed.narrative, resolution)];
+  const allAuditIssues = [...auditIssues, ...novelEngineIssues, ...auditCanonNarrativeVoice(parsed.narrative, canonNarrativeProfile), ...auditResolutionAlignment(parsed.narrative, resolution)];
   if (allAuditIssues.length) throw new NarrativeAuditError(allAuditIssues);
 
   return {

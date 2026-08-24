@@ -934,6 +934,7 @@ export interface MartialSoulCodexEntryView {
   description: string;
   rarity: MartialSoulRarity;
   charges: number;
+  unlimited: boolean;
   completedRuns: number;
   enabled: boolean;
   initialSoulPowers: number[];

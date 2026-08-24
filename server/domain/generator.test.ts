@@ -102,7 +102,7 @@ describe("candidate generation", () => {
     const meta = {
       weightPreferences: { origin: "天骄", martialSoul: "均衡", gift: "均衡" },
       purchasedUpgrades: {},
-      martialSoulCodex: [{ id: "white-stone-shield", name: "河纹石盾", category: "器武魂", description: "普通石盾", rarity: "白色", charges: 0, completedRuns: 1, enabled: true, initialSoulPowers: [3], growthRoutes: ["防御"] }],
+      martialSoulCodex: [{ id: "white-stone-shield", name: "河纹石盾", category: "器武魂", description: "普通石盾", rarity: "白色", charges: 0, unlimited: true, completedRuns: 1, enabled: true, initialSoulPowers: [3], growthRoutes: ["防御"] }],
     } as MetaProgressionView;
     for (let index = 0; index < 80; index += 1) {
       const game = createGame({ gender: "男", difficulty: "标准", seed: `codex-grade-${index}` }, meta);

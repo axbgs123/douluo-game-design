@@ -50,6 +50,27 @@ describe("存档数据库", () => {
     if (result.kind === "heirloom") expect(result.meta.unlockedHeirlooms).toContain(result.drawn.name);
   });
 
+  it("makes every summoned martial soul permanently reusable for unlimited new games", () => {
+    const meta = database.getMetaProgression();
+    meta.legacyPoints = 1_000;
+    meta.martialSoulDrawTickets = 0;
+    meta.summonGoldPity = 0;
+    meta.summonRedPity = 0;
+    meta.summonRainbowPity = 0;
+    database.saveMetaProgression(meta);
+    const result = database.drawMetaMartialSoul(() => .9);
+    expect(result.kind).toBe("martialSoul");
+    if (result.kind !== "martialSoul") return;
+    expect(result.drawn.unlimited).toBe(true);
+    const legacyCharges = result.drawn.charges;
+    for (let index = 0; index < 2; index += 1) {
+      database.equipCodexMartialSoul(result.drawn.id);
+      const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: `unlimited-codex-${index}` });
+      database.saveGameAndClaimEquippedMartialSoul(game, result.drawn.id, "test.unlimited-codex");
+    }
+    expect(database.getMetaProgression().martialSoulCodex.find((item) => item.id === result.drawn.id)).toMatchObject({ unlimited: true, charges: legacyCharges });
+  });
+
   it("keeps only five summon records and supports warehouse favorites and deletion", () => {
     const meta = database.getMetaProgression();
     meta.legacyPoints = 2_000;

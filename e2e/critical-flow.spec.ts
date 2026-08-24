@@ -2,6 +2,20 @@ import { expect, test } from "@playwright/test";
 
 let fixtureDatabase: typeof import("../server/db.js") | undefined;
 
+async function seedUnlimitedMartialSoulWarehouse() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const database = await import("../server/db.js");
+  fixtureDatabase = database;
+  const meta = database.getMetaProgression();
+  meta.legacyPoints = Math.max(meta.legacyPoints, 100);
+  meta.martialSoulDrawTickets = 0;
+  meta.summonGoldPity = 0;
+  meta.summonRedPity = 0;
+  meta.summonRainbowPity = 0;
+  database.saveMetaProgression(meta);
+  database.drawMetaMartialSoul(() => .9);
+}
+
 async function seedInheritanceRightsGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -395,11 +409,13 @@ test("候选页只显示人工身份并保证三张开局流派不同", async ({
 });
 
 test("局外召唤区直接提供武魂仓库与遗物仓库", async ({ page }) => {
+  await seedUnlimitedMartialSoulWarehouse();
   await page.goto("/");
   await page.getByRole("button", { name: "✦ 局外成长 传承与图鉴" }).click();
   await expect(page.getByTestId("summon-tab-souls")).toBeVisible();
   await expect(page.getByTestId("summon-tab-heirlooms")).toBeVisible();
   await expect(page.locator(".soul-warehouse-section")).toBeVisible();
+  await expect(page.locator(".soul-warehouse-section")).toContainText("永久无限");
   await page.getByTestId("summon-tab-heirlooms").click();
   await expect(page.locator(".heirloom-warehouse-section")).toBeVisible();
   await expect(page.locator(".heirloom-warehouse-section")).toContainText("每局发动次数限制");

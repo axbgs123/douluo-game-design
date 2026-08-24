@@ -339,7 +339,7 @@ export function getMetaProgression(): MetaProgressionView {
   const row = database.prepare("SELECT state_json FROM meta_profile WHERE id = 'local'").get() as { state_json: string };
   const stored = JSON.parse(row.state_json) as Partial<MetaProgressionView>;
   const legacyPity = stored.martialSoulDrawPity ?? 0;
-  const martialSoulCodex = (stored.martialSoulCodex ?? []).map((item) => ({ ...item, favorite: item.favorite ?? false }));
+  const martialSoulCodex = (stored.martialSoulCodex ?? []).map((item) => ({ ...item, favorite: item.favorite ?? false, unlimited: true }));
   const historicalDraws = martialSoulCodex.reduce((sum, item) => sum + item.charges + (item.completedRuns > 0 ? 1 : 0), 0);
   const hasRedOrBetter = martialSoulCodex.some((item) => item.rarity === "红色" || item.rarity === "七彩");
   const hasRainbow = martialSoulCodex.some((item) => item.rarity === "七彩");
@@ -412,12 +412,13 @@ export function drawMetaMartialSoul(random: () => number = randomUnit): MetaSumm
     description: definition.description,
     rarity: definition.metaRarity,
     charges: 0,
+    unlimited: true,
     completedRuns: 0,
     enabled: false,
     initialSoulPowers: [],
     growthRoutes: definition.growthRoutes,
   };
-  drawn.charges += 1;
+  drawn.unlimited = true;
   if (!existing) meta.martialSoulCodex.push(drawn);
   meta.summonHistory = [{ id: randomUUID(), kind: "martialSoul" as const, name: drawn.name, rarity: drawn.rarity, description: drawn.description, duplicate: Boolean(existing), drawnAt: new Date().toISOString() }, ...meta.summonHistory].slice(0, 5);
   const isGold = ["金色", "红色", "七彩"].includes(definition.metaRarity);
@@ -437,7 +438,6 @@ export function equipCodexMartialSoul(id?: string): MetaProgressionView {
   if (!id) { meta.equippedMartialSoulId = undefined; return saveMetaProgression(meta); }
   const entry = meta.martialSoulCodex.find((item) => item.id === id);
   if (!entry) throw new Error("尚未抽到这个武魂");
-  if (entry.charges < 1 && entry.completedRuns < 1) throw new Error("这个武魂没有可用次数，也尚未通关解锁");
   meta.equippedMartialSoulId = id;
   return saveMetaProgression(meta);
 }
@@ -445,7 +445,7 @@ export function equipCodexMartialSoul(id?: string): MetaProgressionView {
 export function toggleCodexMartialSoul(id: string, enabled: boolean): MetaProgressionView {
   const meta = getMetaProgression();
   const entry = meta.martialSoulCodex.find((item) => item.id === id);
-  if (!entry || entry.completedRuns < 1) throw new Error("使用这个武魂通关后才能设置随机出场");
+  if (!entry) throw new Error("尚未抽到这个武魂");
   entry.enabled = enabled;
   return saveMetaProgression(meta);
 }
@@ -488,7 +488,6 @@ export function peekEquippedMartialSoul(): MartialSoulTemplate | undefined {
   if (!id) return undefined;
   const entry = meta.martialSoulCodex.find((item) => item.id === id);
   if (!entry) return undefined;
-  if (entry.completedRuns < 1 && entry.charges < 1) throw new Error("这个武魂的单次使用机会已经消耗");
   return templateFromCodexEntry(entry);
 }
 
@@ -499,10 +498,6 @@ export function saveGameAndClaimEquippedMartialSoul(game: StoredGame, soulId: st
     if (meta.equippedMartialSoulId !== soulId) throw new Error("局外武魂装备状态已经变化，请重新选择角色");
     const entry = meta.martialSoulCodex.find((item) => item.id === soulId);
     if (!entry) throw new Error("尚未抽到这个武魂");
-    if (entry.completedRuns < 1) {
-      if (entry.charges < 1) throw new Error("这个武魂的单次使用机会已经消耗");
-      entry.charges -= 1;
-    }
     meta.equippedMartialSoulId = undefined;
     saveMetaProgression(meta);
     writeGameAndEvent(game, eventType, payload);
@@ -587,7 +582,7 @@ function applyRunReward(game: StoredGame, settlement: RunSettlementView): boolea
           id: knownDefinition?.id ?? `world-${Buffer.from(soul.name).toString("hex")}`,
           name: soul.name, category: soul.category, description: soul.description,
           rarity: knownDefinition?.metaRarity ?? (soul.grade === "神话" ? "红色" : soul.grade === "传奇" ? "金色" : soul.grade === "稀有" ? "紫色" : soul.grade === "优秀" ? "蓝色" : "白色"),
-          charges: 0, completedRuns: 0, enabled: true, initialSoulPowers: [],
+          charges: 0, unlimited: true, completedRuns: 0, enabled: true, initialSoulPowers: [],
           growthRoutes: knownDefinition?.growthRoutes ?? ["当前实战路线尚未形成"],
         };
         meta.martialSoulCodex.push(codex);

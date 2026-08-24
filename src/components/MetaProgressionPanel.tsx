@@ -57,7 +57,7 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
       if (result.kind === "martialSoul") {
         setSummonTab("souls");
         setLastDrawId(result.drawn.id);
-        setMessage(`${result.drawn.rarity}武魂 · ${result.drawn.name}。获得 1 次使用机会${result.cost ? `，消耗 ${result.cost} 传承点` : "，本次使用召唤券"}。`);
+        setMessage(`${result.drawn.rarity}武魂 · ${result.drawn.name}。已永久解锁，可无限次用于新开局${result.cost ? `；消耗 ${result.cost} 传承点` : "；本次使用召唤券"}。`);
       } else {
         setSummonTab("heirlooms");
         setLastDrawId(undefined);
@@ -100,7 +100,7 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
         </section>
 
         <section className="meta-section soul-draw-section">
-          <div className="meta-section-heading"><div><h3>召唤</h3><p>只会出现紫色及以上武魂，并有 8% 概率出现遗物。武魂获得一次使用机会，通关后永久写入图鉴。</p></div><button type="button" className="soul-draw-button" onClick={() => void drawSoul()}>{meta.martialSoulDrawTickets > 0 ? `使用召唤券 · ${meta.martialSoulDrawTickets}` : "召唤一次 · 20 传承点"}</button></div>
+          <div className="meta-section-heading"><div><h3>召唤</h3><p>只会出现紫色及以上武魂，并有 8% 概率出现遗物。武魂一旦抽到便永久解锁，可以无限次指定新开局。</p></div><button type="button" className="soul-draw-button" onClick={() => void drawSoul()}>{meta.martialSoulDrawTickets > 0 ? `使用召唤券 · ${meta.martialSoulDrawTickets}` : "召唤一次 · 20 传承点"}</button></div>
           <div className="soul-draw-rules"><span>最低紫色</span><span>金色保底 {10 - meta.summonGoldPity} 抽</span><span>红色保底 {40 - meta.summonRedPity} 抽</span><span>七彩保底 {80 - meta.summonRainbowPity} 抽</span><span>遗物概率 8%</span></div>
           <nav className="summon-tabs" aria-label="召唤仓库"><button data-testid="summon-tab-history" type="button" className={summonTab === "history" ? "active" : ""} onClick={() => setSummonTab("history")}>召唤记录 · {meta.summonHistory.length}</button><button data-testid="summon-tab-souls" type="button" className={summonTab === "souls" ? "active" : ""} onClick={() => setSummonTab("souls")}>武魂仓库 · {meta.martialSoulCodex.length}</button><button data-testid="summon-tab-heirlooms" type="button" className={summonTab === "heirlooms" ? "active" : ""} onClick={() => setSummonTab("heirlooms")}>遗物仓库 · {meta.unlockedHeirlooms.length}</button></nav>
           {summonTab === "history" && <div className="summon-history"><h4>最近五次</h4>{meta.summonHistory.length ? meta.summonHistory.map((entry) => <article key={entry.id} className={`summon-history-card soul-rarity-${entry.rarity}`}><span>{entry.rarity} · {entry.kind === "martialSoul" ? "武魂" : "遗物"}</span><strong>{entry.name}</strong><p>{entry.description}</p><small>{entry.duplicate ? "重复获得" : "首次获得"} · {new Date(entry.drawnAt).toLocaleString("zh-CN")}</small></article>) : <p className="meta-empty-copy">还没有召唤记录。</p>}</div>}
@@ -114,9 +114,9 @@ export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProp
             {meta.martialSoulCodex.filter((entry) => !favoritesOnly || entry.favorite).filter((entry) => `${entry.name}${entry.category}${entry.rarity}${entry.description}${entry.growthRoutes.join("")}`.toLowerCase().includes(soulSearch.trim().toLowerCase())).sort((left, right) => Number(Boolean(right.favorite)) - Number(Boolean(left.favorite))).map((entry) => <article key={entry.id} className={`codex-soul-card soul-rarity-${entry.rarity} ${lastDrawId === entry.id ? "new-draw" : ""}`}>
               <header><span>{entry.rarity}</span><strong>{entry.name}</strong><small>{entry.category}</small></header>
               <p>{entry.description}</p>
-              <dl><div><dt>可用次数</dt><dd>{entry.completedRuns > 0 ? "已永久解锁" : entry.charges}</dd></div><div><dt>通关</dt><dd>{entry.completedRuns} 次</dd></div><div><dt>初始魂力记录</dt><dd>{entry.initialSoulPowers.length ? entry.initialSoulPowers.map((value) => `${value}级`).join("、") : "通关后记录"}</dd></div></dl>
+              <dl><div><dt>开局使用</dt><dd>永久无限</dd></div><div><dt>通关</dt><dd>{entry.completedRuns} 次</dd></div><div><dt>初始魂力记录</dt><dd>{entry.initialSoulPowers.length ? entry.initialSoulPowers.map((value) => `${value}级`).join("、") : "通关后记录"}</dd></div></dl>
               <div className="codex-routes">{entry.completedRuns > 0 ? entry.growthRoutes.slice(-3).map((route) => <span key={route}>{route}</span>) : <span>成长路线尚未写入</span>}</div>
-              <footer><button type="button" disabled={entry.charges < 1 && entry.completedRuns < 1} className={meta.equippedMartialSoulId === entry.id ? "active" : ""} onClick={() => void equipSoul(meta.equippedMartialSoulId === entry.id ? undefined : entry.id)}>{meta.equippedMartialSoulId === entry.id ? "已指定下局" : entry.completedRuns > 0 ? "用它再开一局" : "使用一次"}</button><button type="button" className={entry.favorite ? "active" : ""} onClick={() => void favoriteSoul(entry.id, !entry.favorite)}>{entry.favorite ? "★ 已收藏" : "☆ 收藏"}</button><label><input type="checkbox" checked={entry.enabled} disabled={entry.completedRuns < 1} onChange={(event) => void toggleSoul(entry.id, event.target.checked)} />允许随机出场</label><button type="button" className="danger-button" onClick={() => void deleteSoul(entry.id, entry.name)}>删除</button></footer>
+              <footer><button type="button" className={meta.equippedMartialSoulId === entry.id ? "active" : ""} onClick={() => void equipSoul(meta.equippedMartialSoulId === entry.id ? undefined : entry.id)}>{meta.equippedMartialSoulId === entry.id ? "已指定下局" : "设为下局武魂"}</button><button type="button" className={entry.favorite ? "active" : ""} onClick={() => void favoriteSoul(entry.id, !entry.favorite)}>{entry.favorite ? "★ 已收藏" : "☆ 收藏"}</button><label><input type="checkbox" checked={entry.enabled} onChange={(event) => void toggleSoul(entry.id, event.target.checked)} />允许随机出场</label><button type="button" className="danger-button" onClick={() => void deleteSoul(entry.id, entry.name)}>删除</button></footer>
             </article>)}
             {!meta.martialSoulCodex.length && <p className="meta-empty-copy">仓库为空。召唤获得的武魂会出现在这里。</p>}
           </div>

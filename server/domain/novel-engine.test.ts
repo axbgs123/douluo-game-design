@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { auditNovelEngineNarrative, auditResolutionAlignment, buildNovelEnginePack } from "./novel-engine.js";
-import { NarrativeAuditError, NarrativeLogicPreflightError, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing, validateInterpretedAction } from "../services/deepseek.js";
+import { NarrativeAuditError, NarrativeLogicPreflightError, auditCanonNarrativeVoice, buildCanonNarrativeProfile, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing, validateInterpretedAction } from "../services/deepseek.js";
 import { auditNarrativeLogicPacket, buildNarrativeLogicPacket } from "./story-rules.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 
@@ -72,6 +72,23 @@ describe("增强小说引擎", () => {
     const pack = buildNovelEnginePack(game, "质问导师为什么隐瞒传承，并压住愤怒", { ...ordinaryResolution, intent: "交谈" });
     const ids = pack.activeModules.map((module) => module.id);
     expect(ids).toEqual(expect.arrayContaining(["dialogue", "character", "emotion", "goldfinger"]));
+  });
+
+  it("uses era-specific lived experience instead of a generic mystery voice", () => {
+    const lifeResolution = { ...ordinaryResolution, intent: "一般行动", ruleSummary: "和家人吃完晚饭，关系与疲劳状态已经结算。" };
+    const profiles = ([1, 2, 3, 4] as const).map((era) => {
+      const game = createGame({ era, gender: "男", difficulty: "标准", seed: `canon-prose-${era}` });
+      return buildCanonNarrativeProfile(game, "回家吃饭并和家人谈今天的事", lifeResolution);
+    });
+    expect(profiles.map((profile) => profile.sceneMode)).toEqual(["生活成长", "生活成长", "生活成长", "生活成长"]);
+    expect(profiles[0].eraTexture).toContain("家庭生计");
+    expect(profiles[1].eraTexture).toContain("谋生本领");
+    expect(profiles[2].eraTexture).toContain("家庭安慰");
+    expect(profiles[3].eraTexture).toContain("岗位命令");
+    const routine = buildCanonNarrativeProfile(awakened("routine-not-mystery"), "回家吃饭", lifeResolution);
+    expect(auditCanonNarrativeVoice("桌上多了一件神秘的旧物，这又是一个新的谜团，一切都没有那么简单。", routine)).toContain("非调查场景被写成了解密或谜团推进");
+    const investigation = buildCanonNarrativeProfile(awakened("actual-mystery"), "调查失踪证据", ordinaryResolution);
+    expect(auditCanonNarrativeVoice("这是一件神秘的旧物，也是一个新的谜团。", investigation)).toEqual([]);
   });
 
   it("can be disabled without leaving hidden prompt fragments", () => {
