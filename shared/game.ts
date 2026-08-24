@@ -807,7 +807,7 @@ export interface MediaAllianceView {
   id: string;
   name: string;
   competitionId: string;
-  outlets: [string, string];
+  outlets: string[];
   status: "提议中" | "试运行" | "资源冲突" | "暂停合作" | "修复审核" | "受限恢复";
   sharedVerificationPool: number;
   priorityAgendaId?: string;
@@ -821,6 +821,14 @@ export interface MediaAllianceView {
   resourceDepletedAtActionIndex?: number;
   resourceDepletionInteractionCounts?: Record<string, number>;
   resourceRefillCount?: number;
+  membershipApplications?: Array<{
+    outlet: string;
+    stance: string;
+    editorName: string;
+    status: "候选核验" | "已加入" | "已拒绝";
+    registeredAtActionIndex: number;
+    evidence: string[];
+  }>;
   evidence: string[];
 }
 

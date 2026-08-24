@@ -1282,6 +1282,13 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
   };
 }
 
+const allianceCandidateProfiles = {
+  1: { outlet: "跨城见证核验社", stance: "跨城见证记录与来源独立性", editorName: "叶闻" },
+  2: { outlet: "魂导公共查证台", stance: "魂导记录复核与公共证据开放", editorName: "苏澄" },
+  3: { outlet: "大陆独立事实核验站", stance: "跨城事实核验与来源透明", editorName: "裴真" },
+  4: { outlet: "星域公共证据联合站", stance: "跨星区证据互认与责任追踪", editorName: "罗序" },
+} as const;
+
 function mediaResolution(game: StoredGame, action: string): ActionResolution {
   const locationId = game.view.locationId ?? "local";
   const alias = game.world.flags.activeAliasLocationId === locationId ? String(game.world.flags.activeAlias ?? "") : "";
@@ -1294,9 +1301,44 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     if (outlets.some((outlet) => !outlet || outlet.trustScore < 58)) return impossible("参与机构中有一家尚未达到稳定信誉，联盟不能用低可信机构互相背书。", ["分别核验两家报道", "推动证据化更正", "暂缓联盟"]);
     const id = `media-alliance:${competition.id}`;
     if (game.view.mediaAlliances.some((item) => item.id === id)) return impossible("这组媒体已经有联盟提案或试运行档案，不能重复建立。", ["查看联盟状态", "联系双方责任编辑", "安排优先议题"]);
-    const alliance = { id, name: `${competition.outlets.join("—")}跨地区核验联盟`, competitionId: competition.id, outlets: [...competition.outlets] as [string, string], status: "提议中" as const, sharedVerificationPool: 0, delayedAgendaIds: [], agendas: competition.topics.map((topic) => ({ ...topic, priorityScores: { ...topic.priorityScores }, evidence: [...topic.evidence] })), evidence: [`行动${game.actionIndex}：基于${competition.sharedTopics}个共同议题提出联盟，不自动互认报道真实性`] };
+    const alliance = { id, name: `${competition.outlets.join("—")}跨地区核验联盟`, competitionId: competition.id, outlets: [...competition.outlets], status: "提议中" as const, sharedVerificationPool: 0, delayedAgendaIds: [], agendas: competition.topics.map((topic) => ({ ...topic, priorityScores: { ...topic.priorityScores }, evidence: [...topic.evidence] })), membershipApplications: [], evidence: [`行动${game.actionIndex}：基于${competition.sharedTopics}个共同议题提出联盟，不自动互认报道真实性`] };
     game.view.mediaAlliances.push(alliance);
     return { intent: "提议跨地区媒体联盟", minutes: 60, ruleSummary: `${alliance.name}进入提议中；联盟尚无共享核验资源，必须完成竞争链对比并分别取得两名责任编辑同意。`, fallbackNarrative: "两家机构的名字第一次出现在同一份提案上。提案只列共享目录、异地查证和责任边界，没有写相互背书；两位责任编辑都还要单独签字。", suggestions: ["分别采访两家责任编辑", "对比两家媒体核验链", "协商启动共享核验资源"] };
+  }
+  if (/登记|寻找|引入/.test(action) && /第三家.*(?:媒体|核验机构)|(?:媒体|核验机构).*第三家/.test(action)) {
+    const alliance = game.view.mediaAlliances.at(-1);
+    if (!alliance || !["试运行", "资源冲突"].includes(alliance.status)) return impossible("联盟必须先完成双机构试运行，才能登记第三家候选机构。", ["启动媒体核验联盟", "查看联盟状态", "暂缓扩员"]);
+    if (alliance.outlets.length >= 3) return impossible("联盟已经有三家正式成员，不能重复登记同一层级的扩员。", ["查看成员责任", "使用共同核验资源", "审计现有成员"]);
+    const profile = allianceCandidateProfiles[game.view.era];
+    alliance.membershipApplications ??= [];
+    if (alliance.membershipApplications.some((item) => item.outlet === profile.outlet)) return impossible(`${profile.outlet}已有准入档案，不能重复登记。`, ["采访候选责任编辑", "完成独立调查", "提交三方准入审议"]);
+    recordMediaOutletReputation(game, { name: profile.outlet, stance: profile.stance, trustDelta: 0, evidence: `行动${game.actionIndex}：登记为联盟第三家候选，不自动取得成员资格` });
+    alliance.membershipApplications.push({ ...profile, status: "候选核验", registeredAtActionIndex: game.actionIndex, evidence: [`行动${game.actionIndex}：公开登记机构立场与责任编辑，等待三方分别复核`] });
+    alliance.evidence.push(`${profile.outlet}进入候选核验；未获得共享资源、议题投票或成员背书`);
+    return { intent: "登记第三媒体联盟候选", minutes: 60, ruleSummary: `${profile.outlet}由${profile.editorName}负责准入核验，目前只是候选；现有两家与候选编辑都必须在登记后分别复核，并至少完成1项独立来源调查。`, fallbackNarrative: `${profile.outlet}的名称被写进候选栏，而不是成员栏。${profile.editorName}的责任页、机构立场和来源边界单独装订；共享额度仍没有因此增加。`, suggestions: [`联系${profile.editorName}责任编辑询问准入来源`, "分别重新采访现有成员编辑", "调查候选机构的独立来源记录"] };
+  }
+  if (/批准|通过|完成/.test(action) && /第三家.*(?:加入|准入)|三方.*准入/.test(action)) {
+    const alliance = game.view.mediaAlliances.at(-1);
+    const application = alliance?.membershipApplications?.find((item) => item.status === "候选核验");
+    if (!alliance || !application || !["试运行", "资源冲突"].includes(alliance.status)) return impossible("当前没有处于候选核验阶段的第三家机构。", ["登记第三家媒体候选", "查看联盟状态", "暂缓扩员"]);
+    const requiredNames = [...alliance.outlets, application.outlet];
+    const editors = requiredNames.map((name) => ({ name, editor: game.view.mediaOutlets.find((item) => item.name === name)?.responsibleEditor }));
+    const missingReviews = editors.filter(({ editor }) => !editor || (editor.requestedEvidenceAtActionIndex ?? -1) <= application.registeredAtActionIndex);
+    if (missingReviews.length) return impossible(`${missingReviews.map((item) => item.editor?.name ?? item.name).join("、")}尚未在候选登记后分别复核，任何一家都不能代签准入。`, requiredNames.map((name) => `联系${game.view.mediaOutlets.find((item) => item.name === name)?.responsibleEditor?.name ?? name}责任编辑复核第三家准入`));
+    const investigations = game.world.actionLedger.filter((entry) => entry.index > application.registeredAtActionIndex && /调查|取得证据/.test(entry.intent) && !/登记|无法完成|规则阻止/.test(entry.intent));
+    if (!investigations.length) return impossible("候选登记后还没有独立调查其来源能力，编辑会谈不能替代证据。", ["调查候选机构的独立来源记录", "寻找可追溯的异地证据", "暂缓准入"]);
+    const candidate = game.view.mediaOutlets.find((item) => item.name === application.outlet);
+    if (!candidate || candidate.trustScore < 58) return impossible("候选机构未达到稳定信誉门槛，不能靠联盟成员互相背书。", ["继续独立核验候选机构", "查看候选信誉", "拒绝本次准入"]);
+    alliance.outlets.push(application.outlet);
+    alliance.name = `${alliance.outlets.join("—")}跨地区核验联盟`;
+    application.status = "已加入";
+    application.evidence.push(`行动${game.actionIndex}：${editors.map((item) => item.editor!.name).join("、")}分别复核并以行动${investigations.at(-1)!.index}的独立调查通过准入`);
+    for (const agenda of alliance.agendas) agenda.priorityScores[application.outlet] ??= 0;
+    alliance.sharedVerificationPool = Math.min(3, alliance.sharedVerificationPool + 1);
+    alliance.resourceDepletedAtActionIndex = undefined;
+    alliance.resourceDepletionInteractionCounts = undefined;
+    alliance.evidence.push(`${application.outlet}正式加入并贡献1份核验资源；既有报道与更正责任不转移`);
+    return { intent: "批准第三媒体加入联盟", minutes: 120, ruleSummary: `${application.outlet}经三名责任编辑分别复核和独立调查后成为第3家成员，贡献1份资源；联盟现有${alliance.outlets.length}家机构、${alliance.sharedVerificationPool}份资源，各自保留刊发与更正责任。`, fallbackNarrative: "三份签字分列在准入页上，调查编号钉在其后。候选名称这才从侧栏移进成员表，并交入一枚核验签；旧报道的责任栏没有随成员增加而重写。", suggestions: ["查看三方成员责任", "重新安排联盟优先议题", "进行三方共同核验"] };
   }
   if (/登记|制定|启动/.test(action) && /联盟.*修复|修复.*联盟/.test(action)) {
     const alliance = game.view.mediaAlliances.at(-1);
@@ -1307,8 +1349,8 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     alliance.recoveryPlanStartedAtActionIndex = game.actionIndex;
     alliance.suspensionInteractionCounts = Object.fromEntries(alliance.outlets.map((name) => [name, game.view.mediaOutlets.find((item) => item.name === name)?.responsibleEditor?.interactions ?? 0]));
     alliance.recoveryEvidence ??= [];
-    alliance.recoveryEvidence.push(`行动${game.actionIndex}：登记修复计划；${suspendedOutlets.map((item) => item!.name).join("、")}保留更正责任，双方编辑必须重新复核并补做两项独立调查`);
-    return { intent: "登记媒体联盟修复计划", minutes: 60, ruleSummary: `${alliance.name}进入修复审核；已确认出错机构签发更正，但尚未恢复共享资源。双方责任编辑必须在暂停后分别复核，并补做至少两项独立调查。`, fallbackNarrative: "修复页没有把旧事故划掉。出错机构的更正编号被钉在首页，下面留着两位编辑各自的复核栏，以及两格尚未完成的独立调查；共享额度仍是零。", suggestions: ["分别重新采访两家责任编辑", "完成两项独立调查", "提交联盟恢复复核"] };
+    alliance.recoveryEvidence.push(`行动${game.actionIndex}：登记修复计划；${suspendedOutlets.map((item) => item!.name).join("、")}保留更正责任，${alliance.outlets.length}家成员编辑必须重新复核并补做两项独立调查`);
+    return { intent: "登记媒体联盟修复计划", minutes: 60, ruleSummary: `${alliance.name}进入修复审核；已确认出错机构签发更正，但尚未恢复共享资源。${alliance.outlets.length}名责任编辑必须在暂停后分别复核，并补做至少两项独立调查。`, fallbackNarrative: `修复页没有把旧事故划掉。出错机构的更正编号被钉在首页，下面留着${alliance.outlets.length}位编辑各自的复核栏，以及两格尚未完成的独立调查；共享额度仍是零。`, suggestions: ["分别重新采访全部成员责任编辑", "完成两项独立调查", "提交联盟恢复复核"] };
   }
   if (/提交|申请|完成/.test(action) && /联盟.*(?:恢复|修复).*复核|(?:恢复|修复).*联盟.*复核/.test(action)) {
     const alliance = game.view.mediaAlliances.at(-1);
@@ -1324,7 +1366,7 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     const evidence = investigations.slice(-2).map((entry) => `行动${entry.index}：${entry.action}`);
     alliance.recoveryEvidence ??= [];
     alliance.recoveryEvidence.push(...evidence, `行动${game.actionIndex}：${editors.map((item) => item.editor!.name).join("与")}分别签署恢复复核，仅投入1份观察期核验资源`);
-    alliance.evidence.push(`修复审核以2项独立调查和双编辑复核进入受限恢复；完成观察期核验前不得恢复常规合作`);
+    alliance.evidence.push(`修复审核以2项独立调查和${editors.length}名编辑分别复核进入受限恢复；完成观察期核验前不得恢复常规合作`);
     return { intent: "媒体联盟受限恢复", minutes: 120, ruleSummary: `${alliance.name}进入受限恢复，仅补充1份共享核验资源；必须用在尚未共同核验的议题，观察期完成前仍不恢复常规合作。`, fallbackNarrative: "两位编辑在各自的复核栏签字，调查编号也逐项对上。资源室只发回一枚临时核验签，封条写得清楚：先完成一项可追溯的观察期查证，再谈恢复。", suggestions: ["选择尚未共同核验的议题", "完成观察期共同核验", "查看修复证据"] };
   }
   if (/申请|补充|追加/.test(action) && /联盟.*(?:核验资源|共享资源|核验额度)|(?:核验资源|共享资源|核验额度).*联盟/.test(action)) {
@@ -1334,15 +1376,15 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     if (alliance.resourceDepletedAtActionIndex === undefined) return impossible("联盟没有可审计的资源耗尽记录，不能凭空补发额度。", ["查看资源记录", "由单家机构调查", "保持零额度"]);
     const editors = alliance.outlets.map((name) => ({ name, editor: game.view.mediaOutlets.find((item) => item.name === name)?.responsibleEditor }));
     const missingReviews = editors.filter(({ name, editor }) => !editor || (editor.interactions ?? 0) <= (alliance.resourceDepletionInteractionCounts?.[name] ?? 0));
-    if (missingReviews.length) return impossible(`${missingReviews.map((item) => item.editor?.name ?? item.name).join("、")}尚未在额度耗尽后重新复核，不能补发共享资源。`, ["分别采访两家责任编辑", "查看额度耗尽记录", "继续独立调查"]);
+    if (missingReviews.length) return impossible(`${missingReviews.map((item) => item.editor?.name ?? item.name).join("、")}尚未在额度耗尽后重新复核，不能补发共享资源。`, ["分别采访全部成员责任编辑", "查看额度耗尽记录", "继续独立调查"]);
     const investigations = game.world.actionLedger.filter((entry) => entry.index > alliance.resourceDepletedAtActionIndex! && /调查|取得证据/.test(entry.intent) && !/登记|无法完成|规则阻止/.test(entry.intent));
     if (investigations.length < 2) return impossible(`额度耗尽后只有${investigations.length}项新调查，至少需要2项才能补回1份资源。`, ["继续调查报道来源", "寻找另一项独立证据", "保持零额度"]);
     alliance.sharedVerificationPool = 1;
     alliance.resourceRefillCount = (alliance.resourceRefillCount ?? 0) + 1;
-    alliance.evidence.push(`行动${game.actionIndex}：以双编辑事后复核和${investigations.length}项耗尽后调查补充1份资源；累计补充${alliance.resourceRefillCount}次`);
+    alliance.evidence.push(`行动${game.actionIndex}：以${editors.length}名编辑事后复核和${investigations.length}项耗尽后调查补充1份资源；累计补充${alliance.resourceRefillCount}次`);
     alliance.resourceDepletedAtActionIndex = undefined;
     alliance.resourceDepletionInteractionCounts = undefined;
-    return { intent: "补充媒体联盟核验资源", minutes: 120, ruleSummary: `${alliance.name}依据双编辑事后复核和至少两项新调查补充1份共享核验资源；不能提前囤积，也不提高任何议题的事实可信度。`, fallbackNarrative: "资源室核对了耗尽页之后的两份调查编号，又让两位编辑分别签字，只补回一枚核验签。它能支付下一次异地查证，却没有在任何报道旁盖上“属实”。", suggestions: ["选择尚未共同核验的议题", "使用补充的核验资源", "查看资源补充记录"] };
+    return { intent: "补充媒体联盟核验资源", minutes: 120, ruleSummary: `${alliance.name}依据${editors.length}名成员编辑事后复核和至少两项新调查补充1份共享核验资源；不能提前囤积，也不提高任何议题的事实可信度。`, fallbackNarrative: `资源室核对了耗尽页之后的两份调查编号，又让${editors.length}位编辑分别签字，只补回一枚核验签。它能支付下一次异地查证，却没有在任何报道旁盖上“属实”。`, suggestions: ["选择尚未共同核验的议题", "使用补充的核验资源", "查看资源补充记录"] };
   }
   if (/协商|启动/.test(action) && /共享核验|媒体联盟|核验联盟/.test(action)) {
     const alliance = game.view.mediaAlliances.at(-1);
@@ -1382,7 +1424,7 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     if (alliance.sharedVerificationPool < 1) return impossible("共享核验额度已经用完，不能凭联盟名义制造新的来源。", ["等待下一轮资源", "由单家机构独立调查", "查看已核验议题"]);
     alliance.sharedVerificationPool -= 1;
     agenda.status = "共同核验";
-    agenda.evidence.push(`行动${game.actionIndex}：两家责任编辑分别签收同一份异地目录查证结果，仍保留各自结论权`);
+    agenda.evidence.push(`行动${game.actionIndex}：${alliance.outlets.length}家责任编辑分别签收同一份异地目录查证结果，仍保留各自结论权`);
     alliance.evidence.push(`${agenda.title}消耗1份共享核验额度，剩余${alliance.sharedVerificationPool}`);
     const probation = alliance.status === "受限恢复";
     for (const outlet of alliance.outlets) recordMediaOutletReputation(game, { name: outlet, stance: game.view.mediaOutlets.find((item) => item.name === outlet)?.stance ?? "公共信息核验", trustDelta: probation ? 4 : 1, evidence: `${agenda.id}：联盟${probation ? "观察期" : ""}共享异地查证，但未互相复制结论` });
@@ -1396,9 +1438,9 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
     if (alliance.sharedVerificationPool === 0) {
       alliance.resourceDepletedAtActionIndex = game.actionIndex;
       alliance.resourceDepletionInteractionCounts = Object.fromEntries(alliance.outlets.map((name) => [name, game.view.mediaOutlets.find((item) => item.name === name)?.responsibleEditor?.interactions ?? 0]));
-      alliance.evidence.push(`行动${game.actionIndex}：共享核验资源耗尽；后续补充必须重新取得双编辑复核和两项新调查`);
+      alliance.evidence.push(`行动${game.actionIndex}：共享核验资源耗尽；后续补充必须重新取得${alliance.outlets.length}名成员编辑复核和两项新调查`);
     }
-    return { intent: probation ? "媒体联盟观察期核验" : "媒体联盟共同核验", minutes: 180, ruleSummary: `联盟用1份共享资源完成“${agenda.title}”的异地查证，剩余 ${alliance.sharedVerificationPool}；${probation ? `观察期结果为“${alliance.status}”，` : ""}两家机构各自决定是否刊发并分别承担错误责任。`, fallbackNarrative: probation ? "临时核验签随着异地回函一并归档。两家编辑分别写下判断，复核人只确认来源链完整，没有替任何一家背书；信誉达到门槛后，常规合作才重新开放。" : "同一份异地回函送到两张编辑桌上，签收号能够互相对照。两家人各自圈出不同段落，没有共用标题，也没有在责任栏替对方签名。", suggestions: ["分别询问两家编辑结论", "查看延后议题", "继续独立调查"] };
+    return { intent: probation ? "媒体联盟观察期核验" : "媒体联盟共同核验", minutes: 180, ruleSummary: `联盟用1份共享资源完成“${agenda.title}”的异地查证，剩余 ${alliance.sharedVerificationPool}；${probation ? `观察期结果为“${alliance.status}”，` : ""}${alliance.outlets.length}家机构各自决定是否刊发并分别承担错误责任。`, fallbackNarrative: probation ? `临时核验签随着异地回函一并归档。${alliance.outlets.length}家编辑分别写下判断，复核人只确认来源链完整，没有替任何一家背书；信誉达到门槛后，常规合作才重新开放。` : `同一份异地回函送到${alliance.outlets.length}张编辑桌上，签收号能够互相对照。各家圈出不同段落，没有共用标题，也没有在责任栏替别家签名。`, suggestions: ["分别询问成员编辑结论", "查看延后议题", "继续独立调查"] };
   }
   if (/对比.*(?:媒体|两家).*(?:报道|核验|记录)|比较.*(?:报道|媒体)/.test(action)) {
     const competition = game.view.mediaCompetitions?.at(-1);
@@ -1411,7 +1453,7 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
   }
   if (/联系.*(?:责任编辑|核验编辑)|采访.*编辑|询问.*编辑|请求.*编辑.*说明/.test(action)) {
     if (!publishedRumor) return impossible(`当前没有以“${publicName}”刊发且可找到责任编辑的报道。`, ["查看近日消息", "检查本地口碑", "等待报道刊发"]);
-    const participatingNames = [publishedRumor.mediaOutlet ?? publishedRumor.mediaChannel, ...(publishedRumor.mediaVersions ?? []).map((item) => item.outlet)].filter(Boolean);
+    const participatingNames = [publishedRumor.mediaOutlet ?? publishedRumor.mediaChannel, ...(publishedRumor.mediaVersions ?? []).map((item) => item.outlet), ...game.view.mediaAlliances.flatMap((item) => [...item.outlets, ...(item.membershipApplications ?? []).map((application) => application.outlet)])].filter(Boolean);
     const outlet = game.view.mediaOutlets.find((item) => participatingNames.includes(item.name) && action.includes(item.responsibleEditor?.name ?? "\0"))
       ?? game.view.mediaOutlets.find((item) => item.name === (publishedRumor.mediaOutlet ?? publishedRumor.mediaChannel));
     const editor = outlet?.responsibleEditor;
@@ -3293,7 +3335,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/训练|排练|复盘/.test(action) && /连携|合击|组合技|阵型|生命防线|锁定爆发|破绽突袭|封锁阵线|攻守枢纽|生息铁壁|猎杀三角|四象战阵|逐影围猎|五环协战阵|六芒轮转阵|七星全域战阵/.test(action) && !game.view.combat) resolution = comboTrainingResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);
   else if (/修炼|冥想|运转|练功|闭关/.test(action)) resolution = trainingResolution(game, action);
-  else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验|责任编辑|核验编辑|采访.*编辑|提交.*补充.*(?:证据|材料)|独家.*(?:证据|材料|线索)|对比.*(?:媒体|两家)|比较.*(?:报道|媒体)|媒体联盟|核验联盟|共享核验|优先议题|共同核验/.test(action)) resolution = mediaResolution(game, action);
+  else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验|责任编辑|核验编辑|采访.*编辑|提交.*补充.*(?:证据|材料)|独家.*(?:证据|材料|线索)|对比.*(?:媒体|两家)|比较.*(?:报道|媒体)|媒体联盟|核验联盟|共享核验|优先议题|共同核验|第三家.*(?:媒体|核验机构|加入|准入)|三方.*准入/.test(action)) resolution = mediaResolution(game, action);
   else if (/休息|睡觉|疗伤|恢复/.test(action)) resolution = restResolution(game);
   else if (/使用|服用|吃下|吃掉/.test(action)) resolution = useItemResolution(game, action);
   else if (/购买|买|采购/.test(action)) resolution = buyResolution(game, action);

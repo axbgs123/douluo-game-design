@@ -3,7 +3,7 @@ import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from
 import { applyActionResult, resolveAction } from "./actions.js";
 import { settleRun } from "./endings.js";
 import { awakenCharacter, createEraSuccessor, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
-import { advanceWorldTime, buildMapView, canDiscoverNpc, createHiddenWorld, ensureGameState, recordCanonInfluence, recordIntelligence, recordMediaCompetition, revealNpc } from "./world.js";
+import { advanceWorldTime, buildMapView, canDiscoverNpc, createHiddenWorld, ensureGameState, recordCanonInfluence, recordIntelligence, recordMediaCompetition, recordMediaOutletReputation, revealNpc } from "./world.js";
 import { applyNarrativeMemory, violatesCanonChronology } from "../services/deepseek.js";
 import { rulebookStats } from "../data/fanfiction-rules.js";
 import { auditNarrative, selectNarrativeRules } from "./story-rules.js";
@@ -540,7 +540,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "城市告示处", stance: "地方治安", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(24);
+    expect(migrated.schemaVersion).toBe(25);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -549,7 +549,7 @@ describe("完整游玩规则", () => {
     expect(migrated.view.mediaOutlets[0].responsibleEditor).toMatchObject({ name: "沈砚", sourceTrust: 64, handledReports: 2, playerTrust: 0, interactions: 0 });
     expect(migrated.view.mediaCompetitions[0]).toMatchObject({ sharedTopics: 1, status: "更正问责", leader: "行旅商讯抄报", scores: { 商会公报编辑处: -2, 行旅商讯抄报: 2 } });
     expect(migrated.view.mediaCompetitions[0].topics).toHaveLength(1);
-    expect(migrated.view.mediaAlliances[0]).toMatchObject({ id: "legacy-alliance", recoveryEvidence: [], suspendedOutletNames: [], probationVerificationsRemaining: 0, resourceRefillCount: 0 });
+    expect(migrated.view.mediaAlliances[0]).toMatchObject({ id: "legacy-alliance", recoveryEvidence: [], suspendedOutletNames: [], probationVerificationsRemaining: 0, resourceRefillCount: 0, membershipApplications: [] });
   });
 
   it("重要人物互动会留下记忆并推动世界偏差", () => {
@@ -998,14 +998,30 @@ describe("第一部世界资料", () => {
     expect(resolveAction(game, "与两家责任编辑协商启动共享核验资源").intent).toBe("启动媒体核验联盟");
     const alliance = game.view.mediaAlliances[0];
     expect(alliance).toMatchObject({ status: "试运行", sharedVerificationPool: 2 });
+    const registration = resolveAction(game, "登记第三家媒体候选");
+    expect(registration.intent).toBe("登记第三媒体联盟候选");
+    applyActionResult(game, "登记第三家媒体候选", registration, registration.fallbackNarrative, registration.suggestions);
+    expect(alliance.membershipApplications?.[0]).toMatchObject({ outlet: "跨城见证核验社", editorName: "叶闻", status: "候选核验" });
+    expect(resolveAction(game, "批准第三家媒体加入联盟").intent).toBe("无法完成");
+    for (const editorName of ["沈砚", "程路", "叶闻"]) {
+      const review = resolveAction(game, `联系${editorName}责任编辑复核第三家准入`);
+      applyActionResult(game, `联系${editorName}责任编辑复核第三家准入`, review, review.fallbackNarrative, review.suggestions);
+    }
+    expect(resolveAction(game, "批准第三家媒体加入联盟").intent).toBe("无法完成");
+    const candidateInvestigation = resolveAction(game, "调查候选机构的独立来源记录");
+    applyActionResult(game, "调查候选机构的独立来源记录", candidateInvestigation, candidateInvestigation.fallbackNarrative, candidateInvestigation.suggestions);
+    expect(resolveAction(game, "批准第三家媒体加入联盟").intent).toBe("批准第三媒体加入联盟");
+    expect(alliance).toMatchObject({ outlets: ["城市告示处", "行旅商讯抄报", "跨城见证核验社"], sharedVerificationPool: 3 });
+    expect(alliance.membershipApplications?.[0].status).toBe("已加入");
     expect(resolveAction(game, "把外城药材供应中断设为联盟优先议题").intent).toBe("设置媒体联盟议程");
-    expect(alliance).toMatchObject({ status: "资源冲突", sharedVerificationPool: 2, priorityAgendaId: "market-supply-topic" });
+    expect(alliance).toMatchObject({ status: "资源冲突", sharedVerificationPool: 3, priorityAgendaId: "market-supply-topic" });
     expect(alliance.delayedAgendaIds).toHaveLength(1);
     expect(resolveAction(game, "让媒体联盟共同核验优先议题").intent).toBe("媒体联盟共同核验");
-    expect(alliance).toMatchObject({ sharedVerificationPool: 1 });
+    expect(alliance).toMatchObject({ sharedVerificationPool: 2 });
     expect(alliance.agendas.find((agenda) => agenda.id === "market-supply-topic")?.status).toBe("共同核验");
     expect(game.view.mediaOutlets.find((outlet) => outlet.name === "城市告示处")?.trustScore).toBe(63);
     expect(game.view.mediaOutlets.find((outlet) => outlet.name === "行旅商讯抄报")?.trustScore).toBe(62);
+    expect(game.view.mediaOutlets.find((outlet) => outlet.name === "跨城见证核验社")?.trustScore).toBe(61);
     const investigation = resolveAction(game, "调查报道来源和现场记录");
     applyActionResult(game, "调查报道来源和现场记录", investigation, investigation.fallbackNarrative, investigation.suggestions);
     const exclusive = resolveAction(game, "向程路责任编辑提交独家补充证据");
@@ -1025,6 +1041,27 @@ describe("第一部世界资料", () => {
       const delivery = { intent: "交付悬赏", minutes: 30, ruleSummary: "公开登记并完成悬赏。", fallbackNarrative: "登记处签发回单。", suggestions: [] };
       applyActionResult(game, "公开交付悬赏", delivery, delivery.fallbackNarrative, delivery.suggestions);
       expect(game.world.socialRumors[0]).toMatchObject({ mediaChannel: channels[era], mediaOutlet: outlets[era], sourceKind: "公开登记", confidence: 92, mediaStatus: "待刊发", verificationStatus: "双记录核验", corroborationCount: 2 });
+    }
+  });
+
+  it("四个时代的第三媒体候选都有独立机构立场和具名责任编辑", () => {
+    const expected = {
+      1: ["跨城见证核验社", "叶闻"],
+      2: ["魂导公共查证台", "苏澄"],
+      3: ["大陆独立事实核验站", "裴真"],
+      4: ["星域公共证据联合站", "罗序"],
+    } as const;
+    for (const era of [1, 2, 3, 4] as const) {
+      const game = createGame({ era, gender: "男", difficulty: "标准", personality, seed: `alliance-candidate-era-${era}` });
+      selectCandidate(game, game.view.candidates[0].id);
+      finalizeCharacterShaping(game, { keywords: personality.keywords, answers: personality.answers });
+      awakenCharacter(game);
+      for (const name of ["测试首发机构", "测试关联机构"]) recordMediaOutletReputation(game, { name, stance: "测试来源责任", trustDelta: 0, evidence: "测试联盟既有成员" });
+      game.view.mediaAlliances = [{ id: `era-${era}-alliance`, name: "测试跨地区核验联盟", competitionId: "test-competition", outlets: ["测试首发机构", "测试关联机构"], status: "试运行", sharedVerificationPool: 1, delayedAgendaIds: [], agendas: [], membershipApplications: [], evidence: [] }];
+      expect(resolveAction(game, "登记第三家媒体候选").intent).toBe("登记第三媒体联盟候选");
+      const [outletName, editorName] = expected[era];
+      expect(game.view.mediaAlliances[0].membershipApplications?.[0]).toMatchObject({ outlet: outletName, editorName, status: "候选核验" });
+      expect(game.view.mediaOutlets.find((outlet) => outlet.name === outletName)?.responsibleEditor?.name).toBe(editorName);
     }
   });
 

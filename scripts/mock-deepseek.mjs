@@ -41,7 +41,7 @@ const server = createServer((request, response) => {
       // Narration prompts are not required to contain the semantic payload.
     }
     const accountableHistory = /旧世|档案|年表|历史权益|听证|旧址线索|当前产权/.test(playerInput);
-    const accountableMedia = /媒体联盟|核验联盟|共享核验|优先议题|共同核验|修复计划|恢复复核|观察期核验|补充.*核验资源/.test(playerInput);
+    const accountableMedia = /媒体联盟|核验联盟|共享核验|优先议题|共同核验|修复计划|恢复复核|观察期核验|补充.*核验资源|第三家.*媒体|三方.*准入/.test(playerInput);
     const historyNarrative = /听证/.test(playerInput)
       ? `审理人把旧档和当代登记分开核对，听完异议才在裁定页落笔：${fixedRuleResult}`
       : /重新投资|复建|重新经营/.test(playerInput)
@@ -49,7 +49,11 @@ const server = createServer((request, response) => {
         : /提交|申请/.test(playerInput) && /主张|历史权益/.test(playerInput)
           ? `受理员逐页编号旧档、权属调查和送达材料，收下费用后签出回单：${fixedRuleResult}`
           : `他沿着目录号查到保管记录，把档案年代、转交印记和独立证据逐项对齐：${fixedRuleResult}`;
-    const mediaNarrative = /补充.*核验资源/.test(playerInput)
+    const mediaNarrative = /登记.*第三家/.test(playerInput)
+      ? `第三家机构只进入候选准入栏，责任编辑与来源边界另页登记：${fixedRuleResult}`
+      : /批准.*第三家|三方.*准入/.test(playerInput)
+        ? `三名编辑分别复核调查编号后，第三家机构才进入正式成员表并交入核验资源：${fixedRuleResult}`
+        : /补充.*核验资源/.test(playerInput)
       ? `资源室核对耗尽后的新调查和双编辑复核，只补回一枚核验签：${fixedRuleResult}`
       : /修复计划/.test(playerInput)
       ? `更正编号保留在修复页，两名编辑各自留下复核栏和独立调查清单：${fixedRuleResult}`
