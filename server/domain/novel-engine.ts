@@ -126,6 +126,9 @@ export function auditResolutionAlignment(text: string, resolution: ActionResolut
     [/启动媒体核验联盟/, /联盟|试运行|共享|签字|核验资源/, "正文没有呈现媒体联盟启动"],
     [/设置媒体联盟议程/, /优先|排期|延后|议题/, "正文没有呈现媒体议程取舍"],
     [/媒体联盟共同核验/, /共同核验|查证|回函|签收|共享资源/, "正文没有呈现联盟共同核验"],
+    [/登记媒体联盟修复计划/, /修复|更正|责任|复核|独立调查/, "正文没有呈现联盟修复计划"],
+    [/媒体联盟受限恢复/, /受限|观察期|复核|临时|共享核验资源/, "正文没有呈现联盟受限恢复"],
+    [/媒体联盟观察期核验/, /观察期|核验|查证|回函|签收|恢复/, "正文没有呈现联盟观察期核验"],
   ];
   const requirement = requiredByIntent.find(([intent]) => intent.test(resolution.intent));
   return requirement && !requirement[1].test(text) ? [requirement[2]] : [];

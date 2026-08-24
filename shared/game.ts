@@ -808,11 +808,16 @@ export interface MediaAllianceView {
   name: string;
   competitionId: string;
   outlets: [string, string];
-  status: "提议中" | "试运行" | "资源冲突" | "暂停合作";
+  status: "提议中" | "试运行" | "资源冲突" | "暂停合作" | "修复审核" | "受限恢复";
   sharedVerificationPool: number;
   priorityAgendaId?: string;
   delayedAgendaIds: string[];
   agendas: MediaAgendaView[];
+  recoveryPlanStartedAtActionIndex?: number;
+  suspensionInteractionCounts?: Record<string, number>;
+  suspendedOutletNames?: string[];
+  probationVerificationsRemaining?: number;
+  recoveryEvidence?: string[];
   evidence: string[];
 }
 
