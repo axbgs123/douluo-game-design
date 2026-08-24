@@ -200,6 +200,29 @@ async function seedIntermediateAscensionGame() {
   database.saveGame(game, "e2e.intermediate-ascension-fixture");
 }
 
+async function seedAdvancedAscensionGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 3, gender: "女", difficulty: "标准", seed: "e2e-advanced-ascension" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "高级升灵台验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.character!.soulRank = 90;
+  game.view.character!.coins = 3_000_000;
+  game.view.character!.abilityDescriptors.perception = "顶尖";
+  game.view.character!.battleArmors = [{ tier: 3, title: "三字斗铠", pieces: ["右手前臂甲", "左手前臂甲", "右肩大臂甲", "左肩大臂甲", "胸铠", "腰铠与战裙", "右腿足甲", "左腿足甲", "头盔"], completion: 100, compatibility: 96, status: "完整", maker: game.view.character!.name }];
+  const rings = Array.from({ length: 9 }, (_, index) => ({ index: index + 1, beastId: `e2e-advanced-${index}`, beastName: `${index + 1}号高阶魂兽`, years: 20_000, color: "黑", skillName: `${index + 1}号高阶魂技`, skillDescription: "用于核验高级升灵台。" }));
+  game.view.character!.soulRingSets[game.view.character!.activeMartialSoulIndex] = rings;
+  game.view.character!.soulRings = rings;
+  game.view.affiliations.push({ id: "e2e-advanced-pagoda", name: "传灵塔", role: "核心事务成员", reputation: "受到认可", joinedAt: "验收登记", contribution: 20, completedAssignments: 2, rankEvidence: [] });
+  game.view.spiritAscensionMembership = { registeredBattleArmorTier: 3, benefitYears: [game.view.worldTime!.year], taskPoints: 20, authorizationEvidence: ["两项传灵塔事务独立验收", "三字斗铠实名登记"] };
+  game.view.inventory.push("高级升灵台半价资格");
+  database.saveGame(game, "e2e.advanced-ascension-fixture");
+}
+
 async function seedStarshipCrewGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -591,6 +614,31 @@ test("斗三中级升灵台必须凭完整斗铠年度福利卡进入", async ({
   await ascension.getByRole("button", { name: "搜寻魂兽" }).click();
   await expect(ascension).toContainText("虚拟击败 1");
   await expect(ascension).toContainText(/灵力 [1-9][0-9]*/);
+  await ascension.getByRole("button", { name: "主动退出" }).click();
+  await ascension.getByRole("button", { name: "结算灵力" }).click();
+  await expect(ascension).toContainText("升灵台 · 已结算");
+});
+
+test("斗三高级升灵台必须用任务点授权、明确接受风险且不能越权进入真实核心层", async ({ page }) => {
+  await seedAdvancedAscensionGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "高级升灵台验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await submitAction(page, "申请高级升灵台真实核心层授权并接受真实死亡风险");
+  await page.getByRole("button", { name: "时代", exact: true }).click();
+  const ascension = page.locator(".special-system-card").filter({ hasText: "升灵台" });
+  await expect(ascension).toContainText("任务点 20");
+  await ascension.getByRole("button", { name: "申请高级授权" }).click();
+  await expect(ascension).toContainText("任务点 0");
+  await expect(ascension.getByRole("button", { name: "申请高级" })).toBeVisible();
+  await ascension.getByRole("button", { name: "申请高级" }).click();
+  await expect(ascension).toContainText("常规 · 高级 · 高拟真保护");
+  await ascension.getByRole("button", { name: "进入升灵台" }).click();
+  await ascension.getByRole("button", { name: "搜寻魂兽" }).click();
+  await expect(ascension).toContainText("虚拟击败 1");
+  await expect(ascension).toContainText(/脑波冲击 (1[4-9]|2[0-4])%/);
   await ascension.getByRole("button", { name: "主动退出" }).click();
   await ascension.getByRole("button", { name: "结算灵力" }).click();
   await expect(ascension).toContainText("升灵台 · 已结算");

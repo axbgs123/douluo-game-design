@@ -3,7 +3,7 @@ import type { GameEra } from "../../shared/game.js";
 import { awakenCharacter, createGame, ERA_BASE_YEARS, finalizeCharacterShaping, generateCandidates, selectCandidate, selectLifeGoal } from "./generator.js";
 import { settleRun } from "./endings.js";
 import { guardActionByStoryRules, selectNarrativeRules, violatesCanonChronology } from "./story-rules.js";
-import { resolveAction } from "./actions.js";
+import { applyActionResult, resolveAction } from "./actions.js";
 import { advanceWorldTime, buildMapView, createHiddenWorld } from "./world.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, factionActiveAtYear } from "../data/world.js";
@@ -432,6 +432,69 @@ describe("multi-era foundations", () => {
     expect(resolveAction(game, "进入中级升灵台").intent).toBe("进入升灵台");
     expect(resolveAction(game, "搜寻升灵台虚拟魂兽").intent).toBe("升灵台遭遇");
     expect(game.view.spiritAscension?.spiritualEnergy).toBeGreaterThan(0);
+  });
+
+  it("requires accountable task-point authorization and explicit protected risk consent for an advanced visit", () => {
+    const game = playingGame(3, "spirit-ascension-advanced");
+    const character = game.view.character!;
+    character.soulRank = 90;
+    character.coins = 3_000_000;
+    character.abilityDescriptors.perception = "顶尖";
+    character.battleArmors = [{ tier: 3, title: "三字斗铠", pieces: ["右手前臂甲", "左手前臂甲", "右肩大臂甲", "左肩大臂甲", "胸铠", "腰铠与战裙", "右腿足甲", "左腿足甲", "头盔"], completion: 100, compatibility: 96, status: "完整", maker: character.name }];
+    const rings = Array.from({ length: 9 }, (_, index) => ({ index: index + 1, beastId: `advanced-${index}`, beastName: `${index + 1}号高阶魂兽`, years: 20_000, color: "黑", skillName: `${index + 1}号高阶魂技`, skillDescription: "高级升灵台授权与风险测试" }));
+    character.soulRingSets[character.activeMartialSoulIndex] = rings;
+    character.soulRings = rings;
+    game.view.affiliations.push({ id: "advanced-pagoda", name: "传灵塔", role: "核心事务成员", reputation: "受到认可", joinedAt: "测试", contribution: 20, completedAssignments: 2, rankEvidence: [] });
+
+    expect(resolveAction(game, "申请高级升灵台名额并接受高级风险").intent).toBe("无法完成");
+    expect(resolveAction(game, "向传灵塔登记三字斗铠师并领取升灵台福利").intent).toBe("登记斗铠师福利");
+    expect(game.view.inventory).toContain("高级升灵台半价资格");
+    expect(resolveAction(game, "申请高级升灵台授权凭证").intent).toBe("无法完成");
+    game.view.spiritAscensionMembership!.taskPoints = 20;
+    game.view.spiritAscensionMembership!.authorizationEvidence!.push("两项传灵塔事务独立验收");
+    expect(resolveAction(game, "申请高级升灵台授权凭证").intent).toBe("取得高级升灵台授权");
+    expect(game.view.spiritAscensionMembership!.taskPoints).toBe(0);
+    expect(game.view.inventory).toContain("高级升灵台授权凭证");
+    expect(resolveAction(game, "申请高级升灵台真实核心层授权并接受真实死亡风险").intent).toBe("无法完成");
+    expect(resolveAction(game, "申请高级升灵台名额").intent).toBe("无法完成");
+    expect(game.view.inventory).toContain("高级升灵台授权凭证");
+    expect(resolveAction(game, "申请高级升灵台名额并接受高级风险").intent).toBe("预约升灵台");
+    expect(character.coins).toBe(2_000_000);
+    expect(game.view.spiritAscension?.riskMode).toBe("高拟真保护");
+    expect(game.view.inventory).not.toContain("高级升灵台授权凭证");
+    expect(game.view.inventory).not.toContain("高级升灵台半价资格");
+    expect(resolveAction(game, "进入高级升灵台").intent).toBe("进入升灵台");
+    const healthBefore = game.world.healthPoints;
+    expect(resolveAction(game, "搜寻升灵台高拟真魂兽").intent).toBe("升灵台遭遇");
+    expect(game.view.spiritAscension?.spiritualEnergy).toBeGreaterThan(0);
+    expect(game.view.spiritAscension?.neuralShock).toBeGreaterThanOrEqual(14);
+    expect(game.world.healthPoints).toBe(healthBefore);
+    expect(resolveAction(game, "按动求救信号主动退出升灵台").intent).toBe("退出升灵台");
+    expect(resolveAction(game, "结算升灵台灵力").intent).toBe("结算升灵台");
+    expect(game.view.spiritAscension?.status).toBe("已结算");
+  });
+
+  it("awards ascension task points only after a registered Transmission Pagoda assignment is fully evidenced and accepted", () => {
+    const game = playingGame(3, "spirit-ascension-task-points");
+    game.view.affiliations = [{ id: "task-pagoda", name: "传灵塔", role: "注册斗铠师", reputation: "在册", joinedAt: "测试", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
+    game.view.spiritAscensionMembership = { registeredBattleArmorTier: 1, benefitYears: [], taskPoints: 0, authorizationEvidence: ["一字斗铠实名登记"] };
+    const commit = (action: string) => {
+      const result = resolveAction(game, action);
+      applyActionResult(game, action, result, result.fallbackNarrative, result.suggestions);
+      return result;
+    };
+    const recordEvidence = (action: string) => applyActionResult(game, action, { intent: "魂灵审计行动", minutes: 60, ruleSummary: "来源、对象和时间均已形成独立审计收据。", fallbackNarrative: "审计员把来源、对象和时间写进了不可回填的现场记录。", suggestions: [] }, "审计员把来源、对象和时间写进了不可回填的现场记录。", []);
+
+    expect(commit("向传灵塔领取机构事务").intent).toBe("领取机构事务");
+    for (const evidence of ["调查魂灵来源", "完成魂灵适配评估", "复核魂灵风险失败案例", "询问第二来源"]) {
+      recordEvidence(evidence);
+      expect(commit("向传灵塔推进机构事务").intent).toBe("推进机构事务");
+    }
+    const delivery = commit("向传灵塔交付机构事务");
+    expect(delivery.intent).toBe("交付机构事务");
+    expect(delivery.ruleSummary).toContain("传灵塔任务点");
+    expect(game.view.spiritAscensionMembership.taskPoints).toBeGreaterThanOrEqual(8);
+    expect(game.view.spiritAscensionMembership.authorizationEvidence?.at(-1)).toContain("任务点");
   });
 
   it("turns an era-three second profession into training, certification, material, portfolio, and paid work", () => {
