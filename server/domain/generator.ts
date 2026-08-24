@@ -277,7 +277,7 @@ const BASE_ORIGINS: OriginTemplate[] = [
     selfKnowledge: "本地人 · 知道宗门真相",
     knownBackgrounds: ["他知道自己是少宗主，也知道宗门所谓无敌只限山门阵势。走出剑谷后，长老不会替他扫平敌人。"],
     fixedTraits: ["自负", "守秘"],
-    roleTags: ["原创宗门", "权贵", "天才", "正邪皆可"],
+    roleTags: ["原创宗门", "原创隐世宗门", "太玄剑宗", "宗门弟子", "权贵", "天才", "正邪皆可"],
   },
   {
     id: "blue-lightning-heir",
@@ -662,6 +662,17 @@ export function derivePersonality(setup: PersonalitySetup): PersonalityProfile {
 
 type WeightPreferences = MetaProgressionView["weightPreferences"];
 
+const CANON_SECT_ORIGIN_IDS = [
+  "seven-treasure-core", "seven-treasure-caravan-guard", "blue-lightning-heir", "clear-sky-sealed-branch",
+  "elephant-sect-direct", "wind-sword-disciple", "fire-leopard-heir", "holy-dragon-outer", "rock-sect-disciple", "river-spirit-sect",
+  "speed-clan-child", "strength-clan-child", "defense-clan-child", "breaking-clan-child",
+];
+const HIDDEN_SECT_ORIGIN_IDS = [
+  "hidden-sect-heir", "hidden-tide-gate", "hidden-dream-valley", "hidden-star-forge", "hidden-mirror-lake",
+  "hidden-beast-manor", "hidden-snow-gate", "hidden-broken-stele", "hidden-herb-ravine", "hidden-silent-pavilion",
+  "hidden-phoenix-ridge",
+];
+
 const ORIGIN_PREFERENCE_IDS: Record<string, string[]> = {
   平民: ["village-farmer", "smith-family", "herbalist", "hunter-family", "fisher-family", "stone-quarry"],
   魂师家庭: ["fallen-clan", "temple-clerk", "academy-servant", "minor-noble", "sect-village"],
@@ -671,14 +682,29 @@ const ORIGIN_PREFERENCE_IDS: Record<string, string[]> = {
   反派: ["spirit-hall-elder-child", "star-luo-contender", "underworld-heir", "evil-soul-remnant"],
   穿越: ["cultivator-reincarnation", "modern-transmigrator"],
   特殊: ["mystery-arrival", "fallen-clan", "sect-village", "hidden-sect-heir", "cultivator-reincarnation", "modern-transmigrator", "underworld-heir", "evil-soul-remnant"],
+  宗门开局: [...CANON_SECT_ORIGIN_IDS, ...HIDDEN_SECT_ORIGIN_IDS],
+  隐世宗门: HIDDEN_SECT_ORIGIN_IDS,
   凶兽养成: ["fierce-beast-raised"],
   无羁绊: ["void-arrival-unbound"],
 };
+
+const SECT_NAMES = [
+  "七宝琉璃宗", "蓝电霸王龙宗", "昊天宗", "象甲宗", "风剑宗", "火豹宗", "圣龙宗", "岩羚宗", "清河水宗",
+  "敏之一族", "力之一族", "御之一族", "破之一族", "太玄剑宗", "归潮门", "眠云谷", "铸星台",
+  "镜湖宗", "百兽山庄", "听雪门", "断碑门", "药王涧", "无声阁", "栖凤岭",
+];
+
+function sectNameFor(origin: OriginTemplate): string | undefined {
+  const text = `${origin.name} ${origin.authority ?? ""} ${(origin.roleTags ?? []).join(" ")}`;
+  return SECT_NAMES.find((name) => text.includes(name));
+}
 
 function openingStyleFor(origin: OriginTemplate): string {
   const text = `${origin.id} ${origin.name} ${origin.route ?? ""} ${(origin.roleTags ?? []).join(" ")}`;
   if (/无羁绊|凭空穿越|异界来客/.test(text)) return "无羁绊异客";
   if (/凶兽养成|兽群养大|魂兽养育/.test(text)) return "凶兽养成";
+  const sectName = sectNameFor(origin);
+  if (sectName) return `宗门开局 · ${sectName}`;
   if (/皇室|公爵|贵族|权贵|质子|王府|宗主|少主|继承人/.test(text)) return "权贵棋局";
   if (/天才|天骄|神童|先天异象|领域|双生|魂骨/.test(text) || ["传奇", "神话"].includes(origin.tier ?? "平凡")) return "天骄崛起";
   if (/穿越|转生|异界|修仙|前世/.test(text)) return "异世重修";
@@ -702,6 +728,8 @@ function originPool(preferences?: WeightPreferences, era: GameEra = 1): OriginTe
     if (preference === "反派") return /地下|暗街|禁物|毒|夺位|反派/.test(text);
     if (preference === "穿越") return /穿越|转生|修仙|异界/.test(text);
     if (preference === "特殊") return /异脉|禁物|旧案|血脉|遗迹|残魂|实验|诅咒/.test(text);
+    if (preference === "宗门开局") return Boolean(sectNameFor(origin));
+    if (preference === "隐世宗门") return /原创隐世宗门/.test(text) || HIDDEN_SECT_ORIGIN_IDS.includes(origin.id);
     if (preference === "凶兽养成") return openingStyleFor(origin) === "凶兽养成";
     if (preference === "无羁绊") return openingStyleFor(origin) === "无羁绊异客";
     return false;
@@ -1064,7 +1092,7 @@ export function generateCandidates(
       : index === 2
         ? origins.filter((item) => ["稀有", "传奇", "神话"].includes(item.tier ?? "平凡"))
         : origins;
-    if (index === 0 && ["凶兽养成", "无羁绊"].includes(preferences?.origin ?? "")) {
+    if (index === 0 && ["宗门开局", "隐世宗门", "凶兽养成", "无羁绊"].includes(preferences?.origin ?? "")) {
       const exactStyleOrigins = slotOrigins.filter((item) => ORIGIN_PREFERENCE_IDS[preferences!.origin].includes(item.id));
       if (exactStyleOrigins.length) slotOrigins = exactStyleOrigins;
     }
@@ -1856,11 +1884,37 @@ interface AwakeningContext {
   notableNpc?: { id: string; name: string };
 }
 
+const SECT_AWAKENING_CONTEXTS: Record<string, AwakeningContext> = {
+  "elephant-sect-direct": { factionId: "elephant-sect", factionName: "象甲宗", officiant: "象甲宗内门觉醒教习", venue: "岩甲觉醒场" },
+  "wind-sword-disciple": { factionId: "wind-sword-sect", factionName: "风剑宗", officiant: "风剑宗传功执事", venue: "风剑关试剑台" },
+  "fire-leopard-heir": { factionId: "fire-leopard-sect", factionName: "火豹宗", officiant: "火豹宗执法堂教习", venue: "火豹宗演武场" },
+  "holy-dragon-outer": { factionId: "holy-dragon-sect", factionName: "圣龙宗", officiant: "圣龙宗外门教习", venue: "白甲山门觉醒台" },
+  "rock-sect-disciple": { factionId: "rock-sect", factionName: "岩羚宗", officiant: "岩羚宗采石堂教习", venue: "石寨觉醒场" },
+  "river-spirit-sect": { factionId: "river-spirit-sect", factionName: "清河水宗", officiant: "清河水宗圣泉教习", venue: "圣泉外院" },
+  "speed-clan-child": { factionId: "min-clan", factionName: "敏之一族", officiant: "敏之一族觉醒长辈", venue: "侦查堂练功场" },
+  "strength-clan-child": { factionId: "min-clan", factionName: "力之一族", officiant: "力之一族觉醒长辈", venue: "锻造堂练功场" },
+  "defense-clan-child": { factionId: "min-clan", factionName: "御之一族", officiant: "御之一族觉醒长辈", venue: "堡寨练功场" },
+  "breaking-clan-child": { factionId: "min-clan", factionName: "破之一族", officiant: "破之一族觉醒长辈", venue: "药庄练功场" },
+  "hidden-sect-heir": { factionId: "taixuan-sword", factionName: "太玄剑宗", officiant: "太玄剑宗守碑长老", venue: "剑谷内门觉醒台" },
+  "hidden-tide-gate": { factionId: "hidden-tide-gate", factionName: "归潮门", officiant: "归潮门守潮师", venue: "听潮屿潮纹石台" },
+  "hidden-dream-valley": { factionId: "hidden-dream-valley", factionName: "眠云谷", officiant: "眠云谷守梦师", venue: "雾隐山坳静室" },
+  "hidden-star-forge": { factionId: "hidden-star-forge", factionName: "铸星台", officiant: "铸星台掌炉师", venue: "坠铁峰熄火炉前" },
+  "hidden-mirror-lake": { factionId: "hidden-mirror-lake", factionName: "镜湖宗", officiant: "镜湖宗照影教习", venue: "折光湖水镜台" },
+  "hidden-beast-manor": { factionId: "hidden-beast-manor", factionName: "百兽山庄", officiant: "百兽山庄巡栏师", venue: "伏兽岭内院" },
+  "hidden-snow-gate": { factionId: "hidden-snow-gate", factionName: "听雪门", officiant: "听雪门寒炉教习", venue: "寒声岭避风堂" },
+  "hidden-broken-stele": { factionId: "hidden-broken-stele", factionName: "断碑门", officiant: "断碑门守碑师", venue: "无字崖拓碑室" },
+  "hidden-herb-ravine": { factionId: "hidden-herb-ravine", factionName: "药王涧", officiant: "药王涧药议堂医师", venue: "百草峡净药房" },
+  "hidden-silent-pavilion": { factionId: "hidden-silent-pavilion", factionName: "无声阁", officiant: "无声阁巡风教习", venue: "回音窟静室" },
+  "hidden-phoenix-ridge": { factionId: "hidden-phoenix-ridge", factionName: "栖凤岭", officiant: "栖凤岭护火师", venue: "赤羽台地火阵" },
+};
+
 function awakeningContext(selected: HiddenCandidate): AwakeningContext {
   const text = `${selected.originId}${selected.public.originName}${selected.roleTags.join("")}`;
   const souls = selected.martialSouls?.length ? selected.martialSouls : [selected.martialSoul];
   const soulNames = souls.map((soul) => soul.name);
   if (selected.originId === "fierce-beast-raised") return { factionId: "star-dou-beasts", factionName: "星斗核心区兽群", officiant: "凶兽养育者岩叔", venue: "古树根间的临时觉醒阵" };
+  const sectContext = SECT_AWAKENING_CONTEXTS[selected.originId];
+  if (sectContext) return sectContext;
   if (/七宝/.test(text)) return { factionId: "seven-treasure", factionName: "七宝琉璃宗", officiant: "七宝琉璃宗觉醒教习", venue: "宗门觉醒堂", notableNpc: soulNames.includes("七杀剑") ? { id: "chen-xin", name: "尘心" } : soulNames.includes("骨龙") ? { id: "gu-rong", name: "古榕" } : soulNames.some((name) => /七宝琉璃塔|九宝琉璃塔/.test(name)) ? { id: "ning-fengzhi", name: "宁风致" } : undefined };
   if (/蓝电/.test(text)) return { factionId: "blue-lightning", factionName: "蓝电霸王龙宗", officiant: "蓝电霸王龙宗雷池教习", venue: "宗门觉醒石台" };
   if (/昊天/.test(text)) return { factionId: "clear-sky", factionName: "昊天宗", officiant: "昊天宗支脉长老", venue: "支脉觉醒堂", notableNpc: soulNames.includes("昊天锤") ? { id: "tang-xiao", name: "唐啸" } : undefined };

@@ -176,6 +176,42 @@ describe("candidate generation", () => {
     expect(unbound.public.originBurden).toContain("合法身份");
   });
 
+  it("offers many named sect openings, including bounded original hidden sects", () => {
+    const sectDraws = Array.from({ length: 90 }, (_, rerollIndex) =>
+      generateCandidates("sect-opening-variety", rerollIndex, rerollIndex % 2 ? "男" : "女", { origin: "宗门开局", martialSoul: "均衡", gift: "均衡" })[0],
+    );
+    const sectNames = new Set(sectDraws.map((candidate) => (candidate.public.openingStyle ?? "").replace("宗门开局 · ", "")));
+    expect(sectDraws.every((candidate) => candidate.public.openingStyle?.startsWith("宗门开局 · "))).toBe(true);
+    expect(sectNames.size).toBeGreaterThanOrEqual(16);
+    expect([...sectNames]).toEqual(expect.arrayContaining(["七宝琉璃宗", "蓝电霸王龙宗", "象甲宗", "圣龙宗", "归潮门", "眠云谷", "药王涧"]));
+
+    const hidden = generateCandidates("hidden-sect-opening", 0, "女", { origin: "隐世宗门", martialSoul: "均衡", gift: "均衡" })[0];
+    expect(hidden.public.openingStyle).toMatch(/^宗门开局 · /);
+    expect(hidden.roleTags).toContain("原创隐世宗门");
+    expect(sectDraws.every((candidate) => !/大客卿/.test(`${candidate.public.originName}${candidate.public.originSummary}`))).toBe(true);
+  });
+
+  it("keeps hidden-sect awakening and recruitment inside the character's own sect", () => {
+    const meta = {
+      weightPreferences: { origin: "隐世宗门", martialSoul: "均衡", gift: "均衡" },
+      purchasedUpgrades: {},
+      martialSoulCodex: [],
+    } as unknown as MetaProgressionView;
+    for (let index = 0; index < 12; index += 1) {
+      const game = createGame({ gender: index % 2 ? "男" : "女", difficulty: "标准", personality, seed: `hidden-sect-awakening-${index}` }, meta);
+      const candidate = game.hiddenCandidates[0];
+      const sectName = (candidate.public.openingStyle ?? "").replace("宗门开局 · ", "");
+      candidate.innateSoulPower = 10;
+      selectCandidate(game, candidate.public.id);
+      const draft = game.view.shaping!.personalityOptions[0];
+      finalizeCharacterShaping(game, { personalityId: draft.id, keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])) });
+      awakenCharacter(game);
+      const recruitment = game.view.tasks.find((task) => task.id === "awakening-recruitment");
+      expect(recruitment?.detail).toContain(sectName);
+      expect(recruitment?.detail).not.toContain("武魂殿");
+    }
+  });
+
   it("reveals the martial soul only after selection and awakening", () => {
     const game = createGame({ gender: "女", difficulty: "标准", personality, seed: "awakening-seed" });
     const candidateId = game.view.candidates[0].id;

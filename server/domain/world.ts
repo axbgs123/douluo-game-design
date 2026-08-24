@@ -128,6 +128,18 @@ export function inferLocationId(location: string): string {
   if (/史莱克/.test(location)) return "shrek-village";
   if (/星斗.*核心/.test(location)) return "star-dou-core";
   if (/星斗/.test(location)) return "star-dou-edge";
+  const sectLocation = [
+    ["圣龙宗白甲山门", "holy-dragon-gate"], ["归潮门听潮屿", "tide-listening-isle"],
+    ["眠云谷雾隐山坳", "dream-cloud-valley"], ["铸星台坠铁峰", "star-forge-peak"],
+    ["镜湖宗折光湖", "mirror-fold-lake"], ["百兽山庄伏兽岭", "beast-manor-ridge"],
+    ["听雪门寒声岭", "snow-sound-ridge"], ["断碑门无字崖", "wordless-cliff"],
+    ["药王涧百草峡", "hundred-herb-ravine"], ["无声阁回音窟", "echo-cavern"],
+    ["栖凤岭赤羽台", "red-feather-terrace"],
+  ].find(([name]) => location.includes(name));
+  if (sectLocation) return sectLocation[1];
+  if (/火豹宗/.test(location)) return "fire-leopard-town";
+  if (/风剑宗|风剑峡/.test(location)) return "wind-sword-pass";
+  if (/清河水宗/.test(location)) return "clear-river-spring";
   if (/落日|天斗南部丘陵/.test(location)) return "sunset-forest";
   if (/七宝琉璃宗|七宝商道/.test(location)) return "seven-treasure-fort";
   if (/蓝电霸王龙宗|雷谷村/.test(location)) return "blue-lightning-mountain";

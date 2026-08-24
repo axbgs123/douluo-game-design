@@ -383,7 +383,7 @@ test("候选页只显示人工身份并保证三张开局流派不同", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "抽取三名角色" }).click();
   await expect(page.getByRole("heading", { name: "选择角色" })).toBeVisible();
-  await expect(page.getByText("出生池现有 5004 份具体档案", { exact: false })).toBeVisible();
+  await expect(page.getByText("出生池现有 5436 份具体档案", { exact: false })).toBeVisible();
   const styles = await page.locator(".opening-style").allTextContents();
   expect(styles).toHaveLength(3);
   expect(new Set(styles).size).toBe(3);
