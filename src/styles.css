@@ -471,6 +471,10 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .gift-card { border: 1px solid rgba(138,103,37,.4); background: rgba(138,103,37,.08); padding: 12px; }
 .gift-card span, .gift-card strong { display: block; }
 .gift-card span { color: var(--gold); font-size: 9px; margin-bottom: 5px; }
+.candidate-gift-hint { margin: 12px 0; padding: 10px 12px; border-left: 3px solid #7d65a8; background: rgba(82,76,120,.08); }
+.candidate-gift-hint span, .candidate-gift-hint strong { display: block; }
+.candidate-gift-hint span { color: #685b8b; font-size: 9px; letter-spacing: .12em; }
+.candidate-gift-hint strong { margin-top: 4px; font-size: 12px; line-height: 1.55; }
 .special-system-card { margin-top: 10px; border: 1px solid rgba(82,76,120,.32); background: rgba(82,76,120,.06); padding: 13px; }
 .special-system-card header span, .special-system-card header strong { display: block; }
 .special-system-card header span { color: #685b8b; font-size: 10px; }.special-system-card header strong { margin-top: 4px; }

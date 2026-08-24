@@ -65,6 +65,7 @@ export function CandidateScreen({
             <label className="candidate-name-field"><span>姓名</span><input value={names[candidate.id] ?? candidate.name} maxLength={12} onChange={(event) => setNames((current) => ({ ...current, [candidate.id]: event.target.value }))} /></label>
             <p className="candidate-origin">{candidate.originName}</p>
             <p className="candidate-summary">{candidate.originSummary}</p>
+            {candidate.giftHint && <div className="candidate-gift-hint"><span>局外变量</span><strong>{candidate.giftHint}</strong></div>}
             <dl className="origin-facts">{candidate.originFacts.filter((fact) => fact.label !== "生计").map((fact) => <div key={fact.label}><dt>{fact.label === "开局优势" ? "能依靠的" : fact.label === "身份代价" ? "绕不开的" : fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>
             <section className="identity-knowledge"><small>{candidate.selfKnowledge}</small><p>{candidate.knownBackground}</p></section>
             {candidate.fixedTraits.length > 0 && <div className="fixed-trait-line"><span>身份烙印</span>{candidate.fixedTraits.map((trait) => <b key={trait}>{trait}</b>)}</div>}

@@ -11,7 +11,7 @@ function UnlockList({ title, items, empty }: { title: string; items: string[]; e
 const PREFERENCE_OPTIONS = {
   origin: ["均衡", "平民", "魂师家庭", "宗门开局", "隐世宗门", "漂泊", "权贵", "天骄", "反派", "穿越", "特殊", "凶兽养成", "无羁绊"],
   martialSoul: ["均衡", "器武魂", "兽武魂", "植物", "本体武魂"],
-  gift: ["均衡", "朴素", "奇遇", "异界体系"],
+  gift: ["均衡", "朴素", "奇遇", "异界体系", "系统流", "签到系统", "加点面板", "人生模拟器", "任务系统", "图鉴系统"],
 };
 
 export function MetaProgressionPanel({ open, onClose }: MetaProgressionPanelProps) {

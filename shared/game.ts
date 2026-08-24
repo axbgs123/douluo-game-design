@@ -35,6 +35,7 @@ export interface CandidatePublic {
   omens: string[];
   route: string;
   openingStyle?: string;
+  giftHint?: string;
   rarity: CandidateRarity;
   selfKnowledge: string;
   knownBackground: string;

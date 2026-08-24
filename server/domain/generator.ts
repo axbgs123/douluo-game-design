@@ -28,6 +28,7 @@ import { ERA_MARTIAL_SOULS } from "../data/era-martial-souls.js";
 import { ORIGINAL_MARTIAL_SOULS } from "../data/original-martial-souls.js";
 import { fixedTraitEffect } from "./traits.js";
 import { CHARACTER_SURNAMES, FEMALE_GIVEN_NAMES, MALE_GIVEN_NAMES, MATURE_FEMALE_GIVEN_NAMES, MATURE_MALE_GIVEN_NAMES, NEUTRAL_GIVEN_NAMES } from "../data/chinese-name-pool.js";
+import { GOLD_FINGERS, createSpecialSystemView, goldFingerByPreference, isGoldFinger } from "../data/gold-fingers.js";
 
 interface OriginTemplate {
   id: string;
@@ -1079,12 +1080,15 @@ export function generateCandidates(
   preferences?: WeightPreferences,
   giftBonus = 0,
   era: GameEra = 1,
+  excludedOriginIds: string[] = [],
 ): HiddenCandidate[] {
   const random = createRandom(`${seed}:candidates:${rerollIndex}`);
   const usedOrigins = new Set<string>();
   const usedNames = new Set<string>();
   const usedOpeningStyles = new Set<string>();
-  const origins = originPool(preferences, era);
+  const baseOrigins = originPool(preferences, era);
+  const filteredOrigins = baseOrigins.filter((origin) => !excludedOriginIds.includes(origin.id));
+  const origins = filteredOrigins.length >= 3 ? filteredOrigins : baseOrigins;
 
   return Array.from({ length: 3 }, (_, index) => {
     let slotOrigins = index === 1
@@ -1170,18 +1174,30 @@ export function generateCandidates(
 
     const giftRoll = random();
     const giftPreference = preferences?.gift ?? "均衡";
-    const giftChance = (giftPreference === "朴素" ? 0.008 : giftPreference === "奇遇" ? 0.055 : giftPreference === "异界体系" ? 0.04 : 0.025) + giftBonus;
+    const preferredGoldFinger = goldFingerByPreference(giftPreference);
+    const goldFingerPreference = giftPreference === "系统流" || Boolean(preferredGoldFinger);
+    const forcedGoldFinger = index === 0 && goldFingerPreference;
+    const giftChance = (giftPreference === "朴素" ? 0.008 : giftPreference === "奇遇" ? 0.08 : giftPreference === "异界体系" ? 0.12 : goldFingerPreference ? 0.35 : 0.025) + giftBonus;
     const giftPool = giftPreference === "异界体系"
       ? ["残缺丹道传承", "无名剑典残页", "未激活的因果印记", "受压制的修行法门", "炼器宗残卷", "残缺阵道传承", "沉睡的山海血脉", "一缕受损剑魂"]
       : ["残缺丹道传承", "至尊骨雏形", "无名剑典残页", "未激活的因果印记", "武魂二次觉醒线索", "先祖残魂的记忆", "异常魂力回路", "可成长的精神空间"];
+    const systemGiftPool = preferredGoldFinger ? [preferredGoldFinger.name] : GOLD_FINGERS.map((item) => item.name);
     const disclosedOriginGifts: Record<string, string> = {
       "cultivator-reincarnation": "受压制的前世修行法门",
       "modern-transmigrator": "原作剧情时间线记忆",
       "evil-soul-remnant": "家族吞噬禁术",
     };
-    const hiddenGift = disclosedOriginGifts[origin.id] ?? (origin.id === "mystery-arrival" || giftRoll < giftChance
-      ? pick(random, giftPool)
+    const hiddenGift = forcedGoldFinger
+      ? pick(random, systemGiftPool)
+      : disclosedOriginGifts[origin.id] ?? (origin.id === "mystery-arrival" || giftRoll < giftChance
+      ? pick(random, goldFingerPreference ? systemGiftPool : giftPool)
       : undefined);
+    if (forcedGoldFinger && hiddenGift) {
+      const definition = GOLD_FINGERS.find((item) => item.name === hiddenGift);
+      candidate.giftHint = definition ? `确定金手指 · ${definition.name}：${definition.hint}` : `确定奇遇 · ${hiddenGift}`;
+    } else if (hiddenGift) {
+      candidate.giftHint = isGoldFinger(hiddenGift) ? "检测到未确认的系统波动，觉醒时可能完成绑定。" : "存在尚未确认的异常征兆，需要在游戏中调查。";
+    }
 
     return {
       public: candidate,
@@ -1743,6 +1759,7 @@ export function rerollCandidates(game: StoredGame, preferences?: WeightPreferenc
     preferences,
     (game.legacy.upgrades["命运余量"] ?? 0) * 0.01,
     game.view.era ?? 1,
+    game.hiddenCandidates.map((candidate) => candidate.originId),
   );
   const locks = new Set(lockedSlots.filter((slot) => slot >= 0 && slot < 3));
   game.hiddenCandidates = fresh.map((candidate, index) => locks.has(index) ? game.hiddenCandidates[index] ?? candidate : candidate);
@@ -1977,7 +1994,10 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     personalityTraits: game.personalityProfile.summary,
   };
 
-  if (selected.originId === "cultivator-reincarnation") {
+  if (isGoldFinger(selected.hiddenGift)) {
+    character.revealedGift = `${selected.hiddenGift}已在武魂觉醒时完成绑定；功能受行动证据、日期与资源规则约束`;
+    character.specialSystem = createSpecialSystemView(selected.hiddenGift!);
+  } else if (selected.originId === "cultivator-reincarnation") {
     character.revealedGift = "前世修行记忆完整保留，修为归零，功法尚未适配魂力";
     character.specialSystem = { name: "前世剑修传承", stage: "斗罗适配 · 未入门", progress: "0%", abilities: ["剑理记忆", "经脉辨识"], resourceHint: "需要结合武魂、魂环与当地材料逐步验证" };
   } else if (selected.originId === "modern-transmigrator") {

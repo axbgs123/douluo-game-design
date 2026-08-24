@@ -7,6 +7,7 @@ import { advanceWorldTime, buildMapView, canDiscoverNpc, createHiddenWorld, ensu
 import { applyNarrativeMemory, violatesCanonChronology } from "../services/deepseek.js";
 import { rulebookStats } from "../data/fanfiction-rules.js";
 import { auditNarrative, selectNarrativeRules } from "./story-rules.js";
+import type { MetaProgressionView } from "../../shared/game.js";
 
 const personality = {
   keywords: ["谨慎", "好奇", "重情"],
@@ -408,6 +409,40 @@ describe("完整游玩规则", () => {
     expect(game.world.trainingPoints).toBeGreaterThan(0);
     expect(game.world.fatiguePoints).toBeGreaterThan(beforeFatigue);
     expect(game.view.worldTime?.time).not.toBe(beforeTime);
+  });
+
+  it("加点金手指必须先靠真实训练积累潜能再分配", () => {
+    const meta = { weightPreferences: { origin: "均衡", martialSoul: "均衡", gift: "加点面板" }, purchasedUpgrades: {}, martialSoulCodex: [] } as unknown as MetaProgressionView;
+    const game = createGame({ gender: "男", difficulty: "标准", personality, seed: "effort-points-system" }, meta);
+    selectCandidate(game, game.view.candidates[0].id);
+    const draft = game.view.shaping!.personalityOptions[0];
+    finalizeCharacterShaping(game, { personalityId: draft.id, keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])) });
+    awakenCharacter(game);
+    expect(resolveAction(game, "给体魄加点").intent).toBe("无法完成");
+    expect(resolveAction(game, "安静冥想修炼").systemMessages).toContain("加点面板 · 潜能 +1");
+    expect(resolveAction(game, "给体魄加点").intent).toBe("潜能加点");
+    expect(game.view.character!.specialSystem!.abilities).toContain("体魄强化 1");
+  });
+
+  it("签到系统按自然日限领且人生模拟不会复制奖励", () => {
+    const setup = (gift: string, seed: string) => {
+      const meta = { weightPreferences: { origin: "均衡", martialSoul: "均衡", gift }, purchasedUpgrades: {}, martialSoulCodex: [] } as unknown as MetaProgressionView;
+      const game = createGame({ gender: "女", difficulty: "标准", personality, seed }, meta);
+      selectCandidate(game, game.view.candidates[0].id);
+      const draft = game.view.shaping!.personalityOptions[0];
+      finalizeCharacterShaping(game, { personalityId: draft.id, keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])) });
+      awakenCharacter(game);
+      return game;
+    };
+    const signIn = setup("签到系统", "daily-sign-system");
+    expect(resolveAction(signIn, "在当前地点签到").intent).toBe("系统签到");
+    expect(resolveAction(signIn, "在当前地点签到").intent).toBe("无法完成");
+
+    const simulator = setup("人生模拟器", "fate-simulator-system");
+    const inventory = [...simulator.view.inventory];
+    expect(resolveAction(simulator, "人生模拟下一次重要选择").intent).toBe("命运片段模拟");
+    expect(simulator.view.inventory).toEqual(inventory);
+    expect(resolveAction(simulator, "人生模拟下一次重要选择").intent).toBe("无法完成");
   });
 
   it("行动提交后保留可重载的规则判定收据", () => {

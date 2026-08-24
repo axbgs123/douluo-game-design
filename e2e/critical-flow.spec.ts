@@ -379,6 +379,10 @@ test.beforeEach(async ({ request }) => {
 
 test.afterAll(() => fixtureDatabase?.closeDatabase());
 
+test.afterEach(async ({ request }) => {
+  await request.post("/api/meta/preferences", { data: { origin: "均衡", martialSoul: "均衡", gift: "均衡" } });
+});
+
 test("候选页只显示人工身份并保证三张开局流派不同", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "抽取三名角色" }).click();
@@ -388,6 +392,18 @@ test("候选页只显示人工身份并保证三张开局流派不同", async ({
   expect(styles).toHaveLength(3);
   expect(new Set(styles).size).toBe(3);
   expect((await page.locator(".candidate-origin").allTextContents()).every((name) => !name.includes("护阵房学徒家庭"))).toBe(true);
+});
+
+test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {
+  const saved = await request.post("/api/meta/preferences", { data: { origin: "均衡", martialSoul: "均衡", gift: "签到系统" } });
+  expect(saved.ok()).toBeTruthy();
+  await createPlayingCharacter(page, 1);
+  await page.getByRole("button", { name: "武魂", exact: true }).click();
+  await expect(page.getByText("万象签到系统", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "今日签到", exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeEnabled();
+  await page.getByRole("button", { name: "今日签到", exact: true }).click();
+  await expect(page.locator("blockquote.player-entry").last()).toContainText("在当前地点签到");
 });
 
 test("玩家可以完成角色创建、推进故事并管理存档", async ({ page }) => {

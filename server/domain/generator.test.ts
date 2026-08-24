@@ -108,10 +108,12 @@ describe("candidate generation", () => {
   it("changes candidates on reroll while preserving the seed", () => {
     const game = createGame({ gender: "男", difficulty: "困难", personality, seed: "reroll-seed" });
     const original = game.view.candidates;
+    const originalOriginIds = new Set(game.hiddenCandidates.map((candidate) => candidate.originId));
     rerollCandidates(game);
     expect(game.view.seed).toBe("reroll-seed");
     expect(game.view.rerollIndex).toBe(1);
     expect(game.view.candidates).not.toEqual(original);
+    expect(game.hiddenCandidates.every((candidate) => !originalOriginIds.has(candidate.originId))).toBe(true);
   });
 
   it("keeps every awakening within five years of Tang San", () => {
@@ -174,6 +176,24 @@ describe("candidate generation", () => {
     expect(unbound.public.startingRelations).toHaveLength(0);
     expect(unbound.public.household.structure).toBe("独身无监护");
     expect(unbound.public.originBurden).toContain("合法身份");
+  });
+
+  it("guarantees the selected gold-finger route and reveals it at awakening", () => {
+    const routes = [
+      ["签到系统", "万象签到系统"], ["加点面板", "勤修加点面板"], ["人生模拟器", "命运片段模拟器"],
+      ["任务系统", "等价任务系统"], ["图鉴系统", "武魂生态图鉴"],
+    ] as const;
+    for (const [preference, systemName] of routes) {
+      const meta = { weightPreferences: { origin: "均衡", martialSoul: "均衡", gift: preference }, purchasedUpgrades: {}, martialSoulCodex: [] } as unknown as MetaProgressionView;
+      const game = createGame({ gender: "男", difficulty: "标准", seed: `gold-finger-${preference}` }, meta);
+      expect(game.view.candidates[0].giftHint).toContain(systemName);
+      selectCandidate(game, game.view.candidates[0].id);
+      const draft = game.view.shaping!.personalityOptions[0];
+      finalizeCharacterShaping(game, { personalityId: draft.id, keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])) });
+      awakenCharacter(game);
+      expect(game.view.character?.specialSystem?.name).toBe(systemName);
+      expect(game.view.character?.revealedGift).toContain("觉醒时完成绑定");
+    }
   });
 
   it("offers many named sect openings, including bounded original hidden sects", () => {

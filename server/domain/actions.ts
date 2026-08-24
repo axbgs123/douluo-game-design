@@ -7,6 +7,7 @@ import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, c
 import { toThirdPersonNarrative } from "./narrative.js";
 import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSuggestions, selectNarrativeRules } from "./story-rules.js";
 import { formatSoulCoins } from "../../shared/currency.js";
+import { createSpecialSystemView, isGoldFinger } from "../data/gold-fingers.js";
 
 interface DifficultyRules {
   training: number;
@@ -449,7 +450,9 @@ function trainingResolution(game: StoredGame, action = ""): ActionResolution {
   const baseGain = toBottleneck ? Math.max(30, requiredToBottleneck) : longYear ? integer(random, 900, 1250) : longMonth ? integer(random, 110, 180) : game.view.speed === "高速" ? integer(random, 34, 52) : integer(random, 8, 15);
   const personalityBonus = game.personalityProfile.scores.patience > 1 ? 1.12 : 1;
   const fatiguePenalty = game.world.fatiguePoints >= 70 ? 0.55 : game.world.fatiguePoints >= 45 ? 0.78 : 1;
-  const specialBonus = 1 + (character.specialSystem?.abilities.length ?? 0) * 0.04;
+  const systemAbilities = character.specialSystem?.abilities ?? [];
+  const effectiveSystemAbilities = isGoldFinger(character.specialSystem?.name) ? systemAbilities.filter((ability) => /强化|增幅|修炼/.test(ability)) : systemAbilities;
+  const specialBonus = 1 + effectiveSystemAbilities.length * 0.04;
   const gain = Math.max(1, Math.round(baseGain * rules.training * personalityBonus * fatiguePenalty * specialBonus));
   game.world.trainingPoints += gain;
   game.world.fatiguePoints += toBottleneck || longYear || longMonth ? 45 : game.view.speed === "高速" ? 32 : 12;
@@ -1635,7 +1638,7 @@ function investigateResolution(game: StoredGame, action: string): ActionResoluti
   const giftRevealed = Boolean(selected?.hiddenGift && !game.view.character?.revealedGift && investigationCount >= 3 && /身世|梦|征兆|胎记|异象|武魂|自己|传承/.test(action));
   if (giftRevealed && game.view.character && selected?.hiddenGift) {
     game.view.character.revealedGift = selected.hiddenGift;
-    game.view.character.specialSystem = createSpecialSystem(selected.hiddenGift);
+    game.view.character.specialSystem = createSpecialSystemView(selected.hiddenGift);
     game.world.metrics.discoveries += 2;
     systemMessages.push(`隐秘传承 · ${selected.hiddenGift}`);
   }
@@ -1654,17 +1657,110 @@ function investigateResolution(game: StoredGame, action: string): ActionResoluti
   };
 }
 
-function createSpecialSystem(name: string) {
-  const resourceHint = /丹|炼/.test(name) ? "需要药材、矿料与反复试错" : /剑/.test(name) ? "需要实战、兵器与安静参悟" : /因果/.test(name) ? "需要经历关键选择并承担反噬" : "需要在魂力成长中逐步唤醒";
-  return { name, stage: "初次感应", progress: "刚刚起步", abilities: [] as string[], resourceHint };
-}
-
 function specialSystemResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
   if (!character.specialSystem) return impossible("我还没有确认任何独立修行体系。", ["调查自己的身世", "研究武魂异象", "继续魂力修炼"]);
   const random = actionRandom(game);
   const system = character.specialSystem;
   const key = "specialSystemProgress";
+  const currentProgress = () => Number(game.world.flags[key] ?? 0);
+  const advanceSystem = (gain: number) => {
+    const next = Math.min(100, currentProgress() + gain);
+    game.world.flags[key] = next;
+    system.progress = `${next}%`;
+    system.stage = next >= 80 ? "稳定运行 · 三级" : next >= 35 ? "功能展开 · 二级" : "觉醒绑定 · 一级";
+    return next;
+  };
+
+  if (system.name === "万象签到系统") {
+    const stamp = `${game.view.worldTime?.year ?? 0}-${game.view.worldTime?.day ?? 1}`;
+    if (/查看|记录/.test(action)) {
+      const locations = String(game.world.flags.goldFingerSignLocations ?? "").split("|").filter(Boolean);
+      return { intent: "查看签到记录", minutes: 1, ruleSummary: `已记录 ${locations.length} 个首签地点；今日${game.world.flags.goldFingerLastSign === stamp ? "已签到" : "尚未签到"}。`, fallbackNarrative: `签到页按日期排得整整齐齐。上面只有我真正到过的地点，空白处仍然是空白。`, suggestions: game.world.flags.goldFingerLastSign === stamp ? ["等待到明天", "前往新地点", "继续当前计划"] : ["在当前地点签到", "调查当前地点", "继续当前计划"] };
+    }
+    if (game.world.flags.goldFingerLastSign === stamp) return impossible("今天已经签到过；更换地点也不能重复领取同一天奖励。", ["等待到明天", "查看签到记录", "继续当前计划"]);
+    const seen = new Set(String(game.world.flags.goldFingerSignLocations ?? "").split("|").filter(Boolean));
+    const locationId = game.view.locationId ?? "unknown";
+    const firstVisit = !seen.has(locationId);
+    seen.add(locationId);
+    game.world.flags.goldFingerSignLocations = [...seen].join("|");
+    game.world.flags.goldFingerLastSign = stamp;
+    const coins = firstVisit ? 3 : 1;
+    character.coins += coins;
+    const progress = advanceSystem(firstVisit ? 6 : 3);
+    game.world.metrics.discoveries += firstVisit ? 1 : 0;
+    return { intent: "系统签到", minutes: 5, ruleSummary: `${stamp}在${game.view.location}完成签到；${firstVisit ? "首次地点记录" : "普通日签"}，获得${formatSoulCoins(coins)}与系统进度，当前${progress}%。`, fallbackNarrative: `只有我能看见的字在眼前停了一瞬。今天的地点和日期被记进册页，没有神物落地，钱袋里只多了几枚确实能数清的硬币。`, suggestions: ["查看签到记录", "调查当前地点", "等待下一日签到"], systemMessages: [`签到 · ${game.view.location} · ${firstVisit ? "地点首签" : "普通日签"}`] };
+  }
+
+  if (system.name === "勤修加点面板") {
+    const points = Number(game.world.flags.goldFingerPotentialPoints ?? 0);
+    if (/查看|打开|面板/.test(action) && !/加点|分配/.test(action)) return { intent: "查看加点面板", minutes: 1, ruleSummary: `可分配潜能点 ${points}；潜能只来自真实修炼、课程或战斗。`, fallbackNarrative: `面板上的数字很少，也很诚实。没有完成的训练不会出现在这里，可用潜能点只剩${points}。`, suggestions: points > 0 ? ["给体魄加点", "给精神加点", "给感知加点"] : ["完成一次修炼", "参加学院课程", "经历一场实战"] };
+    if (!/加点|分配/.test(action)) return impossible("需要说明查看面板，或把潜能点分配给体魄、精神、感知中的一项。", ["查看加点面板", "给体魄加点", "先去修炼"]);
+    if (points < 1) return impossible("目前没有潜能点；必须先完成真实训练、课程或实战。", ["安静冥想修炼", "参加学院课程", "查看加点面板"]);
+    const target = /精神/.test(action) ? "精神" : /感知/.test(action) ? "感知" : /体魄/.test(action) ? "体魄" : undefined;
+    if (!target) return impossible("需要明确选择体魄、精神或感知，不能笼统地全部加满。", ["给体魄加点", "给精神加点", "给感知加点"]);
+    const levelKey = `goldFinger${target}Level`;
+    const level = Number(game.world.flags[levelKey] ?? 0) + 1;
+    game.world.flags[levelKey] = level;
+    game.world.flags.goldFingerPotentialPoints = points - 1;
+    system.abilities = [...system.abilities.filter((item) => !item.startsWith(`${target}强化`)), `${target}强化 ${level}`];
+    const progress = advanceSystem(4);
+    if (target === "体魄") game.world.healthPoints = Math.min(100, game.world.healthPoints + 3);
+    return { intent: "潜能加点", minutes: 10, ruleSummary: `消耗1点潜能，将${target}强化至${level}；剩余${points - 1}点，系统进度${progress}%。`, fallbackNarrative: `我把那一点潜能压进${target}一栏。变化很轻，没有跨过魂环或等级瓶颈，却能感觉到原本训练留下的积累被重新梳理了一遍。`, suggestions: ["查看加点面板", "测试变化", "继续积累潜能"] };
+  }
+
+  if (system.name === "命运片段模拟器") {
+    const ordinal = (game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
+    const last = Number(game.world.flags.goldFingerLastSimulationOrdinal ?? -1_000_000_000);
+    if (ordinal - last < 7) return impossible(`距离下一次完整模拟还需 ${7 - (ordinal - last)} 天。`, ["记录当前风险", "等待数日", "亲自调查"]);
+    game.world.flags.goldFingerLastSimulationOrdinal = ordinal;
+    const subject = game.view.tasks.find((item) => item.status === "进行中")?.title ?? game.world.dynamicEvents.find((item) => item.status === "可介入")?.title ?? "下一次重要选择";
+    const uncertainty = Math.min(80, 25 + game.world.deviation * 3);
+    const outcomes = ["准备不足会留下可避免的伤势", "可靠同伴能显著降低失败代价", "表面最短的路线藏着尚未核实的条件", "拖延会让另一方先采取行动"];
+    const fragment = pick(random, outcomes);
+    const progress = advanceSystem(8);
+    game.world.fatiguePoints += 8;
+    return { intent: "命运片段模拟", minutes: 30, ruleSummary: `围绕“${subject}”完成一次短期推演：${fragment}。误差约${uncertainty}%，不获得模拟中的修为或物品；系统进度${progress}%。`, fallbackNarrative: `眼前的景物暗了一瞬。我看见自己沿着一条可能的路走下去，结局只停留了几息便碎开。醒来后手里什么也没有，只有一条值得核实的风险提示。`, suggestions: ["调查模拟提示", "更换方案再准备", "记录误差来源"], systemMessages: [`模拟片段 · ${subject} · 可信度有限`] };
+  }
+
+  if (system.name === "等价任务系统") {
+    const task = game.view.tasks.find((item) => item.id === "gold-finger-evidence-task" && item.status === "进行中");
+    if (/查看|领取|刷新|任务/.test(action) && !/提交|结算/.test(action)) {
+      if (!task) {
+        const baseline = Number(game.world.flags.goldFingerEvidenceCount ?? 0);
+        game.world.flags.goldFingerTaskEvidenceBaseline = baseline;
+        ensureTask(game, { id: "gold-finger-evidence-task", title: "系统任务：留下真实成长记录", kind: "计划", detail: "完成一次至少推进60分钟的修炼、学院课程、调查或实战；必须写入行动账本。", status: "进行中" });
+      }
+      return { intent: "查看系统任务", minutes: 1, ruleSummary: task ? task.detail : "已发布新任务：完成一次有行动记录的真实成长行为。", fallbackNarrative: `任务栏没有让我去凭空击败封号斗罗，只列出当前真正做得到、也必须留下记录的一件事。`, suggestions: ["安静冥想修炼", "进行实地调查", "完成后提交系统任务"] };
+    }
+    if (/提交|结算/.test(action)) {
+      if (!task) return impossible("当前没有待验收的系统任务。", ["查看系统任务", "领取系统任务", "继续当前计划"]);
+      const baseline = Number(game.world.flags.goldFingerTaskEvidenceBaseline ?? 0);
+      const evidence = Number(game.world.flags.goldFingerEvidenceCount ?? 0);
+      if (evidence <= baseline) return impossible("行动账本里还没有任务发布后的有效成长记录。", ["完成一次修炼", "完成一次调查", "参加学院课程"]);
+      task.status = "完成";
+      task.progressEvidence = [`行动账本新增 ${evidence - baseline} 条有效成长记录`];
+      character.coins += 4;
+      const progress = advanceSystem(7);
+      return { intent: "系统任务验收", minutes: 5, ruleSummary: `任务按行动证据验收，获得${formatSoulCoins(4)}与系统进度；当前${progress}%。`, fallbackNarrative: `系统把行动账本从头到尾核了一遍，直到看见确实发生过的训练记录才亮起“完成”。奖励不大，但没有含糊。`, suggestions: ["领取下一项系统任务", "查看任务证据", "继续主线计划"], systemMessages: ["系统任务 · 证据验收通过"] };
+    }
+    return impossible("需要先查看任务，完成真实行动后再提交验收。", ["查看系统任务", "完成一次修炼", "提交系统任务"]);
+  }
+
+  if (system.name === "武魂生态图鉴") {
+    if (!/扫描|鉴定|图鉴|记录/.test(action)) return impossible("图鉴需要扫描当前真实接触到的对象。", ["扫描自己的武魂", "调查附近魂兽", "查看图鉴记录"]);
+    const records = new Set(String(game.world.flags.goldFingerCodexRecords ?? "").split("|").filter(Boolean));
+    const localBeast = SOUL_BEASTS.find((beast) => beast.habitats.includes(game.view.locationId ?? ""));
+    const subject = /自己|武魂/.test(action) ? character.martialSoul.name : localBeast?.name;
+    if (!subject) return impossible("当前位置没有经过调查确认、可以安全扫描的魂兽样本。", ["扫描自己的武魂", "调查附近魂兽", "换到魂兽栖息地"]);
+    const fresh = !records.has(subject);
+    records.add(subject);
+    game.world.flags.goldFingerCodexRecords = [...records].join("|");
+    const progress = advanceSystem(fresh ? 6 : 1);
+    if (fresh) game.world.metrics.discoveries += 1;
+    return { intent: "图鉴扫描", minutes: 15, ruleSummary: `${fresh ? "新增" : "复核"}${subject}记录；图鉴仅给出已观察到的结构与适配线索，系统进度${progress}%。`, fallbackNarrative: `细线一样的标记从${subject}表面掠过。图鉴没有补全未知部分，只把我亲眼见到的特征一项项写进空白页。`, suggestions: ["查看图鉴记录", "寻找新的样本", "验证适配建议"], systemMessages: fresh ? [`图鉴新增 · ${subject}`] : [] };
+  }
+
   let progress = Number(game.world.flags[key] ?? 0);
   const resourceReady = /炼丹|炼器/.test(action) ? game.view.inventory.some((item) => /药|矿|铁|草/.test(item)) : true;
   const gain = resourceReady ? integer(random, 7, 14) : integer(random, 2, 5);
@@ -3403,6 +3499,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|推进.*机构事务|登记.*阶段|提交.*阶段|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正|询问.*(?:异议|验收|复核)|协商.*(?:验收|复核|派系)|提交.*(?:共同复核|联合复核|协调方案)|支持.*(?:派|组)|采纳.*(?:派|组)|查看.*(?:复核人|验收人)/.test(action)) resolution = institutionResolution(game, action);
   else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克|舰队|联邦|传灵塔|战神/.test(action)) resolution = factionResolution(game, action);
   else if (/拜师|拜.*为师|收我为徒|请.*指导|寻找导师/.test(action)) resolution = mentorResolution(game, action);
+  else if (/签到|加点面板|查看面板|潜能|给.*加点|人生模拟|命运模拟|模拟未来|系统任务|图鉴扫描|扫描.*(?:武魂|魂兽|图鉴)|查看图鉴/.test(action)) resolution = specialSystemResolution(game, action);
   else if (/成为朋友|确认朋友|建立友情|长期关系|成为伴侣|确认恋爱|表达.*心意|求婚|婚姻|结婚|成婚|婚礼|组建家庭|家庭住所|共同住所|家庭准备|生育|收养.*孩子|孩子.*加入家庭|孩子出生/.test(action)) resolution = relationshipResolution(game, action);
   else if (/训练|排练|复盘/.test(action) && /连携|合击|组合技|阵型|生命防线|锁定爆发|破绽突袭|封锁阵线|攻守枢纽|生息铁壁|猎杀三角|四象战阵|逐影围猎|五环协战阵|六芒轮转阵|七星全域战阵/.test(action) && !game.view.combat) resolution = comboTrainingResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);
@@ -3422,6 +3519,15 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/攻击|杀|刺杀|偷袭/.test(action) && CANON_CHARACTERS.some((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)))) resolution = npcConflictResolution(game, action);
   else if (/攻击|杀|抢|闯入/.test(action)) resolution = impossible("当前缺少明确目标或足够条件，强行行动只会引来警惕。", ["观察目标", "先做准备", "暂时退开"]);
   else resolution = generalResolution(game);
+
+  const activeSystem = game.view.character.specialSystem?.name;
+  const evidenceAction = !/无法完成|规则阻止/.test(resolution.intent) && resolution.minutes >= 60 && /修炼|训练|学院|课程|调查|战斗|猎魂|实战/.test(resolution.intent);
+  if (evidenceAction && activeSystem === "等价任务系统") game.world.flags.goldFingerEvidenceCount = Number(game.world.flags.goldFingerEvidenceCount ?? 0) + 1;
+  if (evidenceAction && activeSystem === "勤修加点面板") {
+    const gain = Math.max(1, Math.min(3, Math.floor(resolution.minutes / 240)));
+    game.world.flags.goldFingerPotentialPoints = Math.min(30, Number(game.world.flags.goldFingerPotentialPoints ?? 0) + gain);
+    resolution.systemMessages = [...(resolution.systemMessages ?? []), `加点面板 · 潜能 +${gain}`];
+  }
 
   resolution.appliedRuleIds ??= selectNarrativeRules(game, action, resolution).map((rule) => rule.id);
 
