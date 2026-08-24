@@ -385,6 +385,7 @@ app.post("/api/games/:id/action/stream", async (request, response) => {
     const resolution = resolveAction(working, ruleAction);
     if (cancelled) return;
 
+    phase("logic", "编译人物动机、知情、权限、资源与后果");
     phase("writing", "按第三人称续写正文");
     const generated = /规则阻止|无法完成/.test(resolution.intent)
       ? { narrative: resolution.fallbackNarrative, suggestions: resolution.suggestions }

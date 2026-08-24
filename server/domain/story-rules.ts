@@ -3,6 +3,7 @@ import type { StoryArchiveView, StoryConsequenceView } from "../../shared/game.j
 import { CANON_CHARACTERS, FACTIONS, factionActiveAtYear } from "../data/world.js";
 import { rulesForEra, type FanfictionRule } from "../data/fanfiction-rules.js";
 import type { ActionResolution, StoredGame } from "./model.js";
+import type { SceneKnowledgePack } from "./scene-knowledge.js";
 
 const BASE_SECTIONS = [5, 18, 53, 69, 70, 93, 94, 97, 100];
 
@@ -340,6 +341,148 @@ export function buildChineseWebnovelSceneCard(game: StoredGame, resolution: Acti
     choiceVectors: ["成长或资源", "关系或势力", "秘密或风险"],
     deterministicSuggestions: groundedNarrativeSuggestions(game),
   };
+}
+
+export interface NarrativeLogicPacket {
+  version: "narrative-logic.v1";
+  stateVersion: string;
+  constraintsVersion: string;
+  canonAnchor: {
+    era: 1 | 2 | 3 | 4;
+    year: number;
+    day: number;
+    location: string;
+    publicIdentity: string;
+    publicMartialSouls: string[];
+    hiddenMartialSouls: string[];
+    relevantCausalFootprints: string[];
+  };
+  protagonistContract: {
+    desire: string;
+    availableInformation: Array<{ name: string; fact: string; source: string }>;
+    authority: string;
+    resources: string[];
+    action: string;
+    fixedConsequence: string;
+  };
+  participantContracts: Array<{
+    name: string;
+    desire: string;
+    knownFrom: string[];
+    knowledgeLimit: string;
+    authority: string;
+    reactionObligation: string;
+  }>;
+  reactionChain: {
+    witnesses: string[];
+    authorityHolders: string[];
+    interestsAtStake: string[];
+    requiredImmediateReactions: string[];
+    requiredTraces: string[];
+    sceneScaleRule: string;
+  };
+  continuityContract: {
+    requiredStateChanges: string[];
+    preserveExactly: string[];
+    forbiddenInventions: string[];
+    openThreads: string[];
+  };
+}
+
+function relationAuthority(relation: StoredGame["view"]["relations"][number]): string {
+  if (/宗主|长老|院长|教委|执事|官|主审|复核|监护|父|母|师/.test(`${relation.relation}${relation.name}`)) return `${relation.relation}可在职责范围内处理或上报`;
+  return `${relation.relation}只能表达立场、提供亲历信息或提出请求`;
+}
+
+export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string, resolution: ActionResolution, sceneKnowledge: SceneKnowledgePack): NarrativeLogicPacket {
+  const { publicNames, hiddenNames } = publicAndHiddenSoulNames(game);
+  const onSceneNpcs = Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId);
+  const knowledgeByNpc = new Map(sceneKnowledge.entries.filter((entry) => entry.kind === "人物").map((entry) => [entry.name, entry]));
+  const participantRelations = game.view.relations.filter((relation) => onSceneNpcs.some((npc) => npc.name === relation.name) || knowledgeByNpc.has(relation.name));
+  const awakeningRelation = game.view.relations.find((relation) => /觉醒主持|觉醒魂师|主持觉醒/.test(`${relation.relation}${relation.impression}`));
+  if (awakeningRelation && !participantRelations.includes(awakeningRelation)) participantRelations.push(awakeningRelation);
+  const participants = participantRelations.slice(0, 12).map((relation) => {
+    const npc = onSceneNpcs.find((item) => item.name === relation.name);
+    const knowledge = knowledgeByNpc.get(relation.name);
+    return {
+      name: relation.name,
+      desire: npc?.currentGoal ?? (/监护|父|母/.test(relation.relation) ? "先保证孩子安全，再决定能承担多少培养代价" : `${relation.relation}会先维护自己的职责、利益与风险边界`),
+      knownFrom: [knowledge ? `${knowledge.reason}：${knowledge.fact}` : undefined, ...(npc?.episodicMemory.slice(-3).map((item) => `${item.witnessed ? "亲历" : item.source}：${item.text}`) ?? [])].filter((item): item is string => Boolean(item)),
+      knowledgeLimit: `只能使用亲历、可靠转述、已登记情报和当前公开的${publicNames.join("、") || "武魂信息"}；不得知道隐藏武魂、系统或未来事件`,
+      authority: relationAuthority(relation),
+      reactionObligation: "主角行动触及其利益、职责或已知关系时，必须给出动作、台词、拒绝、上报或记录中的至少一种反应",
+    };
+  });
+  const authorityHolders = participants.filter((item) => /可在职责范围内/.test(item.authority)).map((item) => item.name);
+  const exceptionalAwakening = Boolean(game.view.character && game.view.character.innateSoulPower >= 10 && (game.view.status === "awakening" || /觉醒|满魂力|复测|培养条件|主持者/.test(`${playerInput}${resolution.intent}${resolution.ruleSummary}`)));
+  const requiredImmediateReactions = exceptionalAwakening
+    ? ["现场主持者复测或核对记录", "有权限者登记并决定上报范围", "监护或所属势力讨论培养条件、安置与代价"]
+    : participants.length ? ["利益或职责被触及的在场人物作出具体反应"] : ["没有可用见证者时，不得凭空制造远方人物反应"];
+  const requiredStateChanges = [
+    resolution.minutes > 0 ? `时间推进 ${resolution.minutes} 分钟` : undefined,
+    resolution.systemMessages?.length ? `留下程序凭据：${resolution.systemMessages.join("；")}` : undefined,
+    /失败|阻止|受伤|消耗|失去/.test(resolution.ruleSummary) ? "保留失败、消耗、伤势或被阻止的后果" : undefined,
+    /获得|完成|加入|提升|确认|登记/.test(resolution.ruleSummary) ? "保留已经结算的收益、进度、身份或记录" : undefined,
+  ].filter((item): item is string => Boolean(item));
+  const resources = [
+    `魂力：${game.view.character?.soulRank ?? 0}级`,
+    `魂币：${game.view.character?.coins ?? 0}`,
+    `位置：${game.view.location ?? "未知"}`,
+    `随身物品：${game.view.inventory.slice(0, 8).join("、") || "无"}`,
+    game.view.combat ? `战斗状态：${game.view.combat.playerCondition}` : undefined,
+    game.view.hunting ? `猎魂阶段：${game.view.hunting.stage}` : undefined,
+  ].filter((item): item is string => Boolean(item));
+  return {
+    version: "narrative-logic.v1",
+    stateVersion: `schema-${game.schemaVersion}:revision-${game.revision}:action-${game.actionIndex}`,
+    constraintsVersion: `era-${game.view.era}:canon-year-${game.view.worldTime?.year ?? 0}`,
+    canonAnchor: {
+      era: game.view.era ?? 1,
+      year: game.view.worldTime?.year ?? 0,
+      day: game.view.worldTime?.day ?? 1,
+      location: game.view.location ?? "未知地点",
+      publicIdentity: `${game.view.character?.name ?? "角色"}；${game.view.character?.originName ?? "身份未定"}`,
+      publicMartialSouls: publicNames,
+      hiddenMartialSouls: hiddenNames,
+      relevantCausalFootprints: game.world.canonCausalFootprints.slice(-8).map((item) => item.description),
+    },
+    protagonistContract: {
+      desire: playerInput.trim(),
+      availableInformation: sceneKnowledge.entries.map((entry) => ({ name: entry.name, fact: entry.fact, source: entry.reason })),
+      authority: /无法完成|规则阻止/.test(resolution.intent) ? "本次行动没有满足程序门槛，只能经历被拒绝或失败" : "只能执行玩家提出且程序已经结算的行动，不能越过下一项重大选择",
+      resources,
+      action: resolution.intent,
+      fixedConsequence: resolution.ruleSummary,
+    },
+    participantContracts: participants,
+    reactionChain: {
+      witnesses: [...new Set([...onSceneNpcs.map((npc) => npc.name), ...participants.map((item) => item.name)])],
+      authorityHolders,
+      interestsAtStake: [...new Set(participantRelations.map((relation) => `${relation.name}：${relation.faction ?? relation.relation}的职责、利益、关系或风险`))],
+      requiredImmediateReactions,
+      requiredTraces: [...requiredStateChanges, "正文结尾必须保留一个由本次后果产生的可行动问题、责任或风险"],
+      sceneScaleRule: participants.length >= 3 ? `本场至少有${participants.length}名重要在场者，不得在中段塌缩成只有主角与一名 NPC 的双人对白` : "保持实际在场人数；不得凭空增减见证者",
+    },
+    continuityContract: {
+      requiredStateChanges,
+      preserveExactly: [resolution.ruleSummary, `worldTime=${game.view.worldTime?.year ?? 0}年${game.view.worldTime?.day ?? 1}日`, `location=${game.view.location ?? "未知"}`],
+      forbiddenInventions: ["改变胜负、时间、伤势、物品、魂力、关系或任务状态", "让 NPC 知道隐藏武魂、系统、未来事件或未公开身份", "替玩家完成结果之后的新决定", "遗漏已在场的重要人物使场景规模悄悄缩小"],
+      openThreads: game.storyMemory.openThreads.slice(0, 8),
+    },
+  };
+}
+
+export function auditNarrativeLogicPacket(packet: NarrativeLogicPacket): string[] {
+  const issues: string[] = [];
+  if (!packet.protagonistContract.desire.trim()) issues.push("逻辑预检缺少主角当前欲望或玩家行动");
+  if (!packet.protagonistContract.action.trim()) issues.push("逻辑预检缺少程序动作");
+  if (!packet.protagonistContract.fixedConsequence.trim()) issues.push("逻辑预检缺少不可改写的程序后果");
+  if (!packet.canonAnchor.location.trim() || packet.canonAnchor.location === "未知地点") issues.push("逻辑预检缺少当前地点");
+  if (packet.canonAnchor.publicMartialSouls.some((name) => packet.canonAnchor.hiddenMartialSouls.includes(name))) issues.push("公开武魂与隐藏武魂边界冲突");
+  if (!packet.continuityContract.requiredStateChanges.length) issues.push("逻辑预检没有任何可追踪状态变化");
+  if (/至少有(\d+)名/.test(packet.reactionChain.sceneScaleRule) && packet.reactionChain.witnesses.length < Number(packet.reactionChain.sceneScaleRule.match(/至少有(\d+)名/)?.[1] ?? 0)) issues.push("多人场景的见证者与参与者数量不一致");
+  if (packet.reactionChain.requiredImmediateReactions.some((item) => /主持者|有权限者/.test(item)) && !packet.reactionChain.authorityHolders.length) issues.push("异常事件需要制度反应，但逻辑预检找不到有权限的现场人物");
+  return issues;
 }
 
 export function sanitizeNarrativeSuggestions(game: StoredGame, suggestions: string[], fallback: string[]): string[] {

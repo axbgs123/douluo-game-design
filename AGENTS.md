@@ -29,6 +29,7 @@ npm run security:release
 
 - 不提交 `source-materials/`、`.data/`、数据库、构建产物、API Key 或用户提供的原著文本。
 - 不让模型修改胜负、数值、物品、关系、时间线或程序结算结果。
+- AI 正文生成前必须先通过 `narrative-logic.v1` 逻辑预检；缺欲望、信息边界、权限、资源、固定后果、现场反应或可追踪状态变化时不得调用模型。
 - NPC 只能使用角色已经公开或有可靠来源的信息；隐藏武魂、系统和未来事件不得泄露。
 - 斗一至斗四人物、势力、地点、技术和制度必须按年代隔离；同人二设不得冒充原著事实。
 - 用户明确不需要人物和魂兽美术，不把它们列为完成条件。
@@ -37,4 +38,4 @@ npm run security:release
 
 ## 当前状态
 
-现役分支为 `codex/iterative-optimization`。四时代核心规则可玩，但真实模型四时代长篇体验、全面原著校对和发行验收尚未完成。最近的中国网文叙事逻辑改动见 `docs/research/douluo-choice-and-plot-logic.md`。
+现役分支为 `codex/iterative-optimization`。四时代核心规则可玩，但真实模型四时代长篇体验、全面原著校对和发行验收尚未完成。最近的中国网文叙事逻辑改动见 `docs/research/douluo-choice-and-plot-logic.md` 与 `docs/research/github-novel-logic-skills.md`。

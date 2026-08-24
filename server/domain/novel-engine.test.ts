@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { auditNovelEngineNarrative, auditResolutionAlignment, buildNovelEnginePack } from "./novel-engine.js";
-import { NarrativeAuditError, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing, validateInterpretedAction } from "../services/deepseek.js";
+import { NarrativeAuditError, NarrativeLogicPreflightError, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing, validateInterpretedAction } from "../services/deepseek.js";
+import { auditNarrativeLogicPacket, buildNarrativeLogicPacket } from "./story-rules.js";
+import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 
 function awakened(seed = "novel-engine") {
   const game = createGame({ gender: "男", difficulty: "标准", seed });
@@ -33,6 +35,35 @@ describe("增强小说引擎", () => {
     expect(pack.prompt).toContain("第三人称限知");
     expect(pack.prompt).not.toMatch(/投稿|番茄|第一人称|作者后台/);
     expect(pack.prompt.length).toBeLessThan(6500);
+  });
+
+  it("compiles a hard causality and continuity contract before narration", () => {
+    const game = awakened("logic-preflight");
+    const knowledge = buildSceneKnowledgePack(game, "调查觉醒记录");
+    const packet = buildNarrativeLogicPacket(game, "调查觉醒记录", { ...ordinaryResolution, minutes: 45, ruleSummary: "核对了主持者签名，但没有取得封存原件。" }, knowledge);
+    expect(packet.version).toBe("narrative-logic.v1");
+    expect(packet.protagonistContract).toMatchObject({ desire: "调查觉醒记录", action: "调查", fixedConsequence: "核对了主持者签名，但没有取得封存原件。" });
+    expect(packet.continuityContract.requiredStateChanges).toContain("时间推进 45 分钟");
+    expect(packet.continuityContract.forbiddenInventions).toContain("让 NPC 知道隐藏武魂、系统、未来事件或未公开身份");
+    expect(packet.reactionChain.requiredTraces.at(-1)).toContain("可行动问题、责任或风险");
+    expect(auditNarrativeLogicPacket(packet)).toEqual([]);
+  });
+
+  it("blocks narration when the preflight packet loses desire, consequence or state change", () => {
+    const game = awakened("logic-preflight-block");
+    const packet = buildNarrativeLogicPacket(game, "调查", ordinaryResolution, buildSceneKnowledgePack(game, "调查"));
+    packet.protagonistContract.desire = "";
+    packet.protagonistContract.fixedConsequence = "";
+    packet.continuityContract.requiredStateChanges = [];
+    expect(auditNarrativeLogicPacket(packet)).toEqual(expect.arrayContaining(["逻辑预检缺少主角当前欲望或玩家行动", "逻辑预检缺少不可改写的程序后果", "逻辑预检没有任何可追踪状态变化"]));
+  });
+
+  it("does not demand an awakening authority for an unrelated later training action", () => {
+    const game = awakened("logic-preflight-unrelated-training");
+    game.view.character!.innateSoulPower = 10;
+    game.view.relations = game.view.relations.filter((relation) => !/觉醒|执事|主持/.test(`${relation.name}${relation.relation}${relation.impression}`));
+    const packet = buildNarrativeLogicPacket(game, "与同伴训练生命防线连携", { ...ordinaryResolution, intent: "固定连携训练", minutes: 180, ruleSummary: "三人完成一轮共同训练，熟练度与疲劳已结算。" }, buildSceneKnowledgePack(game, "与同伴训练生命防线连携"));
+    expect(auditNarrativeLogicPacket(packet)).not.toContain("异常事件需要制度反应，但逻辑预检找不到有权限的现场人物");
   });
 
   it("routes dialogue, character, emotion and goldfinger only when relevant", () => {
@@ -95,5 +126,13 @@ describe("增强小说引擎", () => {
     expect(retries).toEqual([2, 3]);
     expect(guidance[1]).toEqual(["时间线错误"]);
     expect(guidance[2]).toEqual(["人物知情越界"]);
+  });
+
+  it("does not spend retries when deterministic logic preflight fails", async () => {
+    const game = awakened("logic-preflight-no-retry");
+    const attempts: number[] = [];
+    const narrator = (async () => { throw new NarrativeLogicPreflightError(["缺少权限人"]); }) as typeof narrateWithDeepSeek;
+    await expect(narrateWithAuditRetries(game, "调查", ordinaryResolution, undefined, (attempt) => attempts.push(attempt), narrator)).rejects.toBeInstanceOf(NarrativeLogicPreflightError);
+    expect(attempts).toEqual([]);
   });
 });
