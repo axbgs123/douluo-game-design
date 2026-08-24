@@ -181,7 +181,6 @@ export default function App() {
 
       {game?.status === "character_shaping" && game.shaping && <CharacterShapingScreen
         candidate={game.candidates.find((candidate) => candidate.id === game.selectedCandidateId) ?? game.candidates[0]}
-        era={game.era}
         shaping={game.shaping}
         busy={busy}
         onReroll={() => run(() => rerollCharacterShaping(game.id, "personality", []))}

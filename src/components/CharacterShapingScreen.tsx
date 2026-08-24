@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CandidatePublic, CharacterShapingView, GameEra } from "../../shared/game";
-import { CharacterPortrait } from "./CharacterPortrait";
+import type { CandidatePublic, CharacterShapingView } from "../../shared/game";
 
 interface CharacterShapingScreenProps {
   candidate: CandidatePublic;
-  era: GameEra;
   shaping: CharacterShapingView;
   busy: boolean;
   onReroll: () => Promise<void>;
   onComplete: (input: { personalityId: string; keywords: string[]; answers: Record<string, string> }) => Promise<void>;
 }
 
-export function CharacterShapingScreen({ candidate, era, shaping, busy, onReroll, onComplete }: CharacterShapingScreenProps) {
+export function CharacterShapingScreen({ candidate, shaping, busy, onReroll, onComplete }: CharacterShapingScreenProps) {
   const [personalityId, setPersonalityId] = useState(shaping.personalityOptions[0]?.id ?? "");
   const [keywordText, setKeywordText] = useState(shaping.personalityOptions[0]?.keywords.join("，") ?? "");
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -39,7 +37,6 @@ export function CharacterShapingScreen({ candidate, era, shaping, busy, onReroll
   return <main className="shaping-page">
     <header className="shaping-header">
       <p className="eyebrow">角色已选定</p>
-      <CharacterPortrait era={era} gender={candidate.gender} name={candidate.name} />
       <h1>{candidate.name}</h1>
       <div className="shaping-identity"><strong>{candidate.originName}</strong><span>{candidate.selfKnowledge}</span><p>{candidate.knownBackground}</p></div>
     </header>

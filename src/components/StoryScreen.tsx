@@ -3,7 +3,6 @@ import type { CheckpointSummary, GameSpeed, GameView, HuntingView, MapLevel } fr
 import { formatSoulCoins } from "../../shared/currency";
 import { worldMapPoint } from "../../shared/world-map";
 import { DouluoWorldMap } from "./DouluoWorldMap";
-import { CharacterPortrait } from "./CharacterPortrait";
 
 interface StoryScreenProps {
   game: GameView;
@@ -203,7 +202,6 @@ function CharacterPanel({ game, submit, busy }: { game: GameView; submit: (value
   if (!game.character) return <LockedPanel text="觉醒后显示" />;
   const character = game.character;
   return <div className="detail-stack">
-    <CharacterPortrait era={game.era} gender={character.gender} name={character.name} compact />
     <div className="identity-block"><small>{character.age} 岁 · {character.gender}</small><strong>{character.name}</strong><span>{character.originName}</span></div>
     <dl className="stat-list">
       <div><dt>魂力</dt><dd>{character.soulRank} 级 · {character.cultivationProgress}</dd></div><div><dt>状态</dt><dd>{character.condition} · {character.fatigue}</dd></div>
