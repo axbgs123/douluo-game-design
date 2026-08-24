@@ -248,6 +248,50 @@ describe("完整游玩规则", () => {
     expect(game.view.combat!.comboCooldownUntilRound).toBe(6);
   });
 
+  it("五至七人固定战阵要求精确岗位人数、共同训练和全员协同储备", () => {
+    const game = awakened("full-squad-formations");
+    game.view.relations.push(
+      { id: "full-striker-a", name: "陆锋", relation: "强攻系战士", impression: "可靠并擅长正面攻击", strength: 80, category: "同伴" },
+      { id: "full-striker-b", name: "赵烈", relation: "强攻系战士", impression: "可靠并擅长侧翼攻击", strength: 80, category: "同伴" },
+      { id: "full-guard-a", name: "石岳", relation: "防御系护卫", impression: "可靠并擅长盾牌守护", strength: 80, category: "同伴" },
+      { id: "full-guard-b", name: "韩垒", relation: "防御系护卫", impression: "可靠并擅长阵地守护", strength: 80, category: "同伴" },
+      { id: "full-control", name: "宁索", relation: "控制系魂师", impression: "可靠并擅长束缚阵法", strength: 80, category: "同伴" },
+      { id: "full-healer", name: "苏叶", relation: "治疗系医师", impression: "可靠并擅长治愈救护", strength: 80, category: "同伴" },
+      { id: "full-scout", name: "凌风", relation: "敏攻侦察系魂师", impression: "可靠并擅长侦察追踪", strength: 80, category: "同伴" },
+    );
+    const train = (action: string, sessions: number) => {
+      for (let index = 0; index < sessions; index += 1) {
+        game.world.fatiguePoints = 0;
+        expect(resolveAction(game, action).intent).toBe("连携训练");
+      }
+    };
+    const enterCombat = (id: string, names: string[]) => {
+      game.view.hunting = { stage: "战斗", ringIndex: 1, recommendations: [], preparation: [], trailProgress: "完整编队测试" };
+      game.view.combat = { id, enemyName: "高阶测试魂兽", enemyPower: "万年", round: 0, playerCondition: "良好", enemyCondition: "完好", distance: "中距离", escaped: false, allies: names.map((name) => ({ name, role: name === "陆锋" || name === "赵烈" ? "强攻" as const : name === "石岳" || name === "韩垒" ? "防护" as const : name === "宁索" ? "控制" as const : name === "苏叶" ? "治疗" as const : "侦察" as const, readiness: 100, condition: "完好" as const })) };
+      game.world.flags.combatEnemyHp = 2_000;
+    };
+
+    const fiveNames = ["陆锋", "石岳", "宁索", "苏叶", "凌风"];
+    train("与陆锋石岳宁索苏叶凌风共同训练五环协战阵", 4);
+    enterCombat("five-person-trained", fiveNames);
+    expect(resolveAction(game, "让陆锋石岳宁索苏叶凌风准备五环协战阵").intent).toBe("战斗");
+    expect(game.view.combat!.comboPreparation).toMatchObject({ name: "五环协战阵", allyNames: fiveNames });
+    expect(resolveAction(game, "发动五环协战阵").intent).toBe("战斗");
+    expect(game.view.combat!.allies?.map((ally) => ally.readiness)).toEqual([70, 70, 70, 70, 70]);
+    expect(game.view.combat!.comboCooldownUntilRound).toBe(8);
+
+    game.view.combat = undefined;
+    game.view.hunting = undefined;
+    train("与陆锋赵烈石岳韩垒宁索苏叶凌风共同训练七星全域战阵", 6);
+    const sevenNames = ["陆锋", "赵烈", "石岳", "韩垒", "宁索", "苏叶", "凌风"];
+    enterCombat("seven-person-trained", sevenNames);
+    expect(resolveAction(game, "让七名互补岗位同伴准备七星全域战阵").intent).toBe("战斗");
+    expect(game.view.combat!.comboPreparation).toMatchObject({ name: "七星全域战阵", allyNames: sevenNames });
+    expect(resolveAction(game, "发动七星全域战阵").intent).toBe("战斗");
+    expect(game.view.combat!.allies?.map((ally) => ally.readiness)).toEqual([60, 60, 60, 60, 60, 60, 60]);
+    expect(game.view.combat!.comboCooldownUntilRound).toBe(10);
+  });
+
   it("斗四现役人员必须先参谋部述职并完成一个月多模块培训，岗位按能力证据分配", () => {
     const prepare = (seed: string) => {
       const game = awakened(seed);

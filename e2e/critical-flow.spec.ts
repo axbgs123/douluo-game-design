@@ -64,6 +64,33 @@ async function seedFourPersonFormationGame() {
   database.saveGame(game, "e2e.four-person-fixture");
 }
 
+async function seedSevenPersonFormationGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 1, gender: "女", difficulty: "标准", seed: "e2e-seven-person-formation" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "七人战阵验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  const companions = [
+    { id: "e2e-seven-striker-a", name: "陆锋", relation: "强攻系战士", impression: "可靠并完成七人共同训练", strength: 80, category: "同伴" as const, role: "强攻" as const },
+    { id: "e2e-seven-striker-b", name: "赵烈", relation: "强攻系战士", impression: "可靠并完成七人共同训练", strength: 80, category: "同伴" as const, role: "强攻" as const },
+    { id: "e2e-seven-guard-a", name: "石岳", relation: "防御系护卫", impression: "可靠并完成七人共同训练", strength: 80, category: "同伴" as const, role: "防护" as const },
+    { id: "e2e-seven-guard-b", name: "韩垒", relation: "防御系护卫", impression: "可靠并完成七人共同训练", strength: 80, category: "同伴" as const, role: "防护" as const },
+    { id: "e2e-seven-control", name: "宁索", relation: "控制系魂师", impression: "可靠并完成七人共同训练", strength: 80, category: "同伴" as const, role: "控制" as const },
+    { id: "e2e-seven-healer", name: "苏叶", relation: "治疗系医师", impression: "可靠并完成七人共同训练", strength: 80, category: "同伴" as const, role: "治疗" as const },
+    { id: "e2e-seven-scout", name: "凌风", relation: "敏攻侦察系魂师", impression: "可靠并完成七人共同训练", strength: 80, category: "同伴" as const, role: "侦察" as const },
+  ];
+  game.view.relations.push(...companions.map(({ role: _role, ...relation }) => relation));
+  game.view.comboTrainings.push({ id: "七星全域战阵:e2e", name: "七星全域战阵", roles: companions.map((item) => item.role), companionNames: companions.map((item) => item.name).sort(), sessions: 6, failures: 0, mastery: 60, evidence: [{ date: "验收前训练", result: "七名固定成员完成岗位、口令与接替训练" }] });
+  game.view.hunting = { stage: "战斗", ringIndex: 2, recommendations: [], preparation: companions.map((item) => `同行者：${item.name}（${item.role}·协同100）`), trailProgress: "七人战阵验收" };
+  game.view.combat = { id: "e2e-seven-combat", enemyName: "万年测试魂兽", enemyPower: "万年", round: 0, playerCondition: "良好", enemyCondition: "完好", distance: "中距离", escaped: false, allies: companions.map((item) => ({ name: item.name, role: item.role, readiness: 100, condition: "完好" })) };
+  game.world.flags.combatEnemyHp = 2_000;
+  database.saveGame(game, "e2e.seven-person-fixture");
+}
+
 async function seedSoulSpiritGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -451,6 +478,30 @@ test("四人编队可以从共同训练、明确出发一路进入实战并发�
   await expect(page.locator(".action-receipt p")).toContainText("发动连携“四象战阵”");
   await expect(page.locator(".hunt-stage strong")).toHaveText("吸收");
   await expect(page.locator(".hunt-stage")).toContainText("目标已被击败");
+});
+
+test("七人固定战阵会在浏览器核对重复岗位、训练档案、全员储备与长冷却", async ({ page }) => {
+  await seedSevenPersonFormationGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "七人战阵验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
+  await page.getByRole("button", { name: /^猎魂/ }).click();
+  const training = page.locator(".player-relation-ledger article").filter({ hasText: "七星全域战阵" });
+  await expect(training).toContainText("60%");
+  const combat = page.locator(".hunt-target").filter({ hasText: "万年测试魂兽" });
+  await expect(combat).toContainText("陆锋（强攻·协同100");
+  await expect(combat).toContainText("赵烈（强攻·协同100");
+  await expect(combat).toContainText("石岳（防护·协同100");
+  await expect(combat).toContainText("韩垒（防护·协同100");
+  await page.getByRole("button", { name: "准备七人战阵" }).click();
+  await expect(combat).toContainText("连携准备 · 七星全域战阵");
+  await page.getByRole("button", { name: "发动连携" }).click();
+  await expect(combat).toContainText("协同60");
+  await expect(combat).toContainText("连携冷却至第 10 回合");
+  await page.getByText("查看判定", { exact: true }).click();
+  await expect(page.locator(".action-receipt p")).toContainText("发动连携“七星全域战阵”");
 });
 
 test("斗二魂灵必须从申请、适配评估走到付费契约并形成持久魂灵", async ({ page }) => {

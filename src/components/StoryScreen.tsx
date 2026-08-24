@@ -353,7 +353,12 @@ function HuntPanel({ game, submit, busy }: { game: GameView; submit: (value: str
   const canHunt = rank > 0 && (game.character?.soulRings.length ?? 0) < Math.floor(rank / 10);
   if (!hunting) return <div className="hunt-start"><p>{canHunt ? "魂力已经到达瓶颈，可以开始调查目标。" : `当前 ${rank} 级，达到下一个十级瓶颈后才能吸收魂环。`}</p><button type="button" disabled={busy || !canHunt} onClick={() => submit("开始调查适合当前武魂的魂兽")}>调查魂兽</button></div>;
   return <div className="hunt-panel">
-    {game.combat && (game.combat.allies?.length ?? 0) >= 4 && <div className="button-row"><button type="button" disabled={busy} onClick={() => submit("让四名互补岗位同伴准备四人阵型")}>准备四人编队</button></div>}
+    {game.combat && (game.combat.allies?.length ?? 0) >= 4 && <div className="button-row">
+      {(game.combat.allies?.length ?? 0) >= 7 ? <button type="button" disabled={busy} onClick={() => submit("让七名互补岗位同伴准备七星全域战阵")}>准备七人战阵</button>
+        : (game.combat.allies?.length ?? 0) >= 6 ? <button type="button" disabled={busy} onClick={() => submit("让六名互补岗位同伴准备六芒轮转阵")}>准备六人战阵</button>
+          : (game.combat.allies?.length ?? 0) >= 5 ? <button type="button" disabled={busy} onClick={() => submit("让五名互补岗位同伴准备五环协战阵")}>准备五人战阵</button>
+            : <button type="button" disabled={busy} onClick={() => submit("让四名互补岗位同伴准备四人阵型")}>准备四人编队</button>}
+    </div>}
     {game.comboTrainings.length > 0 && <div className="player-relation-ledger">{game.comboTrainings.map((training) => <article key={training.id}><header><strong>{training.name}</strong><span>{training.mastery}%{training.branch ? ` · ${training.branch}` : ""}</span></header><p>{training.companionNames.join(" / ")} · {training.roles.join(" + ")}</p><small>训练 {training.sessions} 次 · 失败复盘 {training.failures} 次 · 证据 {training.evidence.length} 条</small></article>)}</div>}
     <div className="hunt-stage"><span>第 {hunting.ringIndex} 魂环</span><strong>{hunting.stage}</strong><small>{hunting.trailProgress}</small></div>
     {hunting.targetName && <article className="hunt-target"><span>目标</span><strong>{hunting.targetName}</strong>{hunting.targetYears && <small>约 {hunting.targetYears} 年</small>}</article>}
