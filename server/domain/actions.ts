@@ -1999,12 +1999,68 @@ function workResolution(game: StoredGame, action: string): ActionResolution {
 function inheritanceResolution(game: StoredGame, action: string): ActionResolution {
   const inheritance = game.view.worldInheritance!;
   const institution = inheritance.institutions.find((item) => action.includes(item.name));
+  const branch = inheritance.branches?.find((item) => action.includes(item.name));
   const lineageSubject = inheritance.lineage.find((item) => action.includes(item.name)) ?? inheritance.lineage.at(-1)!;
-  const subject = institution ?? lineageSubject;
-  const subjectName = institution?.name ?? `${subject.name}的生平记录`;
+  const subject = institution ?? branch ?? lineageSubject;
+  const subjectName = institution?.name ?? (branch ? `${branch.name}的旁支记录` : `${lineageSubject.name}的生平记录`);
+
+  if (institution) {
+    institution.currentEvidence ??= [];
+    institution.claimStatus ??= "未主张";
+    institution.claimEvidence ??= [];
+    const currentEvidenceSteps = [
+      `当前时代登记机关确认“${institution.name}”没有可直接承继的连续产权登记`,
+      `${game.view.location ?? "当地"}档案保管人出具旧址、名称沿革与现权利人相互分离的书面说明`,
+    ];
+    if (/提交|申请/.test(action) && /主张|历史权益/.test(action)) {
+      if (institution.verification !== "已核验") return impossible(`必须先把${institution.name}的旧世存在核验到“已核验”，家族单方记录不能直接用于主张。`, [`继续核验${institution.name}`, "寻找独立年代记录", "放弃主张"]);
+      if (institution.currentEvidence.length < 2) return impossible(`还需要两条当代权属调查证据；目前只有${institution.currentEvidence.length}条。`, [`调查${institution.name}当前产权登记`, `追查${institution.name}旧址现权利人`, "放弃主张"]);
+      if (institution.claimStatus !== "未主张") return impossible(`${institution.name}的历史权益程序当前为“${institution.claimStatus}”，不能重复提交同一主张。`, [institution.claimStatus === "待审理" ? `参加${institution.name}历史权益听证` : "调查其他旧世机构", "继续当前人生"]);
+      const filingFee = 10;
+      if (game.view.character!.coins < filingFee) return impossible(`提交档案复制、公示与送达需要${formatSoulCoins(filingFee)}，当前资金不足。`, ["工作赚取魂币", "暂缓提交", "整理现有证据"]);
+      game.view.character!.coins -= filingFee;
+      recordEconomyTransaction(game, "支出", filingFee, `${game.view.location ?? "当地"}历史权益受理处`, `${institution.name}历史权益主张受理费`);
+      institution.claimStatus = "待审理";
+      institution.claimEvidence.push(`缴纳${formatSoulCoins(filingFee)}受理费并提交旧世证据、当代权属调查与公开送达申请`);
+      return { intent: "提交历史权益主张", minutes: speedMinutes(game, 180, 720), ruleSummary: `${institution.name}进入待审理状态；这只是程序性受理，不冻结现权利、不移交成员、领地或财产。`, fallbackNarrative: `受理员把旧档与当代登记分成两叠，逐页编号。我交了复制和送达费用，拿到的只是一张待审通知，而不是钥匙、地契或任何人的效忠。`, suggestions: [`参加${institution.name}历史权益听证`, "准备回答现权利人异议", "继续工作筹资"] };
+    }
+    if (/听证|审理|裁定/.test(action)) {
+      if (institution.claimStatus !== "待审理") return impossible(`${institution.name}没有处于待审理的有效主张。`, [`提交${institution.name}历史权益主张`, "调查其他旧世机构", "继续当前人生"]);
+      const limited = institution.state === "有据可查" || institution.state === "碎片传承";
+      institution.claimStatus = limited ? "有限承认" : "已驳回";
+      institution.recognizedRight = limited ? "旧档案查阅、复制与名称沿革说明权" : undefined;
+      institution.claimEvidence.push(limited
+        ? "听证仅承认旧档案查阅、复制与名称沿革说明权；现产权、成员、领地与经营许可均不在承认范围"
+        : `听证认为“${institution.state}”不足以对抗当代登记与现权利人，历史权益主张被驳回`);
+      return { intent: "参加历史权益听证", minutes: speedMinutes(game, 240, 960), ruleSummary: limited ? `${institution.name}获得有限承认，仅限档案权利；如要经营，必须另行投资成立当代主体。` : `${institution.name}主张被驳回，旧世传闻不产生当代产权。`, fallbackNarrative: limited ? `审理人承认这段历史值得被查阅和说明，却把边界写得很清楚：旧名字不是今天的地契，祖先的组织也不是我的部下。` : `旧账上的名字没能跨过漫长年代里的登记断层。裁定盖章后，纸上的历史仍然存在，但它不能从今天的人手里拿走任何东西。`, suggestions: limited ? [`以${institution.name}旧址线索重新投资经营`, "复制核验档案", "继续积攒启动资金"] : ["保存驳回记录", "调查其他旧世机构", "继续当前人生"] };
+    }
+    if (/重新投资|复建|重新经营/.test(action)) {
+      if (institution.claimStatus !== "有限承认") return impossible(`必须先取得${institution.name}的有限历史承认，才能把其名称沿革作为新主体的公开来历；这仍不代表继承旧产权。`, [`参加${institution.name}历史权益听证`, "另行开办普通商铺", "继续当前人生"]);
+      if (institution.reestablishedBusiness) return impossible(`${institution.reestablishedBusiness}已经作为当代新主体登记，不能重复领取旧世资源。`, ["经营现有生意", "核对经营账目", "继续当前人生"]);
+      const investment = 30;
+      if (game.view.character!.coins < investment) return impossible(`成立当代新主体需要场地、登记与首批货物共${formatSoulCoins(investment)}，当前资金不足。`, ["工作赚取魂币", "寻找普通合伙人", "暂缓复建"]);
+      if (game.view.economy.business) return impossible(`当前已经经营“${game.view.economy.business}”，需要先处理现实经营能力，不能凭历史线索无成本复制第二份产业。`, ["经营现有生意", "核对账目", "暂缓复建"]);
+      const business = `${institution.name}沿革新社`;
+      game.view.character!.coins -= investment;
+      game.view.economy.business = business;
+      institution.reestablishedBusiness = business;
+      institution.claimEvidence.push(`另行投入${formatSoulCoins(investment)}，新设“${business}”；法律与账目主体均属于当前时代`);
+      recordEconomyTransaction(game, "投资", investment, business, `基于${institution.name}名称沿革线索成立当代新主体`);
+      return { intent: "投资成立当代新主体", minutes: speedMinutes(game, 720, 2880), ruleSummary: `投入${formatSoulCoins(investment)}成立${business}；没有继承旧成员、旧领地、旧库存或旧资金。`, fallbackNarrative: `我租下的是今天的铺面，买的是今天的货，登记簿上也写着今天的新名字。旧档只解释招牌从何而来，柜台、债务和风险全得从零开始。`, suggestions: ["经营现有生意", "调查当地需求", "核对启动账目"] };
+    }
+    if (institution.verification === "已核验" && /当前|产权|权属|登记|旧址|现权利/.test(action)) {
+      const nextCurrentEvidence = currentEvidenceSteps.find((item) => !institution.currentEvidence!.includes(item));
+      if (!nextCurrentEvidence) return { intent: "调查当代权属", minutes: 30, ruleSummary: `${institution.name}的当代权属边界已完成两处调查；结果明确排除了自动继承。`, fallbackNarrative: `登记页与旧址说明已经互相对上，再翻同一套目录不会多出一块属于我的地。`, suggestions: [`提交${institution.name}历史权益主张`, "调查其他旧世机构", "继续当前人生"] };
+      institution.currentEvidence.push(nextCurrentEvidence);
+      game.world.metrics.discoveries += 1;
+      return { intent: "调查当代权属", minutes: speedMinutes(game, 180, 720), ruleSummary: `${institution.name}新增一条当代权属证据（${institution.currentEvidence.length}/2）；证据确认历史与现产权相互分离。`, fallbackNarrative: `我没有只问家里留下的说法，而是去查今天谁登记、谁维护、谁承担债务。新证据让边界更清楚，也让“祖上有过”不能被偷换成“现在归我”。`, suggestions: institution.currentEvidence.length >= 2 ? [`提交${institution.name}历史权益主张`, "核对申请费用", "放弃主张"] : [`追查${institution.name}旧址现权利人`, "寻找当代登记机关", "继续当前人生"] };
+    }
+  }
   const evidenceSteps = institution
     ? [`在当前时代的机构目录中找到“${institution.name}”的异名或残卷索引`, `地方账册、谱牒或遗址记录与旧世档案出现两处可交叉对应的细节`]
-    : [`当前时代的地方谱牒记录了${lineageSubject.name}档案的转交链`, `一份独立年代记录与旧世结算摘要中的地点、身份和后果能够互相印证`];
+    : branch
+      ? [`当前时代谱牒找到${branch.name}与第${branch.sourceGeneration}代家庭册相符的转交索引`, `独立登记确认${branch.name}以${branch.route}进入家庭的记录存在，但不证明能力或财产继承`]
+      : [`当前时代的地方谱牒记录了${lineageSubject.name}档案的转交链`, `一份独立年代记录与旧世结算摘要中的地点、身份和后果能够互相印证`];
   const nextEvidence = evidenceSteps.find((item) => !subject.evidence.includes(item));
   if (!nextEvidence) return {
     intent: "核验旧世档案",
@@ -2020,7 +2076,7 @@ function inheritanceResolution(game: StoredGame, action: string): ActionResoluti
     task.progressEvidence ??= [];
     task.progressEvidence.push(`${subjectName}：${nextEvidence}`);
     task.progressEvidence = task.progressEvidence.slice(-8);
-    if (!institution && lineageSubject.name === inheritance.ancestorName && subject.verification === "已核验") task.status = "完成";
+    if (!institution && !branch && lineageSubject.name === inheritance.ancestorName && subject.verification === "已核验") task.status = "完成";
   }
   game.world.metrics.discoveries += 1;
   return {
@@ -3111,7 +3167,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/使用|服用|吃下|吃掉/.test(action)) resolution = useItemResolution(game, action);
   else if (/购买|买|采购/.test(action)) resolution = buyResolution(game, action);
   else if (/打工|工作|赚钱|干活/.test(action)) resolution = workResolution(game, action);
-  else if (game.view.worldInheritance && (/旧世|祖先|档案|家谱|谱牒|旧产业|历史权益/.test(action) || game.view.worldInheritance.institutions.some((item) => action.includes(item.name))) && /核验|查证|调查|追查|验证/.test(action)) resolution = inheritanceResolution(game, action);
+  else if (game.view.worldInheritance && (/旧世|祖先|档案|家谱|谱牒|旧产业|历史权益|旁支/.test(action) || game.view.worldInheritance.institutions.some((item) => action.includes(item.name)) || game.view.worldInheritance.branches?.some((item) => action.includes(item.name))) && /核验|查证|调查|追查|验证|提交|申请|主张|听证|审理|裁定|投资|复建|经营/.test(action)) resolution = inheritanceResolution(game, action);
   else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
   else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验|责任编辑|核验编辑|采访.*编辑|提交.*补充.*(?:证据|材料)|独家.*(?:证据|材料|线索)|对比.*(?:媒体|两家)|比较.*(?:报道|媒体)/.test(action)) resolution = mediaResolution(game, action);

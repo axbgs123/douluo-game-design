@@ -2,6 +2,33 @@ import { expect, test } from "@playwright/test";
 
 let fixtureDatabase: typeof import("../server/db.js") | undefined;
 
+async function seedInheritanceRightsGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const parent = generator.createGame({ era: 1, gender: "男", difficulty: "标准", seed: "e2e-inheritance-rights-parent" });
+  generator.selectCandidate(parent, parent.view.candidates[0].id, "旧世档案人");
+  const parentPersonality = parent.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(parent, { personalityId: parentPersonality.id, keywords: parentPersonality.keywords, answers: Object.fromEntries(parentPersonality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(parent);
+  parent.view.managedFactions.push({ id: "e2e-archive-sect", name: "青册门", role: "门主", members: 36, resources: 120, territory: ["青册谷"], departments: ["档案堂"], internalIssues: [] });
+  parent.view.status = "ended";
+  parent.view.runProgress.ending = "留下青册档案";
+  parent.view.runProgress.settlement = { ending: "留下青册档案", baseScore: 70, multiplier: 1, legacyPoints: 70, highlights: [], qualified: true };
+  const game = generator.createEraSuccessor(parent);
+  generator.selectCandidate(game, game.view.candidates[0].id, "权益验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.character!.coins = 100;
+  const institution = game.view.worldInheritance!.institutions[0];
+  institution.verification = "已核验";
+  institution.evidence.push("独立目录证据", "地方账册证据");
+  institution.currentEvidence = ["当代登记无连续产权", "旧址与现权利人分离说明"];
+  database.saveGame(game, "e2e.inheritance-rights-fixture");
+}
+
 async function seedComboTrainingGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -831,6 +858,26 @@ test("斗四现役人员必须述职并完成一个月多模块培训后才能�
   await expect(starship).toContainText("真实飞行 0 小时");
   await starship.getByRole("button", { name: "参谋部分岗" }).click();
   await expect(starship).toContainText("入舰档案 · 已分配 · 培训 35/30 天 · 舰队参谋部 · 航线与情报见习参谋");
+});
+
+test("旧世机构在浏览器中必须经过主张、听证和付费新设主体", async ({ page }) => {
+  await seedInheritanceRightsGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "权益验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await page.getByRole("button", { name: /^世界/ }).click();
+  const institution = page.locator(".lineage-list article").filter({ hasText: "青册门" });
+  await expect(institution).toContainText("主张：未主张");
+  await institution.getByRole("button", { name: "提交主张" }).click();
+  await expect(institution).toContainText("主张：待审理");
+  await institution.getByRole("button", { name: "参加听证" }).click();
+  await expect(institution).toContainText("主张：有限承认");
+  await expect(institution).toContainText("旧档案查阅、复制与名称沿革说明权");
+  await institution.getByRole("button", { name: "投资新主体" }).click();
+  await page.getByRole("button", { name: "人物", exact: true }).click();
+  await expect(page.locator(".panel-copy").filter({ hasText: "青册门沿革新社" })).toContainText("当代经营主体");
+  await expect(page.getByText("6 银魂币", { exact: true }).first()).toBeVisible();
 });
 
 test("有效结算可以在同一存档开启下一时代并核验累积谱系", async ({ page }) => {

@@ -539,7 +539,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "城市告示处", stance: "地方治安", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(19);
+    expect(migrated.schemaVersion).toBe(20);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -1292,6 +1292,64 @@ describe("第一部世界资料", () => {
     expect(successor.view.worldInheritance!.institutions[0].verification).toBe("传闻");
   });
 
+  it("历史权益必须调查当代权属、缴费听证并另行投资成立新主体", () => {
+    const parent = awakened("inheritance-rights-hearing");
+    parent.view.managedFactions.push({ id: "archive-sect", name: "青册门", role: "门主", members: 36, resources: 120, territory: ["青册谷"], departments: ["档案堂"], internalIssues: [] });
+    parent.view.status = "ended";
+    parent.view.runProgress.ending = "留下青册档案";
+    parent.view.runProgress.settlement = { ending: "留下青册档案", baseScore: 70, multiplier: 1, legacyPoints: 70, highlights: [], qualified: true };
+    const successor = createEraSuccessor(parent);
+    selectCandidate(successor, successor.view.candidates[0].id);
+    finalizeCharacterShaping(successor, { keywords: ["谨慎", "好学"], answers: {} });
+    awakenCharacter(successor);
+    successor.view.character!.coins = 100;
+    const institution = successor.view.worldInheritance!.institutions[0];
+
+    expect(resolveAction(successor, "提交青册门历史权益主张").intent).toBe("无法完成");
+    resolveAction(successor, "调查核验旧世机构青册门");
+    resolveAction(successor, "继续查证旧世机构青册门");
+    expect(institution.verification).toBe("已核验");
+    expect(resolveAction(successor, "提交青册门历史权益主张").intent).toBe("无法完成");
+    expect(resolveAction(successor, "调查青册门当前产权登记").intent).toBe("调查当代权属");
+    expect(resolveAction(successor, "追查青册门旧址现权利人").intent).toBe("调查当代权属");
+    expect(resolveAction(successor, "提交青册门历史权益主张").intent).toBe("提交历史权益主张");
+    expect(institution.claimStatus).toBe("待审理");
+    expect(successor.view.character!.coins).toBe(90);
+    expect(successor.view.managedFactions).toHaveLength(0);
+
+    expect(resolveAction(successor, "参加青册门历史权益听证").intent).toBe("参加历史权益听证");
+    expect(institution).toMatchObject({ claimStatus: "有限承认", recognizedRight: "旧档案查阅、复制与名称沿革说明权" });
+    expect(successor.view.managedFactions).toHaveLength(0);
+    expect(successor.view.economy.business).toBeUndefined();
+    expect(resolveAction(successor, "以青册门旧址线索重新投资经营").intent).toBe("投资成立当代新主体");
+    expect(successor.view.economy.business).toBe("青册门沿革新社");
+    expect(successor.view.character!.coins).toBe(60);
+    expect(successor.view.managedFactions).toHaveLength(0);
+    expect(successor.view.economy.transactions.slice(-2).map((entry) => entry.kind)).toEqual(["支出", "投资"]);
+  });
+
+  it("仅存传闻的旧产业在听证中会被驳回且不能复建", () => {
+    const parent = awakened("inheritance-rejected-business");
+    parent.view.economy.business = "旧河药行";
+    parent.view.status = "ended";
+    parent.view.runProgress.ending = "留下残缺账页";
+    parent.view.runProgress.settlement = { ending: "留下残缺账页", baseScore: 70, multiplier: 1, legacyPoints: 70, highlights: [], qualified: true };
+    const successor = createEraSuccessor(parent);
+    selectCandidate(successor, successor.view.candidates[0].id);
+    finalizeCharacterShaping(successor, { keywords: ["谨慎", "好学", "耐心"], answers: {} });
+    awakenCharacter(successor);
+    successor.view.character!.coins = 100;
+    resolveAction(successor, "调查核验旧世机构旧河药行");
+    resolveAction(successor, "继续查证旧世机构旧河药行");
+    resolveAction(successor, "调查旧河药行当前产权登记");
+    resolveAction(successor, "追查旧河药行旧址现权利人");
+    resolveAction(successor, "提交旧河药行历史权益主张");
+    resolveAction(successor, "参加旧河药行历史权益听证");
+    expect(successor.view.worldInheritance!.institutions[0].claimStatus).toBe("已驳回");
+    expect(resolveAction(successor, "以旧河药行旧址线索重新投资经营").intent).toBe("无法完成");
+    expect(successor.view.economy.business).toBeUndefined();
+  });
+
   it("随身物品超载会阻止长途旅行，但住处仓储不计负重", () => {
     const game = awakened("inventory-load");
     game.view.inventory.push(...Array.from({ length: 10 }, (_, index) => `沉重矿石${index}`));
@@ -1353,8 +1411,14 @@ describe("第一部世界资料", () => {
 
     const successor = createEraSuccessor(parent);
     expect(successor.view.worldInheritance!.lineage.at(-1)?.family).toMatchObject({ partnerName: "阿宁", childCount: 1 });
-    expect(successor.view.family).toEqual({ children: [], householdNotes: [] });
+    expect(successor.view.worldInheritance!.branches).toEqual([expect.objectContaining({ name: "小禾", route: "收养", sourceGeneration: 1, verification: "传闻" })]);
     expect(successor.view.inventory).toHaveLength(0);
+    selectCandidate(successor, successor.view.candidates[0].id);
+    finalizeCharacterShaping(successor, { keywords: ["谨慎", "好学", "耐心"], answers: {} });
+    awakenCharacter(successor);
+    expect(resolveAction(successor, "核验旁支小禾的家谱").intent).toBe("核验旧世档案");
+    expect(successor.view.worldInheritance!.branches[0].verification).toBe("部分核验");
+    expect(successor.view.family).toEqual({ children: [], householdNotes: [] });
   });
 
   it("未成年角色不会进入成人化关系情节", () => {

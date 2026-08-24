@@ -703,6 +703,7 @@ export interface WorldInheritanceView {
   legacyArtifact: string;
   echoes: string[];
   lineage: LineageRecordView[];
+  branches: LineageBranchView[];
   institutions: InheritedInstitutionView[];
 }
 
@@ -718,6 +719,17 @@ export interface LineageRecordView {
   family?: { partnerName?: string; childCount: number; evidence: string[] };
 }
 
+export interface LineageBranchView {
+  id: string;
+  sourceGeneration: number;
+  sourceEra: GameEra;
+  name: string;
+  route: "出生" | "收养";
+  parentNames: string[];
+  verification: "传闻" | "部分核验" | "已核验";
+  evidence: string[];
+}
+
 export interface InheritedInstitutionView {
   id: string;
   name: string;
@@ -726,6 +738,11 @@ export interface InheritedInstitutionView {
   state: "有据可查" | "碎片传承" | "仅存传闻" | "已知断绝";
   verification: "传闻" | "部分核验" | "已核验";
   evidence: string[];
+  currentEvidence?: string[];
+  claimStatus?: "未主张" | "待审理" | "有限承认" | "已驳回";
+  claimEvidence?: string[];
+  recognizedRight?: string;
+  reestablishedBusiness?: string;
 }
 
 export interface MediaOutletReputationView {

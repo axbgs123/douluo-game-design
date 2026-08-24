@@ -1415,7 +1415,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 19,
+    schemaVersion: 20,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1515,6 +1515,7 @@ export function createEraSuccessor(parent: StoredGame, meta?: MetaProgressionVie
     ...(parent.view.family.partner ? [`家庭档案记载${ancestor.name}与${parent.view.family.partner.name}结为${parent.view.family.partner.status}`] : []),
   ].slice(0, 4);
   const previousLineage = parent.view.worldInheritance?.lineage ?? [];
+  const previousBranches = parent.view.worldInheritance?.branches ?? [];
   const lineage = [...previousLineage, {
     generation: priorGeneration + 1,
     era: sourceEra,
@@ -1534,14 +1535,32 @@ export function createEraSuccessor(parent: StoredGame, meta?: MetaProgressionVie
       ],
     },
   }];
+  const branches = [...previousBranches, ...parent.view.family.children.map((child) => ({
+    id: `lineage-branch-${priorGeneration + 1}-${child.id}`,
+    sourceGeneration: priorGeneration + 1,
+    sourceEra,
+    name: child.name,
+    route: child.route,
+    parentNames: [...child.parentNames],
+    verification: "传闻" as const,
+    evidence: [`家庭册记载${child.name}以${child.route}路径进入第${priorGeneration + 1}代家庭；该记录不证明武魂、天赋、产权或直系继承关系`],
+  }))].filter((branch, index, all) => all.findIndex((item) => item.id === branch.id) === index);
   const carriedInstitutions = (parent.view.worldInheritance?.institutions ?? []).map((institution) => ({
     ...institution,
     state: institution.state === "有据可查" ? "碎片传承" as const : institution.state === "碎片传承" ? "仅存传闻" as const : institution.state,
     verification: institution.verification === "已核验" ? "部分核验" as const : institution.verification,
+    currentEvidence: [],
+    claimStatus: "未主张" as const,
+    claimEvidence: [
+      ...(institution.claimEvidence ?? []),
+      ...(institution.claimStatus && institution.claimStatus !== "未主张" ? [`斗${institution.sourceEra}之后的时代变迁使“${institution.claimStatus}”只保留为历史程序记录，当代权属必须重新调查`] : []),
+    ],
+    recognizedRight: undefined,
+    reestablishedBusiness: undefined,
   }));
   const newInstitutions = [
-    ...parent.view.managedFactions.map((faction) => ({ id: `legacy-faction-${faction.id}`, name: faction.name, sourceEra, formerRole: faction.role, state: faction.members >= 30 && faction.resources >= 100 ? "有据可查" as const : "碎片传承" as const, verification: "传闻" as const, evidence: [`旧世档案记载其曾有${faction.members}名成员，并控制${faction.territory.join("、") || "一处据点"}`] })),
-    ...(parent.view.economy.business ? [{ id: `legacy-business-${sourceEra}-${parent.view.economy.business}`, name: parent.view.economy.business, sourceEra, formerRole: "祖辈经营产业", state: "仅存传闻" as const, verification: "传闻" as const, evidence: ["旧账末页留下了产业名称，但没有可直接兑现的产权凭据"] }] : []),
+    ...parent.view.managedFactions.map((faction) => ({ id: `legacy-faction-${faction.id}`, name: faction.name, sourceEra, formerRole: faction.role, state: faction.members >= 30 && faction.resources >= 100 ? "有据可查" as const : "碎片传承" as const, verification: "传闻" as const, evidence: [`旧世档案记载其曾有${faction.members}名成员，并控制${faction.territory.join("、") || "一处据点"}`], currentEvidence: [], claimStatus: "未主张" as const, claimEvidence: [] })),
+    ...(parent.view.economy.business ? [{ id: `legacy-business-${sourceEra}-${parent.view.economy.business}`, name: parent.view.economy.business, sourceEra, formerRole: "祖辈经营产业", state: "仅存传闻" as const, verification: "传闻" as const, evidence: ["旧账末页留下了产业名称，但没有可直接兑现的产权凭据"], currentEvidence: [], claimStatus: "未主张" as const, claimEvidence: [] }] : []),
   ];
   const institutions = [...carriedInstitutions, ...newInstitutions].filter((institution, index, all) => all.findIndex((item) => item.name === institution.name) === index);
   const worldInheritance = {
@@ -1555,6 +1574,7 @@ export function createEraSuccessor(parent: StoredGame, meta?: MetaProgressionVie
     legacyArtifact,
     echoes: inheritedEchoes,
     lineage,
+    branches,
     institutions,
   } as const;
   const successor = createGame({ era: targetEra, gender: ancestor.gender, difficulty: parent.view.difficulty, seed: `${parent.view.seed}:generation:${targetEra}:${parent.revision}` }, meta);
