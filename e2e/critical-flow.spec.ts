@@ -400,6 +400,24 @@ test("玩家可以完成角色创建、推进故事并管理存档", async ({ pa
   await expect(page.getByRole("button", { name: "抽取三名角色" })).toBeVisible();
 });
 
+test("大陆地图可以展开、选择地点并下钻到可交互局部图", async ({ page }) => {
+  await createPlayingCharacter(page, 1);
+  await page.getByRole("button", { name: "地图", exact: true }).click();
+  await expect(page.getByRole("button", { name: "展开地图", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "展开地图", exact: true }).click();
+  await expect(page.locator(".map-panel-visual.map-expanded")).toBeVisible();
+  await expect(page.getByRole("img", { name: "斗罗大陆第1时代交互地图" })).toBeVisible();
+  await page.locator(".atlas-landmark.interactive").first().click({ force: true });
+  await expect(page.locator(".map-current-detail")).toBeVisible();
+  await page.locator(".map-level-tabs button").nth(1).click();
+  await expect(page.getByRole("img", { name: "聚居地地图" })).toBeVisible();
+  await expect(page.locator(".local-map-list button")).toHaveCount(5);
+  await page.locator(".local-map-list button").nth(1).click();
+  await expect(page.locator(".local-selection")).toBeVisible();
+  await page.getByRole("button", { name: "收起地图", exact: true }).click();
+  await expect(page.locator(".map-panel-visual.map-expanded")).toHaveCount(0);
+});
+
 test("玩家可以从界面进入斗四且出生地图不会显示斗一地标", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("img", { name: "同一幻想大陆从森林村落演变到星际文明的原创全景" })).toBeVisible();

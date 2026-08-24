@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { CheckpointSummary, GameSpeed, GameView, HuntingView, MapLevel } from "../../shared/game";
 import { formatSoulCoins } from "../../shared/currency";
 import { worldMapPoint } from "../../shared/world-map";
@@ -249,8 +250,11 @@ function InventoryPanel({ game, submit, busy }: { game: GameView; submit: (value
 function MapPanel({ game, submit, busy, onMapPin, onMapPinRemove }: { game: GameView; submit: (value: string) => void; busy: boolean; onMapPin: (input: { label: string; x: number; y: number }) => Promise<void>; onMapPinRemove: (pinId: string) => Promise<void> }) {
   const [zoom, setZoom] = useState(1);
   const [level, setLevel] = useState<MapLevel>("大陆");
+  const [expanded, setExpanded] = useState(false);
   const [pinLabel, setPinLabel] = useState("");
   const [pendingPoint, setPendingPoint] = useState<{ x: number; y: number }>();
+  const [selectedLocationId, setSelectedLocationId] = useState<string>();
+  const [selectedNodeId, setSelectedNodeId] = useState<string>();
   const visible = game.map;
   if (!visible.length) return <LockedPanel text="还没有地图信息" />;
   const current = visible.find((item) => item.current) ?? visible[0];
@@ -260,12 +264,18 @@ function MapPanel({ game, submit, busy, onMapPin, onMapPinRemove }: { game: Game
     ...visible.filter((item) => item.objective).map((item) => ({ id: `objective-${item.id}`, label: item.name, detail: item.objective, x: item.x, y: item.y, tone: "objective" as const, onClick: item.travelMinutes >= 0 ? () => submit(`前往${item.name}`) : undefined })),
   ];
   const levelNodes = game.mapHierarchy.nodes.filter((node) => node.level === level);
-  return <div className="map-panel-visual">
-    <nav className="map-level-tabs">{(["大陆", "聚居地", "建筑"] as MapLevel[]).map((item) => <button type="button" key={item} className={level === item ? "active" : ""} onClick={() => setLevel(item)}>{item === "大陆" ? game.mapHierarchy.continentName : item === "聚居地" ? game.mapHierarchy.settlementName : game.mapHierarchy.buildingName}</button>)}</nav>
+  const selectedLocation = visible.find((item) => item.id === selectedLocationId) ?? current;
+  const selectedNode = levelNodes.find((node) => node.id === selectedNodeId) ?? levelNodes.find((node) => node.current) ?? levelNodes[0];
+  const content = <div className={`map-panel-visual ${expanded ? "map-expanded" : ""}`}>
+    <header className="map-panel-heading"><div><strong>{level === "大陆" ? "大陆行旅图" : level === "聚居地" ? "聚居地详图" : "建筑内部图"}</strong><span>地图只显示角色已知信息；道路与边界为游戏化示意</span></div><button type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? "收起地图" : "展开地图"}</button></header>
+    <nav className="map-level-tabs">{(["大陆", "聚居地", "建筑"] as MapLevel[]).map((item) => <button type="button" key={item} className={level === item ? "active" : ""} onClick={() => { setLevel(item); setSelectedNodeId(undefined); }}>{item === "大陆" ? game.mapHierarchy.continentName : item === "聚居地" ? game.mapHierarchy.settlementName : game.mapHierarchy.buildingName}</button>)}</nav>
     {level !== "大陆" ? <div className={`local-map local-map-${level}`}><svg viewBox="0 0 100 100" role="img" aria-label={`${level}地图`}>
-      <path d="M8 86 L92 86 M12 52 L88 52 M50 10 L50 92" className="local-road" />
-      {levelNodes.map((node) => <g key={node.id} transform={`translate(${node.x} ${node.y})`} className={node.current ? "local-node current" : node.objective ? "local-node objective" : "local-node"}><circle r={node.current ? 4.8 : 3.5} /><text y="-6" textAnchor="middle">{node.name}</text><title>{node.description} · {node.source} · 可信度 {node.confidence}%</title></g>)}
-    </svg><div className="local-map-list">{levelNodes.map((node) => <article key={node.id}><header><strong>{node.name}</strong><span>{node.current ? "当前位置" : node.kind}</span></header><p>{node.description}</p><small>{node.source} · 可信度 {node.confidence}%</small></article>)}</div></div> : <>
+      <defs><pattern id={`local-grid-${level}`} width="5" height="5" patternUnits="userSpaceOnUse"><path d="M5 0H0V5" fill="none" stroke="#8b7140" strokeWidth=".18" opacity=".18" /></pattern></defs>
+      <rect x="2" y="2" width="96" height="96" rx="3" className="local-ground" />
+      <rect x="2" y="2" width="96" height="96" rx="3" fill={`url(#local-grid-${level})`} />
+      {level === "聚居地" ? <><path d="M5 82 C25 74 31 60 48 55 S76 45 95 50 M12 92 C34 78 59 82 91 70 M48 6 C47 23 54 35 48 55" className="local-road main" /><path d="M6 18 C28 23 42 18 60 12" className="local-water" /><g className="local-blocks"><path d="M18 31h18v13H18zM58 18h22v15H58zM65 58h20v14H65zM20 63h16v12H20z" /></g></> : <><path d="M50 96 V74 M12 55 H88 M50 12 V88" className="local-road main" /><g className="local-rooms"><path d="M8 8H45V48H8ZM55 8H92V48H55ZM8 61H45V92H8ZM55 61H92V92H55Z" /></g></>}
+      {levelNodes.map((node) => <g key={node.id} data-map-control transform={`translate(${node.x} ${node.y})`} onClick={() => setSelectedNodeId(node.id)} className={`${node.current ? "local-node current" : node.objective ? "local-node objective" : "local-node"} ${selectedNode?.id === node.id ? "selected" : ""}`}><circle r={node.current ? 4.8 : 3.5} /><text y="-6" textAnchor="middle">{node.name}</text><title>{node.description} · {node.source} · 可信度 {node.confidence}%</title></g>)}
+    </svg>{selectedNode && <article className="local-selection"><header><strong>{selectedNode.name}</strong><span>{selectedNode.current ? "当前位置" : selectedNode.kind}</span></header><p>{selectedNode.description}</p><footer><small>{selectedNode.source} · 可信度 {selectedNode.confidence}%</small>{!selectedNode.current && <button type="button" disabled={busy || game.status === "ended"} onClick={() => submit(`前往${selectedNode.name}`)}>前往此处</button>}</footer></article>}<div className="local-map-list">{levelNodes.map((node) => <button type="button" key={node.id} className={selectedNode?.id === node.id ? "active" : ""} onClick={() => setSelectedNodeId(node.id)}><strong>{node.name}</strong><span>{node.current ? "当前位置" : node.kind}</span></button>)}</div></div> : <>
     <div className="map-tools"><div><button type="button" onClick={() => setZoom((value) => Math.max(1, value - .25))}>−</button><span>{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((value) => Math.min(2.5, value + .25))}>＋</button></div><small>输入名称后点击地图即可标点</small></div>
     <DouluoWorldMap
       era={game.era}
@@ -273,15 +283,17 @@ function MapPanel({ game, submit, busy, onMapPin, onMapPinRemove }: { game: Game
       landmarks={visible.map((location) => ({ ...worldMapPoint(location.id), name: location.name, muted: !location.discovered && !location.current }))}
       markers={markers}
       pins={game.mapPins}
+      onLandmarkClick={setSelectedLocationId}
       onCanvasClick={!busy ? (x, y) => setPendingPoint({ x, y }) : undefined}
       onPinRemove={busy ? undefined : (pinId) => void onMapPinRemove(pinId)}
     />
     <div className="map-pin-form"><input value={pinLabel} maxLength={24} onChange={(event) => setPinLabel(event.target.value)} placeholder="标点名称，如：可疑洞口" /><button type="button" disabled={busy || !pinLabel.trim()} onClick={() => { const point = pendingPoint ?? { x: current.x, y: current.y }; void onMapPin({ label: pinLabel.trim(), ...point }); setPinLabel(""); setPendingPoint(undefined); }}>保存标点</button><span>{pendingPoint ? `已选地图坐标 ${pendingPoint.x.toFixed(1)}, ${pendingPoint.y.toFixed(1)}` : game.mapPins.length ? "点地图选位置；点击已有标点可删除" : "点地图选位置；未选择时标在当前位置"}</span></div>
     {game.mapPins.length > 0 && <div className="saved-pin-list">{game.mapPins.map((pin) => <article key={pin.id}><span>⌖</span><strong>{pin.label}</strong><small>{pin.x.toFixed(1)}, {pin.y.toFixed(1)}</small><button type="button" disabled={busy} onClick={() => void onMapPinRemove(pin.id)}>删除</button></article>)}</div>}
-    <article className="map-current-detail"><strong>{current.name}</strong><p>{current.description}</p><span>{current.region} · 危险 {current.danger}</span></article>
+    <article className="map-current-detail"><header><strong>{selectedLocation.name}</strong>{!selectedLocation.current && selectedLocation.travelMinutes >= 0 && <button type="button" disabled={busy || game.status === "ended"} onClick={() => submit(`前往${selectedLocation.name}`)}>前往</button>}</header><p>{selectedLocation.description}</p><span>{selectedLocation.region} · 危险 {selectedLocation.danger}{selectedLocation.current ? " · 当前所在地" : selectedLocation.travelMinutes >= 0 ? ` · 约 ${Math.max(1, Math.ceil(selectedLocation.travelMinutes / 60))} 小时` : " · 尚无可靠直达路线"}</span></article>
     <div className="map-route-list"><h4>可直接前往</h4>{routes.length ? routes.map((location) => <button type="button" key={location.id} disabled={busy || game.status === "ended"} onClick={() => submit(`前往${location.name}`)}><strong>{location.name}</strong><span>{Math.max(1, Math.ceil(location.travelMinutes / 60))} 小时 · {location.danger}</span></button>) : <p>当前没有确认过的直达路线。</p>}</div>
     </>}
   </div>;
+  return expanded ? createPortal(content, document.body) : content;
 }
 
 function RelationPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
