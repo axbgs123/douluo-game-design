@@ -1016,6 +1016,9 @@ export interface MetaProgressionView {
   summonGoldPity: number;
   summonRedPity: number;
   summonRainbowPity: number;
+  originGoldPity: number;
+  originRedPity: number;
+  originRainbowPity: number;
   summonHistory: MetaSummonHistoryEntryView[];
   difficultyBudgets: Record<Difficulty, number>;
   difficultyMultipliers: Record<Difficulty, number>;

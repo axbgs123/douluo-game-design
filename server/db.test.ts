@@ -78,6 +78,23 @@ describe("存档数据库", () => {
     expect(database.getMetaProgression().equippedOriginId).toBeUndefined();
   });
 
+  it("provides an independent origin summon with gold, red, and rainbow pity", () => {
+    const meta = database.getMetaProgression();
+    meta.legacyPoints = 1_000;
+    meta.martialSoulDrawTickets = 0;
+    meta.originGoldPity = 9;
+    meta.originRedPity = 29;
+    meta.originRainbowPity = 59;
+    database.saveMetaProgression(meta);
+
+    const result = database.drawMetaOrigin(() => 0.999);
+    expect(result.kind).toBe("origin");
+    expect(result.drawn.rarity).toBe("七彩");
+    expect(result.meta.originGoldPity).toBe(0);
+    expect(result.meta.originRedPity).toBe(0);
+    expect(result.meta.originRainbowPity).toBe(0);
+  });
+
   it("makes every summoned martial soul permanently reusable for unlimited new games", () => {
     const meta = database.getMetaProgression();
     meta.legacyPoints = 1_000;

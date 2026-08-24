@@ -30,6 +30,7 @@ import {
   updateMetaPreferences,
   peekEquippedMartialSoul,
   drawMetaMartialSoul,
+  drawMetaOrigin,
   deleteGame,
   listCheckpoints,
   restoreCheckpoint,
@@ -162,6 +163,10 @@ app.delete("/api/meta/martial-souls/:id", (request, response) => {
 
 app.post("/api/meta/origins/equip", (request, response) => {
   response.json(equipCodexOrigin(metaOriginEquipSchema.parse(request.body).id));
+});
+
+app.post("/api/meta/origins/draw", (_request, response) => {
+  response.json(drawMetaOrigin());
 });
 
 app.post("/api/meta/origins/favorite", (request, response) => {

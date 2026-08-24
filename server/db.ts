@@ -190,6 +190,9 @@ const defaultMetaProgression: MetaProgressionView = {
   summonGoldPity: 0,
   summonRedPity: 0,
   summonRainbowPity: 0,
+  originGoldPity: 0,
+  originRedPity: 0,
+  originRainbowPity: 0,
   summonHistory: [],
   difficultyBudgets: { 爽: 120, 简单: 80, 标准: 50, 困难: 25, 地狱: 10 },
   difficultyMultipliers: { 爽: 0.5, 简单: 0.75, 标准: 1, 困难: 1.5, 地狱: 2.25 },
@@ -359,6 +362,9 @@ export function getMetaProgression(): MetaProgressionView {
     summonGoldPity: stored.summonGoldPity ?? legacyPity,
     summonRedPity: stored.summonRedPity ?? (hasRedOrBetter ? legacyPity : Math.min(39, Math.max(legacyPity, historicalDraws))),
     summonRainbowPity: stored.summonRainbowPity ?? (hasRainbow ? legacyPity : Math.min(79, Math.max(legacyPity, historicalDraws))),
+    originGoldPity: stored.originGoldPity ?? 0,
+    originRedPity: stored.originRedPity ?? 0,
+    originRainbowPity: stored.originRainbowPity ?? 0,
     summonHistory: stored.summonHistory ?? [],
   };
 }
@@ -377,12 +383,60 @@ function weightedMetaSoul<T extends { drawWeight: number }>(pool: readonly T[], 
   return pool.at(-1)!;
 }
 
-export function drawMetaMartialSoul(random: () => number = randomUnit): MetaSummonResultView {
-  const meta = getMetaProgression();
+function payForMetaDraw(meta: MetaProgressionView): number {
   const cost = meta.martialSoulDrawTickets > 0 ? 0 : 20;
   if (cost && meta.legacyPoints < cost) throw new Error(`传承点不足，召唤需要 ${cost} 点`);
   if (cost) meta.legacyPoints -= cost;
   else meta.martialSoulDrawTickets -= 1;
+  return cost;
+}
+
+function drawOriginIntoMeta(meta: MetaProgressionView, cost: number, random: () => number): Extract<MetaSummonResultView, { kind: "origin" }> {
+  const forcedRainbow = meta.originRainbowPity >= 59;
+  const forcedRed = meta.originRedPity >= 29;
+  const forcedGold = meta.originGoldPity >= 9;
+  const pool = forcedRainbow
+    ? META_ORIGIN_POOL.filter((item) => item.rarity === "七彩")
+    : forcedRed
+      ? META_ORIGIN_POOL.filter((item) => item.rarity === "红色" || item.rarity === "七彩")
+      : forcedGold
+        ? META_ORIGIN_POOL.filter((item) => ["金色", "红色", "七彩"].includes(item.rarity))
+        : META_ORIGIN_POOL;
+  const definition = weightedMetaSoul(pool, random);
+  const existing = meta.originCodex.find((item) => item.id === definition.id);
+  const duplicate = Boolean(existing);
+  const drawn: OriginCodexEntryView = existing ?? {
+    id: definition.id,
+    name: definition.name,
+    rarity: definition.rarity,
+    era: definition.era,
+    summary: definition.summary,
+    advantage: definition.advantage,
+    burden: definition.burden,
+    favorite: false,
+  };
+  if (duplicate) meta.martialSoulDrawTickets += 1;
+  else meta.originCodex.push(drawn);
+  meta.discoveredOrigins = meta.originCodex.length;
+  meta.summonHistory = [{ id: randomUUID(), kind: "origin" as const, name: drawn.name, rarity: drawn.rarity, description: `${drawn.advantage}；代价：${drawn.burden}`, duplicate, drawnAt: new Date().toISOString() }, ...meta.summonHistory].slice(0, 5);
+  const isGold = ["金色", "红色", "七彩"].includes(drawn.rarity);
+  const isRed = ["红色", "七彩"].includes(drawn.rarity);
+  const isRainbow = drawn.rarity === "七彩";
+  meta.originGoldPity = isGold ? 0 : meta.originGoldPity + 1;
+  meta.originRedPity = isRed ? 0 : meta.originRedPity + 1;
+  meta.originRainbowPity = isRainbow ? 0 : meta.originRainbowPity + 1;
+  saveMetaProgression(meta);
+  return { kind: "origin", meta, cost, drawn: { ...drawn, duplicate } };
+}
+
+export function drawMetaOrigin(random: () => number = randomUnit): Extract<MetaSummonResultView, { kind: "origin" }> {
+  const meta = getMetaProgression();
+  return drawOriginIntoMeta(meta, payForMetaDraw(meta), random);
+}
+
+export function drawMetaMartialSoul(random: () => number = randomUnit): MetaSummonResultView {
+  const meta = getMetaProgression();
+  const cost = payForMetaDraw(meta);
   const forcedRainbow = meta.summonRainbowPity >= 79;
   const forcedRed = meta.summonRedPity >= 39;
   const forcedGold = meta.summonGoldPity >= 9;
@@ -404,29 +458,11 @@ export function drawMetaMartialSoul(random: () => number = randomUnit): MetaSumm
     return { kind: "heirloom", meta, cost, drawn: { id: definition.id, name: definition.name, rarity: definition.rarity, description: definition.description, duplicate } };
   }
   if (specialRoll >= 0.08 && specialRoll < 0.20) {
-    const definition = weightedMetaSoul(META_ORIGIN_POOL, random);
-    const existing = meta.originCodex.find((item) => item.id === definition.id);
-    const duplicate = Boolean(existing);
-    const drawn: OriginCodexEntryView = existing ?? {
-      id: definition.id,
-      name: definition.name,
-      rarity: definition.rarity,
-      era: definition.era,
-      summary: definition.summary,
-      advantage: definition.advantage,
-      burden: definition.burden,
-      favorite: false,
-    };
-    if (duplicate) meta.martialSoulDrawTickets += 1;
-    else meta.originCodex.push(drawn);
-    meta.discoveredOrigins = meta.originCodex.length;
-    meta.summonHistory = [{ id: randomUUID(), kind: "origin" as const, name: drawn.name, rarity: drawn.rarity, description: `${drawn.advantage}；代价：${drawn.burden}`, duplicate, drawnAt: new Date().toISOString() }, ...meta.summonHistory].slice(0, 5);
     meta.summonGoldPity += 1;
     meta.summonRedPity += 1;
     meta.summonRainbowPity += 1;
     meta.martialSoulDrawPity = meta.summonGoldPity;
-    saveMetaProgression(meta);
-    return { kind: "origin", meta, cost, drawn: { ...drawn, duplicate } };
+    return drawOriginIntoMeta(meta, cost, random);
   }
   const eligible = META_MARTIAL_SOULS.filter((item) => ["紫色", "金色", "红色", "七彩"].includes(item.metaRarity));
   const pool = forcedRainbow

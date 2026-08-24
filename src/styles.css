@@ -53,6 +53,8 @@
 .codex-soul-card dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: .8rem 0; }
 .origin-codex .codex-soul-card dl { grid-template-columns: minmax(8rem,.55fr) 1fr 1fr; }
 .origin-codex .codex-soul-card dd { line-height: 1.5; }
+.origin-heading-actions { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
+.origin-pity-rules { margin-bottom: .8rem; }
 .codex-soul-card dl div { background: rgba(242,239,232,.7); padding: .5rem; }
 .codex-soul-card dt { font-size: .7rem; color: #8d8373; }
 .codex-soul-card dd { margin: .2rem 0 0; font-size: .82rem; }

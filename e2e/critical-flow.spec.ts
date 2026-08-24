@@ -428,6 +428,8 @@ test("局外召唤区直接提供武魂、身世与遗物仓库", async ({ page 
   await page.getByTestId("summon-tab-origins").click();
   await expect(page.locator(".origin-warehouse-section")).toBeVisible();
   await expect(page.locator(".origin-warehouse-section")).toContainText("最低为紫色");
+  await expect(page.getByRole("button", { name: /身世召唤/ })).toBeVisible();
+  await expect(page.locator(".origin-pity-rules")).toContainText("七彩保底 60 抽");
   await page.getByTestId("summon-tab-heirlooms").click();
   await expect(page.locator(".heirloom-warehouse-section")).toBeVisible();
   await expect(page.locator(".heirloom-warehouse-section")).toContainText("每局发动次数限制");

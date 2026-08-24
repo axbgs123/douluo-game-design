@@ -216,6 +216,10 @@ export function equipMetaOrigin(id?: string): Promise<MetaProgressionView> {
   return request("/api/meta/origins/equip", { method: "POST", body: JSON.stringify({ id }) });
 }
 
+export function drawMetaOrigin(): Promise<Extract<MetaSummonResultView, { kind: "origin" }>> {
+  return request("/api/meta/origins/draw", { method: "POST" });
+}
+
 export function favoriteMetaOrigin(id: string, favorite: boolean): Promise<MetaProgressionView> {
   return request("/api/meta/origins/favorite", { method: "POST", body: JSON.stringify({ id, favorite }) });
 }
