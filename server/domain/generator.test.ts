@@ -19,6 +19,7 @@ import {
 import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 import type { MetaProgressionView } from "../../shared/game.js";
 import { fixedTraitEffect } from "./traits.js";
+import { auditNarrative, sanitizeNarrativeSuggestions } from "./story-rules.js";
 
 const personality = {
   keywords: ["谨慎", "重情", "好学", "坚韧", "自由"],
@@ -345,6 +346,8 @@ describe("candidate generation", () => {
     expect(game.view.tasks.find((task) => task.id === "lineage-notable-attention")?.title).toContain("尘心");
     expect(game.world.dynamicEvents.at(-1)?.participantIds).toContain("chen-xin");
     expect(game.view.character?.reputation).toContain("七宝琉璃宗");
+    expect(game.view.suggestions.some((suggestion) => suggestion.includes("七宝琉璃宗"))).toBe(true);
+    expect(game.view.suggestions.every((suggestion) => !suggestion.includes("武魂殿"))).toBe(true);
   });
 
   it("makes powerful martial souls more likely to draw harder life goals", () => {
@@ -396,6 +399,8 @@ describe("candidate generation", () => {
     expect(game.view.character?.publiclyKnownMartialSoulIndices).toEqual([0]);
     expect(game.view.narrative.at(-1)?.text).not.toContain("双生武魂");
     expect(game.view.narrative.at(-1)?.text).toContain("执事正转身去取水晶球，没有看见");
+    expect(game.view.suggestions).toContain("暂不显露第二武魂，回住处后单独测试");
+    expect(game.view.suggestions.every((suggestion) => !suggestion.includes("测试副武魂"))).toBe(true);
     selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0], { activeMartialSoulIndex: 1, publiclyKnownMartialSoulIndices: [0] });
     expect(game.view.character?.martialSoul.name).toBe("测试副武魂");
     expect(game.view.character?.martialSouls[1].cultivationState).toBe("主修");
@@ -420,6 +425,34 @@ describe("candidate generation", () => {
     expect(game.view.tasks.some((task) => task.id === "awakening-recruitment")).toBe(true);
     expect(game.world.dynamicEvents.some((event) => /内部培养评估/.test(event.title) && event.status === "可介入")).toBe(true);
     expect(game.view.narrative.at(-1)?.text).toMatch(/叫停了下一人的仪式|队伍晚走半个时辰/);
+    expect(game.view.suggestions.some((suggestion) => /复测与上报流程/.test(suggestion))).toBe(true);
+    expect(game.view.suggestions.every((suggestion) => !/查看地图|查看新事件|观察周围|继续行动/.test(suggestion))).toBe(true);
+  });
+
+  it("keeps deterministic Chinese-webnovel choices ahead of generic or knowledge-leaking model choices", () => {
+    const game = createGame({ gender: "女", difficulty: "标准", seed: "grounded-choice-filter" });
+    const hidden = game.hiddenCandidates[0];
+    hidden.martialSouls = [hidden.martialSoul, { ...hidden.martialSoul, id: "secret-soul", name: "不可见副武魂" }];
+    selectCandidate(game, hidden.public.id);
+    finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(game);
+    const suggestions = sanitizeNarrativeSuggestions(
+      game,
+      ["查看地图", "把不可见副武魂告诉唐三", "继续行动"],
+      game.view.suggestions,
+    );
+    expect(suggestions).toEqual(game.view.suggestions);
+    expect(suggestions).toHaveLength(3);
+  });
+
+  it("audits a full-soul-power awakening that produces no social or institutional reaction", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "awakening-reaction-audit" });
+    game.hiddenCandidates[0].innateSoulPower = 10;
+    selectCandidate(game, game.view.candidates[0].id);
+    finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(game);
+    expect(auditNarrative(game, "水晶球完全亮起。先天满魂力。众人随后各自回家。"))
+      .toContain("异常觉醒结果没有引发主持者、监护者或围观者的具体反应");
   });
 
   it("carries a settled worldline into the next era without copying combat power", () => {

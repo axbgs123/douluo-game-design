@@ -19,7 +19,7 @@ import type {
 } from "./model.js";
 import { createRandom, integer, pick, weightedPick } from "./random.js";
 import { buildActiveEvents, buildIntelligenceView, buildKnownFigures, buildMapHierarchy, buildMapView, createHiddenWorld, inferLocationId, recordIntelligence, revealNpc } from "./world.js";
-import { refreshStoryArchive } from "./story-rules.js";
+import { groundedNarrativeSuggestions, refreshStoryArchive } from "./story-rules.js";
 import { worldMapPoint } from "../../shared/world-map.js";
 import { EXPANDED_ORIGINS } from "../data/expanded-origins.js";
 import { metaSoulById } from "../data/meta-martial-souls.js";
@@ -2166,9 +2166,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     : [originThread, "理解觉醒结果"];
   game.storyMemory.summary = `${selected.public.name}在${selected.public.location}完成觉醒。现场只看见${publicSoulViews[0].name}，先天魂力${selected.innateSoulPower}级；${soulViews.length > 1 ? `本人还察觉到${soulViews.slice(1).map((soul) => soul.name).join("、")}，是否公开尚未决定。` : "没有需要隐藏的第二武魂。"}`;
   game.view.narrative.push(createEntry("narration", buildAwakeningResult(selected, awakening)));
-  game.view.suggestions = selected.innateSoulPower > 0
-    ? highAttention ? [`询问${awakening.factionName}能够提供哪些具体培养条件`, "先和家人或所属势力商量立场", "测试主武魂并记录其限制"] : [`询问${selected.innateSoulPower}级先天魂力该怎么修炼`, "观察家人与旁人的反应", "尝试第一次主动召唤武魂"]
-    : ["追问是否存在重新检测的方法", "观察武魂本身还有没有异常", "先接受结果，回去查找其他道路"];
+  game.view.suggestions = groundedNarrativeSuggestions(game);
   game.view.updatedAt = new Date().toISOString();
   game.view.runProgress.highestSoulRank = character.soulRank;
   game.view.economy.cash = character.coins;

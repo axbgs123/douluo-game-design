@@ -1,7 +1,7 @@
 import type { ActionResolution, StoredGame } from "../domain/model.js";
 import { CANON_CHARACTERS, CANON_EVENTS, characterById } from "../data/world.js";
 import { toThirdPersonNarrative } from "../domain/narrative.js";
-import { auditNarrative, refreshStoryArchive, sanitizeNarrativeSuggestions, selectNarrativeRules, violatesCanonChronology } from "../domain/story-rules.js";
+import { auditNarrative, buildChineseWebnovelSceneCard, refreshStoryArchive, sanitizeNarrativeSuggestions, selectNarrativeRules, violatesCanonChronology } from "../domain/story-rules.js";
 import { readDeepSeekSettings } from "./settings.js";
 import { auditNovelEngineNarrative, auditResolutionAlignment, buildNovelEnginePack } from "../domain/novel-engine.js";
 import { rememberNpcInteraction } from "../domain/world.js";
@@ -212,6 +212,9 @@ export async function narrateWithDeepSeek(
             "不要为了文艺感把普通行动写成命运、时代、道路或宏大回响。每次只抓一两个有效细节，不要堆满五感。",
             "战斗时写清站位、试探、失误和代价；交谈时保留对方的私心与信息边界；赶路和修炼可以简写，但要留下具体变化。",
             "建议必须是角色眼下做得到的动作。若程序给出了建议，优先沿用其含义。",
+            "按中国男频互动网文设计选项：三项分别推进成长/资源、关系/势力、秘密/风险；写成动作+明确对象+近期目的，不能用查看地图、查看新事件、观察周围或继续行动占位。",
+            "每个重要反应都要通过欲望、信息、权限、资源、行动、后果六环。异常天赋必须引发符合目击者利益和权限的复测、上报、谈条件、争夺或戒备，不能只惊叹一句便散场。",
+            "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
             `activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗${game.view.era === 1 ? "一" : game.view.era === 2 ? "二" : game.view.era === 3 ? "三" : "四"}适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。`,
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
@@ -255,6 +258,7 @@ export async function narrateWithDeepSeek(
             playerInput,
             fixedRuleResult: resolution.ruleSummary,
             fixedSuggestions: resolution.suggestions,
+            sceneLogicCard: buildChineseWebnovelSceneCard(game, resolution),
             pacing,
             activeFanfictionRules: activeRules.map((rule) => ({ id: rule.id, section: rule.sectionName, rule: rule.text })),
             activeNarrativeModules: novelEngine.activeModules,

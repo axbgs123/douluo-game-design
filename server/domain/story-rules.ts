@@ -233,17 +233,124 @@ export function auditNarrative(game: StoredGame, text: string): string[] {
     if (ageClaim && (npc.age === undefined || parseNumberToken(ageClaim[1]) !== npc.age)) issues.push(`正文写错${npc.name}在当前年份的年龄`);
   }
   if ((text.match(/！/g)?.length ?? 0) >= 5) issues.push("正文依赖连续感叹号制造强度");
+  if (/先天满魂力|水晶球.{0,20}(?:冲到顶|完全亮起)/.test(text) && !/停笔|复测|上报|登记|招揽|议论|围观|惊|愣|僵|变色|叫停/.test(text)) {
+    issues.push("异常觉醒结果没有引发主持者、监护者或围观者的具体反应");
+  }
   if (text.length > 4800) issues.push("单次正文过长");
   return issues;
 }
 
+const GENERIC_SUGGESTION = /^(?:查看地图|查看新事件|观察周围|继续行动|想办法|保持谨慎|深入了解|进一步探索|先做准备|暂时退开|了解情况)[。！]?$/;
+
+function normalizedSuggestion(value: string): string {
+  return value.replace(/[，。！？、；：\s]/g, "").replace(/^(?:先|尝试|主动|立即|继续)/, "");
+}
+
+function publicAndHiddenSoulNames(game: StoredGame): { publicNames: string[]; hiddenNames: string[] } {
+  const souls = game.view.character?.martialSouls ?? [];
+  const publicIndices = new Set(game.view.character?.publiclyKnownMartialSoulIndices ?? (souls.length ? [0] : []));
+  return {
+    publicNames: souls.filter((_, index) => publicIndices.has(index)).map((soul) => soul.name),
+    hiddenNames: souls.filter((_, index) => !publicIndices.has(index)).map((soul) => soul.name),
+  };
+}
+
+function leaksUnavailableKnowledge(game: StoredGame, suggestion: string): boolean {
+  const { hiddenNames } = publicAndHiddenSoulNames(game);
+  if (hiddenNames.some((name) => suggestion.includes(name)) && /告诉|询问|请教|展示|公开|上报|登记|交给|向/.test(suggestion)) return true;
+  const knownNames = new Set([
+    ...game.view.knownFigures.map((figure) => figure.name),
+    ...game.view.relations.map((relation) => relation.name),
+  ]);
+  const unknownCanonFigure = CANON_CHARACTERS.find((figure) =>
+    (suggestion.includes(figure.name) || figure.aliases.some((alias) => suggestion.includes(alias))) && !knownNames.has(figure.name),
+  );
+  return Boolean(unknownCanonFigure);
+}
+
+function isNearDuplicate(left: string, right: string): boolean {
+  const a = normalizedSuggestion(left);
+  const b = normalizedSuggestion(right);
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  const intent = (value: string) => /询问|追问|请教|打听/.test(value) ? "问" : /测试|召唤|验证|检查|复测/.test(value) ? "测" : /隐藏|保密|暂不|隐瞒/.test(value) ? "藏" : /加入|接受|签署|答应/.test(value) ? "投" : "";
+  return Boolean(intent(a) && intent(a) === intent(b) && (a.length < 12 || b.length < 12));
+}
+
+export function groundedNarrativeSuggestions(game: StoredGame): string[] {
+  const character = game.view.character;
+  if (!character) return [];
+  const awakeningTask = game.view.tasks.find((task) => task.status !== "完成" && /觉醒|培养评估|亲自复核/.test(`${task.id}${task.title}${task.detail}`));
+  if (game.view.status === "awakening" || awakeningTask) {
+    const awakeningRelation = game.view.relations.find((relation) => /觉醒主持|觉醒/.test(`${relation.relation}${relation.impression}`));
+    const officiant = awakeningRelation?.name ?? "主持觉醒的魂师";
+    const faction = awakeningRelation?.faction;
+    const { publicNames, hiddenNames } = publicAndHiddenSoulNames(game);
+    const mainSoul = publicNames[0] ?? character.martialSoul.name;
+    const originText = `${character.originName}${character.originSummary}${character.knownBackground}${character.originBurden}`;
+    const unbound = /凭空|异界|无户籍|没有亲人|无牵无挂|来历不明/.test(originText);
+    const guardian = game.view.relations.find((relation) => relation.category === "亲属" || /父|母|祖|养父|养母|监护|叔|婶/.test(relation.relation));
+    const growth = character.innateSoulPower >= 10
+      ? `请${officiant}说明满魂力的复测与上报流程`
+      : `请${officiant}说明${mainSoul}的第一魂环方向`;
+    const institution = unbound
+      ? `请${officiant}写下临时身份与今晚安置`
+      : faction
+        ? `追问${faction}愿意提供哪些培养条件`
+        : guardian
+          ? `把结果告诉${guardian.name}，商量入学与猎魂花费`
+          : "追问工读名额、路费与猎魂协助";
+    const secret = hiddenNames.length
+      ? "暂不显露第二武魂，回住处后单独测试"
+      : `当场召出${mainSoul}，请主持者指出第一处缺陷`;
+    return [growth, institution, secret];
+  }
+  if (game.view.combat) return ["拉开距离观察对手起手", "利用地形掩护侧翼", "保留退路试探一次弱点"];
+  if (game.view.hunting && game.view.hunting.stage !== "完成") {
+    const target = game.view.hunting.targetName ?? "目标魂兽";
+    return [`核对${target}留下的踪迹`, "检查退路、药物与吸收准备", "向同行者确认撤退暗号"];
+  }
+  const systemAction = character.specialSystem?.actions?.[0]?.command;
+  const currentStep = game.view.chapterObjective?.steps.find((step) => step.status === "进行中");
+  const activeTask = game.view.tasks.find((task) => task.status !== "完成");
+  return [
+    systemAction,
+    currentStep ? currentStep.text : undefined,
+    activeTask ? `处理「${activeTask.title}」的下一项具体条件` : undefined,
+  ].filter((item): item is string => Boolean(item));
+}
+
+export function buildChineseWebnovelSceneCard(game: StoredGame, resolution: ActionResolution): Record<string, unknown> {
+  const { publicNames, hiddenNames } = publicAndHiddenSoulNames(game);
+  return {
+    immediateProblem: game.view.chapterObjective?.title ?? resolution.intent,
+    currentStep: game.view.chapterObjective?.steps.find((step) => step.status === "进行中")?.text,
+    availablePeople: game.view.relations.slice(0, 12).map(({ name, relation, faction }) => ({ name, relation, faction })),
+    availableInstitutions: [...new Set([...game.view.affiliations.map((item) => item.name), ...game.view.relations.map((item) => item.faction).filter(Boolean)])],
+    publicFacts: { martialSouls: publicNames, soulPower: game.view.character?.innateSoulPower, location: game.view.location },
+    protagonistSecrets: { hiddenMartialSouls: hiddenNames, specialSystem: game.view.character?.specialSystem?.name },
+    unresolvedPromises: game.storyMemory.openThreads.slice(0, 8),
+    reactionChain: ["谁目击", "谁有权限", "谁获益或受损", "立即反应", "留下何种记录、关系或代价"],
+    choiceVectors: ["成长或资源", "关系或势力", "秘密或风险"],
+    deterministicSuggestions: groundedNarrativeSuggestions(game),
+  };
+}
+
 export function sanitizeNarrativeSuggestions(game: StoredGame, suggestions: string[], fallback: string[]): string[] {
-  const safe = suggestions
+  const sanitize = (items: string[]) => items
     .map((item) => item.trim())
     .filter(Boolean)
     .filter((item) => !violatesCanonChronology(item, game.view.worldTime?.year ?? 0))
-    .filter((item) => !/直接获得|必定成功|无代价|立刻成神/.test(item));
-  return [...new Set([...safe, ...fallback])].slice(0, 3);
+    .filter((item) => !/直接获得|必定成功|保证成功|无代价|立刻成神/.test(item))
+    .filter((item) => !GENERIC_SUGGESTION.test(item))
+    .filter((item) => !leaksUnavailableKnowledge(game, item));
+  const ordered = [...sanitize(fallback), ...sanitize(groundedNarrativeSuggestions(game)), ...sanitize(suggestions)];
+  const result: string[] = [];
+  for (const item of ordered) {
+    if (result.some((existing) => isNearDuplicate(existing, item))) continue;
+    result.push(item);
+    if (result.length === 3) break;
+  }
+  return result;
 }
 
 function consequenceTone(result: ActionResolution): StoryConsequenceView["tone"] {
