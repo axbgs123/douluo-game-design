@@ -442,6 +442,7 @@ test("模型设置显示本地向量记忆状态", async ({ page }) => {
   await expect(page.getByText(/本地向量记忆：\d+ 条 · 384 维 · 每回合最多召回 8 条/)).toBeVisible();
   await expect(page.getByText(/斗罗世界知识：\d+ 条 · 每回合最多召回 10 条/)).toBeVisible();
   await expect(page.getByText(/世界基本逻辑：\d+ 条 · 每回合最多召回 8 条/)).toBeVisible();
+  await expect(page.getByText(/生成前检索审计：累计 \d+ 次/)).toBeVisible();
 });
 
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {

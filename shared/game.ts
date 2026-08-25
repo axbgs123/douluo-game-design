@@ -997,6 +997,11 @@ export interface ModelUsageView {
   canonRetrievalLimit: number;
   worldLogicVectors: number;
   worldLogicRetrievalLimit: number;
+  contextRetrievals: number;
+  lastRetrievedMemoryCount: number;
+  lastRetrievedCanonCount: number;
+  lastRetrievedLogicCount: number;
+  lastContextRetrievalAt?: string;
 }
 
 export interface MetaProgressionView {

@@ -161,30 +161,27 @@ async function safeRecordModelCall(input: Parameters<(typeof import("../db.js"))
   }
 }
 
-async function safeRetrieveVectorMemories(game: StoredGame, query: string) {
-  try {
-    const { retrieveVectorMemories } = await import("../db.js");
-    return retrieveVectorMemories(game, query, 8).map(({ text, kind, actionIndex, year, day, importance, similarity, metadata }) => ({ text, kind, actionIndex, year, day, importance, similarity, metadata }));
-  } catch {
-    return [];
-  }
+async function retrieveVectorMemoryContext(game: StoredGame, query: string) {
+  const { retrieveVectorMemories } = await import("../db.js");
+  return retrieveVectorMemories(game, query, 8).map(({ text, kind, actionIndex, year, day, importance, similarity, metadata }) => ({ text, kind, actionIndex, year, day, importance, similarity, metadata }));
 }
 
-async function safeRetrieveCanonKnowledge(game: StoredGame, query: string) {
-  try {
-    const { retrieveCanonKnowledge } = await import("../db.js");
-    return retrieveCanonKnowledge(game, query, 10).map(({ kind, subjectId, subjectName, text, importance, similarity, metadata }) => ({ kind, subjectId, subjectName, text, importance, similarity, metadata }));
-  } catch {
-    return [];
-  }
+async function retrieveCanonKnowledgeContext(game: StoredGame, query: string) {
+  const { retrieveCanonKnowledge } = await import("../db.js");
+  return retrieveCanonKnowledge(game, query, 10).map(({ kind, subjectId, subjectName, text, importance, similarity, metadata }) => ({ kind, subjectId, subjectName, text, importance, similarity, metadata }));
 }
 
-async function safeRetrieveWorldLogic(game: StoredGame, query: string) {
+async function retrieveWorldLogicContext(game: StoredGame, query: string) {
+  const { retrieveWorldLogic } = await import("../db.js");
+  return retrieveWorldLogic(game, query, 8).map(({ category, trigger, logic, importance, similarity, metadata }) => ({ category, trigger, logic, importance, similarity, metadata }));
+}
+
+async function safeRecordContextRetrieval(game: StoredGame, role: "intent" | "narrator", counts: { memory: number; canon: number; logic: number }): Promise<void> {
   try {
-    const { retrieveWorldLogic } = await import("../db.js");
-    return retrieveWorldLogic(game, query, 8).map(({ category, trigger, logic, importance, similarity, metadata }) => ({ category, trigger, logic, importance, similarity, metadata }));
+    const { recordContextRetrieval } = await import("../db.js");
+    recordContextRetrieval({ gameId: game.view.id, role, actionIndex: game.actionIndex, ...counts });
   } catch {
-    return [];
+    // Retrieval has already succeeded; diagnostics must not invalidate it.
   }
 }
 
@@ -223,7 +220,8 @@ async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", s
 export async function interpretActionWithDeepSeek(game: StoredGame, playerInput: string, signal?: AbortSignal): Promise<string | null> {
   const settings = readDeepSeekSettings();
   if (!settings.apiKey) return null;
-  const relevantPast = await safeRetrieveVectorMemories(game, `${playerInput}\n${game.view.location}\n${game.view.tasks.filter((task) => task.status !== "完成").slice(0, 4).map((task) => task.title).join("\n")}`);
+  const relevantPast = await retrieveVectorMemoryContext(game, `${playerInput}\n${game.view.location}\n${game.view.tasks.filter((task) => task.status !== "完成").slice(0, 4).map((task) => task.title).join("\n")}`);
+  await safeRecordContextRetrieval(game, "intent", { memory: relevantPast.length, canon: 0, logic: 0 });
   const payload = await tracedCompletion(game, "intent", settings, {
       model: settings.model,
       max_tokens: 256,
@@ -274,9 +272,11 @@ export async function narrateWithDeepSeek(
     ...game.view.tasks.filter((task) => task.status !== "完成").slice(0, 6).map((task) => `${task.title} ${task.detail}`),
     ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => npc.name),
   ].join("\n");
-  const retrievedLongTermMemories = await safeRetrieveVectorMemories(game, memoryQuery);
-  const retrievedCanonKnowledge = await safeRetrieveCanonKnowledge(game, memoryQuery);
-  const retrievedWorldLogic = await safeRetrieveWorldLogic(game, memoryQuery);
+  const retrievedLongTermMemories = await retrieveVectorMemoryContext(game, memoryQuery);
+  const retrievedCanonKnowledge = await retrieveCanonKnowledgeContext(game, memoryQuery);
+  const retrievedWorldLogic = await retrieveWorldLogicContext(game, memoryQuery);
+  if (!retrievedWorldLogic.length) throw new Error("世界基本逻辑检索没有返回适用规则，已停止本次正文生成");
+  await safeRecordContextRetrieval(game, "narrator", { memory: retrievedLongTermMemories.length, canon: retrievedCanonKnowledge.length, logic: retrievedWorldLogic.length });
   const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
   const eraTitle = ({ 1: "《斗罗大陆》第一部", 2: "《绝世唐门》", 3: "《龙王传说》", 4: "《终极斗罗》" } as const)[game.view.era ?? 1];
 
@@ -312,7 +312,7 @@ export async function narrateWithDeepSeek(
             "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
             "narrativeLogicPacket 是正文生成前已经通过的硬逻辑合同。先逐项满足 protagonistContract、participantContracts、reactionChain 与 continuityContract，再写句子；不得在正文中提到逻辑包、状态版本或检查过程。",
             "retrievedLongTermMemories 是本地向量库按当前行动召回的玩家已知旧事。只在与当前场景相关时自然延续；它不能覆盖当前程序状态，也不能让未亲历该事的NPC突然知情。发生冲突时以当前结构化状态和 fixedRuleResult 为准。",
-            "retrievedCanonKnowledge 是按当前时代和场景召回的斗罗结构化知识与原创社会运行法则。人物性格和原著人生阶段只构成行为惯性，不是固定台词；玩家已经改变其关系、资源、职位或处境时，以当前存档为准。",
+            "retrievedCanonKnowledge 是按当前时代和场景召回的斗罗结构化原著知识。人物性格和原著人生阶段只构成行为惯性，不是固定台词；玩家已经改变其关系、资源、职位或处境时，以当前存档为准。",
             "原著关系向量默认只用于保持人物行为一致，不能直接向主角陈述。只有 sceneKnowledge 或玩家情报明确证明主角已经知道该关系时，正文和NPC才可以说破；不得借旁白泄露隐藏血缘、感情、阵营或未来身份。",
             "重要原著事件在没有玩家因果足迹时保持惯性；普通人物、关系、资源和地方事件应持续自主变化。玩家形成足够的目击、关系、权限、资源、战力或势力影响后，重要事件也必须从新状态重新推演，不能强行回轨。",
             "retrievedWorldLogic 是独立的世界基本逻辑库。先核对每条的触发前提，再执行目击—复测—上报—利益判断—具体行动—状态痕迹链。高天赋会立刻改变关注、投资、收徒、拉拢、忌惮和敌对概率，但不保证成功拜师、无条件送宝、忠诚或私人好感。",

@@ -40,6 +40,7 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
       {usage && <p className="settings-copy">本地向量记忆：{usage.vectorMemories} 条 · {usage.vectorDimensions} 维 · 每回合最多召回 {usage.vectorRetrievalLimit} 条相关旧事。记忆只保存在本机存档数据库。</p>}
       {usage && <p className="settings-copy">斗罗世界知识：{usage.canonKnowledgeVectors} 条 · 每回合最多召回 {usage.canonRetrievalLimit} 条人物阶段、关键关系、势力、地点、事件与魂兽生态。</p>}
       {usage && <p className="settings-copy">世界基本逻辑：{usage.worldLogicVectors} 条 · 每回合最多召回 {usage.worldLogicRetrievalLimit} 条异常反应、培养争夺、资源倾斜、秘密暴露和敌对风险链。</p>}
+      {usage && <p className="settings-copy">生成前检索审计：累计 {usage.contextRetrievals} 次；最近一次正文实际注入存档记忆 {usage.lastRetrievedMemoryCount} 条、原著知识 {usage.lastRetrievedCanonCount} 条、基本逻辑 {usage.lastRetrievedLogicCount} 条{usage.lastContextRetrievalAt ? ` · ${new Date(usage.lastContextRetrievalAt).toLocaleString("zh-CN")}` : ""}。</p>}
       <form onSubmit={(event) => {
         event.preventDefault();
         if (!apiKey.trim() && !view?.hasKey) return;

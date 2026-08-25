@@ -90,6 +90,21 @@ database.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_model_calls_game_created ON model_calls(game_id, id DESC);
 
+  CREATE TABLE IF NOT EXISTS context_retrievals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    action_index INTEGER NOT NULL,
+    memory_count INTEGER NOT NULL,
+    canon_count INTEGER NOT NULL,
+    logic_count INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_context_retrievals_game_created
+  ON context_retrievals(game_id, id DESC);
+
   CREATE TABLE IF NOT EXISTS vector_memories (
     id TEXT PRIMARY KEY,
     game_id TEXT NOT NULL,
@@ -460,13 +475,21 @@ export function recordModelCall(input: { gameId: string; role: "intent" | "narra
   database.prepare("INSERT INTO model_calls (game_id, role, model, status, latency_ms, prompt_chars, output_chars, prompt_tokens, completion_tokens, total_tokens, error_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.model.slice(0, 120), input.status, Math.max(0, Math.round(input.latencyMs)), Math.max(0, input.promptChars), Math.max(0, input.outputChars), Math.max(0, input.promptTokens ?? 0), Math.max(0, input.completionTokens ?? 0), Math.max(0, input.totalTokens ?? 0), input.errorCode?.slice(0, 80) ?? null, new Date().toISOString());
 }
 
+export function recordContextRetrieval(input: { gameId: string; role: "intent" | "narrator"; actionIndex: number; memory: number; canon: number; logic: number }): void {
+  database.prepare("INSERT INTO context_retrievals (game_id, role, action_index, memory_count, canon_count, logic_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.actionIndex, input.memory, input.canon, input.logic, new Date().toISOString());
+  database.prepare("DELETE FROM context_retrievals WHERE game_id = ? AND id NOT IN (SELECT id FROM context_retrievals WHERE game_id = ? ORDER BY id DESC LIMIT 500)").run(input.gameId, input.gameId);
+}
+
 export function getModelUsage(gameId?: string): ModelUsageView {
   const where = gameId ? " WHERE game_id = ?" : "";
   const row = database.prepare(`SELECT COUNT(*) calls, SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) failures, COALESCE(SUM(prompt_tokens), 0) prompt_tokens, COALESCE(SUM(completion_tokens), 0) completion_tokens, COALESCE(SUM(total_tokens), 0) total_tokens, COALESCE(SUM(latency_ms), 0) total_latency_ms, MAX(created_at) last_call_at FROM model_calls${where}`).get(...(gameId ? [gameId] : [])) as { calls: number; failures: number; prompt_tokens: number; completion_tokens: number; total_tokens: number; total_latency_ms: number; last_call_at?: string };
   const vectorRow = database.prepare(`SELECT COUNT(*) AS count FROM vector_memories${gameId ? " WHERE game_id = ?" : ""}`).get(...(gameId ? [gameId] : [])) as { count: number };
   const canonRow = database.prepare("SELECT COUNT(*) AS count FROM canon_knowledge_vectors").get() as { count: number };
   const logicRow = database.prepare("SELECT COUNT(*) AS count FROM world_logic_vectors").get() as { count: number };
-  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8, canonKnowledgeVectors: Number(canonRow.count), canonRetrievalLimit: 10, worldLogicVectors: Number(logicRow.count), worldLogicRetrievalLimit: 8 };
+  const retrievalWhere = gameId ? " WHERE game_id = ?" : "";
+  const retrievalCount = database.prepare(`SELECT COUNT(*) AS count FROM context_retrievals${retrievalWhere}`).get(...(gameId ? [gameId] : [])) as { count: number };
+  const lastRetrieval = database.prepare(`SELECT memory_count, canon_count, logic_count, created_at FROM context_retrievals${gameId ? " WHERE game_id = ? AND role = 'narrator'" : " WHERE role = 'narrator'"} ORDER BY id DESC LIMIT 1`).get(...(gameId ? [gameId] : [])) as { memory_count: number; canon_count: number; logic_count: number; created_at: string } | undefined;
+  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8, canonKnowledgeVectors: Number(canonRow.count), canonRetrievalLimit: 10, worldLogicVectors: Number(logicRow.count), worldLogicRetrievalLimit: 8, contextRetrievals: Number(retrievalCount.count), lastRetrievedMemoryCount: Number(lastRetrieval?.memory_count ?? 0), lastRetrievedCanonCount: Number(lastRetrieval?.canon_count ?? 0), lastRetrievedLogicCount: Number(lastRetrieval?.logic_count ?? 0), lastContextRetrievalAt: lastRetrieval?.created_at };
 }
 
 const gameColumns = database.prepare("PRAGMA table_info(games)").all() as Array<{ name: string }>;
