@@ -170,6 +170,15 @@ async function safeRetrieveVectorMemories(game: StoredGame, query: string) {
   }
 }
 
+async function safeRetrieveCanonKnowledge(game: StoredGame, query: string) {
+  try {
+    const { retrieveCanonKnowledge } = await import("../db.js");
+    return retrieveCanonKnowledge(game, query, 10).map(({ kind, subjectId, subjectName, text, importance, similarity, metadata }) => ({ kind, subjectId, subjectName, text, importance, similarity, metadata }));
+  } catch {
+    return [];
+  }
+}
+
 async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", settings: { apiKey: string; baseUrl: string; model: string }, body: unknown, timeout: number, signal?: AbortSignal): Promise<ChatCompletionPayload> {
   const started = performance.now();
   const serialized = JSON.stringify(body);
@@ -254,6 +263,7 @@ export async function narrateWithDeepSeek(
     ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => npc.name),
   ].join("\n");
   const retrievedLongTermMemories = await safeRetrieveVectorMemories(game, memoryQuery);
+  const retrievedCanonKnowledge = await safeRetrieveCanonKnowledge(game, memoryQuery);
   const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
   const eraTitle = ({ 1: "《斗罗大陆》第一部", 2: "《绝世唐门》", 3: "《龙王传说》", 4: "《终极斗罗》" } as const)[game.view.era ?? 1];
 
@@ -289,6 +299,9 @@ export async function narrateWithDeepSeek(
             "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
             "narrativeLogicPacket 是正文生成前已经通过的硬逻辑合同。先逐项满足 protagonistContract、participantContracts、reactionChain 与 continuityContract，再写句子；不得在正文中提到逻辑包、状态版本或检查过程。",
             "retrievedLongTermMemories 是本地向量库按当前行动召回的玩家已知旧事。只在与当前场景相关时自然延续；它不能覆盖当前程序状态，也不能让未亲历该事的NPC突然知情。发生冲突时以当前结构化状态和 fixedRuleResult 为准。",
+            "retrievedCanonKnowledge 是按当前时代和场景召回的斗罗结构化知识与原创社会运行法则。人物性格和原著人生阶段只构成行为惯性，不是固定台词；玩家已经改变其关系、资源、职位或处境时，以当前存档为准。",
+            "原著关系向量默认只用于保持人物行为一致，不能直接向主角陈述。只有 sceneKnowledge 或玩家情报明确证明主角已经知道该关系时，正文和NPC才可以说破；不得借旁白泄露隐藏血缘、感情、阵营或未来身份。",
+            "重要原著事件在没有玩家因果足迹时保持惯性；普通人物、关系、资源和地方事件应持续自主变化。玩家形成足够的目击、关系、权限、资源、战力或势力影响后，重要事件也必须从新状态重新推演，不能强行回轨。",
             `activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗${game.view.era === 1 ? "一" : game.view.era === 2 ? "二" : game.view.era === 3 ? "三" : "四"}适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。`,
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
@@ -329,6 +342,7 @@ export async function narrateWithDeepSeek(
             recentNews: game.view.news.slice(0, 8),
             longTermMemory: { summary: game.storyMemory.summary.slice(0, 1_800), openThreads: game.storyMemory.openThreads, keyChoices: game.storyMemory.keyChoices.slice(-8) },
             retrievedLongTermMemories,
+            retrievedCanonKnowledge,
             recentNarrative: game.view.narrative.slice(-6).map((entry) => ({ ...entry, text: entry.text.slice(0, 1_600) })),
             playerInput,
             fixedRuleResult: resolution.ruleSummary,

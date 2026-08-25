@@ -9,8 +9,31 @@ import { worldMapPoint } from "../../shared/world-map.js";
 import { heirloomByName } from "../../shared/heirlooms.js";
 import { martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 import { fixedTraitEffect } from "./traits.js";
+import { CANON_RELATIONSHIPS } from "../data/canon-relationships.js";
 
 const DAYS_PER_YEAR = 360;
+
+function ensureCanonRelationshipBaselines(npcs: Record<string, WorldNpcState>, relations: HiddenWorldState["npcRelations"], year: number, day: number): void {
+  const era = eraIndexAtYear(year);
+  for (const definition of CANON_RELATIONSHIPS) {
+    if (definition.era !== era || definition.validFromYear > year || (definition.validFromYear === year && (definition.validFromDay ?? 1) > day) || (definition.validUntilYear !== undefined && definition.validUntilYear < year)) continue;
+    const left = npcs[definition.fromId]; const right = npcs[definition.toId];
+    if (!left?.alive || !right?.alive || relations.some((item) => (item.leftId === left.id && item.rightId === right.id) || (item.leftId === right.id && item.rightId === left.id))) continue;
+    const competitive = /竞争|冲突|怨恨|权力/.test(`${definition.relation}${definition.dynamics}`);
+    const close = /父|母|伴侣|兄妹|亲友|保护|抚养|宠爱/.test(`${definition.relation}${definition.basis}`);
+    const kind = competitive ? "竞争" as const : close ? "亲近" as const : "合作" as const;
+    const bond = kind === "亲近" ? Math.round(45 + definition.importance * 25) : kind === "合作" ? Math.round(25 + definition.importance * 20) : Math.round(5 + definition.importance * 10);
+    relations.push({
+      leftId: left.id, rightId: right.id, bond, kind, lastChangedYear: year,
+      dimensions: kind === "亲近"
+        ? { affinity: bond, trust: Math.max(25, bond - 12), respect: 45, sharedInterest: 50, vigilance: 8, hostility: 0 }
+        : kind === "合作"
+          ? { affinity: 25, trust: 35, respect: 45, sharedInterest: bond + 10, vigilance: 15, hostility: 0 }
+          : { affinity: 8, trust: 12, respect: 30, sharedInterest: 18, vigilance: 45, hostility: 12 },
+      history: [{ year, day, delta: 0, reason: `原著关系基线：${definition.relation}；后续只按实际经历变化` }],
+    });
+  }
+}
 
 function eraIndexAtYear(year: number): 1 | 2 | 3 | 4 {
   return year >= 25_000 ? 4 : year >= 15_000 ? 3 : year >= 5_000 ? 2 : 1;
@@ -230,13 +253,15 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
     return [definition.id, state];
   }));
 
+  const npcRelations: HiddenWorldState["npcRelations"] = [];
+  ensureCanonRelationshipBaselines(npcs, npcRelations, startYear, 1);
   return {
     npcs,
     firedCanonEvents: CANON_EVENTS.filter((event) => event.year < startYear).map((event) => event.id),
     suppressedCanonEvents: [],
     deviation: 0,
     canonCausalFootprints: [],
-    npcRelations: [],
+    npcRelations,
     dynamicEvents: [],
     socialRumors: [],
     lastAutonomyOrdinal: ordinal(startYear, 1),
@@ -992,6 +1017,7 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
   time.season = seasonForDay(time.day);
   time.era = eraAtYear(time.year);
   simulateNpcYears(game, time.year);
+  ensureCanonRelationshipBaselines(game.world.npcs, game.world.npcRelations, time.year, time.day);
   const currentOrdinal = ordinal(time.year, time.day);
   const messages = [...simulateNpcAutonomy(game, previousOrdinal, currentOrdinal), ...simulateCanonEvents(game, previousOrdinal, currentOrdinal), ...propagateSocialRumors(game, currentOrdinal)];
   game.view.map = buildMapView(game);
@@ -1070,6 +1096,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
+  ensureCanonRelationshipBaselines(legacy.world.npcs, legacy.world.npcRelations, game.view.worldTime?.year ?? startYear, game.view.worldTime?.day ?? 1);
   legacy.world.canonCausalFootprints ??= [];
   legacy.world.firedCanonEvents ??= [];
   legacy.world.suppressedCanonEvents ??= [];

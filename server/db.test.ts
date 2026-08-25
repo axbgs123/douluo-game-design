@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { awakenCharacter, createEraSuccessor, createGame, finalizeCharacterShaping, META_ORIGIN_POOL, rerollCandidates, selectCandidate } from "./domain/generator.js";
+import { createHiddenWorld, ensureGameState } from "./domain/world.js";
 
 const testDirectoryPrefix = join(tmpdir(), "douluo-db-test-");
 const testDirectory = mkdtempSync(testDirectoryPrefix);
@@ -169,6 +170,30 @@ describe("存档数据库", () => {
     expect(recalled[0].text).toContain("曼陀罗蛇");
     expect(recalled.some((item) => item.text.includes("十万年魂环"))).toBe(false);
     database.deleteGame(game.view.id);
+  });
+
+  it("retrieves era-valid canon personality, timeline, faction, and social logic without leaking unknown characters", () => {
+    const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "canon-vector-retrieval" });
+    game.view.worldTime = { era: "斗罗大陆", year: 0, day: 20, time: "08:00", season: "春" };
+    game.view.knownFigures.push({ id: "tang-san", name: "唐三", knownPower: "觉醒阶段", location: "圣魂村", status: "已知", source: "亲眼见过" });
+    game.view.knownFigures.push({ id: "xiao-wu", name: "小舞", knownPower: "新生", location: "诺丁学院", status: "已知", source: "亲眼见过" });
+    const knowledge = database.retrieveCanonKnowledge(game, "唐三原作0年先天满魂力觉醒阶段的实力、性格、目标；唐三和小舞如何相处；与唐三建立信任的人际逻辑", 20);
+    expect(knowledge.some((item) => item.subjectId === "tang-san" && item.kind === "character")).toBe(true);
+    expect(knowledge.some((item) => item.subjectId === "tang-san" && item.kind === "character-timeline")).toBe(true);
+    expect(knowledge.some((item) => item.kind === "social-law" && /信任|关系|共同经历/.test(item.text))).toBe(true);
+    expect(knowledge.some((item) => item.kind === "relationship" && item.subjectName.includes("唐三") && item.subjectName.includes("小舞"))).toBe(true);
+    expect(knowledge.some((item) => item.subjectId === "di-tian")).toBe(false);
+    expect(database.getModelUsage().canonKnowledgeVectors).toBeGreaterThan(100);
+  });
+
+  it("seeds canon relationship baselines by life stage without overwriting later simulation", () => {
+    const game = createGame({ era: 1, gender: "女", difficulty: "标准", seed: "canon-relationship-baseline" });
+    game.world = createHiddenWorld(-5, "holy-soul-village");
+    expect(game.world.npcRelations.some((item) => [item.leftId, item.rightId].includes("tang-san") && [item.leftId, item.rightId].includes("tang-hao") && item.kind === "亲近")).toBe(true);
+    expect(game.world.npcRelations.some((item) => [item.leftId, item.rightId].includes("tang-san") && [item.leftId, item.rightId].includes("xiao-wu"))).toBe(false);
+    game.view.worldTime = { era: "斗罗大陆", year: 0, day: 20, time: "08:00", season: "春" };
+    ensureGameState(game);
+    expect(game.world.npcRelations.some((item) => [item.leftId, item.rightId].includes("tang-san") && [item.leftId, item.rightId].includes("xiao-wu"))).toBe(true);
   });
 
   it("replaces a settled slot with its next-era successor and preserves a terminal checkpoint", () => {

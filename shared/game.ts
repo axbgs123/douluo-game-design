@@ -993,6 +993,8 @@ export interface ModelUsageView {
   vectorMemories: number;
   vectorDimensions: number;
   vectorRetrievalLimit: number;
+  canonKnowledgeVectors: number;
+  canonRetrievalLimit: number;
 }
 
 export interface MetaProgressionView {

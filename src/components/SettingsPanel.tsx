@@ -38,6 +38,7 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
       <p className="settings-copy">复杂行动会先整理语义，再生成正文并更新长期记忆。</p>
       {usage && <p className="settings-copy">本机调用统计：{usage.calls} 次 · 失败 {usage.failures} 次 · {usage.totalTokens || "未返回"} tokens · 累计 {(usage.totalLatencyMs / 1000).toFixed(1)} 秒。只记录计数、延迟与状态，不保存提示词或正文。</p>}
       {usage && <p className="settings-copy">本地向量记忆：{usage.vectorMemories} 条 · {usage.vectorDimensions} 维 · 每回合最多召回 {usage.vectorRetrievalLimit} 条相关旧事。记忆只保存在本机存档数据库。</p>}
+      {usage && <p className="settings-copy">斗罗世界知识：{usage.canonKnowledgeVectors} 条 · 每回合最多召回 {usage.canonRetrievalLimit} 条人物阶段、势力、地点、事件、魂兽生态与社会运行规律。</p>}
       <form onSubmit={(event) => {
         event.preventDefault();
         if (!apiKey.trim() && !view?.hasKey) return;

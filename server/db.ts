@@ -12,6 +12,8 @@ import type { StoredGame } from "./domain/model.js";
 import { ensureGameState } from "./domain/world.js";
 import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_NAMES, META_ORIGIN_POOL, META_ORIGIN_POOL_SIZE, selectCandidate } from "./domain/generator.js";
 import { bytesToVector, embedMemoryText, vectorSimilarity, vectorToBytes, VECTOR_MEMORY_DIMENSIONS } from "./domain/vector-memory.js";
+import { WORLD_SOCIAL_LAWS } from "./data/world-social-laws.js";
+import { CANON_RELATIONSHIPS } from "./data/canon-relationships.js";
 
 const databasePath = process.env.DOULUO_DATA_DIR
   ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
@@ -106,6 +108,25 @@ database.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_vector_memories_game_action
   ON vector_memories(game_id, action_index DESC);
+
+  CREATE TABLE IF NOT EXISTS canon_knowledge_vectors (
+    id TEXT PRIMARY KEY,
+    source_key TEXT NOT NULL UNIQUE,
+    era INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    subject_id TEXT,
+    subject_name TEXT NOT NULL,
+    valid_from_year INTEGER NOT NULL,
+    valid_until_year INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    metadata_json TEXT NOT NULL,
+    vector_blob BLOB NOT NULL,
+    importance REAL NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_canon_knowledge_era_year
+  ON canon_knowledge_vectors(era, valid_from_year, valid_until_year);
 
   CREATE TABLE IF NOT EXISTS canon_characters (
     id TEXT PRIMARY KEY,
@@ -244,6 +265,137 @@ export function retrieveVectorMemories(game: StoredGame, query: string, limit = 
   }).filter((item) => item.similarity > 0.08).sort((left, right) => right.similarity - left.similarity || right.actionIndex - left.actionIndex).slice(0, Math.max(1, Math.min(16, limit)));
 }
 
+export interface RetrievedCanonKnowledge {
+  kind: string;
+  subjectId?: string;
+  subjectName: string;
+  text: string;
+  importance: number;
+  similarity: number;
+  metadata: Record<string, unknown>;
+}
+
+function eraAtYear(year: number): 1 | 2 | 3 | 4 {
+  return year >= 25_000 ? 4 : year >= 15_000 ? 3 : year >= 5_000 ? 2 : 1;
+}
+
+function storeCanonKnowledge(input: { sourceKey: string; era: number; kind: string; subjectId?: string; subjectName: string; validFromYear?: number; validUntilYear?: number; text: string; importance: number; metadata?: Record<string, unknown> }): void {
+  const text = input.text.replace(/\s+/g, " ").trim().slice(0, 2_800);
+  if (!text) return;
+  database.prepare(`
+    INSERT INTO canon_knowledge_vectors (id, source_key, era, kind, subject_id, subject_name, valid_from_year, valid_until_year, text, metadata_json, vector_blob, importance, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(source_key) DO UPDATE SET era=excluded.era, kind=excluded.kind, subject_id=excluded.subject_id,
+      subject_name=excluded.subject_name, valid_from_year=excluded.valid_from_year, valid_until_year=excluded.valid_until_year,
+      text=excluded.text, metadata_json=excluded.metadata_json, vector_blob=excluded.vector_blob, importance=excluded.importance, updated_at=excluded.updated_at
+  `).run(randomUUID(), input.sourceKey, input.era, input.kind, input.subjectId ?? null, input.subjectName, input.validFromYear ?? -100_000, input.validUntilYear ?? 100_000, text, JSON.stringify(input.metadata ?? {}), vectorToBytes(embedMemoryText(text)), Math.max(0, Math.min(1, input.importance)), new Date().toISOString());
+}
+
+function seedCanonKnowledge(): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const validKeys: string[] = [];
+    for (const character of CANON_CHARACTERS) {
+      const sourceKey = `character:${character.id}:core`;
+      validKeys.push(sourceKey);
+      storeCanonKnowledge({
+        sourceKey, era: character.powerSnapshots[0] ? eraAtYear(character.powerSnapshots[0].year) : 0, kind: "character",
+        subjectId: character.id, subjectName: character.name, validFromYear: character.birthYear ?? -100_000, validUntilYear: character.deathYear ?? 100_000,
+        importance: character.importance / 5,
+        text: `${character.name}${character.aliases.length ? `，别名${character.aliases.join("、")}` : ""}。性格惯性：${character.personality.join("、")}。长期目标：${character.goals.join("、")}。武魂：${character.martialSouls.join("、") || "不以武魂战力为主要影响"}。所属或关联势力：${character.factionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id).join("、") || "无固定势力"}。原始活动地点：${LOCATIONS.find((item) => item.id === character.initialLocationId)?.name ?? character.initialLocationId}。性格只决定倾向，当前年龄、职位、关系、伤势与玩家造成的经历可以改变具体选择。`,
+        metadata: { hidden: Boolean(character.hidden), aliases: character.aliases, personality: character.personality, goals: character.goals, sourceType: "结构化原著资料" },
+      });
+      const snapshots = [...character.powerSnapshots].sort((left, right) => left.year - right.year);
+      snapshots.forEach((snapshot, index) => {
+        const snapshotKey = `character:${character.id}:timeline:${snapshot.year}`;
+        validKeys.push(snapshotKey);
+        storeCanonKnowledge({ sourceKey: snapshotKey, era: eraAtYear(snapshot.year), kind: "character-timeline", subjectId: character.id, subjectName: character.name,
+          validFromYear: snapshot.year, validUntilYear: snapshots[index + 1] ? snapshots[index + 1].year - 1 : character.deathYear ?? 100_000,
+          importance: character.importance / 5, text: `${character.name}在原作${snapshot.year}年前后的生命阶段：${snapshot.tier}${snapshot.soulRank !== undefined ? `，公开魂力约${snapshot.soulRank}级` : ""}。阶段事实：${snapshot.note}。这是该时点的原著惯性；若玩家已经留下相关因果足迹，应按当前存档重新推演。`,
+          metadata: { soulRank: snapshot.soulRank, tier: snapshot.tier, hidden: Boolean(character.hidden), sourceType: "结构化原著时间线" } });
+      });
+    }
+    for (const faction of FACTIONS) {
+      const sourceKey = `faction:${faction.id}`; validKeys.push(sourceKey);
+      storeCanonKnowledge({ sourceKey, era: faction.activeFromYear === undefined ? 1 : eraAtYear(faction.activeFromYear), kind: "faction", subjectId: faction.id, subjectName: faction.name,
+        validFromYear: faction.activeFromYear, validUntilYear: faction.activeUntilYear, importance: faction.inertia / 5,
+        text: `${faction.name}是${faction.kind}，总部或核心据点为${LOCATIONS.find((item) => item.id === faction.headquartersId)?.name ?? faction.headquartersId}。${faction.description}。组织会先维护自身存续、资源、名誉、派系与制度权限，不会因为玩家身份自动让步。`,
+        metadata: { hidden: Boolean(faction.hidden), inertia: faction.inertia, sourceType: "结构化势力资料" } });
+    }
+    for (const location of LOCATIONS) {
+      const sourceKey = `location:${location.id}`; validKeys.push(sourceKey);
+      storeCanonKnowledge({ sourceKey, era: location.availableFromYear === undefined ? 1 : eraAtYear(location.availableFromYear), kind: "location", subjectId: location.id, subjectName: location.name,
+        validFromYear: location.availableFromYear, importance: location.danger === "禁区" ? .9 : location.danger === "高" ? .75 : .55,
+        text: `${location.name}位于${location.region}，危险度${location.danger}。${location.description}。可达联系：${location.connections.map((connection) => `${LOCATIONS.find((item) => item.id === connection.id)?.name ?? connection.id}约${connection.minutes}分钟`).join("、") || "没有普通公开路线"}。旅行必须服从路程、交通、凭证、补给与角色已知地图。`,
+        metadata: { hidden: Boolean(location.hidden), danger: location.danger, sourceType: "结构化地点设定" } });
+    }
+    for (const event of CANON_EVENTS) {
+      const sourceKey = `event:${event.id}`; validKeys.push(sourceKey);
+      storeCanonKnowledge({ sourceKey, era: eraAtYear(event.year), kind: "event", subjectId: event.id, subjectName: event.title,
+        validFromYear: event.year, validUntilYear: event.year, importance: event.inertia / 5,
+        text: `重要原著事件“${event.title}”的原作时间锚点为${event.year}年${event.day ?? 1}日，地点${LOCATIONS.find((item) => item.id === event.locationId)?.name ?? event.locationId ?? "跨地区"}。原著公开结果：${event.publicSummary}。没有玩家因果足迹时保持惯性；玩家实际改变参与者、资源、地点或势力条件后重新推演。`,
+        metadata: { visibility: event.visibility ?? "公开", participantIds: event.participantIds, inertia: event.inertia, sourceType: "结构化原著事件" } });
+    }
+    for (const beast of SOUL_BEASTS) {
+      const sourceKey = `soul-beast:${beast.id}`; validKeys.push(sourceKey);
+      storeCanonKnowledge({ sourceKey, era: 0, kind: "soul-beast", subjectId: beast.id, subjectName: beast.name, importance: Math.min(1, .45 + beast.danger / 12),
+        text: `${beast.name}常见于${beast.habitats.map((id) => LOCATIONS.find((item) => item.id === id)?.name ?? id).join("、")}，属性${beast.attributes.join("、")}，通常年限${beast.ageRange[0]}至${beast.ageRange[1]}年，危险度${beast.danger}。可能形成${beast.possibleSkills.join("、")}方向魂技。${beast.description}。实际遭遇仍受地点生态、追踪证据和程序战斗结算限制。`,
+        metadata: { danger: beast.danger, habitats: beast.habitats, sourceType: "结构化魂兽生态" } });
+    }
+    for (const relationship of CANON_RELATIONSHIPS) {
+      const from = CANON_CHARACTERS.find((item) => item.id === relationship.fromId);
+      const to = CANON_CHARACTERS.find((item) => item.id === relationship.toId);
+      const sourceKey = `relationship:${relationship.id}`; validKeys.push(sourceKey);
+      storeCanonKnowledge({ sourceKey, era: relationship.era, kind: "relationship", subjectId: relationship.id, subjectName: `${from?.name ?? relationship.fromId}—${to?.name ?? relationship.toId}`,
+        validFromYear: relationship.validFromYear, validUntilYear: relationship.validUntilYear, importance: relationship.importance,
+        text: `${from?.name ?? relationship.fromId}与${to?.name ?? relationship.toId}在该阶段的原著关系：${relationship.relation}。形成依据：${relationship.basis}。互动惯性：${relationship.dynamics}。边界：${relationship.boundary}。当前存档中的共同经历和玩家因果可以改变这段关系。`,
+        metadata: { fromId: relationship.fromId, toId: relationship.toId, validFromDay: relationship.validFromDay ?? 1, disclosure: "behavior-only", sourceType: "结构化原著关系" } });
+    }
+    for (const law of WORLD_SOCIAL_LAWS) {
+      const sourceKey = `social-law:${law.id}`; validKeys.push(sourceKey);
+      storeCanonKnowledge({ sourceKey, era: law.era, kind: "social-law", subjectId: law.id, subjectName: law.category, importance: law.importance,
+        text: `斗罗世界运行规律【${law.category}】：${law.text}`, metadata: { category: law.category, sourceType: "原创运行规则" } });
+    }
+    if (validKeys.length) database.prepare(`DELETE FROM canon_knowledge_vectors WHERE source_key NOT IN (${validKeys.map(() => "?").join(",")})`).run(...validKeys);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function retrieveCanonKnowledge(game: StoredGame, query: string, limit = 10): RetrievedCanonKnowledge[] {
+  const year = game.view.worldTime?.year ?? 0;
+  const era = game.view.era ?? eraAtYear(year);
+  const knownCharacterIds = new Set([
+    ...game.view.knownFigures.map((item) => item.id),
+    ...Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer).map((npc) => npc.id),
+    ...game.world.canonCausalFootprints.flatMap((item) => item.affectedNpcIds),
+  ]);
+  const knownLocationIds = new Set([game.view.locationId, ...game.world.discoveredLocations, ...game.view.map.filter((item) => item.discovered || item.current).map((item) => item.id)]);
+  const knownFactionIds = new Set([...game.view.affiliations.map((item) => item.id), ...game.view.managedFactions.map((item) => item.id), ...game.world.canonCausalFootprints.flatMap((item) => item.affectedFactionIds)]);
+  const queryVector = embedMemoryText(query);
+  const rows = database.prepare(`SELECT kind, subject_id, subject_name, valid_from_year, text, metadata_json, vector_blob, importance FROM canon_knowledge_vectors WHERE (era = 0 OR era = ?) AND valid_from_year <= ? AND valid_until_year >= ?`).all(era, year, year) as Array<{ kind: string; subject_id?: string; subject_name: string; valid_from_year: number; text: string; metadata_json: string; vector_blob: Uint8Array; importance: number }>;
+  return rows.map((row) => ({ ...row, metadata: JSON.parse(row.metadata_json) as Record<string, unknown>, rawSimilarity: vectorSimilarity(queryVector, bytesToVector(row.vector_blob)) }))
+    .filter((row) => {
+      if (row.kind === "social-law") return true;
+      if (row.kind === "relationship") {
+        const fromId = String(row.metadata.fromId ?? ""); const toId = String(row.metadata.toId ?? "");
+        const started = row.valid_from_year < year || (row.valid_from_year === year && Number(row.metadata.validFromDay ?? 1) <= (game.view.worldTime?.day ?? 1));
+        return started && knownCharacterIds.has(fromId) && knownCharacterIds.has(toId);
+      }
+      if (row.kind === "character" || row.kind === "character-timeline") return Boolean(row.subject_id && knownCharacterIds.has(row.subject_id));
+      if (row.kind === "event") return Boolean(row.subject_id && game.world.firedCanonEvents.includes(row.subject_id));
+      if (row.kind === "location") return Boolean((row.subject_id && knownLocationIds.has(row.subject_id)) || (!row.metadata.hidden && query.includes(row.subject_name)));
+      if (row.kind === "faction") return Boolean((row.subject_id && knownFactionIds.has(row.subject_id)) || query.includes(row.subject_name));
+      if (row.kind === "soul-beast") return query.includes(row.subject_name) || game.view.hunting?.targetBeastId === row.subject_id || game.view.hunting?.targetName === row.subject_name;
+      return false;
+    }).map((row) => {
+      const score = row.rawSimilarity * .84 + row.importance * .16;
+      return { kind: row.kind, subjectId: row.subject_id, subjectName: row.subject_name, text: row.text, importance: row.importance, similarity: Number(score.toFixed(4)), metadata: row.metadata };
+    }).filter((item) => item.similarity > .1).sort((left, right) => right.similarity - left.similarity).slice(0, Math.max(1, Math.min(20, limit)));
+}
+
 export function recordModelCall(input: { gameId: string; role: "intent" | "narrator"; model: string; status: "success" | "failure"; latencyMs: number; promptChars: number; outputChars: number; promptTokens?: number; completionTokens?: number; totalTokens?: number; errorCode?: string }): void {
   database.prepare("INSERT INTO model_calls (game_id, role, model, status, latency_ms, prompt_chars, output_chars, prompt_tokens, completion_tokens, total_tokens, error_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.model.slice(0, 120), input.status, Math.max(0, Math.round(input.latencyMs)), Math.max(0, input.promptChars), Math.max(0, input.outputChars), Math.max(0, input.promptTokens ?? 0), Math.max(0, input.completionTokens ?? 0), Math.max(0, input.totalTokens ?? 0), input.errorCode?.slice(0, 80) ?? null, new Date().toISOString());
 }
@@ -252,7 +404,8 @@ export function getModelUsage(gameId?: string): ModelUsageView {
   const where = gameId ? " WHERE game_id = ?" : "";
   const row = database.prepare(`SELECT COUNT(*) calls, SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) failures, COALESCE(SUM(prompt_tokens), 0) prompt_tokens, COALESCE(SUM(completion_tokens), 0) completion_tokens, COALESCE(SUM(total_tokens), 0) total_tokens, COALESCE(SUM(latency_ms), 0) total_latency_ms, MAX(created_at) last_call_at FROM model_calls${where}`).get(...(gameId ? [gameId] : [])) as { calls: number; failures: number; prompt_tokens: number; completion_tokens: number; total_tokens: number; total_latency_ms: number; last_call_at?: string };
   const vectorRow = database.prepare(`SELECT COUNT(*) AS count FROM vector_memories${gameId ? " WHERE game_id = ?" : ""}`).get(...(gameId ? [gameId] : [])) as { count: number };
-  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8 };
+  const canonRow = database.prepare("SELECT COUNT(*) AS count FROM canon_knowledge_vectors").get() as { count: number };
+  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8, canonKnowledgeVectors: Number(canonRow.count), canonRetrievalLimit: 10 };
 }
 
 const gameColumns = database.prepare("PRAGMA table_info(games)").all() as Array<{ name: string }>;
@@ -294,6 +447,7 @@ function seedCanonCatalog(): void {
 }
 
 seedCanonCatalog();
+seedCanonKnowledge();
 
 const defaultMetaProgression: MetaProgressionView = {
   legacyPoints: 0,
