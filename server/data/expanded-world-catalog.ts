@@ -1,6 +1,7 @@
-import type { CanonCharacterDefinition, CanonEventDefinition, FactionDefinition, LocationDefinition, SoulBeastDefinition } from "./world.js";
+import type { CanonCharacterDefinition, CanonEventDefinition, FactionDefinition, KnowledgeProvenance, LocationDefinition, SoulBeastDefinition } from "./world.js";
 
-const faction = (id: string, name: string, kind: string, headquartersId: string, description: string, activeFromYear?: number, hidden = false): FactionDefinition => ({ id, name, kind, headquartersId, description, inertia: 3, activeFromYear, hidden });
+const ORIGINAL_FACTION_IDS = new Set(["fire-leopard-sect", "wind-sword-sect", "rock-sect", "river-spirit-sect", "hidden-tide-gate", "hidden-dream-valley", "hidden-star-forge", "hidden-mirror-lake", "hidden-beast-manor", "hidden-snow-gate", "hidden-broken-stele", "hidden-herb-ravine", "hidden-silent-pavilion", "hidden-phoenix-ridge"]);
+const faction = (id: string, name: string, kind: string, headquartersId: string, description: string, activeFromYear?: number, hidden = false): FactionDefinition => ({ id, name, kind, headquartersId, description, inertia: 3, activeFromYear, hidden, provenance: ORIGINAL_FACTION_IDS.has(id) ? "原创" : "原著" });
 
 export const EXPANDED_FACTIONS: FactionDefinition[] = [
   faction("balak-kingdom", "巴拉克王国", "天斗附属王国", "suotuo-city", "以索托城为重要商业与斗魂中心。"),
@@ -14,11 +15,11 @@ export const EXPANDED_FACTIONS: FactionDefinition[] = [
   faction("thunder-academy", "雷霆学院", "元素学院", "thunder-academy", "与蓝电霸王龙宗联系密切。"),
   faction("elephant-academy", "象甲学院", "宗门学院", "elephant-sect-fort", "象甲宗直属学院，重视防御。"),
   faction("star-luo-royal-academy", "星罗皇家学院", "皇家学院", "star-luo-royal-academy", "服务星罗皇室与贵族竞争体系。"),
-  faction("fire-leopard-sect", "火豹宗", "下四宗", "fire-leopard-town", "传承火豹武魂的宗门。"),
-  faction("wind-sword-sect", "风剑宗", "下四宗", "wind-sword-pass", "以风属性剑武魂闻名。"),
+  faction("fire-leopard-sect", "火豹宗", "原创地方魂师宗门", "fire-leopard-town", "为火属性宗门路线补充的同人原创势力，不冒充原著下四宗。"),
+  faction("wind-sword-sect", "风剑宗", "原创地方魂师宗门", "wind-sword-pass", "为剑武魂宗门路线补充的同人原创势力，不冒充原著下四宗。"),
   faction("rock-sect", "岩羚宗", "原创地方魂师宗门", "heaven-dou-city", "规模有限，擅长岩石、防御和山地作战。"),
   faction("holy-dragon-sect", "圣龙宗", "下四宗", "holy-dragon-gate", "重视兽武魂、体魄和正面攻防的宗门。"),
-  faction("river-spirit-sect", "清河水宗", "地方魂师宗门", "clear-river-spring", "依托山泉修炼水系与辅助能力的小型宗门。"),
+  faction("river-spirit-sect", "清河水宗", "原创地方魂师宗门", "clear-river-spring", "依托山泉修炼水系与辅助能力的小型同人原创宗门。"),
   faction("hidden-tide-gate", "归潮门", "原创隐世宗门", "tide-listening-isle", "不足三十人的近海宗门，擅长观潮和救援，不具备号令海魂兽的能力。", undefined, true),
   faction("hidden-dream-valley", "眠云谷", "原创隐世宗门", "dream-cloud-valley", "研究冥想与梦境记录的小宗门，精神训练存在失眠和记忆混淆风险。", undefined, true),
   faction("hidden-star-forge", "铸星台", "原创隐世宗门", "star-forge-peak", "依靠有限陨铁延续锻造传承，材料与战力都受到现实限制。", undefined, true),
@@ -41,7 +42,7 @@ export const EXPANDED_FACTIONS: FactionDefinition[] = [
   faction("gengxin-smiths", "庚辛城铁匠总会", "行业组织", "gengxin-city", "大陆铁匠、稀有金属与锻造交易中心。"),
 
   faction("sun-moon-empire", "日月帝国", "帝国", "radiant-city", "以魂导科技、皇室与军方体系见长。", 9800),
-  faction("heavenly-soul-empire", "天魂帝国", "帝国", "heavenly-soul-city", "万年后由天斗旧土演变的国家之一。", 9800),
+  faction("heavenly-soul-empire", "天魂帝国", "帝国", "heaven-dou-city", "万年后由天斗旧土演变的国家之一，首都仍名天斗城。", 9800),
   faction("dou-ling-empire", "斗灵帝国", "帝国", "dou-ling-city", "万年后的大陆国家之一。", 9800),
   faction("shrek-inner-court", "史莱克学院内院", "学院核心", "shrek-city", "培养大陆顶尖魂师与监察团成员。", 9900),
   faction("sea-god-pavilion", "海神阁", "史莱克决策层", "shrek-city", "万年后史莱克学院最高决策机构。", 9900, true),
@@ -82,18 +83,23 @@ export const EXPANDED_FACTIONS: FactionDefinition[] = [
   faction("sky-horse-guild", "天马体系", "龙马核心组织", "sky-horse-star", "天马族高层与军政结构。", 30000),
 ];
 
-const location = (id: string, name: string, region: string, danger: LocationDefinition["danger"], description: string, availableFromYear?: number, hidden = false): LocationDefinition => ({ id, name, region, danger, description, connections: [], availableFromYear, hidden });
+const ORIGINAL_LOCATION_IDS = new Set(["fire-leopard-town", "wind-sword-pass", "clear-river-spring", "tide-listening-isle", "dream-cloud-valley", "star-forge-peak", "mirror-fold-lake", "beast-manor-ridge", "snow-sound-ridge", "wordless-cliff", "hundred-herb-ravine", "echo-cavern", "red-feather-terrace", "mother-ship-port"]);
+const DERIVED_LOCATION_IDS = new Set(["holy-dragon-gate", "blue-silver-valley", "dou-ling-city", "body-sect-mountain", "holy-spirit-depths", "star-dou-reserve", "mingdu-federal", "d3-star-luo-capital", "d3-dou-spirit-capital"]);
+const location = (id: string, name: string, region: string, danger: LocationDefinition["danger"], description: string, availableFromYear?: number, hidden = false): LocationDefinition => {
+  const provenance: KnowledgeProvenance = ORIGINAL_LOCATION_IDS.has(id) ? "原创" : DERIVED_LOCATION_IDS.has(id) ? "原著归纳" : "原著";
+  return { id, name, region, danger, description, connections: [], availableFromYear, hidden, provenance };
+};
 
 export const EXPANDED_LOCATIONS: LocationDefinition[] = [
   location("silves-city", "西尔维斯城", "西尔维斯王国", "低", "拥有大斗魂场与王国贵族区。"),
-  location("haagen-city", "哈根城", "哈根达斯王国", "低", "北方王国主城，气候寒冷。"),
+  location("haagen-city", "西鲁城", "哈根达斯王国", "低", "哈根达斯王国的重要城市与主城，原著人物曾由此横穿王国。"),
   location("canghui-academy", "苍晖学院", "天斗帝国", "安全", "以宝石武魂和幻境配合闻名。"),
   location("botanical-academy", "植物学院", "天斗帝国", "安全", "拥有大面积拟态植物园。"),
   location("star-luo-royal-academy", "星罗皇家学院", "星罗城", "安全", "星罗贵族与皇室战队训练地。"),
-  location("fire-leopard-town", "火豹宗山城", "星罗帝国", "低", "火豹宗控制的火山丘陵城镇。"),
-  location("wind-sword-pass", "风剑关", "天斗帝国", "中", "风剑宗守卫的高风峡谷。"),
-  location("holy-dragon-gate", "圣龙宗白甲山门", "星罗帝国北境", "低", "圣龙宗外门训练与甲兽饲养所在。"),
-  location("clear-river-spring", "天斗南部清河水宗", "天斗帝国南部", "低", "围绕山泉建立的地方宗门驻地。"),
+  location("fire-leopard-town", "火豹宗山城", "星罗帝国原创地区", "低", "火豹宗控制的同人原创火山丘陵城镇。"),
+  location("wind-sword-pass", "风剑关", "天斗帝国原创地区", "中", "风剑宗守卫的同人原创高风峡谷。"),
+  location("holy-dragon-gate", "圣龙宗驻地", "具体位置未证", "低", "圣龙宗传承白甲地龙武魂；具体山门位置、外门制度与内部设施采用原著留白。"),
+  location("clear-river-spring", "清河水宗驻地", "天斗帝国原创地区", "低", "围绕山泉建立的同人原创水系宗门驻地。"),
   location("tide-listening-isle", "归潮门听潮屿", "瀚海城外海", "中", "受季风封锁的近海孤岛，设有潮汐哨站。", undefined, true),
   location("dream-cloud-valley", "眠云谷雾隐山坳", "天斗西部群山", "中", "常年云雾覆盖、用于冥想训练的隐秘山谷。", undefined, true),
   location("star-forge-peak", "铸星台坠铁峰", "庚辛城北部山地", "中", "残存陨铁矿和古炉的孤峰。", undefined, true),
@@ -108,24 +114,23 @@ export const EXPANDED_LOCATIONS: LocationDefinition[] = [
   location("sea-witch-pillar", "海魔女圣柱", "海神岛", "禁区", "海魔女斗罗镇守的水域圣柱。"),
   location("blue-silver-valley", "蓝银森林", "天斗帝国隐秘山谷", "高", "蓝银王与大量蓝银草聚集地。", undefined, true),
   location("radiant-city", "明都", "日月帝国", "低", "魂导科技高度发达的日月帝国首都。", 9800),
-  location("heavenly-soul-city", "天魂城", "天魂帝国", "低", "天魂帝国首都。", 9800),
-  location("dou-ling-city", "斗灵城", "斗灵帝国", "低", "斗灵帝国首都。", 9800),
+  location("dou-ling-city", "斗灵帝国首都", "斗灵帝国", "低", "原著确认该国存在首都，但没有在当前文本证据中给出首都专名。", 9800),
   location("shrek-city", "史莱克城", "斗罗大陆中部", "安全", "万年后围绕史莱克学院形成的巨大城市。", 9900),
   location("white-tiger-duke-estate", "白虎公爵府", "星罗帝国", "低", "白虎公爵家族的领地与府邸，家族等级和军功秩序森严。", 9800),
   location("body-sect-mountain", "本体宗秘境", "天魂帝国群山", "禁区", "本体宗隐秘山门。", 9900, true),
   location("holy-spirit-depths", "圣灵教地下据点", "大陆未知区域", "禁区", "邪魂师组织不断迁移的隐蔽据点。", 9900, true),
   location("evil-forest", "邪魔森林", "日月大陆", "禁区", "邪眼暴君族群统治的精神系魂兽森林。", 9000),
   location("jing-yang-mountains", "景阳山脉", "日月帝国", "高", "高阶魂兽与稀有矿物并存的山脉。", 9800),
-  location("star-dou-reserve", "星斗大森林保护区", "联邦中部", "高", "传灵塔时代残存的魂兽保护区。", 19800),
-  location("mingdu-federal", "联邦明都", "斗罗联邦", "安全", "联邦政治与军事中心之一。", 19800),
+  location("star-dou-reserve", "星斗大森林核心圈", "斗罗联邦中部", "高", "斗三时期核心圈受传灵塔和星斗要塞管控；斗四时期森林仍在恢复，原有魂兽已经迁往森罗星与精灵星。", 19800),
+  location("mingdu-federal", "明都（联邦时期）", "斗罗联邦", "安全", "斗罗联邦首都与政治中心；括号仅用于区分时代，不是原著正式城名。", 19800),
   location("spirit-pagoda-hq", "传灵塔总部", "斗罗联邦", "安全", "魂灵技术和高阶传灵师中心。", 19800),
   location("east-sea-city", "东海城", "斗罗联邦东海岸", "安全", "唐舞麟童年求学的海滨城市。", 19800),
   location("aolai-city-d3", "傲来城", "斗罗联邦东海岸", "安全", "唐舞麟六岁觉醒并在红山学院开始初等学习的沿海城市。", 19800),
   location("blood-god-camp", "血神军团营地", "雪山深处", "禁区", "镇守深渊通道的军事基地。", 19800, true),
   location("abyss-passage", "深渊通道", "位面裂隙", "禁区", "连接深渊位面的危险通道。", 19800, true),
-  location("d3-star-luo-capital", "海外星罗城", "星罗大陆", "低", "海外星罗帝国首都。", 19800),
-  location("d3-dou-spirit-capital", "海外斗灵城", "斗灵大陆", "低", "海外斗灵帝国首都。", 19800),
-  location("mother-ship-port", "联邦母舰港", "斗罗联邦", "安全", "星际舰队母舰与补给中心。", 29800),
+  location("d3-star-luo-capital", "星罗城（星罗大陆）", "星罗大陆", "低", "星罗大陆上星罗帝国的首都；括号是地图消歧标签。", 19800),
+  location("d3-dou-spirit-capital", "斗灵帝国首都（斗灵大陆）", "斗灵大陆", "低", "海外斗灵帝国的首都，当前原著证据没有给出城市专名。", 19800),
+  location("mother-ship-port", "联邦舰队集结基地", "斗罗联邦原创交通节点", "安全", "为星际航线与补给玩法设置的同人原创集结点，不代表七支联邦舰队共享同一原著总部。", 29800),
   location("tianluo-planet", "天罗星", "斗罗联邦行政星", "安全", "较早完成开发的行政星，紫萝城、天罗城与高能少年培养体系位于此处。", 29800),
   location("tiandou-planet", "天斗星", "斗罗联邦行政星", "安全", "联邦重要行政星，拥有成熟城市、学院与星际客运设施。", 29800),
   location("senluo-planet", "森罗星", "斗罗联邦辖星", "高", "保留大量魂兽生态的行政星。", 29800),
@@ -150,9 +155,8 @@ const ERA_CONNECTIONS: Record<string, Array<{ id: string; minutes: number }>> = 
   "echo-cavern": [{ id: "suotuo-city", minutes: 1800 }],
   "red-feather-terrace": [{ id: "star-luo-city", minutes: 2880 }],
   "radiant-city": [{ id: "evil-forest", minutes: 1440 }, { id: "jing-yang-mountains", minutes: 2160 }, { id: "star-luo-city", minutes: 7200 }],
-  "heavenly-soul-city": [{ id: "shrek-city", minutes: 2880 }, { id: "dou-ling-city", minutes: 4320 }],
-  "dou-ling-city": [{ id: "shrek-city", minutes: 3240 }, { id: "heavenly-soul-city", minutes: 4320 }],
-  "shrek-city": [{ id: "heavenly-soul-city", minutes: 2880 }, { id: "dou-ling-city", minutes: 3240 }, { id: "star-luo-city", minutes: 4320 }, { id: "white-tiger-duke-estate", minutes: 3600 }, { id: "star-dou-edge", minutes: 1080 }, { id: "east-sea-city", minutes: 3600 }, { id: "mingdu-federal", minutes: 4320 }, { id: "spirit-pagoda-hq", minutes: 720 }, { id: "star-dou-reserve", minutes: 1080 }, { id: "mother-ship-port", minutes: 2400 }],
+  "dou-ling-city": [{ id: "shrek-city", minutes: 3240 }, { id: "heaven-dou-city", minutes: 4320 }],
+  "shrek-city": [{ id: "heaven-dou-city", minutes: 2880 }, { id: "dou-ling-city", minutes: 3240 }, { id: "star-luo-city", minutes: 4320 }, { id: "white-tiger-duke-estate", minutes: 3600 }, { id: "star-dou-edge", minutes: 1080 }, { id: "east-sea-city", minutes: 3600 }, { id: "mingdu-federal", minutes: 4320 }, { id: "spirit-pagoda-hq", minutes: 720 }, { id: "star-dou-reserve", minutes: 1080 }, { id: "mother-ship-port", minutes: 2400 }],
   "white-tiger-duke-estate": [{ id: "star-luo-city", minutes: 1440 }, { id: "shrek-city", minutes: 3600 }, { id: "star-dou-edge", minutes: 2880 }],
   "star-dou-edge": [{ id: "shrek-city", minutes: 1080 }, { id: "white-tiger-duke-estate", minutes: 2880 }],
   "evil-forest": [{ id: "radiant-city", minutes: 1440 }],

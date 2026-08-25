@@ -6,7 +6,7 @@ import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView,
 import type { MartialSoulTemplate } from "./domain/model.js";
 import { META_MARTIAL_SOULS, META_MARTIAL_SOUL_POOL_SIZE, metaSoulById } from "./data/meta-martial-souls.js";
 import { META_HEIRLOOMS } from "./data/meta-heirlooms.js";
-import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "./data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS, locationActiveAtYear, locationProfileAtYear } from "./data/world.js";
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
 import { ensureGameState } from "./domain/world.js";
@@ -328,13 +328,14 @@ function seedCanonKnowledge(): void {
   try {
     const validKeys: string[] = [];
     for (const character of CANON_CHARACTERS) {
+      const initialLocation = LOCATIONS.find((item) => item.id === character.initialLocationId);
       const sourceKey = `character:${character.id}:core`;
       validKeys.push(sourceKey);
       storeCanonKnowledge({
         sourceKey, era: character.powerSnapshots[0] ? eraAtYear(character.powerSnapshots[0].year) : 0, kind: "character",
         subjectId: character.id, subjectName: character.name, validFromYear: character.birthYear ?? -100_000, validUntilYear: character.deathYear ?? 100_000,
         importance: character.importance / 5,
-        text: `${character.name}${character.aliases.length ? `，别名${character.aliases.join("、")}` : ""}。性格惯性：${character.personality.join("、")}。长期目标：${character.goals.join("、")}。武魂：${character.martialSouls.join("、") || "不以武魂战力为主要影响"}。所属或关联势力：${character.factionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id).join("、") || "无固定势力"}。原始活动地点：${LOCATIONS.find((item) => item.id === character.initialLocationId)?.name ?? character.initialLocationId}。性格只决定倾向，当前年龄、职位、关系、伤势与玩家造成的经历可以改变具体选择。`,
+        text: `${character.name}${character.aliases.length ? `，别名${character.aliases.join("、")}` : ""}。性格惯性：${character.personality.join("、")}。长期目标：${character.goals.join("、")}。武魂：${character.martialSouls.join("、") || "不以武魂战力为主要影响"}。所属或关联势力：${character.factionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id).join("、") || "无固定势力"}。原始活动地点：${initialLocation?.name ?? character.initialLocationId}${initialLocation && initialLocation.provenance !== "原著" ? `（${initialLocation.provenance}地点标签）` : ""}。性格只决定倾向，当前年龄、职位、关系、伤势与玩家造成的经历可以改变具体选择。`,
         metadata: { hidden: Boolean(character.hidden), aliases: character.aliases, personality: character.personality, goals: character.goals, sourceType: "结构化原著资料" },
       });
       const snapshots = [...character.powerSnapshots].sort((left, right) => left.year - right.year);
@@ -348,18 +349,25 @@ function seedCanonKnowledge(): void {
       });
     }
     for (const faction of FACTIONS) {
+      const headquarters = LOCATIONS.find((item) => item.id === faction.headquartersId);
+      const provenanceBoundary = faction.provenance === "原著" ? "以下是原著势力的结构化资料。" : faction.provenance === "原著归纳" ? "以下势力依据原著信息归纳，完整称谓或组织边界不是原著原话。" : "以下是同人原创势力，不是原著既有组织。";
       const sourceKey = `faction:${faction.id}`; validKeys.push(sourceKey);
       storeCanonKnowledge({ sourceKey, era: faction.activeFromYear === undefined ? 1 : eraAtYear(faction.activeFromYear), kind: "faction", subjectId: faction.id, subjectName: faction.name,
         validFromYear: faction.activeFromYear, validUntilYear: faction.activeUntilYear, importance: faction.inertia / 5,
-        text: `${faction.name}是${faction.kind}，总部或核心据点为${LOCATIONS.find((item) => item.id === faction.headquartersId)?.name ?? faction.headquartersId}。${faction.description}。组织会先维护自身存续、资源、名誉、派系与制度权限，不会因为玩家身份自动让步。`,
-        metadata: { hidden: Boolean(faction.hidden), inertia: faction.inertia, sourceType: "结构化势力资料" } });
+        text: `${provenanceBoundary}${faction.name}是${faction.kind}，总部或核心据点为${headquarters?.name ?? faction.headquartersId}${headquarters && headquarters.provenance !== "原著" ? `（${headquarters.provenance}地点）` : ""}。${faction.description}。组织会先维护自身存续、资源、名誉、派系与制度权限，不会因为玩家身份自动让步。`,
+        metadata: { hidden: Boolean(faction.hidden), inertia: faction.inertia, provenance: faction.provenance, sourceType: faction.provenance === "原著" ? "结构化原著势力" : faction.provenance === "原著归纳" ? "原著归纳势力" : "同人原创势力" } });
     }
+    const eraWindows = [{ era: 1, year: 0, from: -100_000, until: 4_999 }, { era: 2, year: 10_000, from: 5_000, until: 14_999 }, { era: 3, year: 20_000, from: 15_000, until: 24_999 }, { era: 4, year: 30_000, from: 25_000, until: 100_000 }];
     for (const location of LOCATIONS) {
-      const sourceKey = `location:${location.id}`; validKeys.push(sourceKey);
-      storeCanonKnowledge({ sourceKey, era: location.availableFromYear === undefined ? 1 : eraAtYear(location.availableFromYear), kind: "location", subjectId: location.id, subjectName: location.name,
-        validFromYear: location.availableFromYear, importance: location.danger === "禁区" ? .9 : location.danger === "高" ? .75 : .55,
-        text: `${location.name}位于${location.region}，危险度${location.danger}。${location.description}。可达联系：${location.connections.map((connection) => `${LOCATIONS.find((item) => item.id === connection.id)?.name ?? connection.id}约${connection.minutes}分钟`).join("、") || "没有普通公开路线"}。旅行必须服从路程、交通、凭证、补给与角色已知地图。`,
-        metadata: { hidden: Boolean(location.hidden), danger: location.danger, sourceType: "结构化地点设定" } });
+      const provenanceBoundary = location.provenance === "原著" ? "以下是原著可证地点的结构化资料。" : location.provenance === "原著归纳" ? "以下地点以原著地理为基础，但完整标签或功能是项目归纳，不得当作原著原话。" : "以下是同人原创地点，不是原著既有专名。";
+      for (const window of eraWindows.filter((item) => locationActiveAtYear(location, item.year))) {
+        const profile = locationProfileAtYear(location, window.year);
+        const sourceKey = `location:${location.id}:era:${window.era}`; validKeys.push(sourceKey);
+        storeCanonKnowledge({ sourceKey, era: window.era, kind: "location", subjectId: location.id, subjectName: location.name,
+          validFromYear: Math.max(location.availableFromYear ?? -100_000, window.from), validUntilYear: window.until, importance: location.danger === "禁区" ? .9 : location.danger === "高" ? .75 : .55,
+          text: `${provenanceBoundary}${location.name}位于${profile.region}，危险度${location.danger}。${profile.description}。路线和耗时只由当前游戏地图、交通、天气、凭证与补给结算，不属于原著事实。`,
+          metadata: { hidden: Boolean(location.hidden), danger: location.danger, provenance: location.provenance, sourceType: location.provenance === "原著" ? "结构化原著地点" : location.provenance === "原著归纳" ? "原著归纳地点" : "同人原创地点" } });
+      }
     }
     for (const event of CANON_EVENTS) {
       const sourceKey = `event:${event.id}`; validKeys.push(sourceKey);
@@ -371,7 +379,7 @@ function seedCanonKnowledge(): void {
     for (const beast of SOUL_BEASTS) {
       const sourceKey = `soul-beast:${beast.id}`; validKeys.push(sourceKey);
       storeCanonKnowledge({ sourceKey, era: 0, kind: "soul-beast", subjectId: beast.id, subjectName: beast.name, importance: Math.min(1, .45 + beast.danger / 12),
-        text: `${beast.name}常见于${beast.habitats.map((id) => LOCATIONS.find((item) => item.id === id)?.name ?? id).join("、")}，属性${beast.attributes.join("、")}，通常年限${beast.ageRange[0]}至${beast.ageRange[1]}年，危险度${beast.danger}。可能形成${beast.possibleSkills.join("、")}方向魂技。${beast.description}。实际遭遇仍受地点生态、追踪证据和程序战斗结算限制。`,
+        text: `${beast.name}常见于${beast.habitats.map((id) => { const habitat = LOCATIONS.find((item) => item.id === id); return `${habitat?.name ?? id}${habitat && habitat.provenance !== "原著" ? `（${habitat.provenance}地点）` : ""}`; }).join("、")}，属性${beast.attributes.join("、")}，通常年限${beast.ageRange[0]}至${beast.ageRange[1]}年，危险度${beast.danger}。可能形成${beast.possibleSkills.join("、")}方向魂技。${beast.description}。实际遭遇仍受地点生态、追踪证据和程序战斗结算限制。`,
         metadata: { danger: beast.danger, habitats: beast.habitats, sourceType: "结构化魂兽生态" } });
     }
     for (const relationship of CANON_RELATIONSHIPS) {

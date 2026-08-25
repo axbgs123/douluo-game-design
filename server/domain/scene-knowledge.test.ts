@@ -17,7 +17,7 @@ describe("场景知识检索", () => {
   it("优先给出当前地点且遵守硬字符预算", () => {
     const game = playableGame();
     const pack = buildSceneKnowledgePack(game, "观察附近环境", 420);
-    expect(pack.entries.some((entry) => entry.kind === "地点" && entry.id === game.view.locationId)).toBe(true);
+    expect(pack.entries.some((entry) => entry.kind === "地点" && entry.id === game.view.locationId && entry.fact.includes("来源："))).toBe(true);
     expect(pack.usedChars).toBeLessThanOrEqual(420);
   });
 

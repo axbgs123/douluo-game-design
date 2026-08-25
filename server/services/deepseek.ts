@@ -314,7 +314,7 @@ export async function narrateWithDeepSeek(
             "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
             "narrativeLogicPacket 是正文生成前已经通过的硬逻辑合同。先逐项满足 protagonistContract、participantContracts、reactionChain 与 continuityContract，再写句子；不得在正文中提到逻辑包、状态版本或检查过程。",
             "retrievedLongTermMemories 是本地向量库按当前行动召回的玩家已知旧事。只在与当前场景相关时自然延续；它不能覆盖当前程序状态，也不能让未亲历该事的NPC突然知情。发生冲突时以当前结构化状态和 fixedRuleResult 为准。",
-            "retrievedCanonKnowledge 是按当前时代和场景召回的斗罗结构化原著知识。人物性格和原著人生阶段只构成行为惯性，不是固定台词；玩家已经改变其关系、资源、职位或处境时，以当前存档为准。",
+            "retrievedCanonKnowledge 是按当前时代和场景召回的斗罗结构化世界资料。必须读取每条 metadata.provenance：原著可作为原作锚点；原著归纳只说明基础地理可证，完整标签不是原著原话；原创只属于本同人世界，绝对不能宣称原著出现过。人物性格和原著人生阶段只构成行为惯性，不是固定台词；玩家已经改变其关系、资源、职位或处境时，以当前存档为准。",
             "原著关系向量默认只用于保持人物行为一致，不能直接向主角陈述。只有 sceneKnowledge 或玩家情报明确证明主角已经知道该关系时，正文和NPC才可以说破；不得借旁白泄露隐藏血缘、感情、阵营或未来身份。",
             "重要原著事件在没有玩家因果足迹时保持惯性；普通人物、关系、资源和地方事件应持续自主变化。玩家形成足够的目击、关系、权限、资源、战力或势力影响后，重要事件也必须从新状态重新推演，不能强行回轨。",
             "retrievedWorldLogic 是独立的世界基本逻辑库。先核对每条的触发前提，再执行目击—复测—上报—利益判断—具体行动—状态痕迹链。高天赋会立刻改变关注、投资、收徒、拉拢、忌惮和敌对概率，但不保证成功拜师、无条件送宝、忠诚或私人好感。",

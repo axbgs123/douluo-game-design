@@ -185,6 +185,19 @@ describe("存档数据库", () => {
     expect(database.getModelUsage().canonKnowledgeVectors).toBeGreaterThan(100);
   });
 
+  it("labels original place vectors and never injects gameplay travel minutes as canon facts", () => {
+    const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "place-provenance-vectors" });
+    game.view.locationId = "taixuan-valley";
+    game.view.location = "太玄剑宗封山剑谷";
+    game.world.discoveredLocations.push("taixuan-valley");
+    const knowledge = database.retrieveCanonKnowledge(game, "太玄剑宗封山剑谷的位置、性质与路线", 20);
+    const place = knowledge.find((item) => item.subjectId === "taixuan-valley");
+    expect(place?.metadata).toMatchObject({ provenance: "原创", sourceType: "同人原创地点" });
+    expect(place?.text).toContain("同人原创地点");
+    expect(place?.text).toContain("不属于原著事实");
+    expect(place?.text).not.toMatch(/约\d+分钟/);
+  });
+
   it("seeds canon relationship baselines by life stage without overwriting later simulation", () => {
     const game = createGame({ era: 1, gender: "女", difficulty: "标准", seed: "canon-relationship-baseline" });
     game.world = createHiddenWorld(-5, "holy-soul-village");

@@ -544,6 +544,7 @@ export interface MapLocationView {
   x: number;
   y: number;
   objective?: "任务" | "猎魂" | "事件";
+  source: "原著" | "原著归纳" | "原创";
 }
 
 export interface MapPinView {

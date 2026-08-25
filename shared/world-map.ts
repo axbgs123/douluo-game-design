@@ -13,20 +13,19 @@ export const WORLD_MAP_POINTS: WorldMapPoint[] = [
   { id: "radiant-city", name: "明都", x: 12, y: 42, kind: "城市" },
   { id: "evil-forest", name: "邪魔森林", x: 8, y: 55, kind: "险地" },
   { id: "jing-yang-mountains", name: "景阳山脉", x: 18, y: 50, kind: "森林" },
-  { id: "heavenly-soul-city", name: "天魂城", x: 34, y: 19, kind: "城市" },
-  { id: "dou-ling-city", name: "斗灵城", x: 68, y: 31, kind: "城市" },
+  { id: "dou-ling-city", name: "斗灵帝国首都", x: 68, y: 31, kind: "城市" },
   { id: "shrek-city", name: "史莱克城", x: 48, y: 48, kind: "学院" },
-  { id: "star-dou-reserve", name: "星斗保护区", x: 53, y: 57, kind: "森林" },
+  { id: "star-dou-reserve", name: "星斗大森林核心圈", x: 53, y: 57, kind: "森林" },
   { id: "white-tiger-duke-estate", name: "白虎公爵府", x: 70, y: 72, kind: "宗门" },
-  { id: "mingdu-federal", name: "联邦明都", x: 27, y: 42, kind: "城市" },
+  { id: "mingdu-federal", name: "明都", x: 27, y: 42, kind: "城市" },
   { id: "spirit-pagoda-hq", name: "传灵塔总部", x: 45, y: 43, kind: "宗门" },
   { id: "east-sea-city", name: "东海城", x: 82, y: 54, kind: "城市" },
   { id: "aolai-city-d3", name: "傲来城", x: 87, y: 61, kind: "城市" },
   { id: "blood-god-camp", name: "血神军团", x: 22, y: 8, kind: "险地", hidden: true },
   { id: "abyss-passage", name: "深渊通道", x: 18, y: 5, kind: "险地", hidden: true },
-  { id: "d3-star-luo-capital", name: "海外星罗城", x: 91, y: 75, kind: "城市" },
-  { id: "d3-dou-spirit-capital", name: "海外斗灵城", x: 87, y: 22, kind: "城市" },
-  { id: "mother-ship-port", name: "联邦母舰港", x: 50, y: 88, kind: "城市" },
+  { id: "d3-star-luo-capital", name: "星罗城（星罗大陆）", x: 91, y: 75, kind: "城市" },
+  { id: "d3-dou-spirit-capital", name: "斗灵帝国首都", x: 87, y: 22, kind: "城市" },
+  { id: "mother-ship-port", name: "联邦舰队集结基地", x: 50, y: 88, kind: "城市" },
   { id: "tianluo-planet", name: "天罗星", x: 63, y: 18, kind: "城市" },
   { id: "tiandou-planet", name: "天斗星", x: 74, y: 29, kind: "城市" },
   { id: "senluo-planet", name: "森罗星", x: 72, y: 13, kind: "森林" },
@@ -48,13 +47,13 @@ export const WORLD_MAP_POINTS: WorldMapPoint[] = [
   { id: "thunder-academy", name: "雷霆学院", x: 55, y: 27, kind: "学院" },
   { id: "hurricane-academy", name: "神风学院", x: 46, y: 35, kind: "学院" },
   { id: "blazing-academy", name: "炽火学院", x: 51, y: 39, kind: "学院" },
-  { id: "elephant-sect-fort", name: "象甲宗", x: 57, y: 43, kind: "宗门" },
+  { id: "elephant-sect-fort", name: "象甲宗驻地", x: 57, y: 43, kind: "宗门" },
   { id: "holy-soul-village", name: "圣魂村", x: 29, y: 48, kind: "城市" },
   { id: "notting-city", name: "诺丁城", x: 33, y: 46, kind: "城市" },
   { id: "notting-academy", name: "诺丁学院", x: 34, y: 48, kind: "学院" },
   { id: "soul-hunting-forest", name: "猎魂森林", x: 38, y: 42, kind: "森林" },
   { id: "spirit-city", name: "武魂城", x: 58, y: 50, kind: "城市" },
-  { id: "spirit-hall-prison", name: "裁决地牢", x: 59, y: 52, kind: "险地", hidden: true },
+  { id: "spirit-hall-prison", name: "秘密羁押区", x: 59, y: 52, kind: "险地", hidden: true },
   { id: "suotuo-city", name: "索托城", x: 39, y: 61, kind: "城市" },
   { id: "shrek-village", name: "史莱克旧址", x: 42, y: 59, kind: "学院" },
   { id: "taixuan-valley", name: "太玄剑谷", x: 48, y: 53, kind: "宗门", hidden: true },
@@ -70,15 +69,17 @@ export const WORLD_MAP_POINTS: WorldMapPoint[] = [
 ];
 
 const LATER_ERA_MAP_IDS: Record<2 | 3 | 4, Set<string>> = {
-  2: new Set(["radiant-city", "evil-forest", "jing-yang-mountains", "heavenly-soul-city", "dou-ling-city", "shrek-city", "star-luo-city", "white-tiger-duke-estate", "star-dou-edge", "star-dou-core", "extreme-north-edge", "extreme-north-core"]),
-  3: new Set(["shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city", "aolai-city-d3", "blood-god-camp", "abyss-passage", "d3-star-luo-capital", "d3-dou-spirit-capital", "extreme-north-edge", "extreme-north-core"]),
-  4: new Set(["mother-ship-port", "tianluo-planet", "tiandou-planet", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star", "shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
+  2: new Set(["radiant-city", "evil-forest", "jing-yang-mountains", "heaven-dou-city", "dou-ling-city", "shrek-city", "star-luo-city", "white-tiger-duke-estate", "star-dou-edge", "star-dou-core", "sunset-forest", "ice-fire-spring", "extreme-north-edge", "extreme-north-core"]),
+  3: new Set(["shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city", "aolai-city-d3", "blood-god-camp", "abyss-passage", "d3-star-luo-capital", "d3-dou-spirit-capital", "heaven-dou-city", "ice-fire-spring", "extreme-north-edge", "extreme-north-core"]),
+  4: new Set(["mother-ship-port", "tianluo-planet", "tiandou-planet", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star", "shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city", "heaven-dou-city", "ice-fire-spring"]),
 };
 
-const FUTURE_MAP_IDS = new Set([...LATER_ERA_MAP_IDS[2], ...LATER_ERA_MAP_IDS[3], ...LATER_ERA_MAP_IDS[4]]);
+const FIRST_ERA_MAP_IDS = new Set([
+  "vast-sea-city", "clear-sky-mountain", "skywater-academy", "heaven-dou-city", "seven-treasure-fort", "heaven-royal-academy", "strength-clan-estate", "sunset-forest", "ice-fire-spring", "blue-lightning-mountain", "thunder-academy", "hurricane-academy", "blazing-academy", "elephant-sect-fort", "holy-soul-village", "notting-city", "notting-academy", "soul-hunting-forest", "spirit-city", "spirit-hall-prison", "suotuo-city", "shrek-village", "taixuan-valley", "star-dou-edge", "star-dou-core", "longxing-city", "gengxin-city", "star-luo-city", "slaughter-city", "purple-pearl-island", "sea-god-island", "whale-sea",
+]);
 
 export function worldMapPointsForEra(era: GameEra): WorldMapPoint[] {
-  if (era === 1) return WORLD_MAP_POINTS.filter((point) => !FUTURE_MAP_IDS.has(point.id));
+  if (era === 1) return WORLD_MAP_POINTS.filter((point) => FIRST_ERA_MAP_IDS.has(point.id));
   return WORLD_MAP_POINTS.filter((point) => LATER_ERA_MAP_IDS[era].has(point.id));
 }
 

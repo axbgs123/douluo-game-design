@@ -595,7 +595,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(32);
+    expect(migrated.schemaVersion).toBe(33);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -829,6 +829,42 @@ describe("第一部世界资料", () => {
     expect(CANON_EVENTS.flatMap((event) => event.participantIds).every((id) => characterIds.has(id))).toBe(true);
     expect(CANON_EVENTS.every((event) => !event.locationId || locationIds.has(event.locationId))).toBe(true);
     expect(SOUL_BEASTS.flatMap((beast) => beast.habitats).every((id) => locationIds.has(id))).toBe(true);
+  });
+
+  it("separates canon, derived, and original places without rewriting the Holy Dragon Sect as a later-era rank", () => {
+    expect(LOCATIONS.every((location) => ["原著", "原著归纳", "原创"].includes(location.provenance))).toBe(true);
+    expect(FACTIONS.every((faction) => ["原著", "原著归纳", "原创"].includes(faction.provenance))).toBe(true);
+    expect(FACTIONS.find((faction) => faction.id === "holy-dragon-sect")?.kind).toBe("下四宗");
+    expect(LOCATIONS.find((location) => location.id === "haagen-city")).toMatchObject({ name: "西鲁城", provenance: "原著" });
+    expect(LOCATIONS.find((location) => location.id === "heavenly-soul-city")).toBeUndefined();
+    expect(LOCATIONS.find((location) => location.id === "heaven-dou-city")).toMatchObject({ name: "天斗城", provenance: "原著" });
+    expect(LOCATIONS.find((location) => location.id === "mother-ship-port")).toMatchObject({ name: "联邦舰队集结基地", provenance: "原创" });
+    expect(LOCATIONS.find((location) => location.id === "fire-leopard-town")?.provenance).toBe("原创");
+
+    const era2 = awakenedInEra(2, "location-provenance-era2");
+    expect(era2.view.map).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "heaven-dou-city", source: "原著" }),
+      expect.objectContaining({ id: "sunset-forest", source: "原著" }),
+    ]));
+    expect(era2.view.map.filter((location) => location.name === "天斗城")).toHaveLength(1);
+
+    const oldTianhun = awakenedInEra(2, "location-provenance-tianhun-migration");
+    oldTianhun.schemaVersion = 32;
+    oldTianhun.view.locationId = "heavenly-soul-city";
+    oldTianhun.view.location = "天魂城";
+    oldTianhun.world.discoveredLocations.push("heavenly-soul-city");
+    const migratedTianhun = ensureGameState(oldTianhun);
+    expect(migratedTianhun.view.locationId).toBe("heaven-dou-city");
+    expect(migratedTianhun.view.location).toBe("天斗城");
+    expect(migratedTianhun.world.discoveredLocations).not.toContain("heavenly-soul-city");
+
+    const legacy = awakenedInEra(4, "location-provenance-migration");
+    legacy.schemaVersion = 32;
+    legacy.view.locationId = "mother-ship-port";
+    legacy.view.location = "联邦母舰港";
+    const migrated = ensureGameState(legacy);
+    expect(migrated.schemaVersion).toBe(33);
+    expect(migrated.view.location).toBe("联邦舰队集结基地");
   });
 
   it("does not activate later-era people, factions or locations in a first-era save", () => {

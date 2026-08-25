@@ -1,4 +1,5 @@
 export type ImportanceTier = 1 | 2 | 3 | 4 | 5;
+export type KnowledgeProvenance = "原著" | "原著归纳" | "原创";
 import { EXPANDED_CHARACTERS, EXPANDED_EVENTS, EXPANDED_FACTIONS, EXPANDED_LOCATIONS, EXPANDED_SOUL_BEASTS } from "./expanded-world-catalog.js";
 
 export interface PowerSnapshotDefinition {
@@ -35,6 +36,7 @@ export interface FactionDefinition {
   activeFromYear?: number;
   activeUntilYear?: number;
   hidden?: boolean;
+  provenance: KnowledgeProvenance;
 }
 
 function eraIndexAtYear(year: number): 1 | 2 | 3 | 4 {
@@ -60,12 +62,13 @@ export interface LocationDefinition {
   connections: Array<{ id: string; minutes: number }>;
   availableFromYear?: number;
   hidden?: boolean;
+  provenance: KnowledgeProvenance;
 }
 
 const PERSISTENT_LOCATIONS_BY_ERA: Record<2 | 3 | 4, Set<string>> = {
-  2: new Set(["star-luo-city", "star-dou-edge", "star-dou-core", "extreme-north-edge", "extreme-north-core"]),
-  3: new Set(["shrek-city", "extreme-north-edge", "extreme-north-core"]),
-  4: new Set(["shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
+  2: new Set(["heaven-dou-city", "sunset-forest", "ice-fire-spring", "star-luo-city", "star-dou-edge", "star-dou-core", "extreme-north-edge", "extreme-north-core"]),
+  3: new Set(["heaven-dou-city", "ice-fire-spring", "shrek-city", "star-dou-core", "extreme-north-edge", "extreme-north-core"]),
+  4: new Set(["heaven-dou-city", "ice-fire-spring", "shrek-city", "star-dou-reserve", "mingdu-federal", "spirit-pagoda-hq", "east-sea-city"]),
 };
 
 export function locationActiveAtYear(location: LocationDefinition, year: number): boolean {
@@ -76,6 +79,21 @@ export function locationActiveAtYear(location: LocationDefinition, year: number)
   const upperBound = era === 2 ? 19_800 : era === 3 ? 29_800 : Number.POSITIVE_INFINITY;
   const introducedInEra = location.availableFromYear !== undefined && location.availableFromYear >= lowerBound && location.availableFromYear < upperBound;
   return introducedInEra || PERSISTENT_LOCATIONS_BY_ERA[era].has(location.id);
+}
+
+export function locationProfileAtYear(location: LocationDefinition, year: number): Pick<LocationDefinition, "region" | "description"> {
+  const era = eraIndexAtYear(year);
+  if (location.id === "heaven-dou-city") {
+    if (era === 1) return { region: "天斗帝国", description: "天斗帝国首都，学院、宗门和权力机关集中。" };
+    if (era === 2) return { region: "天魂帝国", description: "天魂帝国首都仍名天斗城，是唐门旧地与重要城市。" };
+    return { region: "斗罗联邦", description: "保留上古城名的联邦一线城市，与史莱克城及星斗大森林相距不远。" };
+  }
+  if (location.id === "star-dou-reserve") {
+    if (era === 3) return { region: "斗罗联邦中部", description: "星斗大森林仅余的核心圈受传灵塔与星斗要塞管控，进入需要真实权限。" };
+    return { region: "斗罗联邦中部", description: "星斗大森林仍在恢复，但原有魂兽已经迁往森罗星与精灵星。" };
+  }
+  if (location.id === "ice-fire-spring" && era >= 3) return { region: "母星落日森林深处", description: "唐门守护的原生冰火两仪眼仍然存在，路线与进入资格高度保密；它不是森罗星人工仿建的同名地点。" };
+  return { region: location.region, description: location.description };
 }
 
 export interface CanonEventDefinition {
@@ -102,7 +120,7 @@ export interface SoulBeastDefinition {
   description: string;
 }
 
-export const FACTIONS: FactionDefinition[] = [
+const BASE_FACTIONS: Array<Omit<FactionDefinition, "provenance">> = [
   { id: "spirit-hall", name: "武魂殿", kind: "大陆魂师组织", headquartersId: "spirit-city", inertia: 5, description: "掌握觉醒网络、魂师登记和大量高阶战力。", activeUntilYear: 22 },
   { id: "heaven-dou", name: "天斗帝国", kind: "帝国", headquartersId: "heaven-dou-city", inertia: 5, description: "北方帝国，贵族与魂师势力彼此牵制。" },
   { id: "star-luo", name: "星罗帝国", kind: "帝国", headquartersId: "star-luo-city", inertia: 5, description: "军政强势，皇室继承竞争残酷。" },
@@ -126,7 +144,10 @@ export const FACTIONS: FactionDefinition[] = [
   { id: "taixuan-sword", name: "太玄剑宗", kind: "原创隐世宗门", headquartersId: "taixuan-valley", inertia: 1, description: "依靠封山阵势与残缺剑道传承自保，强者受旧誓限制，不能随意干预大陆。" },
 ];
 
-export const LOCATIONS: LocationDefinition[] = [
+const BASE_ORIGINAL_FACTION_IDS = new Set(["black-huai", "taixuan-sword"]);
+export const FACTIONS: FactionDefinition[] = BASE_FACTIONS.map((faction) => ({ ...faction, provenance: BASE_ORIGINAL_FACTION_IDS.has(faction.id) ? "原创" : "原著" }));
+
+const BASE_LOCATIONS: Array<Omit<LocationDefinition, "provenance">> = [
   { id: "holy-soul-village", name: "圣魂村", region: "法斯诺行省", danger: "安全", description: "诺丁城外的小村庄，以农田和铁匠铺为主。", connections: [{ id: "notting-city", minutes: 240 }] },
   { id: "notting-city", name: "诺丁城", region: "法斯诺行省", danger: "安全", description: "拥有武魂分殿和初级魂师学院的边境小城。", connections: [{ id: "holy-soul-village", minutes: 240 }, { id: "notting-academy", minutes: 20 }, { id: "soul-hunting-forest", minutes: 720 }, { id: "suotuo-city", minutes: 2880 }] },
   { id: "notting-academy", name: "诺丁初级魂师学院", region: "诺丁城", danger: "安全", description: "教授魂师基础知识，也接收工读生。", connections: [{ id: "notting-city", minutes: 20 }] },
@@ -135,7 +156,7 @@ export const LOCATIONS: LocationDefinition[] = [
   { id: "shrek-village", name: "史莱克学院旧址", region: "索托城外", danger: "低", description: "建在村庄里的小型学院，训练条件简陋。", connections: [{ id: "suotuo-city", minutes: 90 }, { id: "star-dou-edge", minutes: 1320 }] },
   { id: "star-dou-edge", name: "星斗大森林外围", region: "大陆中部", danger: "高", description: "野生魂兽密集，越过外围后危险迅速上升。", connections: [{ id: "suotuo-city", minutes: 1440 }, { id: "shrek-village", minutes: 1320 }, { id: "star-dou-core", minutes: 720 }] },
   { id: "star-dou-core", name: "星斗大森林核心区", region: "大陆中部", danger: "禁区", description: "高年限魂兽活动区域，普通魂师不应进入。", connections: [{ id: "star-dou-edge", minutes: 720 }] },
-  { id: "heaven-dou-city", name: "天斗城", region: "天斗帝国", danger: "安全", description: "帝国首都，学院、宗门和权力机关集中。", connections: [{ id: "suotuo-city", minutes: 4320 }, { id: "sunset-forest", minutes: 720 }, { id: "seven-treasure-fort", minutes: 240 }, { id: "spirit-city", minutes: 5760 }] },
+  { id: "heaven-dou-city", name: "天斗城", region: "天斗帝国／天魂帝国", danger: "安全", description: "斗一时期为天斗帝国首都；斗二时期仍以天斗城之名作为天魂帝国首都。", connections: [{ id: "suotuo-city", minutes: 4320 }, { id: "sunset-forest", minutes: 720 }, { id: "seven-treasure-fort", minutes: 240 }, { id: "spirit-city", minutes: 5760 }, { id: "shrek-city", minutes: 2880 }, { id: "dou-ling-city", minutes: 4320 }] },
   { id: "sunset-forest", name: "落日森林", region: "天斗城外", danger: "高", description: "野生魂兽森林，内部地形复杂。", connections: [{ id: "heaven-dou-city", minutes: 720 }, { id: "ice-fire-spring", minutes: 360 }] },
   { id: "ice-fire-spring", name: "冰火两仪眼", region: "落日森林深处", danger: "禁区", description: "被毒阵遮蔽的特殊宝地，默认不对外公开。", connections: [{ id: "sunset-forest", minutes: 360 }], hidden: true },
   { id: "seven-treasure-fort", name: "七宝琉璃宗", region: "天斗城外", danger: "安全", description: "守卫严密的宗门驻地。", connections: [{ id: "heaven-dou-city", minutes: 240 }] },
@@ -147,7 +168,7 @@ export const LOCATIONS: LocationDefinition[] = [
   { id: "strength-clan-estate", name: "力之一族府邸", region: "天斗城", danger: "低", description: "兼具宗族住地、锻造工坊和仓库的大片院落。", connections: [{ id: "heaven-dou-city", minutes: 35 }] },
   { id: "gengxin-city", name: "庚辛城", region: "星罗帝国", danger: "低", description: "大陆金属之都，铁匠协会总会和庞大金属市场位于此处。", connections: [{ id: "star-luo-city", minutes: 2880 }, { id: "longxing-city", minutes: 2160 }] },
   { id: "longxing-city", name: "龙兴城", region: "两大帝国边界", danger: "低", description: "御之一族扎根的边境城市，也是单属性四宗族聚会地点。", connections: [{ id: "gengxin-city", minutes: 2160 }, { id: "heaven-dou-city", minutes: 3600 }, { id: "star-luo-city", minutes: 3600 }] },
-  { id: "elephant-sect-fort", name: "象甲宗山城", region: "天斗帝国南部", danger: "低", description: "石墙厚重，宗门训练场专为大型防御兽武魂修建。", connections: [{ id: "heaven-dou-city", minutes: 2400 }, { id: "suotuo-city", minutes: 2160 }] },
+  { id: "elephant-sect-fort", name: "象甲宗驻地", region: "天斗帝国（具体位置未证）", danger: "低", description: "象甲宗及其直属学院的活动据点；具体城名、山门形制和训练场布局属于同人留白。", connections: [{ id: "heaven-dou-city", minutes: 2400 }, { id: "suotuo-city", minutes: 2160 }] },
   { id: "hurricane-academy", name: "神风学院", region: "天斗帝国", danger: "安全", description: "专长风属性与飞行魂师，风笑天所在学院。", connections: [{ id: "heaven-dou-city", minutes: 1200 }] },
   { id: "blazing-academy", name: "炽火学院", region: "天斗帝国", danger: "安全", description: "专长火属性武魂，训练场长期保持高温。", connections: [{ id: "heaven-dou-city", minutes: 1080 }] },
   { id: "skywater-academy", name: "天水学院", region: "天斗帝国北部", danger: "安全", description: "只招收女性学员，以水与冰属性配合闻名。", connections: [{ id: "heaven-dou-city", minutes: 1680 }, { id: "extreme-north-edge", minutes: 2880 }] },
@@ -160,8 +181,15 @@ export const LOCATIONS: LocationDefinition[] = [
   { id: "sea-god-island", name: "海神岛", region: "远海", danger: "禁区", description: "七圣柱环绕的海魂师圣地，考核会按来者情况改变。", connections: [{ id: "purple-pearl-island", minutes: 4320 }, { id: "whale-sea", minutes: 3600 }] },
   { id: "whale-sea", name: "魔鲸海域", region: "远海", danger: "禁区", description: "深海魔鲸王活动的危险海域，普通船只不会靠近。", connections: [{ id: "sea-god-island", minutes: 3600 }] },
   { id: "taixuan-valley", name: "太玄剑宗封山剑谷", region: "星斗大森林西北", danger: "高", description: "原创隐世宗门驻地，山谷阵势能阻隔大部分外来者。", connections: [{ id: "star-dou-edge", minutes: 540 }] },
-  { id: "spirit-hall-prison", name: "武魂城裁决地牢", region: "武魂城", danger: "高", description: "关押重要犯人与禁术魂师的地下设施，资料不对普通魂师公开。", connections: [{ id: "spirit-city", minutes: 30 }], hidden: true },
+  { id: "spirit-hall-prison", name: "武魂城秘密羁押区", region: "武魂城", danger: "高", description: "为隐秘羁押与审讯玩法设置的同人原创设施，不是原著专名，也不预设具体犯人。", connections: [{ id: "spirit-city", minutes: 30 }], hidden: true },
 ];
+
+const BASE_DERIVED_LOCATION_IDS = new Set(["shrek-village", "star-dou-core", "clear-sky-mountain", "elephant-sect-fort", "extreme-north-edge", "extreme-north-core"]);
+const BASE_ORIGINAL_LOCATION_IDS = new Set(["taixuan-valley", "spirit-hall-prison"]);
+export const LOCATIONS: LocationDefinition[] = BASE_LOCATIONS.map((location) => ({
+  ...location,
+  provenance: BASE_ORIGINAL_LOCATION_IDS.has(location.id) ? "原创" : BASE_DERIVED_LOCATION_IDS.has(location.id) ? "原著归纳" : "原著",
+}));
 
 export const CANON_CHARACTERS: CanonCharacterDefinition[] = [
   { id: "tang-san", name: "唐三", aliases: [], importance: 5, birthYear: -6, martialSouls: ["蓝银草", "昊天锤"], factionIds: ["shrek", "clear-sky", "tang-sect"], initialLocationId: "holy-soul-village", personality: ["克制", "重情", "谨慎", "意志坚定"], goals: ["保护亲友", "追寻身世", "重建唐门"], powerSnapshots: [{ year: 0, soulRank: 10, tier: "初次觉醒", note: "先天满魂力" }, { year: 6, soulRank: 29, tier: "大魂师", note: "准备进入史莱克学院" }, { year: 8, soulRank: 40, tier: "魂宗", note: "全大陆高级魂师学院精英大赛时期" }, { year: 13, soulRank: 59, tier: "魂王", note: "五年之约前后" }] },

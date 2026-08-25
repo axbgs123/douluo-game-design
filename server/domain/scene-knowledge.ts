@@ -1,4 +1,4 @@
-import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, factionActiveAtYear, locationActiveAtYear } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, factionActiveAtYear, locationActiveAtYear, locationProfileAtYear } from "../data/world.js";
 import type { StoredGame } from "./model.js";
 
 export type SceneKnowledgeKind = "地点" | "人物" | "势力" | "事件" | "情报";
@@ -29,11 +29,13 @@ export function buildSceneKnowledgePack(game: StoredGame, action: string, budget
 
   for (const location of LOCATIONS) {
     const current = location.id === game.view.locationId;
+    const customCurrent = Boolean(current && game.view.location && game.view.location !== location.name);
     const discovered = game.world.discoveredLocations.includes(location.id);
     const explicitlyMentioned = mentions(action, location.name);
     if (!current && !discovered && (!explicitlyMentioned || location.hidden)) continue;
     if (!current && !locationActiveAtYear(location, year)) continue;
-    add({ id: location.id, kind: "地点", name: location.name, fact: `${location.region}；危险度${location.danger}；${location.description}`, reason: current ? "当前地点" : explicitlyMentioned ? "行动提及" : "已发现地点" }, current ? 100 : explicitlyMentioned ? 80 : 25);
+    const profile = locationProfileAtYear(location, year);
+    add({ id: location.id, kind: "地点", name: customCurrent ? game.view.location! : location.name, fact: customCurrent ? `来源：原创微地点；位于${location.name}一带；具体坊市、村镇或住处为同人生活场景，不是原著专名` : `来源：${location.provenance}；${profile.region}；危险度${location.danger}；${profile.description}`, reason: current ? "当前地点" : explicitlyMentioned ? "行动提及" : "已发现地点" }, current ? 100 : explicitlyMentioned ? 80 : 25);
   }
 
   for (const definition of CANON_CHARACTERS) {
@@ -53,7 +55,7 @@ export function buildSceneKnowledgePack(game: StoredGame, action: string, budget
     const local = faction.headquartersId === game.view.locationId;
     if (faction.hidden && !affiliated) continue;
     if (!affiliated && !explicitlyMentioned && !local) continue;
-    add({ id: faction.id, kind: "势力", name: faction.name, fact: `${faction.kind}；${faction.description}`, reason: affiliated ? "所属势力" : local ? "当地势力" : "行动提及" }, affiliated ? 90 : local ? 75 : 70);
+    add({ id: faction.id, kind: "势力", name: faction.name, fact: `来源：${faction.provenance}；${faction.kind}；${faction.description}`, reason: affiliated ? "所属势力" : local ? "当地势力" : "行动提及" }, affiliated ? 90 : local ? 75 : 70);
   }
 
   for (const event of game.world.dynamicEvents) {

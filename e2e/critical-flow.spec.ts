@@ -519,6 +519,8 @@ test("大陆地图可以展开、选择地点并下钻到可交互局部图", as
   await expect(page.getByRole("img", { name: "斗罗大陆第1时代交互地图" })).toBeVisible();
   await page.locator(".atlas-landmark.interactive").first().click({ force: true });
   await expect(page.locator(".map-current-detail")).toBeVisible();
+  await expect(page.locator(".map-current-detail")).toContainText(/原著地点|原著归纳地点|原创地点/);
+  await expect(page.locator(".map-route-list")).toContainText("游戏估算");
   await page.locator(".map-level-tabs button").nth(1).click();
   await expect(page.getByRole("img", { name: "聚居地地图" })).toBeVisible();
   await expect(page.locator(".local-map-list button")).toHaveCount(5);

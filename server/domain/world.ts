@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { GameView, IntelligenceView, KnownFigureView, MapHierarchyView, MapLocationView, NpcRelationEvidenceView, WorldEventView, WorldNewsView } from "../../shared/game.js";
-import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationActiveAtYear, locationById } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationActiveAtYear, locationById, locationProfileAtYear } from "../data/world.js";
 import type { HiddenWorldState, NpcMemoryEntry, SocialRumorState, StoredGame, WorldNpcState } from "./model.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { refreshStoryArchive } from "./story-rules.js";
@@ -125,16 +125,16 @@ function eraAtYear(year: number): string {
 function ordinal(year: number, day: number): number { return year * DAYS_PER_YEAR + day; }
 
 export function inferLocationId(location: string): string {
-  if (/联邦母舰港|母舰港/.test(location)) return "mother-ship-port";
+  if (/联邦舰队集结基地|舰队集结基地|联邦母舰港|母舰港/.test(location)) return "mother-ship-port";
   if (/森罗星/.test(location)) return "senluo-planet";
   if (/精灵星/.test(location)) return "elf-planet";
   if (/海外星罗/.test(location)) return "d3-star-luo-capital";
   if (/传灵塔总部/.test(location)) return "spirit-pagoda-hq";
-  if (/联邦明都/.test(location)) return "mingdu-federal";
+  if (/明都（联邦时期）|联邦明都/.test(location)) return "mingdu-federal";
   if (/东海城/.test(location)) return "east-sea-city";
   if (/史莱克城/.test(location)) return "shrek-city";
   if (/明都/.test(location)) return "radiant-city";
-  if (/天魂/.test(location)) return "heavenly-soul-city";
+  if (/天魂|天斗城（天魂帝国时期）/.test(location)) return "heaven-dou-city";
   if (/斗灵/.test(location)) return "dou-ling-city";
   if (/极北.*核心|冰天雪女|冰碧帝皇蝎/.test(location)) return "extreme-north-core";
   if (/极北|北境冰原/.test(location)) return "extreme-north-edge";
@@ -146,7 +146,7 @@ export function inferLocationId(location: string): string {
   if (/星斗.*核心/.test(location)) return "star-dou-core";
   if (/星斗/.test(location)) return "star-dou-edge";
   const sectLocation = [
-    ["圣龙宗白甲山门", "holy-dragon-gate"], ["归潮门听潮屿", "tide-listening-isle"],
+    ["圣龙宗驻地", "holy-dragon-gate"], ["圣龙宗白甲山门", "holy-dragon-gate"], ["归潮门听潮屿", "tide-listening-isle"],
     ["眠云谷雾隐山坳", "dream-cloud-valley"], ["铸星台坠铁峰", "star-forge-peak"],
     ["镜湖宗折光湖", "mirror-fold-lake"], ["百兽山庄伏兽岭", "beast-manor-ridge"],
     ["听雪门寒声岭", "snow-sound-ridge"], ["断碑门无字崖", "wordless-cliff"],
@@ -357,6 +357,7 @@ export function buildMapView(game: StoredGame): MapLocationView[] {
     return (!point.hidden && !location.hidden) || visibleIds.has(location.id);
   }).map((location) => {
     const point = worldMapPoint(location.id);
+    const profile = locationProfileAtYear(location, year);
     const isAtSelectedHome = location.id === currentId && selectedHome?.dwelling === game.view.location;
     const objective = game.view.hunting?.locationId === location.id && game.view.hunting.stage !== "完成"
       ? "猎魂" as const
@@ -368,8 +369,8 @@ export function buildMapView(game: StoredGame): MapLocationView[] {
     return {
       id: location.id,
       name: location.id === currentId && game.view.location ? game.view.location : location.name,
-      region: location.region,
-      description: location.id === currentId && customCurrentName ? "角色当前生活的聚居地，交通路线按附近主城计算。" : location.description,
+      region: profile.region,
+      description: location.id === currentId && customCurrentName ? "角色当前生活的原创微地点，交通路线按附近主城计算。" : profile.description,
       danger: location.danger,
       travelMinutes: location.id === currentId ? 0 : current?.connections.find((connection) => connection.id === location.id)?.minutes ?? -1,
       discovered: game.world.discoveredLocations.includes(location.id),
@@ -377,6 +378,7 @@ export function buildMapView(game: StoredGame): MapLocationView[] {
       x: isAtSelectedHome ? (selectedHome?.mapX ?? point.x) : point.x,
       y: isAtSelectedHome ? (selectedHome?.mapY ?? point.y) : point.y,
       objective,
+      source: location.id === currentId && customCurrentName ? "原创" : location.provenance,
     };
   });
 }
@@ -1085,6 +1087,33 @@ export function ensureGameState(game: StoredGame): StoredGame {
   const legacy = game as StoredGame & { schemaVersion?: number; world?: HiddenWorldState };
   const previousSchemaVersion = legacy.schemaVersion ?? 1;
   const migrateNarrative = (legacy.schemaVersion ?? 1) < 4;
+  const legacyLocationNames: Record<string, string> = {
+    "哈根城": "西鲁城",
+    "天魂城": "天斗城",
+    "天斗城（天魂帝国时期）": "天斗城",
+    "斗灵城": "斗灵帝国首都",
+    "海外星罗城": "星罗城（星罗大陆）",
+    "海外斗灵城": "斗灵帝国首都（斗灵大陆）",
+    "联邦明都": "明都（联邦时期）",
+    "星斗大森林保护区": "星斗大森林核心圈",
+    "联邦母舰港": "联邦舰队集结基地",
+    "武魂城裁决地牢": "武魂城秘密羁押区",
+    "象甲宗山城": "象甲宗驻地",
+    "圣龙宗白甲山门": "圣龙宗驻地",
+    "天斗南部清河水宗": "清河水宗驻地",
+  };
+  if (previousSchemaVersion < 33) {
+    if (game.view.locationId === "heavenly-soul-city") game.view.locationId = "heaven-dou-city";
+    if (game.view.location && legacyLocationNames[game.view.location]) game.view.location = legacyLocationNames[game.view.location];
+    for (const publicCandidate of game.view.candidates ?? []) {
+      if (publicCandidate.locationId === "heavenly-soul-city") publicCandidate.locationId = "heaven-dou-city";
+      if (legacyLocationNames[publicCandidate.location]) publicCandidate.location = legacyLocationNames[publicCandidate.location];
+    }
+    for (const hidden of game.hiddenCandidates ?? []) {
+      if (hidden.public.locationId === "heavenly-soul-city") hidden.public.locationId = "heaven-dou-city";
+      if (legacyLocationNames[hidden.public.location]) hidden.public.location = legacyLocationNames[hidden.public.location];
+    }
+  }
   const candidate = game.view.candidates[0];
   const startYear = game.view.worldTime?.year ?? candidate?.birthYearOffset ?? 0;
   game.view.era ??= startYear >= 25000 ? 4 : startYear >= 15000 ? 3 : startYear >= 5000 ? 2 : 1;
@@ -1099,9 +1128,19 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 32;
+  legacy.schemaVersion = 33;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
+  legacy.world.discoveredLocations ??= [locationId];
+  legacy.world.dynamicEvents ??= [];
+  legacy.world.localConsequences ??= [];
+  if (previousSchemaVersion < 33) {
+    legacy.world.discoveredLocations = legacy.world.discoveredLocations.map((id) => id === "heavenly-soul-city" ? "heaven-dou-city" : id);
+    for (const npc of Object.values(legacy.world.npcs)) if (npc.locationId === "heavenly-soul-city") npc.locationId = "heaven-dou-city";
+    for (const event of legacy.world.dynamicEvents ?? []) if (event.locationId === "heavenly-soul-city") event.locationId = "heaven-dou-city";
+    for (const consequence of legacy.world.localConsequences ?? []) if (consequence.locationId === "heavenly-soul-city") consequence.locationId = "heaven-dou-city";
+    for (const task of game.view.tasks ?? []) if (task.destinationId === "heavenly-soul-city") task.destinationId = "heaven-dou-city";
+  }
   legacy.world.npcRelations ??= [];
   ensureCanonRelationshipBaselines(legacy.world.npcs, legacy.world.npcRelations, game.view.worldTime?.year ?? startYear, game.view.worldTime?.day ?? 1);
   legacy.world.canonCausalFootprints ??= [];

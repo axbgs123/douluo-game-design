@@ -1877,8 +1877,8 @@ function academyResolution(game: StoredGame): ActionResolution {
   if (character.innateSoulPower <= 0) return impossible("学院要求至少能够稳定感应魂力。", ["申请重新检测", "寻找其他修行道路", "打听理论研究者"]);
   const academyNameByLocation: Record<string, string> = {
     "shrek-village": "史莱克学院", "suotuo-city": "索托初级魂师学院", "star-luo-city": "星罗城初级魂师学院",
-    "heaven-dou-city": "天斗城初级魂师学院", "spirit-city": "武魂城初级魂师学院", "notting-academy": "诺丁初级魂师学院", "notting-city": "诺丁初级魂师学院",
-    "shrek-city": "史莱克学院", "radiant-city": "日月皇家魂导师学院", "heavenly-soul-city": "天魂皇家学院", "dou-ling-city": "斗灵皇家学院",
+    "heaven-dou-city": (game.view.era ?? 1) === 2 ? "天魂皇家学院" : "天斗城初级魂师学院", "spirit-city": "武魂城初级魂师学院", "notting-academy": "诺丁初级魂师学院", "notting-city": "诺丁初级魂师学院",
+    "shrek-city": "史莱克学院", "radiant-city": "日月皇家魂导师学院", "dou-ling-city": "斗灵皇家学院",
     "east-sea-city": "东海学院", "mingdu-federal": "明都联邦学院", "mother-ship-port": "联邦星际学院",
   };
   const academyName = academyNameByLocation[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}初级魂师学院`;
@@ -3378,7 +3378,7 @@ function starshipResolution(game: StoredGame, action: string): ActionResolution 
   if (/前往|航行|跃迁|出发/.test(action)) {
     if (!starship.shipName) return impossible("没有完成登记、补给与船员配置的星舰。", ["取得陨星级侦察舰", "组建基础船员组", "申请舰队航次"]);
     const destination = ["mother-ship-port", "tianluo-planet", "tiandou-planet", "senluo-planet", "elf-planet", "dragon-horse-star", "sky-horse-star"].map((id) => locationById(id)!).find((location) => action.includes(location.name));
-    if (!destination) return impossible("没有识别出航线终点。", ["前往森罗星", "前往精灵星", "返回联邦母舰港"]);
+    if (!destination) return impossible("没有识别出航线终点。", ["前往森罗星", "前往精灵星", "返回联邦舰队集结基地"]);
     const hostileRoute = /天龙星|天马星/.test(destination.name);
     if (hostileRoute && starship.shipClass !== "龙王级护卫舰") return impossible(`${destination.name}位于龙马星系敌对控制区，陨星级侦察舰不能脱离舰队、穿越封锁并自行靠港。`, ["申请加入联邦舰队任务", "取得龙王级护卫舰任务平台", "先调查龙马星系军事情报"]);
     if (hostileRoute && (starship.license !== "一级指挥" || !game.view.affiliations.some((item) => /舰队|军/.test(`${item.name}${item.role}`)))) return impossible("进入龙马星系战区需要一级指挥资格与现役舰队任务授权。", ["完成高级指挥考核", "取得舰队正式岗位", "申请编队护航任务"]);
