@@ -3534,6 +3534,7 @@ function openingFollowupResolution(game: StoredGame, action: string): ActionReso
   if (!step) return undefined;
   const officiant = String(game.world.flags.openingOfficiant ?? "觉醒主持者");
   const institution = String(game.world.flags.openingInstitutionName ?? "当前机构");
+  const mode = String(game.world.flags.openingMode ?? "public");
   const focus = String(game.world.flags.openingSoulTestFocus ?? "能力边界、消耗与收放");
   const soul = game.view.character!.martialSoul.name;
   const next = game.view.chapterObjective?.steps.find((item) => item.status === "未开始")?.text ?? "按已经确认的条件选择近期路线";
@@ -3549,11 +3550,11 @@ function openingFollowupResolution(game: StoredGame, action: string): ActionReso
     game.view.character!.reputation = "有现场见证、身份仍待长期核验的异界孩子";
     return { intent: "建立临时大陆身份", minutes: 120, ruleSummary: `${officiant}登记现场见证、临时住处与短期身份凭据；这只解决眼前食宿和行动证明，不自动补出亲属、户籍历史或势力归属。`, fallbackNarrative: `名字、发现地点、见证人和今晚住处一项项写完，纸上仍有大片空白。主持者没有替他编父母，只在有效期限下面盖了章。至少今天进城时，他不再只有一句自己是谁。`, suggestions: [next, "问清临时凭据的期限与活动范围", "保留异界来历，只登记可核实事实"], systemMessages: ["身份 · 地方临时凭据 · 待长期核验"] };
   }
-  const openingSupportRelevant = action.includes(institution) || /开局培养|导师|训练场|猎魂|路费|食宿|监护|魂灵费用|第一魂环安排/.test(action);
-  if (step.id === "support" && openingSupportRelevant && /导师|训练场|资源|猎魂|路费|食宿|监护|魂灵|费用|安排|核对|条件/.test(action)) return {
+  const openingSupportRelevant = action.includes(institution) || /开局培养|家族培养|导师|训练场|猎魂|路费|食宿|监护|学院|报名|交换培养|魂灵费用|第一魂环安排/.test(action);
+  if (step.id === "support" && openingSupportRelevant && /家族培养|学院|报名|外部导师|交换培养|导师|训练场|资源|猎魂|路费|食宿|监护|魂灵|费用|安排|核对|条件|资格|代价/.test(action)) return {
     intent: "核对开局培养条件", minutes: 90,
-    ruleSummary: `${institution}列明当前可申请的导师面谈、训练场时段、资源额度、费用与第一成长资源；这些是可谈条件，不等于已经无条件发放。`,
-    fallbackNarrative: `对方把能给的、要考的和暂时不能给的分成三栏。训练场排到哪一天，药浴谁签字，第一次猎魂谁负责带队，都写得比“宗门会培养你”具体得多。`,
+    ruleSummary: mode === "noble" ? "监护人与见证人分别列明家族培养、可报学院、外部导师或交换培养的资格、费用与责任；学院名额和导师认可都需另行考核，不因贵族身份自动取得。" : `${institution}列明当前可申请的导师面谈、训练场时段、资源额度、费用与第一成长资源；这些是可谈条件，不等于已经无条件发放。`,
+    fallbackNarrative: mode === "noble" ? `桌上摊开的不是一份已经替他写好的安排。留在家中能用哪些训练场，哪几所学院接受报名，外部导师愿不愿见面，各自的费用、考核和家族责任被分栏写清。同辈能争的是名额，不能把“出身”当成录取书。` : `对方把能给的、要考的和暂时不能给的分成三栏。训练场排到哪一天，药浴谁签字，第一次猎魂谁负责带队，都写得比“宗门会培养你”具体得多。`,
     suggestions: [next, "挑一项最急需的资源询问交换条件", "让监护人与复核人核对责任签字"], systemMessages: [`培养条件 · ${institution} · 已列明未发放`],
   };
   if (step.id === "boundary" && /离开|保护|领地|人类|兽群|边界/.test(action)) return {

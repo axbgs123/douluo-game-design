@@ -25,7 +25,7 @@ import { fixedTraitEffect } from "./traits.js";
 import { auditNarrative, sanitizeNarrativeSuggestions } from "./story-rules.js";
 import { META_MARTIAL_SOUL_POOL_SIZE, META_MARTIAL_SOULS, metaSoulById } from "../data/meta-martial-souls.js";
 import { ORIGINAL_MARTIAL_SOUL_CURATION_STATS } from "../data/original-martial-souls.js";
-import { advanceWorldTime } from "./world.js";
+import { advanceWorldTime, ensureGameState } from "./world.js";
 import { applyActionResult, resolveAction } from "./actions.js";
 
 const personality = {
@@ -340,9 +340,31 @@ describe("candidate generation", () => {
       return game;
     };
     const noble = prepare("noble-hostage", "noble-opening-matrix");
-    expect(noble.view.chapterObjective?.title).toContain("家族身份与觉醒结果");
-    expect(JSON.stringify(noble.view.chapterObjective)).toMatch(/家族教师.*同辈竞争.*第一魂环/);
-    expect(JSON.stringify(noble.view.chapterObjective)).not.toMatch(/加入宗门|工读名额/);
+    expect(noble.view.chapterObjective?.title).toContain("贵族身份能够打开的培养路线");
+    expect(JSON.stringify(noble.view.chapterObjective)).toMatch(/家族培养.*学院.*外部导师.*资格与代价/);
+    expect(JSON.stringify(noble.view.chapterObjective)).toMatch(/培养地点.*费用来源.*家族责任/);
+    expect(JSON.stringify(noble.view.chapterObjective)).not.toMatch(/必须接受家族教师|已经获得学院名额/);
+    const migratedNoble = structuredClone(noble);
+    migratedNoble.schemaVersion = 38;
+    migratedNoble.view.chapterObjective = {
+      title: "让家族身份与觉醒结果形成明确安排",
+      stakes: migratedNoble.view.character!.originBurden,
+      destinationId: migratedNoble.view.locationId,
+      steps: [
+        { id: "understand", text: `请家族教官测试${migratedNoble.view.character!.martialSoul.name}`, status: "进行中" },
+        { id: "support", text: "核对家族教师、资源、同辈竞争与第一魂环安排", status: "未开始" },
+        { id: "path", text: "决定接受、谈判或拒绝哪一项家族培养条件", status: "未开始" },
+      ],
+    };
+    const upgradedNoble = ensureGameState(migratedNoble);
+    expect(upgradedNoble.schemaVersion).toBe(39);
+    expect(JSON.stringify(upgradedNoble.view.chapterObjective)).toMatch(/家族培养.*学院.*外部导师/);
+
+    const firstStep = resolveAction(noble, `请${noble.world.flags.openingOfficiant}完成武魂复核测试`);
+    applyActionResult(noble, `请${noble.world.flags.openingOfficiant}完成武魂复核测试`, firstStep, "复核完成。", []);
+    const routeComparison = resolveAction(noble, "核对家族培养、学院报名、外部导师与交换培养的资格和代价");
+    expect(routeComparison.intent).toBe("核对开局培养条件");
+    expect(routeComparison.ruleSummary).toMatch(/学院名额和导师认可.*不因贵族身份自动取得/);
 
     const beast = prepare("fierce-beast-raised", "beast-opening-matrix");
     expect(beast.view.chapterObjective?.title).toContain("接触人类魂师体系");

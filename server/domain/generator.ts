@@ -1673,7 +1673,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 38,
+    schemaVersion: 39,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -2157,10 +2157,10 @@ function openingObjective(game: StoredGame, selected: HiddenCandidate, awakening
     { id: "support", text: `核对${awakening.factionName}能提供的导师、训练场、资源额度与猎魂护送`, status: "未开始" },
     { id: "path", text: "决定主修顺序、公开范围和愿意承担的内部责任", status: "未开始" },
   ] };
-  if (mode === "noble") return { ...common, title: "让家族身份与觉醒结果形成明确安排", steps: [
-    { id: "understand", text: `请家族觉醒教官测试${soulName}的${awakeningTestFocus(selected.martialSoul)}`, status: "进行中" },
-    { id: "support", text: "核对家族教师、资源、同辈竞争与第一魂环安排", status: "未开始" },
-    { id: "path", text: "决定接受、谈判或拒绝哪一项家族培养条件", status: "未开始" },
+  if (mode === "noble") return { ...common, title: "比较贵族身份能够打开的培养路线", steps: [
+    { id: "understand", text: `请${awakening.officiant}完成${soulName}的${awakeningTestFocus(selected.martialSoul)}测试`, status: "进行中" },
+    { id: "support", text: "分别核对家族培养、可报学院、外部导师或交换培养的资格与代价", status: "未开始" },
+    { id: "path", text: "与监护人确定近期培养地点、费用来源和必须承担的家族责任", status: "未开始" },
   ] };
   if (mode === "unbound") return { ...common, title: "先在大陆活过觉醒后的第一天", steps: [
     { id: "identity", text: "取得今晚住处、现场见证和一份临时身份凭据", status: "进行中" },
@@ -2415,7 +2415,7 @@ function buildAwakeningResult(game: StoredGame, candidate: HiddenCandidate, awak
           : mode === "internal"
             ? `${awakening.officiant}在魂力数字下面画了两道线，当场启动${awakening.factionName}内部复核。导师、训练场、资源额度、保密范围与第一魂环护送责任，都要重新排进培养表。`
             : mode === "noble"
-              ? `${awakening.officiant}把结果交给家族见证人。教师、资源、同辈排序与第一魂环安排会重新评议，但家族身份不能替${name}免去考核。`
+              ? `${awakening.officiant}把结果交给家族见证人。留在家中培养、报名合适的学院，或争取外部导师与交换培养，都会重新评议；同辈排序和家族责任也会随之变化，但身份不能替${name}免去考核。`
               : `${awakening.officiant}在魂力数字下面画了两道线，当场留下${name}与监护人。学院名额、路费、食宿与第一魂环协助，需要逐项确认由谁承担。`
       : "";
   const confirmationTarget = mode === "unbound" ? name : mode === "beast" ? `${name}和岩叔` : `${name}与监护人`;

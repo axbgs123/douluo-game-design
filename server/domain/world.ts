@@ -1423,7 +1423,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 38;
+  legacy.schemaVersion = 39;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1622,7 +1622,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     openThreads: game.view.tasks.filter((task) => task.status !== "完成").map((task) => task.title).slice(0, 8),
     keyChoices: [], npcNotes: {}, chapterNumber: 1, chapterTitle: "未完的故事", lastUpdatedAction: game.actionIndex,
   };
-  if (previousSchemaVersion < 38 && game.view.character) {
+  if (previousSchemaVersion < 39 && game.view.character) {
     const character = game.view.character;
     const originText = `${character.originName}${character.originSummary}${character.originBurden}`;
     const legacyMode = /凭空|无户籍|异界来客/.test(originText) ? "unbound"
@@ -1638,6 +1638,22 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.world.flags.openingOfficiant ??= officiant;
     game.world.flags.openingSoulTestFocus ??= testFocus;
     const oldGenericObjective = game.view.chapterObjective?.title === "让觉醒结果真正变成第一步";
+    const oldNobleObjective = legacyMode === "noble" && game.view.chapterObjective?.title === "让家族身份与觉醒结果形成明确安排";
+    if (oldNobleObjective) {
+      for (const entry of game.view.narrative) {
+        entry.text = entry.text.replaceAll("教师、资源、同辈排序与第一魂环安排会重新评议", "家族培养、学院报名、外部导师或交换培养都会重新评议");
+      }
+      if (game.view.storyArc?.arcNumber === 1) {
+        game.view.storyArc.centralGoal = "比较贵族身份能够打开的培养路线";
+        game.view.storyArc.irreversibleTurn = "在家族培养、学院入学与外部培养之间作出近期选择，并确认费用与家族责任";
+        for (const payoff of game.view.storyArc.payoffLedger) {
+          if (/家族教师|同辈竞争位置/.test(payoff.label)) payoff.label = payoff.id === "living-condition" ? "落实培养地点、费用来源、监护与家族责任" : "比较家族、学院与外部导师三类培养路线";
+        }
+        for (const scene of game.view.storyArc.npcScenes) {
+          if (/家族教师|第一魂环安排/.test(scene.action)) scene.action = `和${scene.npcName}比较家族培养、学院报名与外部导师的资格和代价`;
+        }
+      }
+    }
     for (const bodySoul of character.martialSouls.filter((soul) => /本体/.test(soul.category))) {
       const escapedSoul = bodySoul.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       for (const entry of game.view.narrative) entry.text = entry.text.replace(new RegExp(`[^。！？\\n]{0,16}摊开手。${escapedSoul}托在掌心，本体武魂特有的气息沿着指缝散开。[^。！？\\n]{0,100}记录员把形态一笔笔画下来。`, "g"), `${character.name}体内先是一热，随后身体本身传来清晰的魂力回响。${officiant}没有检查掌心中的外物，而是核对体征、动作和魂力流向，再让记录员写下变化位置。`);
@@ -1662,7 +1678,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
         game.view.storyArc.centralGoal = game.view.chapterObjective?.title ?? game.view.storyArc.centralGoal;
         game.view.storyArc.irreversibleTurn = `决定愿意承担哪些${institution}内部培养责任，以及武魂公开到什么范围`;
       }
-    } else if (oldGenericObjective) {
+    } else if (oldGenericObjective || oldNobleObjective) {
       const objectiveByMode = legacyMode === "unbound" ? {
         title: "先在大陆活过觉醒后的第一天",
         steps: [{ id: "identity", text: "取得今晚住处、现场见证和一份临时身份凭据", status: "进行中" as const }, { id: "understand", text: `请主持者测试${character.martialSoul.name}的${testFocus}`, status: "未开始" as const }, { id: "path", text: "决定登记来历、保留异界秘密或继续无籍生活", status: "未开始" as const }],
@@ -1670,14 +1686,14 @@ export function ensureGameState(game: StoredGame): StoredGame {
         title: "决定觉醒后是否接触人类魂师体系",
         steps: [{ id: "understand", text: `与养育者确认${character.martialSoul.name}在人类与魂兽视角下的含义`, status: "进行中" as const }, { id: "boundary", text: "确认离开兽群领地会失去哪些保护与资源", status: "未开始" as const }, { id: "path", text: "决定留在森林、短期接触人类或正式建立人类身份", status: "未开始" as const }],
       } : legacyMode === "noble" ? {
-        title: "让家族身份与觉醒结果形成明确安排",
-        steps: [{ id: "understand", text: `请家族教官测试${character.martialSoul.name}的${testFocus}`, status: "进行中" as const }, { id: "support", text: "核对家族教师、资源、同辈竞争与第一魂环安排", status: "未开始" as const }, { id: "path", text: "决定接受、谈判或拒绝哪一项家族培养条件", status: "未开始" as const }],
+        title: "比较贵族身份能够打开的培养路线",
+        steps: [{ id: "understand", text: `请${officiant}完成${character.martialSoul.name}的${testFocus}测试`, status: "进行中" as const }, { id: "support", text: "分别核对家族培养、可报学院、外部导师或交换培养的资格与代价", status: "未开始" as const }, { id: "path", text: "与监护人确定近期培养地点、费用来源和必须承担的家族责任", status: "未开始" as const }],
       } : {
         title: "把觉醒结果换成下一步真实条件",
         steps: [{ id: "understand", text: `请主持者测试${character.martialSoul.name}的${testFocus}`, status: "进行中" as const }, { id: "support", text: "落实当前时代的入学、监护、费用与第一成长资源", status: "未开始" as const }, { id: "path", text: "在家庭、资源与年龄限制内确定近期成长路线", status: "未开始" as const }],
       };
       game.view.chapterObjective = { title: objectiveByMode.title, stakes: character.originBurden, destinationId: game.view.locationId, steps: objectiveByMode.steps };
-      const thread = legacyMode === "unbound" ? "取得住处、见证与临时身份" : legacyMode === "beast" ? "决定与人类魂师体系保持多远的距离" : legacyMode === "noble" ? "处理家族培养、同辈竞争与个人选择的冲突" : "落实家庭能够承担的入学、费用与第一成长资源";
+      const thread = legacyMode === "unbound" ? "取得住处、见证与临时身份" : legacyMode === "beast" ? "决定与人类魂师体系保持多远的距离" : legacyMode === "noble" ? "比较家族、学院与外部导师路线并承担相应责任" : "落实家庭能够承担的入学、费用与第一成长资源";
       game.storyMemory.openThreads = game.storyMemory.openThreads.map((item) => item === "家人与出身中尚未说清的细节" ? thread : item);
     }
   }

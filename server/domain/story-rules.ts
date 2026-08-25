@@ -313,11 +313,15 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
     const openingOfficiant = String(game.world.flags.openingOfficiant ?? "主持者");
     const openingSoulTestFocus = String(game.world.flags.openingSoulTestFocus ?? "能力边界、消耗与收放");
     const growth = openingMode === "internal" ? `请${openingOfficiant}测试${mainSoul}的${openingSoulTestFocus}`
-      : openingMode === "noble" ? `请家族教官测试${mainSoul}的${openingSoulTestFocus}`
+      : openingMode === "noble" ? `请${openingOfficiant}测试${mainSoul}的${openingSoulTestFocus}`
         : openingMode === "beast" ? `与岩叔确认${mainSoul}在人类规则中的含义`
           : openingMode === "unbound" ? `请主持者测试${mainSoul}的${openingSoulTestFocus}`
             : `请${openingOfficiant}测试${mainSoul}的${openingSoulTestFocus}`;
-    const guardianPlan = guardian ? ({
+    const guardianPlan = openingMode === "noble"
+      ? guardian
+        ? `和${guardian.name}比较家族培养、学院报名与外部导师的资格和代价`
+        : "请家族见证人列出家族培养、学院报名与外部导师的资格和代价"
+      : guardian ? ({
       1: `和${guardian.name}商量学院名额、路费与猎魂帮助`,
       2: `和${guardian.name}商量学院报名、食宿与第一魂环`,
       3: `把觉醒结果告诉${guardian.name}，确认魂师班与后续魂灵费用`,
@@ -332,7 +336,7 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
       ? "请主持者先落实临时身份和今晚住处"
       : openingMode === "beast" ? "和岩叔谈清离开兽群会失去的保护"
         : openingMode === "internal" ? `问清${openingInstitution}的导师、训练场与猎魂责任`
-          : openingMode === "noble" ? "和家人核对教师、资源、同辈排序与猎魂安排"
+        : openingMode === "noble" ? guardianPlan
           : guardianPlan;
     const secret = hiddenNames.length
       ? openingMode === "unbound" ? "暂不显露第二武魂，等有安全住处再测试"
