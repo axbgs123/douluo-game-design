@@ -510,7 +510,10 @@ describe("完整游玩规则", () => {
     const target = game.view.hunting!.recommendations[0].name;
     resolveAction(game, `选择${target}作为魂环目标`);
     expect(game.view.hunting?.stage).toBe("准备");
+    game.view.relations.push({ id: "academy-mentor", name: "林岳", relation: "学院导师", impression: "登记魂师并愿意承担猎魂护送责任", strength: 65, category: "师友" });
     resolveAction(game, "购买药物和猎魂绳作为补给");
+    resolveAction(game, "邀请林岳作为同行者组队猎魂");
+    resolveAction(game, "请林岳办理猎魂手令");
     expect(game.view.hunting?.stage).toBe("准备");
     expect(resolveAction(game, "出发猎魂").intent).toBe("猎魂出发确认");
     expect(game.view.hunting?.stage).toBe("旅行");
@@ -521,7 +524,7 @@ describe("完整游玩规则", () => {
     const game = awakened("four-person-hunt-departure");
     game.view.hunting = { stage: "准备", ringIndex: 2, targetBeastId: "datura-snake", targetName: "曼陀罗蛇", targetYears: 700, locationId: "soul-hunting-forest", recommendations: [], preparation: [], trailProgress: "待准备" };
     game.view.relations.push(
-      { id: "departure-striker", name: "陆锋", relation: "强攻系战士", impression: "可靠并擅长正面攻击", strength: 70, category: "同伴" },
+      { id: "departure-striker", name: "陆锋", relation: "学院导师兼强攻系战士", impression: "登记魂师，可靠并擅长正面攻击", strength: 70, category: "同伴" },
       { id: "departure-guard", name: "石岳", relation: "防御系护卫", impression: "可靠并擅长盾牌守护", strength: 70, category: "同伴" },
       { id: "departure-control", name: "宁索", relation: "控制系魂师", impression: "可靠并擅长束缚阵法", strength: 70, category: "同伴" },
       { id: "departure-healer", name: "苏叶", relation: "治疗系医师", impression: "可靠并擅长治愈救护", strength: 70, category: "同伴" },
@@ -530,6 +533,7 @@ describe("完整游玩规则", () => {
       expect(resolveAction(game, `邀请${name}担任${role}岗位同行猎魂`).intent).toBe("猎魂准备");
       expect(game.view.hunting.stage).toBe("准备");
     }
+    expect(resolveAction(game, "请陆锋办理猎魂手令").intent).toBe("猎魂准备");
     expect(game.view.hunting.preparation.filter((item) => item.startsWith("同行者："))).toHaveLength(4);
     expect(resolveAction(game, "出发猎魂").intent).toBe("猎魂出发确认");
     expect(game.view.hunting.stage).toBe("旅行");
@@ -606,7 +610,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(39);
+    expect(migrated.schemaVersion).toBe(40);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -674,11 +678,39 @@ describe("完整游玩规则", () => {
 
   it("玩家可以加入学院并完成基础课程", () => {
     const game = awakened("academy-life");
-    game.view.character!.innateSoulPower = Math.max(1, game.view.character!.innateSoulPower);
-    resolveAction(game, "申请学院入学");
+    game.view.character!.innateSoulPower = 10;
+    game.view.character!.soulRank = 10;
+    game.view.character!.coins = 100;
+    expect(resolveAction(game, "申请学院入学").intent).toBe("核对学院入学条件");
+    expect(game.view.affiliations.some((item) => /学院/.test(item.name))).toBe(false);
+    expect(resolveAction(game, "准备学院报名材料和监护签字").intent).toBe("提交学院报名材料");
+    expect(resolveAction(game, "参加学院入学考核").intent).toBe("通过学院入学考核");
+    expect(resolveAction(game, "办理学院入学报到").intent).toBe("加入学院");
     expect(game.view.affiliations.some((item) => /学院/.test(item.name))).toBe(true);
     resolveAction(game, "参加课程"); resolveAction(game, "参加课程"); resolveAction(game, "参加课程");
     expect(game.view.tasks.find((task) => task.id === "academy-foundation")?.status).toBe("完成");
+  });
+
+  it("寻找导师必须经过评估和两次试学，不能一句话自动拜师", () => {
+    const game = awakened("mentor-pursuit");
+    expect(resolveAction(game, "寻找适合当前武魂的导师").intent).toBe("寻找导师候选");
+    const mentor = game.view.mentorPursuit!.mentorName;
+    expect(game.view.relations.find((item) => item.name === mentor)?.relation).toBe("导师候选");
+    expect(resolveAction(game, `正式拜${mentor}为师`).intent).toBe("接受导师能力评估");
+    expect(resolveAction(game, `完成${mentor}第一次试学训练`).intent).toBe("完成导师试学");
+    expect(resolveAction(game, `正式拜${mentor}为师`).intent).toBe("无法完成");
+    expect(resolveAction(game, `完成${mentor}第二次试学训练`).intent).toBe("完成导师试学");
+    expect(resolveAction(game, `与${mentor}谈清责任后正式拜师`).intent).toBe("拜师");
+    expect(game.view.relations.find((item) => item.name === mentor)?.relation).toBe("师徒");
+  });
+
+  it("猎魂补给不会在余额不足时免费发放", () => {
+    const game = awakened("hunt-supply-cost");
+    game.view.character!.coins = 0;
+    game.view.hunting = { stage: "准备", ringIndex: 1, targetBeastId: "datura-snake", targetName: "曼陀罗蛇", targetYears: 120, locationId: "soul-hunting-forest", recommendations: [], preparation: [], trailProgress: "待准备" };
+    expect(resolveAction(game, "购买药物和猎魂绳作为补给").intent).toBe("无法完成");
+    expect(game.view.inventory).not.toContain("外敷伤药");
+    expect(game.view.inventory).not.toContain("猎魂绳");
   });
 
   it("AI长期记忆补丁会更新章节、线索和NPC记忆", () => {
@@ -884,7 +916,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.summary = "主角在东海学院见到了古月娜。";
     game.view.relations.push({ id: "gu-yue-na", name: "古月娜", relation: "同学", impression: "旧存档提前使用了后期姓名", strength: 10, category: "师友" });
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(39);
+    expect(migrated.schemaVersion).toBe(40);
     expect(migrated.world.npcs["gu-yue-na"].name).toBe("古月");
     expect(migrated.view.relations.find((item) => item.id === "gu-yue-na")?.name).toBe("古月");
     expect(migrated.storyMemory.summary).not.toContain("古月娜");
@@ -910,7 +942,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.openThreads = ["家人与出身中尚未说清的细节"];
     delete game.world.flags.openingMode; delete game.world.flags.openingInstitutionName; delete game.world.flags.openingOfficiant; delete game.world.flags.openingSoulTestFocus;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(39);
+    expect(migrated.schemaVersion).toBe(40);
     expect(migrated.view.narrative.at(-1)?.text).not.toMatch(/先天道体托在掌心|学院名额|恐怕不只是魂环/);
     expect(migrated.view.chapterObjective?.title).toContain("太玄剑宗内部觉醒");
     expect(JSON.stringify(migrated.view.chapterObjective)).not.toMatch(/加入宗门|学院名额/);
@@ -1019,7 +1051,7 @@ describe("第一部世界资料", () => {
     legacy.view.locationId = "mother-ship-port";
     legacy.view.location = "联邦母舰港";
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(39);
+    expect(migrated.schemaVersion).toBe(40);
     expect(migrated.view.location).toBe("联邦舰队集结基地");
   });
 

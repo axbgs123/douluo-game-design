@@ -260,7 +260,7 @@ export async function interpretActionWithDeepSeek(game: StoredGame, playerInput:
           "遇到后世专属行动时保留关键术语：魂灵调查/评估/签约，魂导器学习/制作/认证，斗铠设计/制作，机甲训练/考核/购买/驾驶，星舰训练/考核/招募船员/取得舰船/补给/航行/星球调查。不要把这些动作改写成普通修炼或普通旅行。",
           "输出 JSON：{\"ruleAction\":\"整理后的一句话\"}。",
         ].join("\n") },
-        { role: "user", content: JSON.stringify({ playerInput, relevantPast, era: game.view.era ?? 1, worldTime: game.view.worldTime, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), currentHunt: game.view.hunting, currentEvents: game.view.activeEvents.map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
+        { role: "user", content: JSON.stringify({ playerInput, relevantPast, era: game.view.era ?? 1, worldTime: game.view.worldTime, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), academyApplication: game.view.academyApplication, mentorPursuit: game.view.mentorPursuit, currentHunt: game.view.hunting, currentEvents: game.view.activeEvents.map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
       ],
     }, 20_000, signal);
   const content = payload.choices?.[0]?.message?.content;
@@ -376,6 +376,8 @@ export async function narrateWithDeepSeek(
             professions: game.view.professions,
             managedFactions: game.view.managedFactions,
             currentTaskRecords: game.view.tasks.filter((task) => task.status !== "完成").slice(0, 10),
+            academyApplication: game.view.academyApplication,
+            mentorPursuit: game.view.mentorPursuit,
             hunting: game.view.hunting,
             combat: game.view.combat,
             knownFigures: game.view.knownFigures.slice(0, 12),

@@ -298,6 +298,18 @@ function isNearDuplicate(left: string, right: string): boolean {
 export function groundedNarrativeSuggestions(game: StoredGame): string[] {
   const character = game.view.character;
   if (!character) return [];
+  const academy = game.view.academyApplication;
+  if (academy && !["已入学", "未通过", "已撤回"].includes(academy.stage)) {
+    if (academy.stage === "材料准备") return [`提交${academy.academyName}报名材料`, `请${academy.guardianName ?? "监护人"}核对签字责任`, "保留材料并比较其他培养路线"];
+    if (academy.stage === "入学考核") return [`参加${academy.academyName}入学考核`, "询问考核项目与失败去向", "暂缓考核并补练薄弱能力"];
+    if (academy.stage === "待报到") return [`办理${academy.academyName}入学报到`, "和监护人核对食宿与费用", "放弃名额并保留考核记录"];
+  }
+  const mentor = game.view.mentorPursuit;
+  if (mentor && !["已拜师", "被拒绝", "已结束"].includes(mentor.stage)) {
+    if (mentor.stage === "候选接触") return [`请${mentor.mentorName}评估公开武魂`, `询问${mentor.mentorName}授业条件`, "继续比较其他导师候选"];
+    if (["能力评估", "试学考察"].includes(mentor.stage)) return [`完成${mentor.mentorName}下一次试学`, "核对试学失败与改进记录", "结束试学并选择学院路线"];
+    if (mentor.stage === "待决定") return [`与${mentor.mentorName}谈清责任后拜师`, "追问训练资源与猎魂边界", "保留试学记录并拒绝拜师"];
+  }
   const awakeningTask = game.view.tasks.find((task) => task.status !== "完成" && /觉醒|培养评估|亲自复核/.test(`${task.id}${task.title}${task.detail}`));
   if (game.view.status === "awakening" || game.view.status === "life_goal_selection" || awakeningTask) {
     const awakeningRelation = game.view.relations.find((relation) => /觉醒主持|觉醒/.test(`${relation.relation}${relation.impression}`));
@@ -368,10 +380,12 @@ export function buildChineseWebnovelSceneCard(game: StoredGame, resolution: Acti
     immediateProblem: game.view.chapterObjective?.title ?? resolution.intent,
     currentStep: game.view.chapterObjective?.steps.find((step) => step.status === "进行中")?.text,
     availablePeople: game.view.relations.slice(0, 12).map(({ name, relation, faction }) => ({ name, relation, faction })),
-    availableInstitutions: [...new Set([...game.view.affiliations.map((item) => item.name), ...game.view.relations.map((item) => item.faction).filter(Boolean)])],
+    availableInstitutions: [...new Set([...game.view.affiliations.map((item) => item.name), ...(game.view.academyApplication ? [game.view.academyApplication.academyName] : []), ...game.view.relations.map((item) => item.faction).filter(Boolean)])],
     publicFacts: { martialSouls: publicNames, soulPower: game.view.character?.innateSoulPower, location: game.view.location },
     protagonistSecrets: { hiddenMartialSouls: hiddenNames, specialSystem: game.view.character?.specialSystem?.name },
     unresolvedPromises: game.storyMemory.openThreads.slice(0, 8),
+    academyApplication: game.view.academyApplication,
+    mentorPursuit: game.view.mentorPursuit,
     storyArc: game.view.storyArc ? { title: game.view.storyArc.title, stage: game.view.storyArc.stage, goal: game.view.storyArc.centralGoal, conflict: game.view.storyArc.centralConflict, opposingForce: game.view.storyArc.opposingForce, payoff: game.view.storyArc.promisedPayoff, payoffLedger: game.view.storyArc.payoffLedger, nextGate: game.view.storyArc.stageGates[game.view.storyArc.stageIndex + 1], activeNpcScene: game.view.storyArc.npcScenes.find((scene) => scene.status === "等待回应"), sideThreads: game.view.storyArc.sideThreads, irreversibleTurn: game.view.storyArc.irreversibleTurn, pressure: game.view.storyArc.pressure } : undefined,
     reactionChain: ["谁目击", "谁有权限", "谁获益或受损", "立即反应", "留下何种记录、关系或代价"],
     choiceVectors: ["成长或资源", "关系或势力", "秘密或风险"],
@@ -440,6 +454,8 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
   const activeNpcScene = game.view.storyArc?.npcScenes.find((scene) => scene.status === "等待回应");
   const activeSceneRelation = activeNpcScene && game.view.relations.find((relation) => relation.name === activeNpcScene.npcName);
   if (activeSceneRelation && !participantRelations.includes(activeSceneRelation)) participantRelations.push(activeSceneRelation);
+  const mentorRelation = game.view.mentorPursuit && game.view.relations.find((relation) => relation.name === game.view.mentorPursuit?.mentorName);
+  if (mentorRelation && !participantRelations.includes(mentorRelation)) participantRelations.push(mentorRelation);
   const participants = participantRelations.slice(0, 12).map((relation) => {
     const npc = onSceneNpcs.find((item) => item.name === relation.name);
     const knowledge = knowledgeByNpc.get(relation.name);
@@ -471,6 +487,8 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
     `随身物品：${game.view.inventory.slice(0, 8).join("、") || "无"}`,
     game.view.combat ? `战斗状态：${game.view.combat.playerCondition}` : undefined,
     game.view.hunting ? `猎魂阶段：${game.view.hunting.stage}` : undefined,
+    game.view.academyApplication ? `学院申请：${game.view.academyApplication.academyName}·${game.view.academyApplication.stage}，尚不能越过下一阶段` : undefined,
+    game.view.mentorPursuit ? `导师关系：${game.view.mentorPursuit.mentorName}·${game.view.mentorPursuit.stage}，未到已拜师不得写成师徒` : undefined,
   ].filter((item): item is string => Boolean(item));
   return {
     version: "narrative-logic.v1",

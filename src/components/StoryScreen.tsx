@@ -110,7 +110,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
             {panel === "背包" && <InventoryPanel game={game} submit={submit} busy={busy} />}
             {panel === "地图" && <MapPanel game={game} submit={submit} busy={busy} onMapPin={onMapPin} onMapPinRemove={onMapPinRemove} />}
             {panel === "关系" && <RelationPanel game={game} submit={submit} busy={busy} />}
-            {panel === "任务" && <><InstitutionReviewerPanel game={game} submit={submit} busy={busy} /><TaskPanel game={game} /></>}
+            {panel === "任务" && <><GrowthApplicationPanel game={game} submit={submit} busy={busy} /><InstitutionReviewerPanel game={game} submit={submit} busy={busy} /><TaskPanel game={game} /></>}
             {panel === "情报" && <IntelligencePanel game={game} />}
             {panel === "手记" && <><KnownRecordSearch game={game} /><ArchivePanel game={game} /></>}
             {panel === "猎魂" && <HuntPanel game={game} submit={submit} busy={busy} />}
@@ -337,6 +337,16 @@ function InstitutionReviewerPanel({ game, submit, busy }: { game: GameView; subm
       {chain.factions && <article key={`${task.id}-factions`}><header><strong>机构内部复核</strong><span>{chain.conflictStatus ?? "未触发"}</span></header>{chain.factions.map((faction) => <p key={faction.name}>{faction.name} · 影响 {faction.influence} · 玩家信任 {faction.playerTrust} · {faction.priority}</p>)}{chain.playerAlignment && <small>已采纳 · {chain.playerAlignment}</small>}{chain.resolutionEvidence?.at(-1) && <em>{chain.resolutionEvidence.at(-1)}</em>}{chain.conflictStatus === "待复核" && <div><button type="button" disabled={busy} onClick={() => submit("提交共同复核协调方案")}>共同协调</button>{chain.factions.map((faction) => <button key={faction.name} type="button" disabled={busy} onClick={() => submit(`支持${faction.name}处理机构复核冲突`)}>支持{faction.name}</button>)}</div>}</article>}
     </Fragment>;
   })}</div>;
+}
+
+function GrowthApplicationPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
+  const academy = game.academyApplication;
+  const mentor = game.mentorPursuit;
+  if (!academy && !mentor) return null;
+  return <section className="player-relation-ledger growth-application-panel">
+    {academy && <article><header><strong>{academy.academyName}</strong><span>入学申请 · {academy.stage}</span></header><p>{academy.route} · 费用 {formatSoulCoins(academy.fee)} · 考核线 {academy.passScore}{academy.examScore !== undefined ? ` · 当前 ${academy.examScore}` : ""}</p><small>{academy.requirements.join("；")}</small>{academy.evidence.at(-1) && <em>{academy.evidence.at(-1)}</em>}<div className="button-row">{academy.stage === "材料准备" && <button type="button" disabled={busy} onClick={() => submit(`准备${academy.academyName}报名材料和监护签字`)}>提交材料</button>}{academy.stage === "入学考核" && <button type="button" disabled={busy} onClick={() => submit(`参加${academy.academyName}入学考核`)}>参加考核</button>}{academy.stage === "待报到" && <button type="button" disabled={busy} onClick={() => submit(`办理${academy.academyName}入学报到`)}>确认报到</button>}</div></article>}
+    {mentor && <article><header><strong>{mentor.mentorName}</strong><span>导师候选 · {mentor.stage}</span></header><p>{mentor.qualification}</p><small>{mentor.motive}</small><small>{mentor.requirements.join("；")}</small>{mentor.evidence.at(-1) && <em>{mentor.evidence.at(-1)}</em>}<div className="button-row">{mentor.stage === "候选接触" && <button type="button" disabled={busy} onClick={() => submit(`请${mentor.mentorName}评估公开武魂与现有基础`)}>接受评估</button>}{["能力评估", "试学考察"].includes(mentor.stage) && <button type="button" disabled={busy} onClick={() => submit(`完成${mentor.mentorName}试学训练`)}>完成试学</button>}{mentor.stage === "待决定" && <button type="button" disabled={busy} onClick={() => submit(`与${mentor.mentorName}谈清责任后正式拜师`)}>正式拜师</button>}</div></article>}
+  </section>;
 }
 
 function TaskPanel({ game }: { game: GameView }) {

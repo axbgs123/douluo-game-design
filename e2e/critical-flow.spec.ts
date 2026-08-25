@@ -68,6 +68,25 @@ async function seedOpeningMatrixGame() {
   database.saveGame(game, "e2e.opening-matrix-fixture");
 }
 
+async function seedEarlyGrowthGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 1, gender: "男", difficulty: "标准", seed: "e2e-early-growth" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "早期成长验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.locationId = "notting-city";
+  game.view.location = "诺丁城";
+  game.view.character!.innateSoulPower = 10;
+  game.view.character!.soulRank = 10;
+  game.view.character!.coins = 100;
+  if (!game.view.relations.some((relation) => relation.category === "亲属")) game.view.relations.push({ id: "e2e-guardian", name: "顾伯", relation: "监护人", impression: "负责食宿与入学签字", strength: 70, category: "亲属" });
+  database.saveGame(game, "e2e.early-growth-fixture");
+}
+
 async function seedInheritanceRightsGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -160,6 +179,20 @@ async function seedInstitutionFactionConflictGame() {
   database.saveGame(game, "e2e.institution-factions-fixture");
 }
 
+async function seedBasicInstitutionGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 1, gender: "男", difficulty: "标准", seed: "e2e-basic-institution" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "机构分支验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.affiliations = [{ id: "e2e-basic-academy", name: "诺丁初级魂师学院", role: "学员", reputation: "新入学", joinedAt: "验收", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
+  database.saveGame(game, "e2e.basic-institution-fixture");
+}
+
 async function seedFourPersonFormationGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -171,7 +204,7 @@ async function seedFourPersonFormationGame() {
   generator.awakenCharacter(game);
   generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
   game.view.relations.push(
-    { id: "e2e-four-striker", name: "陆锋", relation: "强攻系战士", impression: "可靠并擅长正面攻击", strength: 70, category: "同伴" },
+    { id: "e2e-four-striker", name: "陆锋", relation: "学院导师兼强攻系战士", impression: "登记魂师，可靠并擅长正面攻击", strength: 70, category: "同伴" },
     { id: "e2e-four-guard", name: "石岳", relation: "防御系护卫", impression: "可靠并擅长盾牌守护", strength: 70, category: "同伴" },
     { id: "e2e-four-control", name: "宁索", relation: "控制系魂师", impression: "可靠并擅长束缚阵法", strength: 70, category: "同伴" },
     { id: "e2e-four-healer", name: "苏叶", relation: "治疗系医师", impression: "可靠并擅长治愈救护", strength: 70, category: "同伴" },
@@ -536,6 +569,35 @@ test("宗门本体武魂开局使用专属显形、目标与资源路线", async
   await expect(page.locator(".chapter-objective")).not.toContainText("加入宗门");
 });
 
+test("学院入学与拜师必须经过材料、考核和试学，不会一句话送身份", async ({ page }) => {
+  test.setTimeout(60_000);
+  await seedEarlyGrowthGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "早期成长验收" });
+  await save.locator("button").first().click();
+  await submitAction(page, "申请诺丁初级魂师学院入学");
+  await page.getByRole("button", { name: /^任务/ }).click();
+  await expect(page.locator(".growth-application-panel")).toContainText("材料准备");
+  await submitAction(page, "准备诺丁初级魂师学院报名材料和监护签字");
+  await expect(page.locator(".growth-application-panel")).toContainText("入学考核");
+  await submitAction(page, "参加诺丁初级魂师学院入学考核");
+  await expect(page.locator(".growth-application-panel")).toContainText("待报到");
+  await submitAction(page, "办理诺丁初级魂师学院入学报到");
+  await expect(page.locator(".growth-application-panel")).toContainText("已入学");
+
+  await submitAction(page, "寻找适合当前武魂的导师");
+  await expect(page.locator(".growth-application-panel")).toContainText("候选接触");
+  const mentorName = await page.locator(".growth-application-panel article").filter({ hasText: "导师候选" }).locator("strong").textContent();
+  if (!mentorName) throw new Error("导师候选未显示姓名");
+  await submitAction(page, `请${mentorName}评估公开武魂与现有基础`);
+  await submitAction(page, `完成${mentorName}第一次试学训练`);
+  await expect(page.locator(".growth-application-panel")).toContainText("试学考察");
+  await submitAction(page, `完成${mentorName}第二次试学训练`);
+  await expect(page.locator(".growth-application-panel")).toContainText("待决定");
+  await submitAction(page, `与${mentorName}谈清责任后正式拜师`);
+  await expect(page.locator(".growth-application-panel")).toContainText("已拜师");
+});
+
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {
   const saved = await request.post("/api/meta/preferences", { data: { origin: "均衡", martialSoul: "均衡", gift: "签到系统" } });
   expect(saved.ok()).toBeTruthy();
@@ -646,8 +708,10 @@ test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状�
 });
 
 test("机构分支、失败代价与具名复核人会谈会持久显示到任务界面", async ({ page }) => {
-  await createPlayingCharacter(page, 1);
-  await submitAction(page, "申请学院入学");
+  await seedBasicInstitutionGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "机构分支验收" });
+  await save.locator("button").first().click();
   await page.getByRole("button", { name: "人物", exact: true }).click();
   await expect(page.locator(".affiliation-list article").first()).toBeVisible();
   await page.locator(".affiliation-list article").first().getByRole("button", { name: "领任务" }).click();
@@ -853,6 +917,7 @@ test("四人编队可以从共同训练、明确出发一路进入实战并发�
   const training = page.locator(".player-relation-ledger article").filter({ hasText: "四象战阵" });
   await expect(training).toContainText("四角轮换");
   for (const [name, role] of [["陆锋", "强攻"], ["石岳", "防护"], ["宁索", "控制"], ["苏叶", "治疗"]] as const) await submitAction(page, `邀请${name}担任${role}岗位同行猎魂`);
+  await submitAction(page, "请陆锋办理猎魂手令");
   await expect(page.locator(".hunt-stage strong")).toHaveText("准备");
   await submitAction(page, "出发猎魂");
   await expect(page.locator(".hunt-stage strong")).toHaveText("旅行");

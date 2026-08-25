@@ -696,6 +696,30 @@ export interface HuntingView {
   result?: string;
 }
 
+export interface AcademyApplicationView {
+  academyId: string;
+  academyName: string;
+  stage: "条件核对" | "材料准备" | "入学考核" | "待报到" | "已入学" | "未通过" | "已撤回";
+  route: "普通学员" | "工读生" | "魂师班" | "选拔生";
+  requirements: string[];
+  evidence: string[];
+  fee: number;
+  guardianName?: string;
+  examScore?: number;
+  passScore: number;
+}
+
+export interface MentorPursuitView {
+  mentorId?: string;
+  mentorName: string;
+  stage: "候选接触" | "能力评估" | "试学考察" | "待决定" | "已拜师" | "被拒绝" | "已结束";
+  source: string;
+  qualification: string;
+  motive: string;
+  requirements: string[];
+  evidence: string[];
+}
+
 export interface CombatView {
   id: string;
   enemyName: string;
@@ -980,6 +1004,8 @@ export interface GameView {
   chapter: StoryChapterView;
   chapterObjective?: ChapterObjectiveView;
   storyArc?: StoryArcView;
+  academyApplication?: AcademyApplicationView;
+  mentorPursuit?: MentorPursuitView;
   hunting?: HuntingView;
   combat?: CombatView;
   comboTrainings: ComboTrainingView[];
