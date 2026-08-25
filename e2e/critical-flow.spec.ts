@@ -32,6 +32,27 @@ async function seedLocalConsequenceGame() {
   database.saveGame(game, "e2e.local-consequence-fixture");
 }
 
+async function seedCurrentLifeStageGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database, world] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js"), import("../server/domain/world.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 3, gender: "男", difficulty: "标准", seed: "e2e-current-life-stage" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "时间线验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  game.view.worldTime = { era: "东海学院零班阶段", year: 20003, day: 1, time: "08:00", season: "春" };
+  game.view.locationId = "east-sea-city";
+  game.view.location = "东海城";
+  game.world = world.createHiddenWorld(20003, "east-sea-city");
+  game.world.npcs["gu-yue-na"].knownToPlayer = true;
+  game.world.npcs["gu-yue-na"].locationId = "east-sea-city";
+  world.recordIntelligence(game, { subjectType: "人物", subjectId: "gu-yue-na", title: "古月", detail: "主角在东海学院零班当面认识了自称古月的同学。", source: "同学亲历", confidence: 88, status: "确定" });
+  game.view.knownFigures = world.buildKnownFigures(game);
+  database.saveGame(game, "e2e.current-life-stage-fixture");
+}
+
 async function seedInheritanceRightsGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -471,6 +492,19 @@ test("手记显示错过地方事件留下的持续后果", async ({ page }) => 
   await expect(page.locator(".local-consequence-list")).toContainText("正在改变当地生活");
   await expect(page.locator(".local-consequence-list")).toContainText("本地常用药材短缺");
   await expect(page.locator(".local-consequence-list")).toContainText("影响 3/5");
+});
+
+test("已知人物只显示当前人生阶段姓名与公开归属", async ({ page }) => {
+  await seedCurrentLifeStageGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "时间线验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await page.getByRole("button", { name: "世界", exact: true }).click();
+  await expect(page.locator(".figure-list")).toContainText("古月");
+  await expect(page.locator(".figure-list")).not.toContainText("古月娜");
+  await expect(page.locator(".figure-list")).not.toContainText("银龙斗罗");
+  await expect(page.locator(".figure-list")).not.toContainText("传灵塔");
 });
 
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {

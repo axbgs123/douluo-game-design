@@ -61,6 +61,10 @@ export function auditCanonNarrativeVoice(text: string, profile: CanonNarrativePr
   return mysteryHits.length >= 2 ? ["非调查场景被写成了解密或谜团推进"] : [];
 }
 
+export function observableCanonEventsForNarration(game: StoredGame) {
+  return CANON_EVENTS.filter((event) => game.world.firedCanonEvents.includes(event.id) && (game.view.news.some((item) => item.id === event.id || item.title === event.title || item.detail.includes(event.title)) || game.world.intelligenceRecords.some((item) => item.subjectId === event.id || item.title === event.title || item.detail.includes(event.title))));
+}
+
 export class NarrativeAuditError extends Error {
   constructor(public readonly issues: string[]) {
     super(`正文未通过审校：${issues.join("、")}`);
@@ -112,7 +116,7 @@ export function validateInterpretedAction(game: StoredGame, original: string, in
 
 export function narrativePacing(game: StoredGame, playerInput: string, resolution: ActionResolution): { kind: "略写" | "推进" | "关键"; target: string; directive: string } {
   const scene = `${playerInput} ${resolution.intent} ${resolution.ruleSummary}`;
-  const importantCanonContact = CANON_CHARACTERS.some((character) => character.importance >= 4 && (playerInput.includes(character.name) || character.aliases.some((alias) => playerInput.includes(alias))));
+  const importantCanonContact = CANON_CHARACTERS.some((character) => character.importance >= 4 && playerInput.includes(game.world.npcs[character.id]?.name ?? "不存在的当前姓名"));
   const activeEventContact = game.world.dynamicEvents.some((event) => event.status === "可介入" && playerInput.includes(event.title));
   const key = importantCanonContact || /重要战斗|生死|死亡|复生|魂环吸收|觉醒|加入势力|背叛|拜师|建立势力|历史偏移|原作关键|结局|神位|重大选择/.test(scene);
   const routineIntent = /^(调查|交谈|一般行动|购买|工作|休息|等待)$/u.test(resolution.intent);
@@ -296,7 +300,7 @@ export async function narrateWithDeepSeek(
             "可以描写已经由性格、行为证据和当前处境形成的情绪或想法；面对重大选择只能写犹豫与倾向，不能替玩家新增爱情、仇恨、欲望、道德立场或直接作出决定。",
             "程序已经决定了行动结果；你只能描写这个结果，不能改变胜负、时间、伤势、物品、魂力、关系、猎魂阶段或世界事件。",
             "保持中文小说感、人物动机连续和世界内视角，不泄露角色不知道的隐藏设定。",
-            "严格服从 worldTime、occurredCanonEvents 与 futureCanonLocks。futureCanonLocks 中的事在对应年份前绝对没有发生，NPC 不得提前知道、参加或谈论其结果。",
+            "严格服从 worldTime、occurredCanonEvents 与 futureCanonGuard。occurredCanonEvents 只包含玩家已经通过亲历、可靠消息或调查获知的历史；futureCanonGuard 不提供未来标题，任何未列入已知历史的后续事件、称号、关系结果、武魂变化和势力归属都不得自行补出。",
             "原作剧情只有在 playerCausalFootprints 明确连接到相关人物、势力或地点后才允许偏离。没有因果记录时，不能擅自提前、延后、替换或抹去原作事件。",
             "区分作者知道、模型知道与角色知道。玩家问到尚未发生的原作内容时，本地人只能给出当时能查到的常识、传闻或不知道；穿越者也只能依据其已解锁的剧情记忆。",
             "正文从眼前正在发生的动作或感官细节写起，句子长短要有变化。NPC 的说话方式要符合年龄、身份和当下顾虑。",
@@ -314,7 +318,7 @@ export async function narrateWithDeepSeek(
             "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
             "narrativeLogicPacket 是正文生成前已经通过的硬逻辑合同。先逐项满足 protagonistContract、participantContracts、reactionChain 与 continuityContract，再写句子；不得在正文中提到逻辑包、状态版本或检查过程。",
             "retrievedLongTermMemories 是本地向量库按当前行动召回的玩家已知旧事。只在与当前场景相关时自然延续；它不能覆盖当前程序状态，也不能让未亲历该事的NPC突然知情。发生冲突时以当前结构化状态和 fixedRuleResult 为准。",
-            "retrievedCanonKnowledge 是按当前时代和场景召回的斗罗结构化世界资料。必须读取每条 metadata.provenance：原著可作为原作锚点；原著归纳只说明基础地理可证，完整标签不是原著原话；原创只属于本同人世界，绝对不能宣称原著出现过。人物性格和原著人生阶段只构成行为惯性，不是固定台词；玩家已经改变其关系、资源、职位或处境时，以当前存档为准。",
+            "retrievedCanonKnowledge 是按当前时代和场景召回的斗罗结构化世界资料。地点与势力条目必须读取 metadata.provenance：原著归纳不是原著原话，原创不能宣称原著出现过。人物条目只描述当前人生时间片；未提供的后来姓名、称号、武魂变化、关系结果、势力归属与目标一律视为尚未发生。玩家已经改变其关系、资源、职位或处境时，以当前存档为准。",
             "原著关系向量默认只用于保持人物行为一致，不能直接向主角陈述。只有 sceneKnowledge 或玩家情报明确证明主角已经知道该关系时，正文和NPC才可以说破；不得借旁白泄露隐藏血缘、感情、阵营或未来身份。",
             "重要原著事件在没有玩家因果足迹时保持惯性；普通人物、关系、资源和地方事件应持续自主变化。玩家形成足够的目击、关系、权限、资源、战力或势力影响后，重要事件也必须从新状态重新推演，不能强行回轨。",
             "retrievedWorldLogic 是独立的世界基本逻辑库。先核对每条的触发前提，再执行目击—复测—上报—利益判断—具体行动—状态痕迹链。高天赋会立刻改变关注、投资、收徒、拉拢、忌惮和敌对概率，但不保证成功拜师、无条件送宝、忠诚或私人好感。",
@@ -340,8 +344,8 @@ export async function narrateWithDeepSeek(
             personalityEvidence: game.personalityProfile.evidence?.slice(-12),
             location: game.view.location,
             worldTime: game.view.worldTime,
-            occurredCanonEvents: CANON_EVENTS.filter((event) => game.world.firedCanonEvents.includes(event.id)).sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1)).slice(-24).map(({ year, day, title, publicSummary }) => ({ year, day: day ?? 1, title, publicSummary })),
-            futureCanonLocks: CANON_EVENTS.filter((event) => event.year > (game.view.worldTime?.year ?? 0) || (event.year === (game.view.worldTime?.year ?? 0) && (event.day ?? 1) > (game.view.worldTime?.day ?? 1))).filter((event) => event.year <= (game.view.worldTime?.year ?? 0) + 50).slice(0, 36).map(({ year, day, title, participantIds }) => ({ notBeforeYear: year, notBeforeDay: day ?? 1, title, participants: participantIds.map((id) => characterById(id)?.name ?? id) })),
+            occurredCanonEvents: observableCanonEventsForNarration(game).sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1)).slice(-24).map(({ year, day, title, publicSummary }) => ({ year, day: day ?? 1, title, publicSummary })),
+            futureCanonGuard: { currentYear: game.view.worldTime?.year ?? 0, currentDay: game.view.worldTime?.day ?? 1, hiddenFutureEventCount: CANON_EVENTS.filter((event) => event.year > (game.view.worldTime?.year ?? 0) || (event.year === (game.view.worldTime?.year ?? 0) && (event.day ?? 1) > (game.view.worldTime?.day ?? 1))).length, rule: "未来事件标题、参与者与结果未提供；不得猜测或补写" },
             playerCausalFootprints: game.world.canonCausalFootprints.slice(-16),
             sceneKnowledge,
             lifeGoal: game.view.lifeGoal,
@@ -387,11 +391,13 @@ export async function narrateWithDeepSeek(
   if (typeof parsed.narrative !== "string" || !Array.isArray(parsed.suggestions)) {
     throw new Error("DeepSeek 返回结构不合法");
   }
-  const chronologyText = `${parsed.narrative}\n${parsed.suggestions.filter((item): item is string => typeof item === "string").join("\n")}`;
+  const memoryText = parsed.memory && typeof parsed.memory === "object" ? [parsed.memory.summary, ...(parsed.memory.openThreads ?? []), parsed.memory.keyChoice, ...Object.keys(parsed.memory.npcNotes ?? {}), ...Object.values(parsed.memory.npcNotes ?? {}), parsed.memory.chapterTitle].filter((item): item is string => typeof item === "string").join("\n") : "";
+  const chronologyText = `${parsed.narrative}\n${parsed.suggestions.filter((item): item is string => typeof item === "string").join("\n")}\n${memoryText}`;
   if (violatesCanonChronology(chronologyText, game.view.worldTime?.year ?? 0)) throw new Error("DeepSeek 生成内容违反当前原作时间线，已改用安全叙事");
   const auditIssues = auditNarrative(game, parsed.narrative);
+  const memoryTimelineIssues = auditNarrative(game, memoryText).filter((issue) => /提前|时间线|年份|年龄|魂力|后期姓名|势力归属/.test(issue));
   const novelEngineIssues = auditNovelEngineNarrative(game, parsed.narrative, novelEngine);
-  const allAuditIssues = [...auditIssues, ...novelEngineIssues, ...auditCanonNarrativeVoice(parsed.narrative, canonNarrativeProfile), ...auditResolutionAlignment(parsed.narrative, resolution)];
+  const allAuditIssues = [...auditIssues, ...memoryTimelineIssues, ...novelEngineIssues, ...auditCanonNarrativeVoice(parsed.narrative, canonNarrativeProfile), ...auditResolutionAlignment(parsed.narrative, resolution)];
   if (allAuditIssues.length) throw new NarrativeAuditError(allAuditIssues);
 
   return {

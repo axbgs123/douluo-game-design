@@ -123,10 +123,10 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
 
   const directContact = /拜访|拜师|拜.*为师|见到|交谈|询问|告诉|攻击|杀|跟随|寻找/.test(action);
   if (directContact) {
-    const definition = CANON_CHARACTERS.find((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)));
-    const npc = definition ? game.world.npcs[definition.id] : undefined;
+    const npc = Object.values(game.world.npcs).find((item) => action.includes(item.name));
+    const definition = npc ? CANON_CHARACTERS.find((item) => item.id === npc.id) : undefined;
     const hasIdentityEvidence = definition ? game.world.intelligenceRecords.some((record) => record.subjectType === "人物" && record.subjectId === definition.id && record.confidence >= 60) || game.world.canonCausalFootprints.some((cause) => cause.affectedNpcIds.includes(definition.id)) : false;
-    if (definition?.hidden && npc && !npc.knownToPlayer && !hasIdentityEvidence) {
+    if (definition?.hidden && npc && npc.name === definition.name && !npc.knownToPlayer && !hasIdentityEvidence) {
       return impossible(game,
         `${name}无法确认这个名字对应现实中的哪一个人，更不能据此直接接触或攻击目标。`,
         ["调查名字的来源", "寻找两条独立证据", "把传闻暂时标为未证实"],
@@ -135,7 +135,7 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
     }
     if (definition && npc && !npc.alive) {
       return impossible(game,
-        `${name}在当前年代找不到${definition.name}真实存在的线索，不能直接与其见面或交谈。`,
+        `${name}在当前年代找不到${npc.name}真实存在的线索，不能直接与其见面或交谈。`,
         ["核对当前年代", "调查同名传闻", "把注意力放回身边的人"],
         [13, 66, 931, 935],
       );
@@ -240,6 +240,15 @@ export function auditNarrative(game: StoredGame, text: string): string[] {
     }
     const ageClaim = text.match(new RegExp(`${escapedName}.{0,8}?([零一二三四五六七八九十百两\\d]{1,4})岁`));
     if (ageClaim && (npc.age === undefined || parseNumberToken(ageClaim[1]) !== npc.age)) issues.push(`正文写错${npc.name}在当前年份的年龄`);
+    const definition = CANON_CHARACTERS.find((item) => item.id === npc.id);
+    if (definition && npc.alive) {
+      const reliableIdentityText = game.world.intelligenceRecords.filter((record) => record.subjectType === "人物" && record.subjectId === npc.id && record.confidence >= 85 && record.status === "确定" && /交叉核验|身份核验|密档/.test(record.source)).map((record) => `${record.title}${record.detail}`).join("；");
+      const futureNames = [definition.name, ...definition.aliases].filter((name, index, all) => name !== npc.name && all.indexOf(name) === index && !reliableIdentityText.includes(name));
+      if (futureNames.some((name) => text.includes(name))) issues.push(`正文提前使用${npc.name}尚未公开的后期姓名、称号或身份`);
+      const currentFactions = new Set(npc.factionIds);
+      const unavailableFactions = definition.factionIds.filter((id) => !currentFactions.has(id)).map((id) => FACTIONS.find((faction) => faction.id === id)?.name).filter((name): name is string => Boolean(name));
+      if (unavailableFactions.some((faction) => new RegExp(`${escapedName}.{0,24}${faction}|${faction}.{0,24}${escapedName}`).test(text))) issues.push(`正文提前写入${npc.name}尚未形成的势力归属`);
+    }
   }
   if ((text.match(/！/g)?.length ?? 0) >= 5) issues.push("正文依赖连续感叹号制造强度");
   if (/先天满魂力|水晶球.{0,20}(?:冲到顶|完全亮起)/.test(text) && !/停笔|复测|上报|登记|招揽|议论|围观|惊|愣|僵|变色|叫停/.test(text)) {

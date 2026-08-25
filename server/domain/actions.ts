@@ -1247,8 +1247,16 @@ function finishHunt(game: StoredGame): ActionResolution {
   };
 }
 
+function mentionedCurrentCharacter(game: StoredGame, action: string) {
+  return CANON_CHARACTERS.find((character) => {
+    const npc = game.world.npcs[character.id];
+    if (npc && action.includes(npc.name)) return true;
+    return game.world.intelligenceRecords.some((record) => record.subjectType === "人物" && record.subjectId === character.id && record.confidence >= 85 && record.status === "确定" && /交叉核验|身份核验|密档/.test(record.source) && [character.name, ...character.aliases].some((name) => action.includes(name) && `${record.title}${record.detail}`.includes(name)));
+  });
+}
+
 function conversationResolution(game: StoredGame, action: string): ActionResolution {
-  const mentioned = CANON_CHARACTERS.find((character) => action.includes(character.name) || character.aliases.some((alias) => action.includes(alias)));
+  const mentioned = mentionedCurrentCharacter(game, action);
   let detail = "对方只回答了愿意说的部分。";
   const systemMessages: string[] = [];
   if (mentioned) {
@@ -1259,7 +1267,7 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
       npc.dispositionToPlayer += 2;
       rememberNpcInteraction(game, npc, `${game.view.worldTime?.year ?? 0}年在${game.view.location ?? "此地"}与玩家交谈`);
       if (!game.view.relations.some((relation) => relation.id === npc.id)) {
-        const factionName = FACTIONS.find((faction) => mentioned.factionIds.includes(faction.id))?.name;
+        const factionName = FACTIONS.find((faction) => npc.factionIds.includes(faction.id))?.name;
         game.view.relations.push({ id: npc.id, name: npc.name, relation: "初识", impression: "仍在观察主角", faction: factionName, lastSeen: game.view.location, strength: 10, category: "师友", dimensions: relationDimensions(10), history: [{ date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `在${game.view.location ?? "此地"}第一次当面交谈`, changes: "建立初识" }] });
         game.world.metrics.relationshipsBuilt += 1;
       } else {
@@ -1271,16 +1279,16 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
         recordPlayerRelation(game, relation, `${npc.name}与主角当面交谈，依据对话内容继续判断`, { trust: 3, closeness: 2, identityKnowledge: 4, vigilance: -1 });
       }
       game.world.deviation += Math.max(1, Math.floor(mentioned.importance / 2));
-      recordCanonInfluence(game, { source: "当面交谈", description: `与${mentioned.name}当面交谈`, affectedNpcIds: [mentioned.id], affectedFactionIds: mentioned.factionIds, strength: Math.max(1, mentioned.importance - 2) });
-      detail = `与 ${mentioned.name} 当面交谈，建立初步关系。`;
-      systemMessages.push(`人物记录 · ${mentioned.name}`);
-      recordIntelligence(game, { subjectType: "人物", subjectId: mentioned.id, title: mentioned.name, detail: `${mentioned.name}亲口谈及当前话题；其措辞可能保留私心，但见面地点已经确认。`, source: `当面交谈 · ${mentioned.name}`, confidence: 88, status: "确定" });
+      recordCanonInfluence(game, { source: "当面交谈", description: `与${npc.name}当面交谈`, affectedNpcIds: [mentioned.id], affectedFactionIds: npc.factionIds, strength: Math.max(1, mentioned.importance - 2) });
+      detail = `与 ${npc.name} 当面交谈，建立初步关系。`;
+      systemMessages.push(`人物记录 · ${npc.name}`);
+      recordIntelligence(game, { subjectType: "人物", subjectId: mentioned.id, title: npc.name, detail: `${npc.name}亲口谈及当前话题；其措辞可能保留私心，但见面地点已经确认。`, source: `当面交谈 · ${npc.name}`, confidence: 88, status: "确定" });
     } else if (discoverable) {
       revealNpc(game, mentioned.id);
-      detail = `打听到关于 ${mentioned.name} 的传闻，无法确认全部真实性。`;
-      recordIntelligence(game, { subjectType: "人物", subjectId: mentioned.id, title: mentioned.name, detail: `有人提到${mentioned.name}，但说法未经本人或第二来源核实。`, source: `${game.view.location ?? "当地"}传闻`, confidence: 38, status: "传闻" });
+      detail = `打听到关于 ${npc?.name ?? "这名人物"} 的传闻，无法确认全部真实性。`;
+      recordIntelligence(game, { subjectType: "人物", subjectId: mentioned.id, title: npc?.name ?? "未核实人物", detail: `有人提到${npc?.name ?? "这名人物"}，但说法未经本人或第二来源核实。`, source: `${game.view.location ?? "当地"}传闻`, confidence: 38, status: "传闻" });
     } else {
-      detail = `没有找到能证明“${mentioned.name}”是现实人物的可靠记录。`;
+      detail = `没有找到能证明“${npc?.name ?? "这个名字"}”是现实人物的可靠记录。`;
     }
   }
   return {
@@ -1289,8 +1297,8 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
     ruleSummary: detail,
     fallbackNarrative: mentioned
       ? detail.startsWith("没有找到")
-        ? `我问了几处，也翻了能接触到的登记。没人能证明“${mentioned.name}”对应一个真实身份；我没有把猜测当成事实记进人物档案。`
-        : `我问到${mentioned.name}时，对方先看了看周围。话说得不多，真假也掺在一起。我把能互相对上的那几句记住，剩下的没急着信。`
+        ? `我问了几处，也翻了能接触到的登记。没人能证明“${game.world.npcs[mentioned.id]?.name ?? "这个名字"}”对应一个真实身份；我没有把猜测当成事实记进人物档案。`
+        : `我问到${game.world.npcs[mentioned.id]?.name ?? "那个人"}时，对方先看了看周围。话说得不多，真假也掺在一起。我把能互相对上的那几句记住，剩下的没急着信。`
       : "我把问题问了。对方手里的活没停，只挑了几句能说的答。再追问时，他摇头，说自己也只是听来的。",
     suggestions: ["追问消息来源", "换个话题", "把情报记下来"],
     systemMessages,
@@ -2236,11 +2244,13 @@ function institutionResolution(game: StoredGame, action: string): ActionResoluti
 }
 
 function mentorResolution(game: StoredGame, action: string): ActionResolution {
-  const mentioned = CANON_CHARACTERS.find((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)));
+  const mentioned = mentionedCurrentCharacter(game, action);
+  const unavailableCanonIdentity = !mentioned && CANON_CHARACTERS.some((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)));
+  if (unavailableCanonIdentity) return impossible("当前没有可靠证据证明这个后期姓名或隐藏身份对应眼前的人，不能据此直接拜师。", ["调查名字来源", "按当前公开姓名寻找人物", "寻找当地导师"]);
   const npc = mentioned ? game.world.npcs[mentioned.id] : undefined;
   if (mentioned?.hidden && !canDiscoverNpc(game, mentioned.id)) return impossible("无法确认这个名字对应现实中的哪一位导师。", ["调查名字来源", "寻找当地导师", "先积累可信线索"]);
-  if (mentioned && npc?.locationId !== game.view.locationId) return impossible(`${mentioned.name}目前不在这里，连当面提出请求的机会都没有。`, [`打听${mentioned.name}的行踪`, "寻找当地导师", "先证明自己的能力"]);
-  const mentorName = mentioned?.name ?? `${game.view.location ?? "当地"}散修 ${pick(actionRandom(game), ["顾闻山", "周砺", "林鹤", "沈秋岩"])}`;
+  if (mentioned && npc?.locationId !== game.view.locationId) return impossible(`${npc?.name ?? "对方"}目前不在这里，连当面提出请求的机会都没有。`, [`打听${npc?.name ?? "对方"}的行踪`, "寻找当地导师", "先证明自己的能力"]);
+  const mentorName = npc?.name ?? `${game.view.location ?? "当地"}散修 ${pick(actionRandom(game), ["顾闻山", "周砺", "林鹤", "沈秋岩"])}`;
   const existing = game.view.relations.find((item) => item.name === mentorName);
   const trust = npc?.dispositionToPlayer ?? (existing ? 8 : 0);
   if (mentioned && trust < 6) {
@@ -2251,7 +2261,7 @@ function mentorResolution(game: StoredGame, action: string): ActionResolution {
   else game.view.relations.push({ id: mentioned?.id ?? "local-mentor", name: mentorName, relation: "师徒", impression: "愿意先教基础，再看品性", strength: 45, category: "师友", dimensions: relationDimensions(45), history: [{ date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `${mentorName}正式接受拜师请求`, changes: "建立师徒关系" }] });
   game.world.metrics.relationshipsBuilt += 1;
   game.world.deviation += mentioned ? (mentioned.importance ?? 3) * 2 : 1;
-  if (mentioned) recordCanonInfluence(game, { source: "建立师徒关系", description: `拜${mentioned.name}为师`, affectedNpcIds: [mentioned.id], affectedFactionIds: mentioned.factionIds, strength: mentioned.importance * 5 });
+  if (mentioned && npc) recordCanonInfluence(game, { source: "建立师徒关系", description: `拜${npc.name}为师`, affectedNpcIds: [mentioned.id], affectedFactionIds: npc.factionIds, strength: mentioned.importance * 5 });
   ensureTask(game, { id: `mentor-${mentioned?.id ?? "local"}`, title: `完成${mentorName}布置的修行`, kind: "承诺", detail: "按要求练习，并在下次见面时交代结果。", status: "进行中", ownerId: mentioned?.id });
   return { intent: "拜师", minutes: 120, ruleSummary: `${mentorName}接受了师徒关系，并留下第一项修行要求。`, fallbackNarrative: `他没有让我跪太久，伸手把我拉了起来。第一句话也不玄，只让我把每天修炼的时间和失败处一笔笔记清。`, suggestions: ["询问修炼要求", "了解导师的规矩", "开始第一项练习"], systemMessages: [`关系 · ${mentorName} · 师徒`] };
 }
@@ -2331,7 +2341,7 @@ function dynamicEventResolution(game: StoredGame, action: string): ActionResolut
   const impact = event.stakes * (success ? 3 : 2);
   game.world.deviation += impact;
   game.world.metrics.historicalImpact += impact;
-  const affectedFactions = [...new Set(event.participantIds.flatMap((id) => CANON_CHARACTERS.find((character) => character.id === id)?.factionIds ?? []))];
+  const affectedFactions = [...new Set(event.participantIds.flatMap((id) => game.world.npcs[id]?.factionIds ?? []))];
   if (event.participantIds.length || affectedFactions.length) recordCanonInfluence(game, { source: "介入事件", description: `介入${event.title}`, affectedNpcIds: event.participantIds, affectedFactionIds: affectedFactions, strength: impact });
   if (!success) { game.world.healthPoints -= event.stakes * 4; game.view.character!.reputation = "惹上麻烦"; }
   else game.view.character!.reputation = event.stakes >= 4 ? "当地知名" : "略有名声";
@@ -2346,12 +2356,12 @@ function dynamicEventResolution(game: StoredGame, action: string): ActionResolut
 }
 
 function npcConflictResolution(game: StoredGame, action: string): ActionResolution {
-  const definition = CANON_CHARACTERS.find((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)));
+  const definition = mentionedCurrentCharacter(game, action);
   if (!definition) return impossible("没有确认攻击目标。", ["观察目标", "调查对方实力", "暂时退开"]);
   const npc = game.world.npcs[definition.id];
   if (definition.hidden && !canDiscoverNpc(game, definition.id)) return impossible("无法确认这个名字对应现实中的具体目标，攻击行动没有成立。", ["调查名字来源", "确认目标身份", "放弃盲目袭击"]);
-  if (!npc?.alive) return impossible(`${definition.name}已经不在可战斗状态。`, ["确认消息", "调查遗留影响", "离开"]);
-  if (npc.locationId !== game.view.locationId) return impossible(`${definition.name}不在这里。`, [`打听${definition.name}的行踪`, "放弃攻击", "寻找其他办法"]);
+  if (!npc?.alive) return impossible(`${npc?.name ?? "目标"}已经不在可战斗状态。`, ["确认消息", "调查遗留影响", "离开"]);
+  if (npc.locationId !== game.view.locationId) return impossible(`${npc.name}不在这里。`, [`打听${npc.name}的行踪`, "放弃攻击", "寻找其他办法"]);
   const estimatedNpcPower = npc.soulRank ?? (/封号|超级|绝世/.test(npc.powerTier) ? 92 : /魂斗罗/.test(npc.powerTier) ? 82 : /魂圣/.test(npc.powerTier) ? 72 : 45);
   const playerPower = (game.view.character?.soulRank ?? 0) + (game.view.character?.soulRings.length ?? 0) * 2 + game.view.affiliations.length;
   const random = actionRandom(game);
@@ -2366,9 +2376,9 @@ function npcConflictResolution(game: StoredGame, action: string): ActionResoluti
     const impact = definition.importance * 20;
     game.world.deviation += impact;
     game.world.metrics.historicalImpact += impact;
-    recordCanonInfluence(game, { source: "直接冲突", description: `直接造成${definition.name}死亡`, affectedNpcIds: [definition.id], affectedFactionIds: definition.factionIds, strength: impact });
+    recordCanonInfluence(game, { source: "直接冲突", description: `直接造成${npc.name}死亡`, affectedNpcIds: [definition.id], affectedFactionIds: npc.factionIds, strength: impact });
     game.view.character!.reputation = "被多方追查";
-    return { intent: "袭击重要人物", minutes: 40, ruleSummary: `${definition.name}死亡，世界偏差增加 ${impact}，所属势力将作出反应。`, fallbackNarrative: `最后一下落下去后，周围反而安静了。我没时间确认第二遍，远处已经有人喊他的名字。撤离路线还能用，原先的生活大概回不去了。`, suggestions: ["立刻撤离", "清理能够追查的线索", "观察相关势力反应"], systemMessages: [`重要人物死亡 · ${definition.name}`, `世界偏差 · +${impact}`] };
+    return { intent: "袭击重要人物", minutes: 40, ruleSummary: `${npc.name}死亡，世界偏差增加 ${impact}，当前关联势力将作出反应。`, fallbackNarrative: `最后一下落下去后，周围反而安静了。我没时间确认第二遍，远处已经有人喊他的名字。撤离路线还能用，原先的生活大概回不去了。`, suggestions: ["立刻撤离", "清理能够追查的线索", "观察相关势力反应"], systemMessages: [`重要人物死亡 · ${npc.name}`, `世界偏差 · +${impact}`] };
   }
   const harm = Math.max(8, Math.round((estimatedNpcPower - playerPower) * 0.9) + integer(random, 5, 18));
   game.world.healthPoints -= harm;
@@ -2376,8 +2386,8 @@ function npcConflictResolution(game: StoredGame, action: string): ActionResoluti
   rememberNpcInteraction(game, npc, "玩家曾经主动袭击自己");
   game.view.character!.injuries.push(harm >= 40 ? "强者反击造成的重伤" : "冲突中留下的外伤");
   game.world.deviation += definition.importance * 2;
-  recordCanonInfluence(game, { source: "直接冲突", description: `主动袭击${definition.name}`, affectedNpcIds: [definition.id], affectedFactionIds: definition.factionIds, strength: definition.importance * 3 });
-  return { intent: "袭击重要人物", minutes: 20, ruleSummary: `袭击${definition.name}失败，受到 ${harm} 点内部伤害，对方已经记住这次敌意。`, fallbackNarrative: `我才动，他就已经转过身。下一瞬胸口像被重锤砸中，脚底擦着地面退了很远。想好的后手只来得及用一半，他看我的眼神已经彻底变了。`, suggestions: ["设法脱身", "处理伤势", "准备面对追查"] };
+  recordCanonInfluence(game, { source: "直接冲突", description: `主动袭击${npc.name}`, affectedNpcIds: [definition.id], affectedFactionIds: npc.factionIds, strength: definition.importance * 3 });
+  return { intent: "袭击重要人物", minutes: 20, ruleSummary: `袭击${npc.name}失败，受到 ${harm} 点内部伤害，对方已经记住这次敌意。`, fallbackNarrative: `我才动，他就已经转过身。下一瞬胸口像被重锤砸中，脚底擦着地面退了很远。想好的后手只来得及用一半，他看我的眼神已经彻底变了。`, suggestions: ["设法脱身", "处理伤势", "准备面对追查"] };
 }
 
 function workResolution(game: StoredGame, action: string): ActionResolution {
@@ -3677,7 +3687,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/调查|搜索|观察周围|查找|研究/.test(action)) resolution = investigateResolution(game, action);
   else if (/等待|快进|过去一天|过去一月|过去一年|休整一/.test(action)) resolution = waitResolution(game, action);
   else if (/攻击|战斗|防御|闪避|逃跑|弱点|连携|合击|组合技|阵型|战阵|围猎/.test(action) && game.view.combat) resolution = combatResolution(game, action);
-  else if (/攻击|杀|刺杀|偷袭/.test(action) && CANON_CHARACTERS.some((item) => action.includes(item.name) || item.aliases.some((alias) => action.includes(alias)))) resolution = npcConflictResolution(game, action);
+  else if (/攻击|杀|刺杀|偷袭/.test(action) && mentionedCurrentCharacter(game, action)) resolution = npcConflictResolution(game, action);
   else if (/攻击|杀|抢|闯入/.test(action)) resolution = impossible("当前缺少明确目标或足够条件，强行行动只会引来警惕。", ["观察目标", "先做准备", "暂时退开"]);
   else resolution = generalResolution(game);
 
@@ -3767,8 +3777,8 @@ export function applyActionResult(
     }
   }
   if (!/无法完成|规则阻止/.test(result.intent) && /帮助|阻止|攻击|杀|救|告诉|交谈|承诺|夺取|保护/.test(input)) {
-    const npcIds = CANON_CHARACTERS.filter((npc) => input.includes(npc.name) || npc.aliases.some((alias) => input.includes(alias))).map((npc) => npc.id);
-    const factionIds = FACTIONS.filter((faction) => input.includes(faction.name)).map((faction) => faction.id);
+    const npcIds = CANON_CHARACTERS.filter((definition) => { const currentName = game.world.npcs[definition.id]?.name; return Boolean(currentName && input.includes(currentName)); }).map((npc) => npc.id);
+    const factionIds = [...new Set([...FACTIONS.filter((faction) => input.includes(faction.name)).map((faction) => faction.id), ...npcIds.flatMap((id) => game.world.npcs[id]?.factionIds ?? [])])];
     if (npcIds.length || factionIds.length) recordCanonInfluence(game, { source: "玩家实际行动", description: input.slice(0, 100), affectedNpcIds: npcIds, affectedFactionIds: factionIds, strength: /杀|救下|摧毁|夺取/.test(input) ? 10 : /加入|拜师|保护|阻止/.test(input) ? 5 : 2 });
   }
   updateStoryArc(game, input, result);

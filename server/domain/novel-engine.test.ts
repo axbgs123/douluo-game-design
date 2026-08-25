@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { auditNovelEngineNarrative, auditResolutionAlignment, buildNovelEnginePack } from "./novel-engine.js";
-import { NarrativeAuditError, NarrativeLogicPreflightError, auditCanonNarrativeVoice, buildCanonNarrativeProfile, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing, validateInterpretedAction } from "../services/deepseek.js";
+import { NarrativeAuditError, NarrativeLogicPreflightError, auditCanonNarrativeVoice, buildCanonNarrativeProfile, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing, observableCanonEventsForNarration, validateInterpretedAction } from "../services/deepseek.js";
 import { auditNarrativeLogicPacket, buildNarrativeLogicPacket } from "./story-rules.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 
@@ -64,6 +64,15 @@ describe("增强小说引擎", () => {
     game.view.relations = game.view.relations.filter((relation) => !/觉醒|执事|主持/.test(`${relation.name}${relation.relation}${relation.impression}`));
     const packet = buildNarrativeLogicPacket(game, "与同伴训练生命防线连携", { ...ordinaryResolution, intent: "固定连携训练", minutes: 180, ruleSummary: "三人完成一轮共同训练，熟练度与疲劳已结算。" }, buildSceneKnowledgePack(game, "与同伴训练生命防线连携"));
     expect(auditNarrativeLogicPacket(packet)).not.toContain("异常事件需要制度反应，但逻辑预检找不到有权限的现场人物");
+  });
+
+  it("sends only player-known past events and never sends future event titles to narration context", () => {
+    const game = awakened("observable-canon-events");
+    expect(game.world.firedCanonEvents).toContain("ayin-sacrifice");
+    expect(observableCanonEventsForNarration(game).some((event) => event.id === "ayin-sacrifice")).toBe(false);
+    game.view.news.push({ id: "ayin-sacrifice", title: "阿银旧案已核实", detail: "可靠档案确认了阿银旧案。", date: "当前" });
+    expect(observableCanonEventsForNarration(game).some((event) => event.id === "ayin-sacrifice")).toBe(true);
+    expect(observableCanonEventsForNarration(game).some((event) => event.year > (game.view.worldTime?.year ?? 0))).toBe(false);
   });
 
   it("routes dialogue, character, emotion and goldfinger only when relevant", () => {

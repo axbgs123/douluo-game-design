@@ -24,6 +24,13 @@ function mentions(action: string, name: string, aliases: string[] = []): boolean
 
 export function buildSceneKnowledgePack(game: StoredGame, action: string, budgetChars = 4_800): SceneKnowledgePack {
   const year = game.view.worldTime?.year ?? 0;
+  const era = game.view.era ?? 1;
+  const publicFactionIds: Record<1 | 2 | 3 | 4, Set<string>> = {
+    1: new Set(["spirit-hall", "heaven-dou", "star-luo", "shrek", "seven-treasure", "blue-lightning", "clear-sky"]),
+    2: new Set(["sun-moon-empire", "heavenly-soul-empire", "dou-ling-empire", "star-luo", "shrek-era2-academy", "peerless-tang-sect"]),
+    3: new Set(["douluo-federation", "spirit-pagoda", "war-god-temple", "d3-tang-sect", "star-luo-overseas", "dou-spirit-overseas"]),
+    4: new Set(["douluo-federation", "spirit-pagoda", "d4-federal-fleet", "d4-first-fleet", "d4-second-fleet", "d4-third-fleet", "d4-fourth-fleet", "d4-fifth-fleet", "d4-sixth-fleet", "shrek-space-command", "senluo-planet", "elf-planet"]),
+  };
   const candidates: Array<SceneKnowledgeEntry & { priority: number }> = [];
   const add = (entry: SceneKnowledgeEntry, priority: number) => candidates.push({ ...entry, priority });
 
@@ -42,10 +49,11 @@ export function buildSceneKnowledgePack(game: StoredGame, action: string, budget
     const npc = game.world.npcs[definition.id];
     if (!npc?.alive || !npc.knownToPlayer) continue;
     const onScene = npc.locationId === game.view.locationId;
-    const explicitlyMentioned = mentions(action, definition.name, definition.aliases);
+    const reliableIdentityTerms = game.world.intelligenceRecords.filter((record) => record.subjectType === "人物" && record.subjectId === npc.id && record.confidence >= 85 && record.status === "确定" && /交叉核验|身份核验|密档/.test(record.source)).flatMap((record) => [record.title, record.detail]);
+    const explicitlyMentioned = mentions(action, npc.name, reliableIdentityTerms);
     if (!onScene && !explicitlyMentioned) continue;
     const publicPower = game.view.knownFigures.find((figure) => figure.id === npc.id)?.knownPower ?? "实力未知";
-    add({ id: npc.id, kind: "人物", name: npc.name, fact: `当前目标：${npc.currentGoal}；已知实力：${publicPower}；所属势力：${definition.factionIds.map((id) => FACTIONS.find((faction) => faction.id === id)?.name).filter(Boolean).join("、") || "未知"}`, reason: onScene ? "同场人物" : "行动提及" }, onScene ? 95 : 85);
+    add({ id: npc.id, kind: "人物", name: npc.name, fact: `当前目标：${npc.currentGoal}；已知实力：${publicPower}；当前公开势力：${npc.factionIds.map((id) => FACTIONS.find((faction) => faction.id === id)?.name).filter(Boolean).join("、") || "暂无可证公开归属"}`, reason: onScene ? "同场人物" : "行动提及" }, onScene ? 95 : 85);
   }
 
   for (const faction of FACTIONS) {
@@ -53,8 +61,9 @@ export function buildSceneKnowledgePack(game: StoredGame, action: string, budget
     const affiliated = game.view.affiliations.some((item) => item.id === faction.id);
     const explicitlyMentioned = mentions(action, faction.name);
     const local = faction.headquartersId === game.view.locationId;
+    const learned = publicFactionIds[era].has(faction.id) || game.world.intelligenceRecords.some((record) => record.subjectType === "势力" && record.subjectId === faction.id && record.confidence >= 60) || game.view.news.some((item) => `${item.title}${item.detail}`.includes(faction.name));
     if (faction.hidden && !affiliated) continue;
-    if (!affiliated && !explicitlyMentioned && !local) continue;
+    if (!affiliated && !local && !(explicitlyMentioned && learned)) continue;
     add({ id: faction.id, kind: "势力", name: faction.name, fact: `来源：${faction.provenance}；${faction.kind}；${faction.description}`, reason: affiliated ? "所属势力" : local ? "当地势力" : "行动提及" }, affiliated ? 90 : local ? 75 : 70);
   }
 

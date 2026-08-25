@@ -49,14 +49,25 @@ describe("完整游玩规则", () => {
     expect(game.world.npcs["di-tian"].knownToPlayer).toBe(false);
   });
 
+  it("不能用后期姓名把当前人物提前路由进拜师或攻击行动", () => {
+    const game = awakenedInEra(3, "future-name-action-guard");
+    game.view.worldTime = { era: "东海学院零班阶段", year: 20003, day: 1, time: "08:00", season: "春" };
+    game.world = createHiddenWorld(20003, "east-sea-city");
+    expect(game.world.npcs["gu-yue-na"].name).toBe("古月");
+    expect(resolveAction(game, "拜古月娜为师").intent).toBe("无法完成");
+    expect(resolveAction(game, "刺杀古月娜").intent).toBe("无法完成");
+    expect(game.world.npcs["gu-yue-na"].memoryOfPlayer).toHaveLength(0);
+  });
+
   it("隐藏人物只有在可靠证据形成后才可写入人物档案", () => {
     const game = awakened("hidden-evidence");
-    expect(canDiscoverNpc(game, "qian-renxue")).toBe(false);
-    expect(revealNpc(game, "qian-renxue")).toBe(false);
-    recordIntelligence(game, { subjectType: "人物", subjectId: "qian-renxue", title: "宫廷密档中的未知身份", detail: "两份独立密档与一次直接目击能够互相印证。", source: "直接目击与交叉核验", confidence: 88, status: "确定" });
+    expect(game.world.npcs["qian-renxue"].name).toBe("雪清河");
     expect(canDiscoverNpc(game, "qian-renxue")).toBe(true);
     expect(revealNpc(game, "qian-renxue")).toBe(true);
     expect(game.world.npcs["qian-renxue"].knownToPlayer).toBe(true);
+    expect(game.view.knownFigures.find((item) => item.id === "qian-renxue")?.name).toBe("雪清河");
+    recordIntelligence(game, { subjectType: "人物", subjectId: "qian-renxue", title: "千仞雪真实身份核验", detail: "两份独立密档与一次直接目击确认雪清河身份背后的千仞雪。", source: "直接目击与交叉核验", confidence: 88, status: "确定" });
+    expect(game.world.npcs["qian-renxue"].name).toBe("千仞雪");
   });
 
   it("承诺必须有后续行动证据，不能用一句完成承诺直接结算", () => {
@@ -595,7 +606,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(34);
+    expect(migrated.schemaVersion).toBe(35);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -762,8 +773,8 @@ describe("完整游玩规则", () => {
     expect(earlyStarLuo.npcs["dai-mubai"].soulRank).toBeUndefined();
     expect(earlyStarLuo.npcs["dai-mubai"].powerTier).toBe("尚未觉醒");
     expect(earlyStarLuo.npcs["dai-weisi"].age).toBe(10);
-    expect(earlyStarLuo.npcs["dai-weisi"].soulRank).toBeLessThan(20);
-    expect(earlyStarLuo.npcs["dai-weisi"].soulRank).not.toBe(49);
+    expect(earlyStarLuo.npcs["dai-weisi"].soulRank).toBeUndefined();
+    expect(earlyStarLuo.npcs["dai-weisi"].powerTier).toBe("实力未核实");
   });
 
   it("does not treat sharing a city as personally knowing a canon figure", () => {
@@ -779,8 +790,28 @@ describe("完整游玩规则", () => {
     game.world.npcs["dai-weisi"].soulRank = 49;
     const migrated = ensureGameState(game);
     expect(migrated.world.npcs["dai-weisi"].knownToPlayer).toBe(false);
-    expect(migrated.world.npcs["dai-weisi"].soulRank).toBeLessThan(20);
+    expect(migrated.world.npcs["dai-weisi"].soulRank).toBeUndefined();
+    expect(migrated.world.npcs["dai-weisi"].powerTier).toBe("实力未核实");
     expect(migrated.view.knownFigures.some((figure) => figure.id === "dai-weisi")).toBe(false);
+  });
+
+  it("migrates leaked future names and relationship baselines back to the current life stage", () => {
+    const game = awakenedInEra(3, "legacy-future-identity");
+    game.schemaVersion = 34;
+    game.view.worldTime = { era: "东海学院零班阶段", year: 20003, day: 1, time: "08:00", season: "春" };
+    game.world = createHiddenWorld(20003, "east-sea-city");
+    game.world.npcs["gu-yue-na"].name = "古月娜";
+    game.view.narrative.push({ id: "legacy-future-name", kind: "narration", text: "古月娜已经以银龙斗罗身份处理传灵塔事务。", createdAt: new Date().toISOString() });
+    game.storyMemory.summary = "主角在东海学院见到了古月娜。";
+    game.view.relations.push({ id: "gu-yue-na", name: "古月娜", relation: "同学", impression: "旧存档提前使用了后期姓名", strength: 10, category: "师友" });
+    const migrated = ensureGameState(game);
+    expect(migrated.schemaVersion).toBe(35);
+    expect(migrated.world.npcs["gu-yue-na"].name).toBe("古月");
+    expect(migrated.view.relations.find((item) => item.id === "gu-yue-na")?.name).toBe("古月");
+    expect(migrated.storyMemory.summary).not.toContain("古月娜");
+    expect(migrated.view.narrative.at(-1)?.text).not.toContain("古月娜");
+    expect(migrated.view.narrative.at(-1)?.text).not.toContain("处理传灵塔事务");
+    expect(migrated.world.npcRelations.every((relation) => !relation.history.at(-1)?.reason.includes("跨阵营感情核心"))).toBe(true);
   });
 
   it("normalizes generated prose to third-person limited", () => {
@@ -805,6 +836,28 @@ describe("完整游玩规则", () => {
       .toContain("正文提前泄露或写错戴维斯在当前年份的魂力");
     expect(auditNarrative(game, "四岁的戴沐白已经三十七级。"))
       .toContain("正文提前泄露或写错戴沐白在当前年份的魂力");
+  });
+
+  it("rejects later names, titles, and faction memberships before their life stage", () => {
+    const era1 = awakened("future-identity-era1");
+    era1.world.npcs["tang-san"].knownToPlayer = true;
+    expect(auditNarrative(era1, "六岁的唐三已经是唐门宗主。"))
+      .toContain("正文提前写入唐三尚未形成的势力归属");
+
+    const era3 = awakenedInEra(3, "future-identity-era3");
+    era3.view.worldTime = { era: "东海零班阶段", year: 20003, day: 1, time: "08:00", season: "春" };
+    era3.world = createHiddenWorld(20003, "east-sea-city");
+    era3.world.npcs["gu-yue-na"].knownToPlayer = true;
+    expect(era3.world.npcs["gu-yue-na"].name).toBe("古月");
+    expect(auditNarrative(era3, "古月娜以银龙斗罗的身份加入传灵塔。"))
+      .toContain("正文提前使用古月尚未公开的后期姓名、称号或身份");
+
+    const era4 = awakenedInEra(4, "future-identity-era4");
+    era4.view.worldTime = { era: "高能少年班阶段", year: 30001, day: 1, time: "08:00", season: "春" };
+    era4.world = createHiddenWorld(30001, "tianluo-planet");
+    expect(era4.world.npcs["bai-xiuxiu"].name).toBe("冻千秋");
+    expect(auditNarrative(era4, "白秀秀已经成为蓝轩宇的舰队伴侣。"))
+      .toContain("正文提前使用冻千秋尚未公开的后期姓名、称号或身份");
   });
 });
 
@@ -863,7 +916,7 @@ describe("第一部世界资料", () => {
     legacy.view.locationId = "mother-ship-port";
     legacy.view.location = "联邦母舰港";
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(34);
+    expect(migrated.schemaVersion).toBe(35);
     expect(migrated.view.location).toBe("联邦舰队集结基地");
   });
 
@@ -941,6 +994,7 @@ describe("第一部世界资料", () => {
     const recipient = game.world.npcs["xiao-wu"];
     witness.alive = true; witness.locationId = "notting-city"; witness.factionIds = ["test-guild"];
     recipient.alive = true; recipient.locationId = "suotuo-city"; recipient.factionIds = ["test-guild"];
+    recordCanonInfluence(game, { source: "测试中的已发生组织关系", description: "两名见证者已经加入同一地方行会", affectedNpcIds: [witness.id, recipient.id], affectedFactionIds: ["test-guild"], strength: 2 });
     const publicDelivery = { intent: "交付悬赏", minutes: 60, ruleSummary: "凭公开验收记录完成悬赏并成功履约。", fallbackNarrative: "委托方核过证据后盖章。", suggestions: ["查看回单"] };
 
     applyActionResult(game, "在诺丁城公开交付悬赏", publicDelivery, publicDelivery.fallbackNarrative, publicDelivery.suggestions);

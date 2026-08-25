@@ -9,12 +9,13 @@ import { META_HEIRLOOMS } from "./data/meta-heirlooms.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS, locationActiveAtYear, locationProfileAtYear } from "./data/world.js";
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
-import { ensureGameState } from "./domain/world.js";
+import { canonicalFactionIdsAtDate, characterCurrentGoalAtDate, characterPublicNameAtDate, ensureGameState } from "./domain/world.js";
 import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_NAMES, META_ORIGIN_POOL, META_ORIGIN_POOL_SIZE, selectCandidate } from "./domain/generator.js";
 import { bytesToVector, embedMemoryText, vectorSimilarity, vectorToBytes, VECTOR_MEMORY_DIMENSIONS } from "./domain/vector-memory.js";
 import { WORLD_SOCIAL_LAWS } from "./data/world-social-laws.js";
 import { CANON_RELATIONSHIPS } from "./data/canon-relationships.js";
 import { WORLD_REACTION_LOGIC } from "./data/world-reaction-logic.js";
+import { CHARACTER_LIFE_STAGES } from "./data/character-life-stages.js";
 
 const databasePath = process.env.DOULUO_DATA_DIR
   ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
@@ -328,24 +329,31 @@ function seedCanonKnowledge(): void {
   try {
     const validKeys: string[] = [];
     for (const character of CANON_CHARACTERS) {
-      const initialLocation = LOCATIONS.find((item) => item.id === character.initialLocationId);
-      const sourceKey = `character:${character.id}:core`;
-      validKeys.push(sourceKey);
-      storeCanonKnowledge({
-        sourceKey, era: character.powerSnapshots[0] ? eraAtYear(character.powerSnapshots[0].year) : 0, kind: "character",
-        subjectId: character.id, subjectName: character.name, validFromYear: character.birthYear ?? -100_000, validUntilYear: character.deathYear ?? 100_000,
-        importance: character.importance / 5,
-        text: `${character.name}${character.aliases.length ? `，别名${character.aliases.join("、")}` : ""}。性格惯性：${character.personality.join("、")}。长期目标：${character.goals.join("、")}。武魂：${character.martialSouls.join("、") || "不以武魂战力为主要影响"}。所属或关联势力：${character.factionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id).join("、") || "无固定势力"}。原始活动地点：${initialLocation?.name ?? character.initialLocationId}${initialLocation && initialLocation.provenance !== "原著" ? `（${initialLocation.provenance}地点标签）` : ""}。性格只决定倾向，当前年龄、职位、关系、伤势与玩家造成的经历可以改变具体选择。`,
-        metadata: { hidden: Boolean(character.hidden), aliases: character.aliases, personality: character.personality, goals: character.goals, sourceType: "结构化原著资料" },
+      const explicitStages = CHARACTER_LIFE_STAGES.filter((item) => item.characterId === character.id);
+      const genericFirstYear = Math.min(...character.powerSnapshots.map((item) => item.year));
+      const stages = explicitStages.length ? explicitStages : Number.isFinite(genericFirstYear) ? [{ characterId: character.id, validFromYear: genericFirstYear, validFromDay: 1, validUntilYear: character.deathYear, validUntilDay: 360, publicName: characterPublicNameAtDate(character.id, genericFirstYear, 1), currentGoal: characterCurrentGoalAtDate(character.id, genericFirstYear, 1), publicFactionIds: canonicalFactionIdsAtDate(character.id, genericFirstYear, 1) }] : [];
+      stages.forEach((stage, index) => {
+        const sourceKey = `character:${character.id}:stage:${index}:${stage.validFromYear}:${stage.validFromDay ?? 1}`;
+        validKeys.push(sourceKey);
+        const factionNames = stage.publicFactionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id);
+        storeCanonKnowledge({ sourceKey, era: eraAtYear(stage.validFromYear), kind: "character", subjectId: character.id, subjectName: stage.publicName,
+          validFromYear: stage.validFromYear, validUntilYear: stage.validUntilYear ?? character.deathYear ?? 100_000, importance: character.importance / 5,
+          text: `${stage.publicName}在这一时点的性格惯性为${character.personality.join("、")}。当前目标：${stage.currentGoal}。当前可证公开势力：${factionNames.join("、") || "暂无"}。本时间片不提供后来才形成的称号、武魂变化、关系结果、势力归属或人生目标。`,
+          metadata: { hidden: Boolean(character.hidden), personality: character.personality, publicName: stage.publicName, publicFactionIds: stage.publicFactionIds, validFromDay: stage.validFromDay ?? 1, validUntilYear: stage.validUntilYear ?? character.deathYear ?? 100_000, validUntilDay: stage.validUntilDay ?? 360, sourceType: "结构化人物人生阶段" } });
       });
       const snapshots = [...character.powerSnapshots].sort((left, right) => left.year - right.year);
       snapshots.forEach((snapshot, index) => {
+        const publicName = characterPublicNameAtDate(character.id, snapshot.year, 1);
+        const unpublicNames = [character.name, ...character.aliases].filter((name) => name !== publicName);
+        if (unpublicNames.some((name) => `${snapshot.tier}${snapshot.note}`.includes(name))) return;
+        const currentGoal = characterCurrentGoalAtDate(character.id, snapshot.year, 1);
+        const currentFactions = canonicalFactionIdsAtDate(character.id, snapshot.year, 1).map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id);
         const snapshotKey = `character:${character.id}:timeline:${snapshot.year}`;
         validKeys.push(snapshotKey);
-        storeCanonKnowledge({ sourceKey: snapshotKey, era: eraAtYear(snapshot.year), kind: "character-timeline", subjectId: character.id, subjectName: character.name,
+        storeCanonKnowledge({ sourceKey: snapshotKey, era: eraAtYear(snapshot.year), kind: "character-timeline", subjectId: character.id, subjectName: publicName,
           validFromYear: snapshot.year, validUntilYear: snapshots[index + 1] ? snapshots[index + 1].year - 1 : character.deathYear ?? 100_000,
-          importance: character.importance / 5, text: `${character.name}在原作${snapshot.year}年前后的生命阶段：${snapshot.tier}${snapshot.soulRank !== undefined ? `，公开魂力约${snapshot.soulRank}级` : ""}。阶段事实：${snapshot.note}。这是该时点的原著惯性；若玩家已经留下相关因果足迹，应按当前存档重新推演。`,
-          metadata: { soulRank: snapshot.soulRank, tier: snapshot.tier, hidden: Boolean(character.hidden), sourceType: "结构化原著时间线" } });
+          importance: character.importance / 5, text: `${publicName}在原作${snapshot.year}年前后的已证生命阶段：${snapshot.tier}${snapshot.soulRank !== undefined ? `，公开魂力约${snapshot.soulRank}级` : ""}。阶段事实：${snapshot.note}。当前目标：${currentGoal}。当前可证公开势力：${currentFactions.join("、") || "暂无"}。不得据此推导下一时间片的称号、力量、关系或归属。`,
+          metadata: { soulRank: snapshot.soulRank, tier: snapshot.tier, hidden: Boolean(character.hidden), publicName, publicFactionIds: canonicalFactionIdsAtDate(character.id, snapshot.year, 1), validFromDay: 1, sourceType: "结构化原著时间线" } });
       });
     }
     for (const faction of FACTIONS) {
@@ -372,7 +380,7 @@ function seedCanonKnowledge(): void {
     for (const event of CANON_EVENTS) {
       const sourceKey = `event:${event.id}`; validKeys.push(sourceKey);
       storeCanonKnowledge({ sourceKey, era: eraAtYear(event.year), kind: "event", subjectId: event.id, subjectName: event.title,
-        validFromYear: event.year, validUntilYear: event.year, importance: event.inertia / 5,
+        validFromYear: event.year, validUntilYear: 100_000, importance: event.inertia / 5,
         text: `重要原著事件“${event.title}”的原作时间锚点为${event.year}年${event.day ?? 1}日，地点${LOCATIONS.find((item) => item.id === event.locationId)?.name ?? event.locationId ?? "跨地区"}。原著公开结果：${event.publicSummary}。没有玩家因果足迹时保持惯性；玩家实际改变参与者、资源、地点或势力条件后重新推演。`,
         metadata: { visibility: event.visibility ?? "公开", participantIds: event.participantIds, inertia: event.inertia, sourceType: "结构化原著事件" } });
     }
@@ -383,12 +391,12 @@ function seedCanonKnowledge(): void {
         metadata: { danger: beast.danger, habitats: beast.habitats, sourceType: "结构化魂兽生态" } });
     }
     for (const relationship of CANON_RELATIONSHIPS) {
-      const from = CANON_CHARACTERS.find((item) => item.id === relationship.fromId);
-      const to = CANON_CHARACTERS.find((item) => item.id === relationship.toId);
+      const fromName = characterPublicNameAtDate(relationship.fromId, relationship.validFromYear, relationship.validFromDay ?? 1);
+      const toName = characterPublicNameAtDate(relationship.toId, relationship.validFromYear, relationship.validFromDay ?? 1);
       const sourceKey = `relationship:${relationship.id}`; validKeys.push(sourceKey);
-      storeCanonKnowledge({ sourceKey, era: relationship.era, kind: "relationship", subjectId: relationship.id, subjectName: `${from?.name ?? relationship.fromId}—${to?.name ?? relationship.toId}`,
+      storeCanonKnowledge({ sourceKey, era: relationship.era, kind: "relationship", subjectId: relationship.id, subjectName: `${fromName}—${toName}`,
         validFromYear: relationship.validFromYear, validUntilYear: relationship.validUntilYear, importance: relationship.importance,
-        text: `${from?.name ?? relationship.fromId}与${to?.name ?? relationship.toId}在该阶段的原著关系：${relationship.relation}。形成依据：${relationship.basis}。互动惯性：${relationship.dynamics}。边界：${relationship.boundary}。当前存档中的共同经历和玩家因果可以改变这段关系。`,
+        text: `${fromName}与${toName}在该阶段的原著关系：${relationship.relation}。形成依据：${relationship.basis}。互动惯性：${relationship.dynamics}。边界：${relationship.boundary}。当前存档中的共同经历和玩家因果可以改变这段关系。`,
         metadata: { fromId: relationship.fromId, toId: relationship.toId, validFromDay: relationship.validFromDay ?? 1, disclosure: "behavior-only", sourceType: "结构化原著关系" } });
     }
     if (validKeys.length) database.prepare(`DELETE FROM canon_knowledge_vectors WHERE source_key NOT IN (${validKeys.map(() => "?").join(",")})`).run(...validKeys);
@@ -408,7 +416,15 @@ export function retrieveCanonKnowledge(game: StoredGame, query: string, limit = 
     ...game.world.canonCausalFootprints.flatMap((item) => item.affectedNpcIds),
   ]);
   const knownLocationIds = new Set([game.view.locationId, ...game.world.discoveredLocations, ...game.view.map.filter((item) => item.discovered || item.current).map((item) => item.id)]);
-  const knownFactionIds = new Set([...game.view.affiliations.map((item) => item.id), ...game.view.managedFactions.map((item) => item.id), ...game.world.canonCausalFootprints.flatMap((item) => item.affectedFactionIds)]);
+  const publicFactionIdsByEra: Record<1 | 2 | 3 | 4, string[]> = {
+    1: ["spirit-hall", "heaven-dou", "star-luo", "shrek", "seven-treasure", "blue-lightning", "clear-sky"],
+    2: ["sun-moon-empire", "heavenly-soul-empire", "dou-ling-empire", "star-luo", "shrek-era2-academy", "peerless-tang-sect"],
+    3: ["douluo-federation", "spirit-pagoda", "war-god-temple", "d3-tang-sect", "star-luo-overseas", "dou-spirit-overseas"],
+    4: ["douluo-federation", "spirit-pagoda", "d4-federal-fleet", "d4-first-fleet", "d4-second-fleet", "d4-third-fleet", "d4-fourth-fleet", "d4-fifth-fleet", "d4-sixth-fleet", "shrek-space-command", "senluo-planet", "elf-planet"],
+  };
+  const publiclyLearnedFactions = FACTIONS.filter((faction) => game.world.intelligenceRecords.some((record) => record.subjectType === "势力" && record.subjectId === faction.id && record.confidence >= 60) || game.view.news.some((item) => `${item.title}${item.detail}`.includes(faction.name))).map((faction) => faction.id);
+  const knownFactionIds = new Set([...publicFactionIdsByEra[era], ...publiclyLearnedFactions, ...game.view.affiliations.map((item) => item.id), ...game.view.managedFactions.map((item) => item.id), ...game.world.canonCausalFootprints.flatMap((item) => item.affectedFactionIds)]);
+  const knownCanonEventIds = new Set(CANON_EVENTS.filter((event) => game.world.firedCanonEvents.includes(event.id) && (game.view.news.some((item) => item.id === event.id || item.title === event.title || item.detail.includes(event.title)) || game.world.intelligenceRecords.some((item) => item.subjectId === event.id || item.title === event.title || item.detail.includes(event.title)))).map((event) => event.id));
   const queryVector = embedMemoryText(query);
   const rows = database.prepare(`SELECT kind, subject_id, subject_name, valid_from_year, text, metadata_json, vector_blob, importance FROM canon_knowledge_vectors WHERE (era = 0 OR era = ?) AND valid_from_year <= ? AND valid_until_year >= ?`).all(era, year, year) as Array<{ kind: string; subject_id?: string; subject_name: string; valid_from_year: number; text: string; metadata_json: string; vector_blob: Uint8Array; importance: number }>;
   return rows.map((row) => ({ ...row, metadata: JSON.parse(row.metadata_json) as Record<string, unknown>, rawSimilarity: vectorSimilarity(queryVector, bytesToVector(row.vector_blob)) }))
@@ -418,10 +434,15 @@ export function retrieveCanonKnowledge(game: StoredGame, query: string, limit = 
         const started = row.valid_from_year < year || (row.valid_from_year === year && Number(row.metadata.validFromDay ?? 1) <= (game.view.worldTime?.day ?? 1));
         return started && knownCharacterIds.has(fromId) && knownCharacterIds.has(toId);
       }
-      if (row.kind === "character" || row.kind === "character-timeline") return Boolean(row.subject_id && knownCharacterIds.has(row.subject_id));
-      if (row.kind === "event") return Boolean(row.subject_id && game.world.firedCanonEvents.includes(row.subject_id));
+      if (row.kind === "character" || row.kind === "character-timeline") {
+        const startsToday = row.valid_from_year < year || Number(row.metadata.validFromDay ?? 1) <= (game.view.worldTime?.day ?? 1);
+        const untilYear = Number(row.metadata.validUntilYear ?? 100_000); const untilDay = Number(row.metadata.validUntilDay ?? 360);
+        const notEnded = untilYear > year || (untilYear === year && untilDay >= (game.view.worldTime?.day ?? 1));
+        return Boolean(row.subject_id && knownCharacterIds.has(row.subject_id) && startsToday && notEnded);
+      }
+      if (row.kind === "event") return Boolean(row.subject_id && knownCanonEventIds.has(row.subject_id));
       if (row.kind === "location") return Boolean((row.subject_id && knownLocationIds.has(row.subject_id)) || (!row.metadata.hidden && query.includes(row.subject_name)));
-      if (row.kind === "faction") return Boolean((row.subject_id && knownFactionIds.has(row.subject_id)) || query.includes(row.subject_name));
+      if (row.kind === "faction") return Boolean(row.subject_id && knownFactionIds.has(row.subject_id));
       if (row.kind === "soul-beast") return query.includes(row.subject_name) || game.view.hunting?.targetBeastId === row.subject_id || game.view.hunting?.targetName === row.subject_name;
       return false;
     }).map((row) => {

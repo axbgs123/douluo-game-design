@@ -1,4 +1,4 @@
-import { CANON_CHARACTERS, FACTIONS, characterById, locationById } from "../data/world.js";
+import { FACTIONS, characterById, locationById } from "../data/world.js";
 import type { NpcPlanState, StoredGame, WorldNpcState } from "./model.js";
 
 const DAYS_PER_YEAR = 360;
@@ -48,8 +48,8 @@ function nextActionFor(desire: string, responsibility: string, phase: number): s
 }
 
 function targetLocationFor(game: StoredGame, npc: WorldNpcState, desire: string): string {
-  const named = CANON_CHARACTERS.find((character) => character.id !== npc.id && (desire.includes(character.name) || character.aliases.some((alias) => desire.includes(alias))));
-  if (named && game.world.npcs[named.id]?.alive) return game.world.npcs[named.id].locationId;
+  const named = Object.values(game.world.npcs).find((character) => character.id !== npc.id && character.alive && desire.includes(character.name));
+  if (named) return named.locationId;
   const faction = npc.factionIds.map((id) => FACTIONS.find((item) => item.id === id)).find(Boolean);
   if (faction && /维持|壮大|组织|宗门|学院|军/.test(`${desire}${responsibilityFor(npc)}`)) return faction.headquartersId;
   return npc.locationId;

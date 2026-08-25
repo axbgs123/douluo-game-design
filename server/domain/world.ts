@@ -14,6 +14,7 @@ import { ensureStoryArc } from "./story-director.js";
 import { compileNpcPlan, ensureNpcPlans, executeNpcPlanStep } from "./npc-planner.js";
 import { decayLocalConsequences, resolveExpiredDynamicEvent } from "./event-consequences.js";
 import { dynamicEventTemplatesForEra } from "../data/era-dynamic-events.js";
+import { CHARACTER_LIFE_STAGES, characterLifeStageAtDate } from "../data/character-life-stages.js";
 
 const DAYS_PER_YEAR = 360;
 
@@ -87,15 +88,43 @@ const TIMED_FACTION_MEMBERSHIPS = [
   { characterId: "tang-yuge", factionId: "shrek-space-command", eventId: "d4-shrek-exam" },
 ] as const;
 
-function canonicalFactionIdsAtDate(characterId: string, year: number, day: number): string[] {
+export function canonicalFactionIdsAtDate(characterId: string, year: number, day: number): string[] {
   const definition = characterById(characterId);
   if (!definition) return [];
+  const stage = characterLifeStageAtDate(characterId, year, day);
+  if (stage) return [...stage.publicFactionIds];
   return definition.factionIds.filter((factionId) => {
     const membership = TIMED_FACTION_MEMBERSHIPS.find((item) => item.characterId === characterId && item.factionId === factionId);
     if (!membership) return true;
     const event = CANON_EVENTS.find((item) => item.id === membership.eventId);
     return Boolean(event && ordinal(event.year, event.day ?? 1) <= ordinal(year, day));
   });
+}
+
+export function characterPublicNameAtDate(characterId: string, year: number, day = 1): string {
+  return characterLifeStageAtDate(characterId, year, day)?.publicName ?? characterById(characterId)?.name ?? characterId;
+}
+
+export function characterCurrentGoalAtDate(characterId: string, year: number, day = 1): string {
+  const definition = characterById(characterId);
+  if (!definition) return "处理当前生活";
+  const stage = characterLifeStageAtDate(characterId, year, day);
+  if (stage) return stage.currentGoal;
+  const age = definition.birthYear === undefined ? undefined : year - definition.birthYear;
+  if (age !== undefined && age < 6) return "在家庭或族群照料下成长，尚未形成后来的修炼与势力目标";
+  if (age !== undefined && age < 12) return "处理当前家庭生活、武魂觉醒与基础学习，不预设后来的人际和势力选择";
+  const snapshot = [...definition.powerSnapshots].filter((item) => item.year <= year).sort((left, right) => left.year - right.year).at(-1);
+  if (snapshot) return `处理“${snapshot.note}”阶段的修炼、职责与现实关系`;
+  return "维持当前生活并处理已经发生的职责，不使用后来才形成的目标";
+}
+
+export function characterPubliclyActiveAtDate(characterId: string, year: number, day = 1): boolean {
+  const definition = characterById(characterId);
+  if (!definition || !characterExistsInEra(characterId, year)) return false;
+  if (characterLifeStageAtDate(characterId, year, day)) return true;
+  if (definition.birthYear !== undefined) return year >= definition.birthYear;
+  const firstSnapshot = Math.min(...definition.powerSnapshots.map((item) => item.year));
+  return Number.isFinite(firstSnapshot) && year >= firstSnapshot;
 }
 
 function applyFactionJoinsForEvent(game: StoredGame, eventId: string): void {
@@ -107,8 +136,17 @@ function applyFactionJoinsForEvent(game: StoredGame, eventId: string): void {
 
 function reconcileTimedFactionMemberships(game: StoredGame, year: number, day: number): void {
   for (const npc of Object.values(game.world.npcs)) {
+    const altered = game.world.canonCausalFootprints.some((item) => item.affectedNpcIds.includes(npc.id));
+    const definition = characterById(npc.id);
+    const identityRevealed = Boolean(definition && game.world.intelligenceRecords.some((record) => record.subjectType === "人物" && record.subjectId === npc.id && record.confidence >= 85 && record.status === "确定" && /交叉核验|身份核验|密档/.test(record.source) && `${record.title}${record.detail}`.includes(definition.name)));
+    if (!altered && npc.alive) {
+      const currentPublicName = identityRevealed && definition ? definition.name : characterPublicNameAtDate(npc.id, year, day);
+      npc.name = currentPublicName;
+      for (const relation of game.view.relations.filter((item) => item.id === npc.id)) relation.name = currentPublicName;
+      npc.currentGoal = characterCurrentGoalAtDate(npc.id, year, day);
+    }
     const canonical = canonicalFactionIdsAtDate(npc.id, year, day);
-    npc.factionIds = canonical.filter((factionId) => {
+    if (!altered) npc.factionIds = canonical.filter((factionId) => {
       const membership = TIMED_FACTION_MEMBERSHIPS.find((item) => item.characterId === npc.id && item.factionId === factionId);
       return !membership || !game.world.suppressedCanonEvents.includes(membership.eventId);
     });
@@ -195,19 +233,9 @@ function powerAtYear(characterId: string, year: number): { soulRank?: number; ti
     if (definition.birthYear === undefined) return { tier: "实力未核实" };
     const age = year - definition.birthYear;
     if (age < 6) return { tier: "尚未觉醒" };
-    if (first.soulRank === undefined) return { tier: "实力未核实" };
-    const firstAge = first.year - definition.birthYear;
-    if (firstAge <= 6) return { soulRank: Math.min(first.soulRank, 10), tier: tierForRank(Math.min(first.soulRank, 10)) };
-    const ratio = Math.max(0, Math.min(1, (age - 6) / (firstAge - 6)));
-    const estimatedRank = Math.max(1, Math.round(6 + (first.soulRank - 6) * ratio));
-    return { soulRank: estimatedRank, tier: tierForRank(estimatedRank) };
+    return { tier: "实力未核实" };
   }
   const prior = snapshots.filter((snapshot) => snapshot.year <= year).at(-1) ?? first;
-  const next = snapshots.find((snapshot) => snapshot.year > year);
-  if (prior.soulRank !== undefined && next?.soulRank !== undefined && next.year !== prior.year) {
-    const ratio = Math.max(0, Math.min(1, (year - prior.year) / (next.year - prior.year)));
-    return { soulRank: Math.round(prior.soulRank + (next.soulRank - prior.soulRank) * ratio), tier: prior.tier };
-  }
   return { soulRank: prior.soulRank, tier: prior.tier };
 }
 
@@ -228,14 +256,14 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
     const aliveAtStart = inCurrentEra && born && (definition.deathYear === undefined || startYear < definition.deathYear);
     const state: WorldNpcState = {
       id: definition.id,
-      name: definition.name,
+      name: characterPublicNameAtDate(definition.id, startYear, 1),
       alive: aliveAtStart,
       age: definition.birthYear === undefined ? undefined : Math.max(0, startYear - definition.birthYear),
       soulRank: aliveAtStart ? power.soulRank : undefined,
       powerTier: aliveAtStart ? power.tier : "不在当世活动",
       locationId: canonicalLocationAtYear(definition.id, startYear, 1),
       factionIds: canonicalFactionIdsAtDate(definition.id, startYear, 1),
-      currentGoal: !inCurrentEra ? "不在当前时代活动" : !born ? "尚未出生" : aliveAtStart ? (definition.goals[0] ?? "继续当前生活") : "已死亡",
+      currentGoal: !inCurrentEra ? "不在当前时代活动" : !born ? "尚未出生" : aliveAtStart ? characterCurrentGoalAtDate(definition.id, startYear, 1) : "已死亡",
       dispositionToPlayer: 0,
       knownToPlayer: false,
       lastSimulatedYear: startYear,
@@ -325,7 +353,7 @@ export function recordCanonInfluence(
   });
   game.world.canonCausalFootprints = game.world.canonCausalFootprints.slice(-120);
   const latest = game.world.canonCausalFootprints.at(-1)!;
-  const affectedNames = latest.affectedNpcIds.map((id) => characterById(id)?.name ?? id);
+  const affectedNames = latest.affectedNpcIds.map((id) => game.world.npcs[id]?.name ?? id);
   const affectedFactions = latest.affectedFactionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id);
   game.view.canonInfluences.unshift({
     id: latest.id,
@@ -338,9 +366,9 @@ export function recordCanonInfluence(
 }
 
 function npcHasPlayerInfluence(game: StoredGame, npcId: string): boolean {
-  const definition = characterById(npcId);
+  const npc = game.world.npcs[npcId];
   return game.world.canonCausalFootprints.some((cause) => cause.affectedNpcIds.includes(npcId)
-    || definition?.factionIds.some((id) => cause.affectedFactionIds.includes(id)));
+    || npc?.factionIds.some((id) => cause.affectedFactionIds.includes(id)));
 }
 
 export function buildMapView(game: StoredGame): MapLocationView[] {
@@ -407,7 +435,6 @@ export function buildKnownFigures(game: StoredGame): KnownFigureView[] {
     return {
       id: npc.id,
       name: npc.name,
-      title: definition?.aliases[0],
       faction: faction?.name,
       knownPower: visiblePower,
       location: metInPerson && npc.locationId === game.view.locationId ? locationName : confidence >= 70 ? locationName : `${locationName}一带（未核实）`,
@@ -428,6 +455,13 @@ export function recordIntelligence(game: StoredGame, input: Omit<HiddenWorldStat
     existing.status = input.status;
   } else {
     game.world.intelligenceRecords.push({ id: `intel-${game.actionIndex}-${game.world.intelligenceRecords.length}`, ...input, year: time?.year ?? 0, day: time?.day ?? 1 });
+  }
+  if (input.subjectType === "人物" && input.confidence >= 85 && input.status === "确定" && /交叉核验|身份核验|密档/.test(input.source)) {
+    const definition = characterById(input.subjectId); const npc = game.world.npcs[input.subjectId];
+    if (definition && npc && `${input.title}${input.detail}`.includes(definition.name)) {
+      npc.name = definition.name;
+      for (const relation of game.view.relations.filter((item) => item.id === npc.id)) relation.name = definition.name;
+    }
   }
   game.world.intelligenceRecords = game.world.intelligenceRecords.slice(-300);
   game.view.intelligence = buildIntelligenceView(game);
@@ -925,7 +959,7 @@ function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentO
   for (const event of CANON_EVENTS) {
     const eventOrdinal = ordinal(event.year, event.day ?? 1);
     if (eventOrdinal < previousOrdinal || eventOrdinal > currentOrdinal || game.world.firedCanonEvents.includes(event.id) || game.world.suppressedCanonEvents.includes(event.id)) continue;
-    const participantFactions = new Set(event.participantIds.flatMap((id) => characterById(id)?.factionIds ?? []));
+    const participantFactions = new Set(event.participantIds.flatMap((id) => game.world.npcs[id]?.factionIds ?? []));
     const linkedCauses = game.world.canonCausalFootprints.filter((cause) => cause.atYear <= event.year && (
       cause.affectedNpcIds.some((id) => event.participantIds.includes(id))
       || cause.affectedFactionIds.some((id) => participantFactions.has(id))
@@ -992,7 +1026,8 @@ function simulateNpcYears(game: StoredGame, year: number): void {
       npc.alive = true;
       npc.age = year - definition.birthYear;
       npc.locationId = canonicalLocationAtYear(npc.id, year);
-      npc.currentGoal = definition.goals[0] ?? "继续当前生活";
+      npc.name = characterPublicNameAtDate(npc.id, year, 1);
+      npc.currentGoal = characterCurrentGoalAtDate(npc.id, year, 1);
     }
     if (!npc.alive) { npc.lastSimulatedYear = year; continue; }
     if (year > npc.lastSimulatedYear && npc.memoryOfPlayer.length > 6) {
@@ -1028,7 +1063,10 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
   ensureCanonRelationshipBaselines(game.world.npcs, game.world.npcRelations, time.year, time.day);
   ensureNpcPlans(game);
   const currentOrdinal = ordinal(time.year, time.day);
-  const messages = [...simulateNpcAutonomy(game, previousOrdinal, currentOrdinal), ...simulateCanonEvents(game, previousOrdinal, currentOrdinal), ...propagateSocialRumors(game, currentOrdinal)];
+  const autonomyMessages = simulateNpcAutonomy(game, previousOrdinal, currentOrdinal);
+  const canonMessages = simulateCanonEvents(game, previousOrdinal, currentOrdinal);
+  reconcileTimedFactionMemberships(game, time.year, time.day);
+  const messages = [...autonomyMessages, ...canonMessages, ...propagateSocialRumors(game, currentOrdinal)];
   game.view.map = buildMapView(game);
   game.view.knownFigures = buildKnownFigures(game);
   game.view.npcRelations = buildNpcRelationViews(game);
@@ -1042,10 +1080,11 @@ export function canDiscoverNpc(game: StoredGame, npcId: string): boolean {
   const npc = game.world.npcs[npcId];
   const definition = characterById(npcId);
   if (!npc || !definition || !npc.alive || npc.currentGoal === "尚未出生") return false;
-  if (npc.knownToPlayer || !definition.hidden) return true;
   const hasReliableIntel = game.world.intelligenceRecords.some((record) => record.subjectType === "人物" && record.subjectId === npcId && record.confidence >= 60);
   const hasDirectCausalContact = game.world.canonCausalFootprints.some((cause) => cause.affectedNpcIds.includes(npcId));
   const isVisibleEventParticipant = game.world.dynamicEvents.some((event) => event.status === "可介入" && event.participantIds.includes(npcId) && event.locationId === game.view.locationId);
+  if (!characterPubliclyActiveAtDate(npcId, game.view.worldTime?.year ?? 0, game.view.worldTime?.day ?? 1) && !hasReliableIntel && !hasDirectCausalContact && !isVisibleEventParticipant) return false;
+  if (npc.knownToPlayer || !definition.hidden || npc.name !== definition.name) return true;
   return hasReliableIntel || hasDirectCausalContact || isVisibleEventParticipant;
 }
 
@@ -1128,7 +1167,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 34;
+  legacy.schemaVersion = 35;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1142,6 +1181,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     for (const task of game.view.tasks ?? []) if (task.destinationId === "heavenly-soul-city") task.destinationId = "heaven-dou-city";
   }
   legacy.world.npcRelations ??= [];
+  if (previousSchemaVersion < 35) legacy.world.npcRelations = legacy.world.npcRelations.filter((relation) => !relation.history?.length || !relation.history.every((item) => item.delta === 0 && item.reason.startsWith("原著关系基线：")));
   ensureCanonRelationshipBaselines(legacy.world.npcs, legacy.world.npcRelations, game.view.worldTime?.year ?? startYear, game.view.worldTime?.day ?? 1);
   legacy.world.canonCausalFootprints ??= [];
   legacy.world.firedCanonEvents ??= [];
@@ -1320,6 +1360,51 @@ export function ensureGameState(game: StoredGame): StoredGame {
     openThreads: game.view.tasks.filter((task) => task.status !== "完成").map((task) => task.title).slice(0, 8),
     keyChoices: [], npcNotes: {}, chapterNumber: 1, chapterTitle: "未完的故事", lastUpdatedAction: game.actionIndex,
   };
+  if (previousSchemaVersion < 35) {
+    const day = game.view.worldTime?.day ?? 1;
+    const replacements: Array<[string, string]> = [];
+    const futureFactionPairs: Array<[string, string]> = [];
+    for (const definition of CANON_CHARACTERS) {
+      const publicName = characterPublicNameAtDate(definition.id, startYear, day);
+      const identityVerified = legacy.world.intelligenceRecords.some((record) => record.subjectType === "人物" && record.subjectId === definition.id && record.confidence >= 85 && record.status === "确定" && /交叉核验|身份核验|密档/.test(record.source) && `${record.title}${record.detail}`.includes(definition.name));
+      if (identityVerified) continue;
+      const now = ordinal(startYear, day);
+      const namesAlreadyOccurred = new Set(CHARACTER_LIFE_STAGES.filter((stage) => stage.characterId === definition.id && ordinal(stage.validFromYear, stage.validFromDay ?? 1) <= now).map((stage) => stage.publicName));
+      namesAlreadyOccurred.add(publicName);
+      for (const laterName of [definition.name, ...definition.aliases]) if (!namesAlreadyOccurred.has(laterName)) replacements.push([laterName, publicName]);
+      const currentFactions = new Set(canonicalFactionIdsAtDate(definition.id, startYear, day));
+      for (const factionId of definition.factionIds.filter((id) => !currentFactions.has(id))) {
+        const factionName = FACTIONS.find((item) => item.id === factionId)?.name;
+        if (factionName) futureFactionPairs.push([publicName, factionName]);
+      }
+      for (const relation of game.view.relations.filter((item) => item.id === definition.id)) relation.name = publicName;
+      for (const record of legacy.world.intelligenceRecords.filter((item) => item.subjectType === "人物" && item.subjectId === definition.id)) {
+        for (const [laterName, currentName] of replacements.filter((item) => item[1] === publicName)) { record.title = record.title.replaceAll(laterName, currentName); record.detail = record.detail.replaceAll(laterName, currentName); }
+      }
+    }
+    const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const futureEventTitles = CANON_EVENTS.filter((event) => ordinal(event.year, event.day ?? 1) > ordinal(startYear, day)).map((event) => event.title);
+    const replaceFutureFacts = (text: string) => {
+      let value = replacements.reduce((current, [laterName, currentName]) => current.replaceAll(laterName, currentName), text);
+      for (const [publicName, factionName] of futureFactionPairs) {
+        value = value.replace(new RegExp(`${escape(publicName)}[^。！？]{0,32}${escape(factionName)}`, "g"), `${publicName}当前尚无可证的${factionName}归属`);
+        value = value.replace(new RegExp(`${escape(factionName)}[^。！？]{0,32}${escape(publicName)}`, "g"), `${publicName}当前尚无可证的${factionName}归属`);
+      }
+      for (const title of futureEventTitles) value = value.replaceAll(title, "尚未发生的未来事件");
+      return value;
+    };
+    for (const entry of game.view.narrative) entry.text = replaceFutureFacts(entry.text);
+    for (const task of game.view.tasks) { task.title = replaceFutureFacts(task.title); task.detail = replaceFutureFacts(task.detail); }
+    for (const item of game.view.news) { item.title = replaceFutureFacts(item.title); item.detail = replaceFutureFacts(item.detail); }
+    for (const npc of Object.values(legacy.world.npcs)) {
+      npc.memoryOfPlayer = npc.memoryOfPlayer.map(replaceFutureFacts);
+      for (const memory of npc.episodicMemory) memory.text = replaceFutureFacts(memory.text);
+    }
+    game.storyMemory.summary = replaceFutureFacts(game.storyMemory.summary);
+    game.storyMemory.openThreads = game.storyMemory.openThreads.map(replaceFutureFacts);
+    game.storyMemory.keyChoices = game.storyMemory.keyChoices.map(replaceFutureFacts);
+    game.storyMemory.npcNotes = Object.fromEntries(Object.entries(game.storyMemory.npcNotes).map(([name, note]) => [replaceFutureFacts(name), replaceFutureFacts(note)]));
+  }
   game.legacy ??= { upgrades: {} };
   if (!game.view.activeHeirloom && game.legacy.equippedHeirloom && game.view.character) {
     const heirloom = heirloomByName(game.legacy.equippedHeirloom);
@@ -1391,7 +1476,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.canonInfluences ??= legacy.world.canonCausalFootprints.slice().reverse().slice(0, 24).map((cause) => ({
     id: cause.id,
     action: cause.description,
-    affects: [...cause.affectedNpcIds.map((id) => characterById(id)?.name ?? id), ...cause.affectedFactionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id)].join("、") || "当前地点",
+    affects: [...cause.affectedNpcIds.map((id) => legacy.world.npcs[id]?.name ?? id), ...cause.affectedFactionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id)].join("、") || "当前地点",
     strength: cause.strength >= 30 ? "足以撼动关键节点" : cause.strength >= 12 ? "可能形成长期偏差" : "轻微影响",
     date: `原作 ${cause.atYear >= 0 ? "+" : ""}${cause.atYear} 年 · 第 ${cause.atDay} 日`,
   }));

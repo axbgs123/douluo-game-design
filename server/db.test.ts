@@ -185,6 +185,42 @@ describe("存档数据库", () => {
     expect(database.getModelUsage().canonKnowledgeVectors).toBeGreaterThan(100);
   });
 
+  it("retrieves only the current public name, goal, and faction stage for known canon characters", () => {
+    const era1 = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "character-stage-era1" });
+    era1.view.worldTime = { era: "唐三觉醒基准年", year: 0, day: 1, time: "08:00", season: "春" };
+    era1.world = createHiddenWorld(0, "holy-soul-village");
+    era1.world.npcs["tang-san"].knownToPlayer = true;
+    era1.view.knownFigures.push({ id: "tang-san", name: "唐三", knownPower: "10 级", location: "圣魂村", status: "已知", source: "亲眼见过" });
+    const tangKnowledge = database.retrieveCanonKnowledge(era1, "唐三当前目标、势力和身份", 20).filter((item) => item.subjectId === "tang-san");
+    expect(tangKnowledge.length).toBeGreaterThan(0);
+    expect(tangKnowledge.every((item) => !/重建唐门|唐门弟子|昊天宗成员/.test(item.text))).toBe(true);
+
+    const era3 = createGame({ era: 3, gender: "女", difficulty: "标准", seed: "character-stage-era3" });
+    era3.view.worldTime = { era: "东海学院零班阶段", year: 20003, day: 1, time: "08:00", season: "春" };
+    era3.world = createHiddenWorld(20003, "east-sea-city");
+    era3.world.npcs["gu-yue-na"].knownToPlayer = true;
+    era3.view.knownFigures.push({ id: "gu-yue-na", name: "古月", knownPower: "实力未知", location: "东海城", status: "已知", source: "同学" });
+    const guYueKnowledge = database.retrieveCanonKnowledge(era3, "古月当前身份、目标和同学关系", 20).filter((item) => item.subjectId === "gu-yue-na" || item.kind === "relationship");
+    expect(guYueKnowledge.some((item) => item.subjectName.includes("古月"))).toBe(true);
+    expect(guYueKnowledge.every((item) => !/古月娜|银龙王|银龙斗罗|传灵塔权力/.test(`${item.subjectName}${item.text}`))).toBe(true);
+
+    const era4 = createGame({ era: 4, gender: "男", difficulty: "标准", seed: "unknown-future-faction" });
+    era4.view.worldTime = { era: "蓝轩宇觉醒阶段", year: 30000, day: 1, time: "08:00", season: "春" };
+    expect(database.retrieveCanonKnowledge(era4, "龙马联邦和天龙会", 20).some((item) => ["dragon-horse-federation", "sky-dragon-guild"].includes(item.subjectId ?? ""))).toBe(false);
+    era4.world.intelligenceRecords.push({ id: "known-dragon-horse", subjectType: "势力", subjectId: "dragon-horse-federation", title: "龙马联邦", detail: "可靠星图确认该外部文明联盟存在。", source: "联邦高权限星图", confidence: 90, status: "确定", year: 30000, day: 1 });
+    expect(database.retrieveCanonKnowledge(era4, "龙马联邦", 20).some((item) => item.subjectId === "dragon-horse-federation")).toBe(true);
+  });
+
+  it("does not retrieve a past secret event merely because the hidden world has already fired it", () => {
+    const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "secret-event-knowledge" });
+    game.view.worldTime = { era: "唐三觉醒基准年", year: 0, day: 1, time: "08:00", season: "春" };
+    game.world = createHiddenWorld(0, "holy-soul-village");
+    expect(game.world.firedCanonEvents).toContain("ayin-sacrifice");
+    expect(database.retrieveCanonKnowledge(game, "阿银献祭与昊天宗旧案", 20).some((item) => item.subjectId === "ayin-sacrifice")).toBe(false);
+    game.view.news.push({ id: "ayin-sacrifice", title: "阿银旧案已核实", detail: "玩家通过可靠档案确认阿银献祭与昊天宗旧案。", date: "原作0年" });
+    expect(database.retrieveCanonKnowledge(game, "阿银献祭与昊天宗旧案", 20).some((item) => item.subjectId === "ayin-sacrifice")).toBe(true);
+  });
+
   it("labels original place vectors and never injects gameplay travel minutes as canon facts", () => {
     const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "place-provenance-vectors" });
     game.view.locationId = "taixuan-valley";
