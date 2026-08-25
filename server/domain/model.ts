@@ -58,6 +58,25 @@ export interface WorldNpcState {
   memoryOfPlayer: string[];
   episodicMemory: NpcMemoryEntry[];
   autonomyLog: Array<{ year: number; day: number; action: string; reason: string }>;
+  activePlan?: NpcPlanState;
+}
+
+export interface NpcPlanState {
+  id: string;
+  desire: string;
+  responsibility: string;
+  informationBoundary: string[];
+  authority: string;
+  resources: string[];
+  nextAction: string;
+  targetLocationId: string;
+  deadlineOrdinal: number;
+  status: "计划中" | "执行中" | "受阻" | "完成";
+  progress: number;
+  createdYear: number;
+  createdDay: number;
+  lastOutcome?: string;
+  playerImpact?: string;
 }
 
 export interface NpcMemoryEntry {

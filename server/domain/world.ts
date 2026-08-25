@@ -11,6 +11,7 @@ import { martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial
 import { fixedTraitEffect } from "./traits.js";
 import { CANON_RELATIONSHIPS } from "../data/canon-relationships.js";
 import { ensureStoryArc } from "./story-director.js";
+import { compileNpcPlan, ensureNpcPlans, executeNpcPlanStep } from "./npc-planner.js";
 
 const DAYS_PER_YEAR = 360;
 
@@ -416,7 +417,7 @@ export function buildKnownFigures(game: StoredGame): KnownFigureView[] {
       faction: faction?.name,
       knownPower: visiblePower,
       location: metInPerson && npc.locationId === game.view.locationId ? locationName : confidence >= 70 ? locationName : `${locationName}一带（未核实）`,
-      status: npc.alive ? (metInPerson ? npc.currentGoal : intel?.status === "确定" ? "消息已核实" : "近况不明") : "已死亡",
+      status: npc.alive ? (metInPerson ? (npc.activePlan?.lastOutcome ? `可观察近况：${npc.activePlan.lastOutcome}` : npc.currentGoal) : intel?.status === "确定" ? "消息已核实" : "近况不明") : "已死亡",
       source: intel?.source ?? (metInPerson ? "亲历" : "旧闻"),
       confidence,
     };
@@ -874,28 +875,18 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
     if (living.length < 2) continue;
     const actor = pick(random, living);
     const definition = characterById(actor.id);
-    const current = locationById(actor.locationId);
-    const influenced = npcHasPlayerInfluence(game, actor.id);
-    if (current?.connections.length && ((definition?.importance ?? 3) <= 3 || influenced) && random() < 0.32) {
-      const destination = pick(random, current.connections).id;
-      actor.autonomyLog.push({ year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1, action: `前往${locationById(destination)?.name ?? destination}`, reason: influenced ? "玩家造成的局势变化影响了原定安排" : `为了推进“${actor.currentGoal}”` });
-      actor.locationId = destination;
-    }
-    if (definition?.goals.length && random() < 0.4) {
-      const nextGoal = pick(random, definition.goals);
-      if (nextGoal !== actor.currentGoal) actor.autonomyLog.push({ year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1, action: `转向目标：${nextGoal}`, reason: influenced ? "玩家行动改变了可用条件" : "遵循其原有身份与长期动机" });
-      actor.currentGoal = nextGoal;
-    }
-    actor.autonomyLog = actor.autonomyLog.slice(-30);
+    const cycleOrdinal = cycle * 30;
+    if (!actor.activePlan || actor.activePlan.status === "完成" || actor.activePlan.deadlineOrdinal < cycleOrdinal) actor.activePlan = compileNpcPlan(game, actor, cycleOrdinal);
+    const planStep = executeNpcPlanStep(game, actor, cycleOrdinal);
     const playerRelation = game.view.relations.find((item) => item.id === actor.id);
     if (actor.knownToPlayer && playerRelation && random() < 0.11 && !game.world.dynamicEvents.some((event) => event.status === "可介入" && event.participantIds.includes(actor.id))) {
       const attitude = actor.dispositionToPlayer + (playerRelation.dimensions?.trust ?? playerRelation.strength ?? 0);
       const title = attitude >= 35 ? `${actor.name}主动送来的请求` : attitude <= -10 ? `${actor.name}发出的警告` : `${actor.name}提出的试探`;
       const detail = attitude >= 35
-        ? `${actor.name}为了“${actor.currentGoal}”主动联系主角，提出一项需要明确答复的协助。`
+        ? `${actor.name}为了“${actor.activePlan?.desire ?? actor.currentGoal}”主动联系主角，正在做“${planStep.action}”，并提出一项需要明确答复的协助。`
         : attitude <= -10
-          ? `${actor.name}掌握了与主角有关的部分消息，要求主角停止继续触及其当前目标。`
-          : `${actor.name}没有直接说明目的，只提出一次交易或见面，意在判断主角是否值得合作。`;
+          ? `${actor.name}掌握了与主角有关的部分消息，当前责任是“${actor.activePlan?.responsibility ?? "处理自身事务"}”，要求主角停止继续触及其目标。`
+          : `${actor.name}正在推进“${planStep.action}”，没有直接说明全部目的，只提出一次交易或见面，意在判断主角是否值得合作。`;
       const createdOrdinal = cycle * 30;
       const createdYear = Math.floor((createdOrdinal - 1) / DAYS_PER_YEAR);
       const createdDay = createdOrdinal - createdYear * DAYS_PER_YEAR;
@@ -909,12 +900,13 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
     const other = pick(random, candidates);
     const sharedFaction = actor.factionIds.some((id) => other.factionIds.includes(id));
     const sameLocation = actor.locationId === other.locationId;
-    const delta = sharedFaction ? integer(random, 2, 8) : sameLocation ? integer(random, -5, 5) : integer(random, -3, 3);
+    const alignedPlans = Boolean(actor.activePlan && other.activePlan && (actor.activePlan.targetLocationId === other.activePlan.targetLocationId || actor.activePlan.responsibility === other.activePlan.responsibility));
+    const delta = sharedFaction || alignedPlans ? integer(random, 2, 8) : sameLocation ? integer(random, -5, 5) : integer(random, -3, 3);
     const factionName = FACTIONS.find((faction) => actor.factionIds.includes(faction.id) && other.factionIds.includes(faction.id))?.name;
     const reason = sharedFaction
-      ? `两人在${factionName ?? "同一势力"}的事务中${delta >= 0 ? "目标一致并有过配合" : "发生了利益分歧"}`
+      ? `两人在${factionName ?? "同一势力"}的事务中${delta >= 0 ? `围绕“${actor.activePlan?.nextAction ?? actor.currentGoal}”有过配合` : "发生了利益分歧"}`
       : sameLocation
-        ? `两人在${locationById(actor.locationId)?.name ?? "同一地点"}推进各自目标时${delta >= 0 ? "互相提供了帮助" : "产生了冲突"}`
+        ? `两人在${locationById(actor.locationId)?.name ?? "同一地点"}推进各自计划时${delta >= 0 ? "互相提供了帮助" : "因资源、权限或目标先后产生冲突"}`
         : "玩家造成的因果链让两人的利益发生交集";
     updateNpcRelation(game, actor.id, other.id, delta, game.view.worldTime?.year ?? 0, game.view.worldTime?.day ?? 1, reason);
     const createdEvent = createDynamicEvent(game, cycle, random);
@@ -1044,6 +1036,7 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
   time.era = eraAtYear(time.year);
   simulateNpcYears(game, time.year);
   ensureCanonRelationshipBaselines(game.world.npcs, game.world.npcRelations, time.year, time.day);
+  ensureNpcPlans(game);
   const currentOrdinal = ordinal(time.year, time.day);
   const messages = [...simulateNpcAutonomy(game, previousOrdinal, currentOrdinal), ...simulateCanonEvents(game, previousOrdinal, currentOrdinal), ...propagateSocialRumors(game, currentOrdinal)];
   game.view.map = buildMapView(game);
@@ -1118,7 +1111,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 30;
+  legacy.schemaVersion = 31;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -1437,6 +1430,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.knownFigures = buildKnownFigures(game);
   game.view.intelligence = buildIntelligenceView(game);
   game.view.activeEvents = buildActiveEvents(game);
+  ensureNpcPlans(game);
   ensureStoryArc(game);
   refreshStoryArchive(game);
   return game;

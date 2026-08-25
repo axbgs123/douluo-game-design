@@ -416,16 +416,17 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
   const participants = participantRelations.slice(0, 12).map((relation) => {
     const npc = onSceneNpcs.find((item) => item.name === relation.name);
     const knowledge = knowledgeByNpc.get(relation.name);
+    const plan = npc?.activePlan;
     return {
       name: relation.name,
-      desire: npc?.currentGoal ?? (/监护|父|母/.test(relation.relation) ? "先保证孩子安全，再决定能承担多少培养代价" : `${relation.relation}会先维护自己的职责、利益与风险边界`),
-      knownFrom: [knowledge ? `${knowledge.reason}：${knowledge.fact}` : undefined, ...(npc?.episodicMemory.slice(-3).map((item) => `${item.witnessed ? "亲历" : item.source}：${item.text}`) ?? [])].filter((item): item is string => Boolean(item)),
+      desire: plan?.desire ?? npc?.currentGoal ?? (/监护|父|母/.test(relation.relation) ? "先保证孩子安全，再决定能承担多少培养代价" : `${relation.relation}会先维护自己的职责、利益与风险边界`),
+      knownFrom: [knowledge ? `${knowledge.reason}：${knowledge.fact}` : undefined, ...(plan?.informationBoundary ?? []), ...(npc?.episodicMemory.slice(-3).map((item) => `${item.witnessed ? "亲历" : item.source}：${item.text}`) ?? [])].filter((item): item is string => Boolean(item)).slice(0, 8),
       knowledgeLimit: `只能使用亲历、可靠转述、已登记情报和当前公开的${publicNames.join("、") || "武魂信息"}；不得知道隐藏武魂、系统或未来事件`,
-      authority: relationAuthority(relation),
-      reactionObligation: "主角行动触及其利益、职责或已知关系时，必须给出动作、台词、拒绝、上报或记录中的至少一种反应",
+      authority: plan?.authority ?? relationAuthority(relation),
+      reactionObligation: plan ? `当前正准备“${plan.nextAction}”；主角触及其欲望、责任或资源时，必须调整计划并留下动作、台词、拒绝、上报或记录` : "主角行动触及其利益、职责或已知关系时，必须给出动作、台词、拒绝、上报或记录中的至少一种反应",
     };
   });
-  const authorityHolders = participants.filter((item) => /可在职责范围内/.test(item.authority)).map((item) => item.name);
+  const authorityHolders = participants.filter((item) => /可在职责范围内|可以主持|可以影响|可以执行/.test(item.authority)).map((item) => item.name);
   const exceptionalAwakening = Boolean(game.view.character && game.view.character.innateSoulPower >= 10 && (game.view.status === "awakening" || /觉醒|满魂力|复测|培养条件|主持者/.test(`${playerInput}${resolution.intent}${resolution.ruleSummary}`)));
   const requiredImmediateReactions = exceptionalAwakening
     ? ["现场主持者复测或核对记录", "有权限者登记并决定上报范围", "监护或所属势力讨论培养条件、安置与代价"]
