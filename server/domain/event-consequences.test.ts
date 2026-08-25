@@ -107,7 +107,7 @@ describe("地方事件专属后果", () => {
     delete (game.world as Partial<typeof game.world>).localConsequences;
     game.schemaVersion = 31;
     const migrated = ensureGameState(structuredClone(game));
-    expect(migrated.schemaVersion).toBe(35);
+    expect(migrated.schemaVersion).toBe(36);
     expect(migrated.world.localConsequences).toEqual([]);
     expect(migrated.view.inventory).toContain("外敷伤药");
     expect(migrated.view.inventoryLoad.storage).toContain("外敷伤药");

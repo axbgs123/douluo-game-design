@@ -282,6 +282,7 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
     suppressedCanonEvents: [],
     deviation: 0,
     canonCausalFootprints: [],
+    canonTimelineBranches: [],
     npcRelations,
     dynamicEvents: [],
     localConsequences: [],
@@ -954,13 +955,99 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
   return [...messages.filter((message) => !message.startsWith("新事件 ·")), ...currentEventMessages];
 }
 
+type CanonEvent = (typeof CANON_EVENTS)[number];
+
+function dateAtOrdinal(value: number): { year: number; day: number } {
+  const year = Math.floor((value - 1) / DAYS_PER_YEAR);
+  return { year, day: value - year * DAYS_PER_YEAR };
+}
+
+function canonEventObservable(game: StoredGame, event: CanonEvent, causes: HiddenWorldState["canonCausalFootprints"]): boolean {
+  const atScene = Boolean(event.locationId && event.locationId === game.view.locationId);
+  const knownParticipant = event.participantIds.some((id) => game.world.npcs[id]?.knownToPlayer);
+  const directlyInfluenced = causes.some((cause) => cause.affectedNpcIds.some((id) => event.participantIds.includes(id)) || cause.locationId === event.locationId);
+  const visibility = event.visibility ?? "地方";
+  return visibility === "公开" || (visibility === "地方" && (atScene || knownParticipant)) || (visibility === "秘密" && atScene && (knownParticipant || directlyInfluenced));
+}
+
+function appendBranchPropagation(game: StoredGame, event: CanonEvent, branch: HiddenWorldState["canonTimelineBranches"][number], strength: number): void {
+  const at = dateAtOrdinal(branch.resolveOrdinal);
+  game.world.canonCausalFootprints.push({
+    id: `branch-cause-${branch.id}`,
+    source: "历史分支结算",
+    description: "玩家此前造成的变化已经沿相关人物、势力与资源条件继续扩散",
+    atYear: at.year,
+    atDay: at.day,
+    locationId: event.locationId ?? game.world.npcs[event.participantIds[0]]?.locationId ?? game.view.locationId ?? "notting-city",
+    affectedNpcIds: [...branch.affectedNpcIds],
+    affectedFactionIds: [...branch.affectedFactionIds],
+    strength: Math.max(4, Math.min(40, Math.max(event.inertia * 8, Math.round(strength * .45)))),
+  });
+  game.world.canonCausalFootprints = game.world.canonCausalFootprints.slice(-120);
+}
+
+function settleCanonTimelineBranch(game: StoredGame, branch: HiddenWorldState["canonTimelineBranches"][number], event: CanonEvent, messages: string[]): void {
+  if (branch.status === "已结算") return;
+  const causes = game.world.canonCausalFootprints.filter((cause) => branch.causeIds.includes(cause.id));
+  const causalStrength = causes.reduce((sum, cause) => sum + cause.strength, 0) || event.inertia * 8;
+  const livingParticipants = event.participantIds.filter((id) => game.world.npcs[id]?.alive);
+  const locationId = event.locationId ?? game.world.npcs[livingParticipants[0]]?.locationId ?? game.view.locationId ?? "notting-city";
+  const at = dateAtOrdinal(branch.resolveOrdinal);
+  const replacementEventId = `${event.id}-branch-${branch.state}`;
+  const stateDetail = branch.state === "延后"
+    ? `原定节点没有按旧日期发生。相关人物在玩家已经改变的条件下重新组织行动，事件延后至原作${at.year}年第${at.day}日，并保留继续变化的可能。`
+    : branch.state === "替代"
+      ? "原有参与条件已经不足，相关人物与势力围绕新的利益和资源关系形成了替代行动。替代行动不继承原事件的固定结果。"
+      : "关键参与者、地点或组织条件已经失效，原定事件被取消；留下的资源空缺、责任和敌意会由仍在场的人重新争夺。";
+  branch.status = "已结算";
+  branch.replacementEventId = replacementEventId;
+  branch.summary = stateDetail;
+  if (branch.state === "延后") {
+    game.world.suppressedCanonEvents = game.world.suppressedCanonEvents.filter((id) => id !== event.id);
+    if (!game.world.firedCanonEvents.includes(event.id)) game.world.firedCanonEvents.push(event.id);
+    applyFactionJoinsForEvent(game, event.id);
+  }
+  if (!game.world.dynamicEvents.some((item) => item.id === replacementEventId)) {
+    const title = branch.state === "延后" ? `${event.title}在新条件下发生` : branch.state === "替代" ? `${event.title}引出的替代局势` : `${event.title}取消后的局势重组`;
+    game.world.dynamicEvents.push({ id: replacementEventId, title, kind: "历史前兆", locationId, participantIds: livingParticipants, detail: stateDetail, stakes: Math.max(3, event.inertia), status: "可介入", createdYear: at.year, createdDay: at.day, expiresOrdinal: branch.resolveOrdinal + 60 });
+  }
+  for (const id of livingParticipants) {
+    const npc = game.world.npcs[id];
+    npc.currentGoal = branch.state === "延后" ? `处理“${event.title}”延后后重新形成的现实条件` : `应对“${event.title}”未按原轨迹发生后的利益、责任与关系变化`;
+    delete npc.activePlan;
+  }
+  appendBranchPropagation(game, event, branch, causalStrength);
+  game.world.metrics.historicalImpact += event.inertia * (branch.state === "延后" ? 2 : 3);
+  if (canonEventObservable(game, event, causes)) {
+    const label = branch.state === "延后" ? "发生时间改变" : branch.state === "替代" ? "出现替代走向" : "原定节点取消";
+    addNews(game, replacementEventId, `${event.title}：${label}`, stateDetail, at);
+    game.view.canonInfluences.unshift({ id: `branch-cause-${branch.id}`, action: `${event.title}${label}`, affects: [...livingParticipants.map((id) => game.world.npcs[id]?.name ?? id), ...branch.affectedFactionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id)].join("、") || "相关地区", strength: "已形成历史分支", date: `原作 ${at.year >= 0 ? "+" : ""}${at.year} 年 · 第 ${at.day} 日` });
+    game.view.canonInfluences = game.view.canonInfluences.slice(0, 24);
+    messages.push(`历史分支 · ${event.title} · ${branch.state}`);
+  }
+}
+
+function settlePendingCanonBranches(game: StoredGame, throughOrdinal: number, messages: string[]): void {
+  for (const branch of game.world.canonTimelineBranches.filter((item) => item.status === "待结算" && item.resolveOrdinal <= throughOrdinal).sort((left, right) => left.resolveOrdinal - right.resolveOrdinal)) {
+    const event = CANON_EVENTS.find((item) => item.id === branch.eventId);
+    if (event) {
+      settleCanonTimelineBranch(game, branch, event, messages);
+      const replacement = game.world.dynamicEvents.find((item) => item.id === branch.replacementEventId && item.status === "可介入");
+      if (replacement && replacement.expiresOrdinal < throughOrdinal) resolveExpiredDynamicEvent(game, replacement, throughOrdinal);
+    }
+    else branch.status = "已结算";
+  }
+}
+
 function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentOrdinal: number): string[] {
   const messages: string[] = [];
-  for (const event of CANON_EVENTS) {
+  const events = CANON_EVENTS.filter((event) => { const at = ordinal(event.year, event.day ?? 1); return at >= previousOrdinal && at <= currentOrdinal; }).sort((left, right) => ordinal(left.year, left.day ?? 1) - ordinal(right.year, right.day ?? 1));
+  for (const event of events) {
     const eventOrdinal = ordinal(event.year, event.day ?? 1);
-    if (eventOrdinal < previousOrdinal || eventOrdinal > currentOrdinal || game.world.firedCanonEvents.includes(event.id) || game.world.suppressedCanonEvents.includes(event.id)) continue;
+    settlePendingCanonBranches(game, eventOrdinal, messages);
+    if (game.world.firedCanonEvents.includes(event.id) || game.world.suppressedCanonEvents.includes(event.id)) continue;
     const participantFactions = new Set(event.participantIds.flatMap((id) => game.world.npcs[id]?.factionIds ?? []));
-    const linkedCauses = game.world.canonCausalFootprints.filter((cause) => cause.atYear <= event.year && (
+    const linkedCauses = game.world.canonCausalFootprints.filter((cause) => ordinal(cause.atYear, cause.atDay) <= eventOrdinal && (
       cause.affectedNpcIds.some((id) => event.participantIds.includes(id))
       || cause.affectedFactionIds.some((id) => participantFactions.has(id))
       || (Boolean(event.locationId) && cause.locationId === event.locationId && cause.strength >= 4)
@@ -970,10 +1057,26 @@ function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentO
     const resistance = event.inertia * 8 * difficultyResistance;
     if (causalStrength >= resistance) {
       game.world.suppressedCanonEvents.push(event.id);
-      const latestCause = linkedCauses.at(-1);
-      addNews(game, `${event.id}-altered`, `${event.title}出现偏差`, `变化能够追溯到玩家此前对${latestCause?.description ?? "相关人物与势力"}的影响，参与者和结果已不再完全符合原有轨迹。`);
-      game.world.metrics.historicalImpact += event.inertia * 2;
-      messages.push(`历史偏移 · ${event.title}`);
+      const missingParticipant = event.participantIds.some((id) => !game.world.npcs[id]?.alive);
+      const factionRedirected = linkedCauses.some((cause) => cause.affectedFactionIds.length > 0);
+      const state = missingParticipant ? "取消" as const : causalStrength >= resistance * 1.6 || factionRedirected ? "替代" as const : "延后" as const;
+      const delayDays = state === "延后" ? Math.max(30, Math.min(180, Math.round(event.inertia * 18 + causalStrength / 2))) : 0;
+      const branch = {
+        id: `branch-${event.id}-${game.world.canonTimelineBranches.length}`,
+        eventId: event.id,
+        state,
+        originalYear: event.year,
+        originalDay: event.day ?? 1,
+        resolveOrdinal: eventOrdinal + delayDays,
+        causeIds: linkedCauses.map((cause) => cause.id),
+        affectedNpcIds: [...event.participantIds],
+        affectedFactionIds: [...participantFactions],
+        summary: "等待新条件结算",
+        status: "待结算" as const,
+      };
+      game.world.canonTimelineBranches.push(branch);
+      game.world.canonTimelineBranches = game.world.canonTimelineBranches.slice(-120);
+      if (state !== "延后") settleCanonTimelineBranch(game, branch, event, messages);
       continue;
     }
     game.world.firedCanonEvents.push(event.id);
@@ -982,16 +1085,13 @@ function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentO
       const npc = game.world.npcs[participantId];
       if (npc && event.locationId) npc.locationId = event.locationId;
     }
-    const atScene = Boolean(event.locationId && event.locationId === game.view.locationId);
-    const knownParticipant = event.participantIds.some((id) => game.world.npcs[id]?.knownToPlayer);
-    const directlyInfluenced = linkedCauses.some((cause) => cause.affectedNpcIds.some((id) => event.participantIds.includes(id)) || cause.locationId === event.locationId);
-    const visibility = event.visibility ?? "地方";
-    const observable = visibility === "公开" || (visibility === "地方" && (atScene || knownParticipant)) || (visibility === "秘密" && atScene && (knownParticipant || directlyInfluenced));
-    if (observable) {
-      addNews(game, event.id, event.title, event.publicSummary);
-      messages.push(`${visibility === "公开" ? "消息" : visibility === "秘密" ? "亲历" : "传闻"} · ${event.title}`);
+    if (canonEventObservable(game, event, linkedCauses)) {
+      const detail = causalStrength > 0 ? `${event.publicSummary}玩家此前造成的影响改变了部分参与条件，但尚未越过该节点的原著惯性。` : event.publicSummary;
+      addNews(game, event.id, event.title, detail);
+      messages.push(`${(event.visibility ?? "地方") === "公开" ? "消息" : event.visibility === "秘密" ? "亲历" : "传闻"} · ${event.title}`);
     }
   }
+  settlePendingCanonBranches(game, currentOrdinal, messages);
   return messages;
 }
 
@@ -1167,7 +1267,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 35;
+  legacy.schemaVersion = 36;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1184,6 +1284,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   if (previousSchemaVersion < 35) legacy.world.npcRelations = legacy.world.npcRelations.filter((relation) => !relation.history?.length || !relation.history.every((item) => item.delta === 0 && item.reason.startsWith("原著关系基线：")));
   ensureCanonRelationshipBaselines(legacy.world.npcs, legacy.world.npcRelations, game.view.worldTime?.year ?? startYear, game.view.worldTime?.day ?? 1);
   legacy.world.canonCausalFootprints ??= [];
+  legacy.world.canonTimelineBranches ??= [];
   legacy.world.firedCanonEvents ??= [];
   legacy.world.suppressedCanonEvents ??= [];
   legacy.world.dynamicEvents ??= [];

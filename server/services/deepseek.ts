@@ -65,6 +65,10 @@ export function observableCanonEventsForNarration(game: StoredGame) {
   return CANON_EVENTS.filter((event) => game.world.firedCanonEvents.includes(event.id) && (game.view.news.some((item) => item.id === event.id || item.title === event.title || item.detail.includes(event.title)) || game.world.intelligenceRecords.some((item) => item.subjectId === event.id || item.title === event.title || item.detail.includes(event.title))));
 }
 
+export function observableCausalFootprintsForNarration(game: StoredGame) {
+  return game.world.canonCausalFootprints.filter((cause) => cause.source !== "历史分支结算" || game.view.canonInfluences.some((item) => item.id === cause.id));
+}
+
 export class NarrativeAuditError extends Error {
   constructor(public readonly issues: string[]) {
     super(`正文未通过审校：${issues.join("、")}`);
@@ -242,7 +246,7 @@ export async function interpretActionWithDeepSeek(game: StoredGame, playerInput:
           "遇到后世专属行动时保留关键术语：魂灵调查/评估/签约，魂导器学习/制作/认证，斗铠设计/制作，机甲训练/考核/购买/驾驶，星舰训练/考核/招募船员/取得舰船/补给/航行/星球调查。不要把这些动作改写成普通修炼或普通旅行。",
           "输出 JSON：{\"ruleAction\":\"整理后的一句话\"}。",
         ].join("\n") },
-        { role: "user", content: JSON.stringify({ playerInput, relevantPast, era: game.view.era ?? 1, worldTime: game.view.worldTime, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), currentHunt: game.view.hunting, currentEvents: game.world.dynamicEvents.filter((item) => item.status === "可介入").map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
+        { role: "user", content: JSON.stringify({ playerInput, relevantPast, era: game.view.era ?? 1, worldTime: game.view.worldTime, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), currentHunt: game.view.hunting, currentEvents: game.view.activeEvents.map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
       ],
     }, 20_000, signal);
   const content = payload.choices?.[0]?.message?.content;
@@ -346,7 +350,7 @@ export async function narrateWithDeepSeek(
             worldTime: game.view.worldTime,
             occurredCanonEvents: observableCanonEventsForNarration(game).sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1)).slice(-24).map(({ year, day, title, publicSummary }) => ({ year, day: day ?? 1, title, publicSummary })),
             futureCanonGuard: { currentYear: game.view.worldTime?.year ?? 0, currentDay: game.view.worldTime?.day ?? 1, hiddenFutureEventCount: CANON_EVENTS.filter((event) => event.year > (game.view.worldTime?.year ?? 0) || (event.year === (game.view.worldTime?.year ?? 0) && (event.day ?? 1) > (game.view.worldTime?.day ?? 1))).length, rule: "未来事件标题、参与者与结果未提供；不得猜测或补写" },
-            playerCausalFootprints: game.world.canonCausalFootprints.slice(-16),
+            playerCausalFootprints: observableCausalFootprintsForNarration(game).slice(-16),
             sceneKnowledge,
             lifeGoal: game.view.lifeGoal,
             affiliations: game.view.affiliations,

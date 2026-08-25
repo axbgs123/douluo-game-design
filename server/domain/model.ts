@@ -150,6 +150,21 @@ export interface CanonCausalFootprint {
   strength: number;
 }
 
+export interface CanonTimelineBranch {
+  id: string;
+  eventId: string;
+  state: "延后" | "替代" | "取消";
+  originalYear: number;
+  originalDay: number;
+  resolveOrdinal: number;
+  causeIds: string[];
+  affectedNpcIds: string[];
+  affectedFactionIds: string[];
+  summary: string;
+  status: "待结算" | "已结算";
+  replacementEventId?: string;
+}
+
 export interface DynamicWorldEvent {
   id: string;
   title: string;
@@ -196,6 +211,7 @@ export interface HiddenWorldState {
   suppressedCanonEvents: string[];
   deviation: number;
   canonCausalFootprints: CanonCausalFootprint[];
+  canonTimelineBranches: CanonTimelineBranch[];
   npcRelations: NpcRelationState[];
   dynamicEvents: DynamicWorldEvent[];
   localConsequences: LocalWorldConsequence[];
