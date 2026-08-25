@@ -92,6 +92,35 @@ export interface ChapterObjectiveView {
 }
 
 export type StoryArcStage = "立局" | "主动推进" | "阻力显形" | "局势扩大" | "阶段兑现" | "不可逆转折";
+export type StoryArcEvidenceKind = "主动行动" | "能力证明" | "关系谈判" | "现实代价" | "外部阻力" | "外部反应" | "实际兑现" | "重大选择";
+
+export interface StoryArcStageGateView {
+  stage: StoryArcStage;
+  requirement: string;
+  requiredKinds: StoryArcEvidenceKind[];
+  mode: "任一" | "全部" | "至少二项";
+  satisfied: boolean;
+  evidence: string[];
+}
+
+export interface StoryArcPayoffView {
+  id: string;
+  label: string;
+  status: "待兑现" | "部分兑现" | "已兑现";
+  evidence: string[];
+}
+
+export interface StoryArcNpcSceneView {
+  id: string;
+  npcId?: string;
+  npcName: string;
+  role: string;
+  motive: string;
+  action: string;
+  stage: StoryArcStage;
+  status: "等待回应" | "已回应" | "已错过";
+  expiresOrdinal: number;
+}
 
 export interface StoryArcView {
   id: string;
@@ -105,6 +134,13 @@ export interface StoryArcView {
   stakes: string;
   promisedPayoff: string;
   irreversibleTurn: string;
+  arcType: "成长" | "关系" | "势力" | "危机" | "探索";
+  mainTaskId?: string;
+  sideThreads: Array<{ taskId: string; title: string; status: "进行中" | "完成" | "失败" }>;
+  stageGates: StoryArcStageGateView[];
+  evidenceRecords: Array<{ actionIndex: number; kind: StoryArcEvidenceKind; summary: string }>;
+  payoffLedger: StoryArcPayoffView[];
+  npcScenes: StoryArcNpcSceneView[];
   pressure: number;
   startedActionIndex: number;
   stageStartedActionIndex: number;

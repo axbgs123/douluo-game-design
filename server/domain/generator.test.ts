@@ -479,6 +479,7 @@ describe("candidate generation", () => {
     );
     expect(suggestions).toEqual(game.view.suggestions);
     expect(suggestions).toHaveLength(3);
+    expect(suggestions.every((item) => item.length >= 8 && item.length <= 28)).toBe(true);
   });
 
   it("replaces vague screenshot-style choices with canon-grounded awakening actions", () => {
@@ -494,7 +495,7 @@ describe("candidate generation", () => {
   });
 
   it("uses each later era's actual awakening follow-up instead of recycling the era-one buttons", () => {
-    const expected = { 2: /精神属性/, 3: /魂师班资格/, 4: /登记魂力与能力方向/ } as const;
+    const expected = { 2: /武魂特征/, 3: /魂师班资格/, 4: /魂力测试.*觉醒结果/ } as const;
     for (const era of [2, 3, 4] as const) {
       const game = createGame({ era, gender: "女", difficulty: "标准", seed: `era-awakening-choice-${era}` });
       game.hiddenCandidates[0].innateSoulPower = 3;

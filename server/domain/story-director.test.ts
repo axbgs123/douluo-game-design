@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { applyActionResult } from "./actions.js";
 import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { ensureGameState } from "./world.js";
+import { storyArcSuggestions } from "./story-director.js";
 
-function playingGame(seed: string) {
-  const game = createGame({ gender: "男", difficulty: "标准", seed });
+function playingGame(seed: string, era: 1 | 2 | 3 | 4 = 1) {
+  const game = createGame({ gender: "男", difficulty: "标准", seed, era });
   selectCandidate(game, game.view.candidates[0].id, "卷级测试者");
   const draft = game.view.shaping!.personalityOptions[0];
   finalizeCharacterShaping(game, { personalityId: draft.id, keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])) });
@@ -18,39 +19,77 @@ function applyBeat(game: ReturnType<typeof playingGame>, action: string, ruleSum
 }
 
 describe("卷级故事导演", () => {
-  it("organizes real actions into staged pressure without inventing outcomes", () => {
-    const game = playingGame("story-arc-stages");
+  it("advances only when the next stage has real causal evidence", () => {
+    const game = playingGame("story-arc-causal-gates");
     expect(game.view.storyArc).toMatchObject({ arcNumber: 1, stage: "立局", stageIndex: 0 });
-    expect(game.view.storyArc?.centralGoal.length).toBeGreaterThan(4);
-    const initialPressure = game.view.storyArc!.pressure;
 
-    applyBeat(game, "询问导师第一魂环路线", "导师列出三种适配方向和各自风险。", "询问");
+    applyBeat(game, "请主持者说明第一魂环路线", "主持者列出三种适配方向。", "询问");
     expect(game.view.storyArc?.stage).toBe("主动推进");
-    applyBeat(game, "去训练场测试武魂消耗", "完成三轮测试并得到稳定消耗记录。", "训练");
-    applyBeat(game, "申请学院培养名额", "申请已进入正式复核，等待资源负责人答复。", "申请");
-    expect(game.view.storyArc?.stage).toBe("阻力显形");
 
-    applyBeat(game, "参加培养资格考核", "考核失败并受了轻伤，名额暂未获得。", "失败");
-    expect(game.view.storyArc?.stage).toBe("局势扩大");
-    expect(game.view.storyArc!.pressure).toBeGreaterThan(initialPressure);
-    expect(game.view.storyArc?.evidence.some((item) => item.includes("考核失败"))).toBe(true);
+    game.world.dynamicEvents.push({ id: "side-herbs", title: "失踪的采药队", kind: "地方", locationId: game.view.locationId!, participantIds: [], detail: "采药队未归。", stakes: 2, status: "可介入", createdYear: 0, createdDay: 1, expiresOrdinal: 40 });
+    game.view.tasks.push({ id: "side-herbs", title: "失踪的采药队", kind: "线索", detail: "采药队未归。", status: "进行中" });
+    applyBeat(game, "调查失踪的采药队", "沿山路找到一只遗落药篓。", "调查");
+    expect(game.view.storyArc?.stage).toBe("主动推进");
+    expect(game.view.storyArc?.sideThreads.some((item) => item.title === "失踪的采药队")).toBe(true);
+
+    applyBeat(game, "申请学院培养名额", "申请进入复核，但负责人要求补交路费与监护证明，名额尚未获得。", "申请");
+    expect(game.view.storyArc?.stage).toBe("阻力显形");
+    expect(game.view.storyArc?.stageGates.find((gate) => gate.stage === "阻力显形")?.evidence).toEqual(expect.arrayContaining([expect.stringContaining("监护证明")]));
   });
 
-  it("migrates old playing saves and rolls a completed arc into the next volume", () => {
-    const game = playingGame("story-arc-migration");
-    delete game.view.storyArc;
-    game.schemaVersion = 29;
-    const migrated = ensureGameState(structuredClone(game));
-    expect(migrated.schemaVersion).toBe(33);
-    expect(migrated.view.storyArc?.stage).toBe("立局");
+  it("requires resistance, reaction, payoff, and player choice before a volume can reach its turn", () => {
+    const game = playingGame("story-arc-payoff-gates");
+    applyBeat(game, "请主持者复测武魂", "主持者完成复测并登记武魂形态。", "复测");
+    applyBeat(game, "申请培养条件", "学院要求监护证明并说明学费，当前只能等待复核。", "申请");
+    expect(game.view.storyArc?.stage).toBe("阻力显形");
 
-    migrated.view.storyArc!.stage = "不可逆转折";
-    migrated.view.storyArc!.stageIndex = 5;
-    migrated.view.storyArc!.stageStartedActionIndex = migrated.actionIndex - 1;
-    const firstTitle = migrated.view.storyArc!.title;
-    applyBeat(migrated, "正式加入学院并签下培养协议", "学院完成录取，培养协议与责任同时生效。", "加入势力");
-    expect(migrated.view.storyArc?.arcNumber).toBe(2);
-    expect(migrated.view.storyArc?.completedArcTitles).toContain(firstTitle);
+    applyBeat(game, "去训练场完成能力测试", "导师看完三轮训练记录，确认武魂控制稳定并向学院提交意见。", "训练");
+    expect(game.view.storyArc?.stage).toBe("局势扩大");
+
+    applyBeat(game, "向学院落实培养安排", "学院完成录取，安排导师面谈、训练场时段和基础食宿。", "录取");
+    expect(game.view.storyArc?.stage).toBe("阶段兑现");
+    expect(game.view.storyArc?.payoffLedger.some((item) => item.status === "已兑现")).toBe(true);
+
+    applyBeat(game, "正式决定加入学院并签订培养协议", "双方签订培养协议，学院身份与责任正式生效。", "正式决定");
+    expect(game.view.storyArc?.stage).toBe("不可逆转折");
+    expect(game.view.storyArc?.evidenceRecords.some((item) => item.kind === "重大选择")).toBe(true);
+    const completedTitle = game.view.storyArc!.title;
+    applyBeat(game, "开始学院第一堂基础课程", "完成第一次基础冥想课程并留下训练记录。", "课程");
+    expect(game.view.storyArc?.arcNumber).toBe(2);
+    expect(game.view.storyArc?.completedArcTitles).toContain(completedTitle);
+  });
+
+  it("creates an observable NPC initiative and three era-grounded decision axes", () => {
+    for (const era of [1, 2, 3, 4] as const) {
+      const game = playingGame(`story-arc-npc-era-${era}`, era);
+      const scene = game.view.storyArc?.npcScenes.find((item) => item.status === "等待回应");
+      expect(scene?.npcName).toBeTruthy();
+      expect(scene?.motive).toMatch(/复核|食宿|费用|安全|条件|职责/);
+      const suggestions = storyArcSuggestions(game);
+      expect(suggestions).toHaveLength(3);
+      expect(suggestions.every((item) => item.length >= 8 && item.length <= 28)).toBe(true);
+      expect(new Set(suggestions).size).toBe(3);
+      if (era === 3) expect(`${scene?.action}${suggestions.join("、")}`).not.toContain("学费");
+      if (era === 4) expect(`${scene?.action}${suggestions.join("、")}`).not.toMatch(/体检|能力评估/);
+    }
+  });
+
+  it("migrates old count-driven arcs to evidence gates without preserving unsupported progress", () => {
+    const game = playingGame("story-arc-migration");
+    const legacy = game.view.storyArc!;
+    legacy.stage = "不可逆转折";
+    legacy.stageIndex = 5;
+    delete (legacy as Partial<typeof legacy>).stageGates;
+    delete (legacy as Partial<typeof legacy>).evidenceRecords;
+    delete (legacy as Partial<typeof legacy>).payoffLedger;
+    delete (legacy as Partial<typeof legacy>).npcScenes;
+    delete (legacy as Partial<typeof legacy>).sideThreads;
+    delete (legacy as Partial<typeof legacy>).arcType;
+    game.schemaVersion = 33;
+    const migrated = ensureGameState(structuredClone(game));
+    expect(migrated.schemaVersion).toBe(34);
     expect(migrated.view.storyArc?.stage).toBe("立局");
+    expect(migrated.view.storyArc?.stageGates).toHaveLength(6);
+    expect(migrated.view.storyArc?.payoffLedger.length).toBeGreaterThanOrEqual(3);
   });
 });

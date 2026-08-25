@@ -492,12 +492,13 @@ test("玩家可以完成角色创建、推进故事并管理存档", async ({ pa
   await expect(page.getByRole("button", { name: "承接货运", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /^手记/ }).click();
   await expect(page.locator(".story-arc-card")).toBeVisible();
-  await expect(page.locator(".story-arc-card")).toContainText("第 1 卷 · 卷级故事导演");
+  await expect(page.locator(".story-arc-card")).toContainText("第 1 卷 · 成长主线");
   await expect(page.locator(".story-arc-card")).toContainText("本卷目标");
   await page.getByPlaceholder("搜索已知档案……").fill("第一魂环");
   await expect(page.locator(".known-record-search")).toContainText("获得第一魂环");
   await submitAction(page, "在住处等待一天，留意附近动静");
-  await expect(page.locator(".story-arc-card header > strong")).toHaveText("主动推进");
+  await expect(page.locator(".story-arc-card header > strong")).toHaveText("立局");
+  await expect(page.locator(".story-gate-card")).toContainText("可结算的主动行动");
   await expect(page.getByText("晨光沿着窗纸落进屋里", { exact: false })).toBeVisible();
   await page.getByText("查看判定", { exact: true }).click();
   await expect(page.locator(".action-receipt small")).toContainText("世界时间推进");
@@ -528,6 +529,17 @@ test("大陆地图可以展开、选择地点并下钻到可交互局部图", as
   await expect(page.locator(".local-selection")).toBeVisible();
   await page.getByRole("button", { name: "收起地图", exact: true }).click();
   await expect(page.locator(".map-panel-visual.map-expanded")).toHaveCount(0);
+});
+
+test("剧情导演按证据门槛展示兑现债务与NPC主动场景", async ({ page }) => {
+  await createPlayingCharacter(page, 1);
+  await page.getByRole("button", { name: /^手记/ }).click();
+  await expect(page.locator(".story-arc-card")).toContainText("成长主线");
+  await expect(page.locator(".story-gate-card")).toContainText("进入下一阶段还缺什么");
+  expect(await page.locator(".story-payoff-list article").count()).toBeGreaterThanOrEqual(3);
+  await expect(page.locator(".story-payoff-list")).toContainText("待兑现");
+  await expect(page.locator(".npc-initiative-card")).toContainText("主动找来");
+  await expect(page.locator(".suggestion-list button")).toHaveCount(3);
 });
 
 test("玩家可以从界面进入斗四且出生地图不会显示斗一地标", async ({ page }) => {

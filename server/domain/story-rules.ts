@@ -4,6 +4,7 @@ import { CANON_CHARACTERS, FACTIONS, factionActiveAtYear } from "../data/world.j
 import { rulesForEra, type FanfictionRule } from "../data/fanfiction-rules.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import type { SceneKnowledgePack } from "./scene-knowledge.js";
+import { storyArcSuggestions } from "./story-director.js";
 
 const BASE_SECTIONS = [5, 18, 53, 69, 70, 93, 94, 97, 100];
 
@@ -299,17 +300,17 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
     const era = game.view.era ?? 1;
     const growth = character.innateSoulPower >= 10
       ? "请主持者用备用水晶复测魂力"
-      : ({ 1: "请主持者说明第一魂环的适配方向", 2: "请主持者复测魂力与精神属性", 3: "请传灵师确认魂力与魂师班资格", 4: "请觉醒中心登记魂力与能力方向" } as const)[era];
+      : ({ 1: "请主持者说明第一魂环的适配方向", 2: "请主持者复测魂力与武魂特征", 3: "请传灵师确认魂力与魂师班资格", 4: "请主持者完成魂力测试并登记觉醒结果" } as const)[era];
     const guardianPlan = guardian ? ({
       1: `和${guardian.name}商量学院名额、路费与猎魂帮助`,
       2: `和${guardian.name}商量学院报名、食宿与第一魂环`,
-      3: `把觉醒结果告诉${guardian.name}，确认魂师班与学费`,
-      4: `和${guardian.name}确认学院报名、体检与档案范围`,
+      3: `把觉醒结果告诉${guardian.name}，确认魂师班与后续魂灵费用`,
+      4: `和${guardian.name}确认魂力测试、入学与档案范围`,
     } as const)[era] : ({
       1: "追问工读名额、路费与猎魂协助",
       2: "询问学院报名、住处与第一魂环帮助",
-      3: "询问魂师班报到时间与家庭费用",
-      4: "询问学院报名、体检与档案权限",
+      3: "询问魂师班报到时间与后续魂灵费用",
+      4: "询问魂力测试、入学安排与档案权限",
     } as const)[era];
     const institution = unbound
       ? "请主持者先落实临时身份和今晚住处"
@@ -320,7 +321,7 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
       ? "暂不显露第二武魂，回住处后单独测试"
       : character.innateSoulPower >= 7 || ["传奇", "神话"].includes(character.martialSoul.grade ?? "平凡")
         ? "请求主持者暂缓外传武魂细节"
-        : era === 4 ? "完成体检后再参加学院能力评估" : `回住处练习${mainSoul}的收放与魂力消耗`;
+        : era === 4 ? "暂缓外传异常细节，先完成魂力测试" : `回住处练习${mainSoul}的收放与魂力消耗`;
     return [growth, institution, secret];
   }
   if (game.view.combat) return ["拉开距离观察对手起手", "利用地形掩护侧翼", "保留退路试探一次弱点"];
@@ -348,10 +349,10 @@ export function buildChineseWebnovelSceneCard(game: StoredGame, resolution: Acti
     publicFacts: { martialSouls: publicNames, soulPower: game.view.character?.innateSoulPower, location: game.view.location },
     protagonistSecrets: { hiddenMartialSouls: hiddenNames, specialSystem: game.view.character?.specialSystem?.name },
     unresolvedPromises: game.storyMemory.openThreads.slice(0, 8),
-    storyArc: game.view.storyArc ? { title: game.view.storyArc.title, stage: game.view.storyArc.stage, goal: game.view.storyArc.centralGoal, conflict: game.view.storyArc.centralConflict, opposingForce: game.view.storyArc.opposingForce, payoff: game.view.storyArc.promisedPayoff, irreversibleTurn: game.view.storyArc.irreversibleTurn, pressure: game.view.storyArc.pressure } : undefined,
+    storyArc: game.view.storyArc ? { title: game.view.storyArc.title, stage: game.view.storyArc.stage, goal: game.view.storyArc.centralGoal, conflict: game.view.storyArc.centralConflict, opposingForce: game.view.storyArc.opposingForce, payoff: game.view.storyArc.promisedPayoff, payoffLedger: game.view.storyArc.payoffLedger, nextGate: game.view.storyArc.stageGates[game.view.storyArc.stageIndex + 1], activeNpcScene: game.view.storyArc.npcScenes.find((scene) => scene.status === "等待回应"), sideThreads: game.view.storyArc.sideThreads, irreversibleTurn: game.view.storyArc.irreversibleTurn, pressure: game.view.storyArc.pressure } : undefined,
     reactionChain: ["谁目击", "谁有权限", "谁获益或受损", "立即反应", "留下何种记录、关系或代价"],
     choiceVectors: ["成长或资源", "关系或势力", "秘密或风险"],
-    deterministicSuggestions: groundedNarrativeSuggestions(game),
+    deterministicSuggestions: storyArcSuggestions(game),
   };
 }
 
@@ -413,6 +414,9 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
   const participantRelations = game.view.relations.filter((relation) => onSceneNpcs.some((npc) => npc.name === relation.name) || knowledgeByNpc.has(relation.name));
   const awakeningRelation = game.view.relations.find((relation) => /觉醒主持|觉醒魂师|主持觉醒/.test(`${relation.relation}${relation.impression}`));
   if (awakeningRelation && !participantRelations.includes(awakeningRelation)) participantRelations.push(awakeningRelation);
+  const activeNpcScene = game.view.storyArc?.npcScenes.find((scene) => scene.status === "等待回应");
+  const activeSceneRelation = activeNpcScene && game.view.relations.find((relation) => relation.name === activeNpcScene.npcName);
+  if (activeSceneRelation && !participantRelations.includes(activeSceneRelation)) participantRelations.push(activeSceneRelation);
   const participants = participantRelations.slice(0, 12).map((relation) => {
     const npc = onSceneNpcs.find((item) => item.name === relation.name);
     const knowledge = knowledgeByNpc.get(relation.name);
@@ -502,12 +506,17 @@ export function sanitizeNarrativeSuggestions(game: StoredGame, suggestions: stri
   const sanitize = (items: string[]) => items
     .map((item) => item.trim())
     .filter(Boolean)
+    .map((item) => item.length > 28 ? item.slice(0, 28) : item)
     .filter((item) => !violatesCanonChronology(item, game.view.worldTime?.year ?? 0))
     .filter((item) => !/直接获得|必定成功|保证成功|无代价|立刻成神/.test(item))
     .filter((item) => !/指出第一处缺陷/.test(item))
     .filter((item) => !GENERIC_SUGGESTION.test(item))
     .filter((item) => !leaksUnavailableKnowledge(game, item));
-  const ordered = [...sanitize(fallback), ...sanitize(groundedNarrativeSuggestions(game)), ...sanitize(suggestions)];
+  const tactical = Boolean(game.view.combat || (game.view.hunting && game.view.hunting.stage !== "完成"));
+  const opening = game.actionIndex === 0 && game.view.tasks.some((task) => task.status !== "完成" && /觉醒|培养评估|亲自复核/.test(`${task.id}${task.title}${task.detail}`));
+  const arcSuggestions = sanitize(storyArcSuggestions(game));
+  const grounded = sanitize(groundedNarrativeSuggestions(game));
+  const ordered = tactical || opening ? [...grounded, ...arcSuggestions, ...sanitize(fallback), ...sanitize(suggestions)] : [...arcSuggestions, ...sanitize(suggestions), ...sanitize(fallback), ...grounded];
   const result: string[] = [];
   for (const item of ordered) {
     if (result.some((existing) => isNearDuplicate(existing, item))) continue;
@@ -554,6 +563,9 @@ export function refreshStoryArchive(game: StoredGame): StoryArchiveView {
   current.localConsequences = game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === game.view.locationId).map((item) => ({ id: item.id, kind: item.kind, summary: item.summary, magnitude: item.magnitude, remainingDays: Math.max(0, item.expiresOrdinal - currentOrdinal) })).slice(-12).reverse();
   current.continuity = [
     ...(game.view.storyArc ? [{ label: "本卷", detail: `${game.view.storyArc.stage} · ${game.view.storyArc.centralGoal} · 压力${game.view.storyArc.pressure}`, status: game.view.storyArc.pressure >= 70 ? "留意" as const : game.view.storyArc.stageIndex >= 4 ? "变化" as const : "稳定" as const }] : []),
+    ...(game.view.storyArc?.stageGates[game.view.storyArc.stageIndex + 1] ? [{ label: "阶段门槛", detail: game.view.storyArc.stageGates[game.view.storyArc.stageIndex + 1].requirement, status: "留意" as const }] : []),
+    ...(game.view.storyArc?.payoffLedger.some((item) => item.status !== "已兑现") ? [{ label: "兑现债务", detail: game.view.storyArc.payoffLedger.filter((item) => item.status !== "已兑现").slice(0, 2).map((item) => item.label).join("；"), status: "留意" as const }] : []),
+    ...(game.view.storyArc?.npcScenes.some((item) => item.status === "等待回应") ? [{ label: "主动来人", detail: game.view.storyArc.npcScenes.find((item) => item.status === "等待回应")!.action, status: "变化" as const }] : []),
     { label: "年代", detail: time ? `${worldDate(game)}，角色${game.view.character?.age ?? 6}岁` : "尚未正式进入时间线", status: "稳定" },
     { label: "原作", detail: causal ? `已有${causal}条主角因果记录，相关节点可能变化` : "主角尚未触及关键因果，原作照常推进", status: causal ? "变化" : "稳定" },
     { label: "线索", detail: current.openThreads.length ? `${current.openThreads.length}件事仍未解决` : "眼前没有未决线索", status: current.openThreads.length >= 8 ? "留意" : "稳定" },

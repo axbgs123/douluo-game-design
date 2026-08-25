@@ -3740,7 +3740,6 @@ export function applyActionResult(
   const thirdPerson = character ? toThirdPersonNarrative(narrative, character.name, character.gender) : narrative;
   game.view.narrative.push(entry("player", input), entry("narration", thirdPerson));
   for (const message of result.systemMessages ?? []) game.view.narrative.push(entry("system", message));
-  game.view.suggestions = sanitizeNarrativeSuggestions(game, suggestions, result.suggestions);
   game.actionIndex += 1;
   game.world.actionLedger.push({ index: game.actionIndex, requestId, action: input.slice(0, 180), intent: result.intent, result: result.ruleSummary.slice(0, 220), year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1 });
   game.world.actionLedger = game.world.actionLedger.slice(-400);
@@ -3773,6 +3772,7 @@ export function applyActionResult(
     if (npcIds.length || factionIds.length) recordCanonInfluence(game, { source: "玩家实际行动", description: input.slice(0, 100), affectedNpcIds: npcIds, affectedFactionIds: factionIds, strength: /杀|救下|摧毁|夺取/.test(input) ? 10 : /加入|拜师|保护|阻止/.test(input) ? 5 : 2 });
   }
   updateStoryArc(game, input, result);
+  game.view.suggestions = sanitizeNarrativeSuggestions(game, suggestions, result.suggestions);
   recordStoryConsequence(game, input, result);
   queueSocialRumor(game, input, result.intent, result.ruleSummary);
   game.view.updatedAt = new Date().toISOString();
