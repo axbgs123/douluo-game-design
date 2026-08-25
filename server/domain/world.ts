@@ -13,6 +13,7 @@ import { CANON_RELATIONSHIPS } from "../data/canon-relationships.js";
 import { ensureStoryArc } from "./story-director.js";
 import { compileNpcPlan, ensureNpcPlans, executeNpcPlanStep } from "./npc-planner.js";
 import { decayLocalConsequences, resolveExpiredDynamicEvent } from "./event-consequences.js";
+import { dynamicEventTemplatesForEra } from "../data/era-dynamic-events.js";
 
 const DAYS_PER_YEAR = 360;
 
@@ -120,17 +121,6 @@ function eraAtYear(year: number): string {
   if (offset === 0) return `${anchor}基准年`;
   return offset < 0 ? `比${anchor}基准年早约 ${Math.abs(offset)} 年` : `比${anchor}基准年晚约 ${offset} 年`;
 }
-
-const DYNAMIC_EVENT_TEMPLATES = [
-  { title: "失踪的采药队", kind: "地方" as const, detail: "一支采药队过了约定日期仍没回来，家属正在凑钱找人。", stakes: 2 },
-  { title: "魂兽越界", kind: "地方" as const, detail: "外围魂兽闯入耕地，痕迹和当地人熟悉的种类对不上。", stakes: 3 },
-  { title: "学院名额争议", kind: "势力" as const, detail: "工读生名额被临时改动，两个家庭各自拿着盖过章的证明。", stakes: 2 },
-  { title: "商路扣押", kind: "势力" as const, detail: "一批药材被关卡扣住，商队和守军都说自己手续齐全。", stakes: 3 },
-  { title: "受伤的陌生魂师", kind: "人物" as const, detail: "有人在城外发现一名重伤魂师，他不肯说自己从哪里来。", stakes: 3 },
-  { title: "宗门招募", kind: "势力" as const, detail: "附近宗门派人登记年轻魂师，给出的条件很好，契约却写得含糊。", stakes: 2 },
-  { title: "旧矿洞异响", kind: "地方" as const, detail: "停用多年的矿洞夜里传出敲击声，守夜人已经辞了两个。", stakes: 4 },
-  { title: "来历不明的挑战者", kind: "人物" as const, detail: "一名年轻魂师连胜数场，只问本地最强的同龄人在哪里。", stakes: 2 },
-];
 
 function ordinal(year: number, day: number): number { return year * DAYS_PER_YEAR + day; }
 
@@ -804,7 +794,7 @@ function createDynamicEvent(game: StoredGame, cycle: number, random: () => numbe
   const active = game.world.dynamicEvents.filter((item) => item.status === "可介入");
   const pressure = Number(game.world.flags.destinyPressure ?? 1);
   if (active.length >= 4 || random() > Math.max(0.34, 0.62 - pressure * 0.06)) return undefined;
-  const template = pick(random, DYNAMIC_EVENT_TEMPLATES);
+  const template = pick(random, dynamicEventTemplatesForEra(game.view.era ?? 1, game.view.worldTime?.year ?? 0));
   if (game.world.dynamicEvents.some((event) => event.title === template.title && event.createdYear * DAYS_PER_YEAR + event.createdDay > cycle * 30 - DAYS_PER_YEAR)) return undefined;
   const npcs = Object.values(game.world.npcs).filter((npc) => npc.alive && ((characterById(npc.id)?.importance ?? 3) <= 3 || npcHasPlayerInfluence(game, npc.id)));
   const participant = npcs.length && random() < 0.45 ? pick(random, npcs) : undefined;

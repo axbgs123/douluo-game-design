@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { DYNAMIC_EVENT_OUTCOMES } from "../data/dynamic-event-outcomes.js";
+import { DYNAMIC_EVENT_TEMPLATES, dynamicEventTemplatesForEra } from "../data/era-dynamic-events.js";
 import { resolveAction } from "./actions.js";
 import { decayLocalConsequences, resolveExpiredDynamicEvent } from "./event-consequences.js";
 import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
@@ -18,6 +20,32 @@ function playingGame(seed: string) {
 }
 
 describe("地方事件专属后果", () => {
+  it("only exposes institution events that exist in the selected era", () => {
+    const era1 = dynamicEventTemplatesForEra(1, 0).map((item) => item.title);
+    const era2BeforeSoulSpirits = dynamicEventTemplatesForEra(2, 10004).map((item) => item.title);
+    const era2AfterSoulSpirits = dynamicEventTemplatesForEra(2, 10005).map((item) => item.title);
+    const era3 = dynamicEventTemplatesForEra(3, 20000).map((item) => item.title);
+    const era4 = dynamicEventTemplatesForEra(4, 30000).map((item) => item.title);
+
+    expect(era1).not.toContain("魂导工坊核心阵法事故");
+    expect(era2BeforeSoulSpirits).toContain("魂导工坊核心阵法事故");
+    expect(era2BeforeSoulSpirits).not.toContain("魂灵适配实验失控");
+    expect(era2AfterSoulSpirits).toContain("魂灵适配实验失控");
+    expect(era3).toEqual(expect.arrayContaining(["升灵台紧急退出异常", "斗铠材料批次污染", "机甲驾驶证代考线索", "传灵塔魂灵合同投诉"]));
+    expect(era3).not.toContain("星舰补给批次延误");
+    expect(era4).toEqual(expect.arrayContaining(["星舰补给批次延误", "模拟舱精神过载", "真实航时登记争议", "生态样本隔离破损"]));
+  });
+
+  it("gives every era-filtered event a persistent typed outcome", () => {
+    for (const template of DYNAMIC_EVENT_TEMPLATES) {
+      const profile = DYNAMIC_EVENT_OUTCOMES[template.title];
+      expect(profile, template.title).toBeDefined();
+      expect(profile.consequences.length, template.title).toBeGreaterThan(0);
+      expect(profile.consequences.every((item) => item.durationDays > 0), template.title).toBe(true);
+      expect(profile.followUp?.title, template.title).toBeTruthy();
+    }
+  });
+
   it("turns an ignored herb-team disappearance into casualties, shortage, follow-up, and higher prices", () => {
     const game = playingGame("event-consequence-herbs");
     const locationId = game.view.locationId!;

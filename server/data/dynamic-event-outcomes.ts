@@ -78,4 +78,101 @@ export const DYNAMIC_EVENT_OUTCOMES: Record<string, DynamicEventOutcomeProfile> 
     ],
     followUp: { title: "本地同龄人的公开选拔战", detail: "斗魂场准备组织一次同龄魂师选拔，胜者将获得追踪挑战者并挽回名声的资格。", stakesDelta: 1, expiresDays: 45 },
   },
+  "魂导工坊核心阵法事故": {
+    outcome: "工坊在第二次阵法烧毁后停产，损坏核心和原始图纸被分别封存；已经收过定金的订单全部延期。",
+    consequences: [
+      { kind: "制度", summary: "当地魂导工坊开始执行核心阵法双人复核，生产速度暂时下降。", magnitude: 3, durationDays: 120 },
+      { kind: "供需", summary: "事故批次的魂导材料被扣留检测，合格核心供不应求。", magnitude: 4, durationDays: 90, marketEffects: [{ category: "魂导材料", supplyDelta: -18, demandDelta: 12 }] },
+    ],
+    followUp: { title: "工坊事故责任与图纸复核", detail: "封存的两份核心阵图有一处细微差异，绘图师和材料商都要求由没有利益关系的魂导师复核。", stakesDelta: 1, expiresDays: 45 },
+  },
+  "魂灵适配实验失控": {
+    outcome: "实验对象出现持续精神排斥，研究被立即叫停；实验记录与参与者名单进入封存审查，相关人员不得私自接触对象。",
+    consequences: [
+      { kind: "伤亡", summary: "实验对象需要长期精神观察，短期内无法继续修炼或参与实验。", magnitude: 5, durationDays: 180 },
+      { kind: "制度", summary: "早期魂灵适配研究增加独立见证与退出阈值审查。", magnitude: 4, durationDays: 240, riskDelta: 12 },
+    ],
+    followUp: { title: "封存实验记录的独立复核", detail: "精神排斥发生前，记录里曾出现一次被人为划掉的警戒读数；只有具备相应权限的人才能参与复核。", stakesDelta: 2, expiresDays: 60 },
+  },
+  "极北补给车队延误": {
+    outcome: "车队仍未抵达，搜寻者只在旧冰道旁找到一辆翻覆货车；部分御寒物资损毁，护送者去向不明。",
+    consequences: [
+      { kind: "供需", summary: "极北外围的御寒物资、药材和粮食补给同时收紧。", magnitude: 4, durationDays: 100, marketEffects: [{ category: "日用品", supplyDelta: -20, demandDelta: 14 }, { category: "药材", supplyDelta: -12, demandDelta: 10 }, { category: "粮食", supplyDelta: -10, demandDelta: 8 }] },
+      { kind: "生态", summary: "旧冰道路况与魂兽活动范围发生变化，后续车队风险提高。", magnitude: 4, durationDays: 120, riskDelta: 16 },
+    ],
+    followUp: { title: "冻裂货单指向的失踪护送队", detail: "半张货单记着一处临时改道坐标，那里不在驿站登记的安全路线内。", stakesDelta: 2, expiresDays: 40 },
+  },
+  "内院核心弟子名额争议": {
+    outcome: "学院冻结了争议名额，两名学员都无法领取核心培养资源；院系之间开始追查缺失的复核签字。",
+    consequences: [
+      { kind: "制度", summary: "内院核心培养名额改为跨院系复核，短期内审批趋严。", magnitude: 3, durationDays: 180 },
+      { kind: "关系", summary: "两名学员及其导师因资源被同时冻结而产生公开竞争。", magnitude: 3, durationDays: 120 },
+    ],
+    followUp: { title: "缺失签字背后的考核复盘", detail: "原始考核记录显示两名学员分别满足不同培养方向，争议必须通过公开复盘而非私下让步解决。", stakesDelta: 1, expiresDays: 45 },
+  },
+  "升灵台紧急退出异常": {
+    outcome: "异常场次全部暂停，受影响者被送去精神检查；传灵塔暂时关闭同批模拟区域，并封存退出前后的魂力波形。",
+    consequences: [
+      { kind: "伤亡", summary: "受影响体验者需要精神恢复，部分修炼计划被迫中断。", magnitude: 4, durationDays: 90 },
+      { kind: "制度", summary: "升灵台紧急退出阈值和保护记录进入强制复核。", magnitude: 4, durationDays: 150, riskDelta: 10 },
+    ],
+    followUp: { title: "异常脑波与保护阈值复核", detail: "几名体验者的异常都发生在同一片模拟区域，但系统日志显示的触发原因并不相同。", stakesDelta: 2, expiresDays: 45 },
+  },
+  "斗铠材料批次污染": {
+    outcome: "污染批次被统一召回，已经开始锻造的斗铠部件只能停工检测；供应商否认杂质来自自己的生产线。",
+    consequences: [
+      { kind: "供需", summary: "合格斗铠材料短缺，返工需求同时上升。", magnitude: 4, durationDays: 120, marketEffects: [{ category: "魂导材料", supplyDelta: -20, demandDelta: 15 }, { category: "金属", supplyDelta: -12, demandDelta: 10 }] },
+      { kind: "制度", summary: "学院与锻造协会提高材料溯源和入库抽检比例。", magnitude: 3, durationDays: 180 },
+    ],
+    followUp: { title: "污染批次的供应链追溯", detail: "同一炉号在学院、商会和供应商账本里对应三个交付日期，必须从原始封样追查污染环节。", stakesDelta: 1, expiresDays: 60 },
+  },
+  "机甲驾驶证代考线索": {
+    outcome: "涉事驾驶证被暂时冻结，持证者必须重新参加实机考核；负责审核模拟记录的人也被调离岗位。",
+    consequences: [
+      { kind: "制度", summary: "机甲驾驶考核增加身份复核和实机操作抽查。", magnitude: 4, durationDays: 180 },
+      { kind: "治安", summary: "代考中介开始转移记录，相关交易转入更隐蔽的渠道。", magnitude: 3, durationDays: 90, riskDelta: 8 },
+    ],
+    followUp: { title: "冻结驾驶证的实机复考", detail: "复考能区分真正具备驾驶能力的人，也可能逼出负责安排代考的中间人。", stakesDelta: 1, expiresDays: 30 },
+  },
+  "传灵塔魂灵合同投诉": {
+    outcome: "争议魂灵服务暂停，家庭获得独立精神评估；传灵塔保留合同效力，但不得在复核结束前催收后续费用。",
+    consequences: [
+      { kind: "制度", summary: "同类魂灵合同必须单独说明精神负荷与适配失败处置。", magnitude: 3, durationDays: 180 },
+      { kind: "关系", summary: "当地家庭对传灵塔告知流程产生不信任，签约意愿下降。", magnitude: 3, durationDays: 120 },
+    ],
+    followUp: { title: "魂灵风险告知的公开听证", detail: "签字只能证明文件曾被交付，不能证明风险被充分解释；双方将围绕当时的沟通记录举证。", stakesDelta: 1, expiresDays: 45 },
+  },
+  "星舰补给批次延误": {
+    outcome: "训练舰推迟离港，生命维持耗材被分批重新检测；港口、承运商和舰务部门各自冻结了经手记录。",
+    consequences: [
+      { kind: "供需", summary: "港区生命维持耗材与通用魂导部件被优先征调。", magnitude: 4, durationDays: 100, marketEffects: [{ category: "魂导材料", supplyDelta: -18, demandDelta: 15 }, { category: "日用品", supplyDelta: -14, demandDelta: 10 }] },
+      { kind: "制度", summary: "星舰补给交接改为港口、承运与舰务三方核验。", magnitude: 4, durationDays: 180 },
+    ],
+    followUp: { title: "补给交接记录的三方审计", detail: "同一批耗材在三个系统里的封签编号不同，调查必须确定是录入失误、掉包还是未经批准的临时调拨。", stakesDelta: 2, expiresDays: 45 },
+  },
+  "模拟舱精神过载": {
+    outcome: "高强度课程被暂停，过载学员接受精神恢复治疗；训练负责人被要求交出自行调整过的模拟阈值。",
+    consequences: [
+      { kind: "伤亡", summary: "过载学员需要休养，严重者暂时不能进行精神力训练。", magnitude: 4, durationDays: 100 },
+      { kind: "制度", summary: "模拟舱训练强度改为按精神力评估分级授权。", magnitude: 4, durationDays: 180, riskDelta: 8 },
+    ],
+    followUp: { title: "模拟舱训练阈值责任复核", detail: "设备记录显示阈值曾被手动提高，但调整理由与当班教官的口供不一致。", stakesDelta: 1, expiresDays: 45 },
+  },
+  "真实航时登记争议": {
+    outcome: "争议航时从两人档案中同时冻结，相关晋升和选拔随之延期；训练舰黑匣子被调回复核。",
+    consequences: [
+      { kind: "制度", summary: "真实航时必须与随舰名册、操纵日志和黑匣子记录三方一致。", magnitude: 3, durationDays: 180 },
+      { kind: "关系", summary: "两名学员及其带队教官因晋升受阻产生责任争执。", magnitude: 3, durationDays: 120 },
+    ],
+    followUp: { title: "训练舰黑匣子航时复核", detail: "黑匣子能确认谁实际操纵，却也记录了一段未经计划批准的航线偏移。", stakesDelta: 1, expiresDays: 40 },
+  },
+  "生态样本隔离破损": {
+    outcome: "样本区进入封锁隔离，接触人员全部留观；尚未发现扩散迹象，但原定研究和港区通行都被暂停。",
+    consequences: [
+      { kind: "生态", summary: "外星生态样本存在未知活性，隔离区周边风险持续上升。", magnitude: 5, durationDays: 150, riskDelta: 20 },
+      { kind: "制度", summary: "跨星球生态样本改为双层封签并增加到港活性复测。", magnitude: 4, durationDays: 240 },
+      { kind: "供需", summary: "隔离封锁影响港区通行，部分日用品与研究耗材短缺。", magnitude: 3, durationDays: 80, marketEffects: [{ category: "日用品", supplyDelta: -12, demandDelta: 8 }, { category: "魂导材料", supplyDelta: -10, demandDelta: 8 }] },
+    ],
+    followUp: { title: "隔离区内的样本活性追踪", detail: "监测记录显示破损前后出现一次短暂活性峰值，封锁解除前必须找到峰值来源并确认样本数量。", stakesDelta: 2, expiresDays: 50 },
+  },
 };
