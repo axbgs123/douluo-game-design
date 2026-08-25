@@ -3529,6 +3529,56 @@ function waitResolution(game: StoredGame, action: string): ActionResolution {
   };
 }
 
+function openingFollowupResolution(game: StoredGame, action: string): ActionResolution | undefined {
+  const step = game.view.chapterObjective?.steps.find((item) => item.status === "进行中");
+  if (!step) return undefined;
+  const officiant = String(game.world.flags.openingOfficiant ?? "觉醒主持者");
+  const institution = String(game.world.flags.openingInstitutionName ?? "当前机构");
+  const focus = String(game.world.flags.openingSoulTestFocus ?? "能力边界、消耗与收放");
+  const soul = game.view.character!.martialSoul.name;
+  const next = game.view.chapterObjective?.steps.find((item) => item.status === "未开始")?.text ?? "按已经确认的条件选择近期路线";
+  const openingTestRelevant = action.includes(soul) || action.includes(officiant) || /觉醒|武魂|魂力|水晶球|收放|承载|体征|兽化|显形/.test(action);
+  if (step.id === "understand" && openingTestRelevant && /测试|复测|确认|说明|询问|了解|请.*(?:测试|复核|说明)/.test(action)) return {
+    intent: "觉醒后能力复核", minutes: 60,
+    ruleSummary: `${officiant}完成${soul}的${focus}测试；只确认当前六岁身体和现有魂力能够稳定做到的部分，结果写入${institution}当前档案。`,
+    fallbackNarrative: `这次没有再靠猜。${officiant}让他连续做了三次收放，又分别记录身体反应、魂力消耗和失控征兆。做不到的部分照样留在纸上，没有被一句“天赋很好”抹过去。`,
+    suggestions: [next, "问清第一次长期训练的每日要求", "核对测试记录会被哪些人看到"], systemMessages: [`觉醒复核 · ${soul} · ${focus}`],
+  };
+  if (step.id === "identity" && /住处|见证|身份|登记|担保|临时凭据/.test(action)) {
+    if (!game.view.inventory.includes("地方临时身份凭据")) game.view.inventory.push("地方临时身份凭据");
+    game.view.character!.reputation = "有现场见证、身份仍待长期核验的异界孩子";
+    return { intent: "建立临时大陆身份", minutes: 120, ruleSummary: `${officiant}登记现场见证、临时住处与短期身份凭据；这只解决眼前食宿和行动证明，不自动补出亲属、户籍历史或势力归属。`, fallbackNarrative: `名字、发现地点、见证人和今晚住处一项项写完，纸上仍有大片空白。主持者没有替他编父母，只在有效期限下面盖了章。至少今天进城时，他不再只有一句自己是谁。`, suggestions: [next, "问清临时凭据的期限与活动范围", "保留异界来历，只登记可核实事实"], systemMessages: ["身份 · 地方临时凭据 · 待长期核验"] };
+  }
+  const openingSupportRelevant = action.includes(institution) || /开局培养|导师|训练场|猎魂|路费|食宿|监护|魂灵费用|第一魂环安排/.test(action);
+  if (step.id === "support" && openingSupportRelevant && /导师|训练场|资源|猎魂|路费|食宿|监护|魂灵|费用|安排|核对|条件/.test(action)) return {
+    intent: "核对开局培养条件", minutes: 90,
+    ruleSummary: `${institution}列明当前可申请的导师面谈、训练场时段、资源额度、费用与第一成长资源；这些是可谈条件，不等于已经无条件发放。`,
+    fallbackNarrative: `对方把能给的、要考的和暂时不能给的分成三栏。训练场排到哪一天，药浴谁签字，第一次猎魂谁负责带队，都写得比“宗门会培养你”具体得多。`,
+    suggestions: [next, "挑一项最急需的资源询问交换条件", "让监护人与复核人核对责任签字"], systemMessages: [`培养条件 · ${institution} · 已列明未发放`],
+  };
+  if (step.id === "boundary" && /离开|保护|领地|人类|兽群|边界/.test(action)) return {
+    intent: "确认兽群与人类边界", minutes: 90,
+    ruleSummary: "养育者说明离开领地后失效的威压保护、食物来源、路线和兽群援助，也列出接触人类后必须重新学习的身份、钱币、礼节与安全规则。",
+    fallbackNarrative: `岩叔没有说“外面危险”便算完。他带着孩子走到气息覆盖的最外沿，一步以内，林中的兽群仍会回应；再往前，钱、门锁、路引和人话里的规矩都得靠孩子自己学。`,
+    suggestions: [next, "准备一次不越过安全线的人类外围接触", "先学钱币、称呼和公共觉醒记录"], systemMessages: ["去向边界 · 兽群保护范围已确认"],
+  };
+  if (step.id === "path" && /决定|选择|公开|隐藏|主修|路线|登记|留在|接触/.test(action)) {
+    const character = game.view.character!;
+    const chosenIndex = character.martialSouls.findIndex((soul) => action.includes(soul.name));
+    if (chosenIndex >= 0) character.activeMartialSoulIndex = chosenIndex;
+    if (/公开全部|全部公开|展现全部/.test(action)) character.publiclyKnownMartialSoulIndices = character.martialSouls.map((_soul, index) => index);
+    else if (/隐藏|不公开|保密|只公开第一/.test(action)) character.publiclyKnownMartialSoulIndices = [0];
+    character.martialSoul = character.martialSouls[character.activeMartialSoulIndex];
+    character.soulRings = character.soulRingSets[character.activeMartialSoulIndex] ?? [];
+    character.martialSouls = character.martialSouls.map((soul, index) => ({ ...soul, cultivationState: index === character.activeMartialSoulIndex ? "主修" : "未修炼" }));
+    character.publiclyKnownMartialSoulIndices ??= [0];
+    const publicIndices = character.publiclyKnownMartialSoulIndices;
+    const publicNames = character.martialSouls.filter((_soul, index) => publicIndices.includes(index)).map((soul) => soul.name);
+    return { intent: "确定开局成长路线", minutes: 30, ruleSummary: `当前主修确定为${character.martialSoul.name}；现场公开范围为${publicNames.join("、")}。身份、资源和机构责任仍按已经谈明的条件执行。`, fallbackNarrative: `这一次不是让长辈替他选。主修哪一个武魂，哪些细节写进公开记录，哪些责任暂时接下，都由他当面说清。记录员照着原话修改，没有把沉默补成同意。`, suggestions: ["按新路线开始第一次训练", "把公开范围告诉监护人与主持者", "检查第一魂环或第一成长资源的准备条件"], systemMessages: [`成长路线 · 主修${character.martialSoul.name} · 公开${publicNames.join("、")}`] };
+  }
+  return undefined;
+}
+
 function generalResolution(game: StoredGame): ActionResolution {
   game.world.fatiguePoints += 4;
   return {
@@ -3640,6 +3690,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
 
   let resolution: ActionResolution;
   const guarded = guardActionByStoryRules(game, action);
+  let openingFollowup: ActionResolution | undefined;
   const huntingActive = game.view.hunting && game.view.hunting.stage !== "完成";
   const activeHeirloom = game.view.activeHeirloom;
   if (activeHeirloom?.actionCommand && action.includes(activeHeirloom.actionCommand)) resolution = heirloomActionResolution(game)!;
@@ -3680,6 +3731,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/购买|买|采购/.test(action)) resolution = buyResolution(game, action);
   else if (/打工|工作|赚钱|干活/.test(action)) resolution = workResolution(game, action);
   else if (game.view.worldInheritance && (/旧世|祖先|档案|家谱|谱牒|旧产业|历史权益|旁支|年表|历史节点|转交|衰减|再发现/.test(action) || game.view.worldInheritance.institutions.some((item) => action.includes(item.name)) || game.view.worldInheritance.branches?.some((item) => action.includes(item.name)) || game.view.worldInheritance.chronology?.some((item) => action.includes(item.title))) && /核验|查证|调查|追查|验证|提交|申请|主张|听证|审理|裁定|投资|复建|经营/.test(action)) resolution = inheritanceResolution(game, action);
+  else if ((openingFollowup = openingFollowupResolution(game, action))) resolution = openingFollowup;
   else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);
@@ -3763,7 +3815,7 @@ export function applyActionResult(
   const objective = game.view.chapterObjective;
   if (objective && !/无法完成|规则阻止/.test(result.intent)) {
     const current = objective.steps.find((step) => step.status === "进行中") ?? objective.steps.find((step) => step.status === "未开始");
-    const matches = current && ((current.id === "understand" && /问|询问|打听|请教|了解/.test(input)) || (current.id === "summon" && /召唤|武魂|尝试|测试/.test(input)) || (current.id === "path" && /入学|拜师|加入|宗门|修炼|计划/.test(input)) || (current.id === "recheck" && /检查|重测|调查|阵法|水晶/.test(input)) || (current.id === "alternate" && /锻炼|学习|研究|特殊|功法|体魄/.test(input)) || (current.id === "commit" && /决定|选择|加入|拜师|开始/.test(input)) || (current.id === "train-plan" && /修炼|冥想|训练/.test(input)) || (current.id === "support" && /拜师|同伴|请教|资料/.test(input)) || (current.id === "first-milestone" && /猎魂|魂环|魂兽/.test(input)));
+    const matches = current && ((current.id === "understand" && /问|询问|打听|请教|了解|请|测试|复测|确认|说明/.test(input)) || (current.id === "summon" && /召唤|武魂|尝试|测试/.test(input)) || (current.id === "path" && /入学|拜师|加入|宗门|修炼|计划|决定|选择|公开|主修|登记/.test(input)) || (current.id === "identity" && /住处|见证|身份|登记|担保|临时凭据/.test(input)) || (current.id === "support" && /导师|训练场|资源|猎魂|路费|食宿|监护|魂灵|费用|安排|核对/.test(input)) || (current.id === "boundary" && /离开|保护|领地|人类|兽群|边界/.test(input)) || (current.id === "recheck" && /检查|重测|调查|阵法|水晶/.test(input)) || (current.id === "alternate" && /锻炼|学习|研究|特殊|功法|体魄/.test(input)) || (current.id === "commit" && /决定|选择|加入|拜师|开始/.test(input)) || (current.id === "train-plan" && /修炼|冥想|训练/.test(input)) || (current.id === "first-milestone" && /猎魂|魂环|魂兽/.test(input)));
     if (matches && current) {
       current.status = "完成";
       const next = objective.steps.find((step) => step.status === "未开始");

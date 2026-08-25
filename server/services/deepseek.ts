@@ -57,8 +57,9 @@ export function buildCanonNarrativeProfile(game: StoredGame, playerInput: string
 
 export function auditCanonNarrativeVoice(text: string, profile: CanonNarrativeProfile): string[] {
   if (profile.sceneMode === "调查悬疑") return [];
-  const mysteryHits = ["神秘的旧物", "来历不明的线索", "背后隐藏着什么", "新的谜团", "必须调查清楚", "一切都没有那么简单"].filter((phrase) => text.includes(phrase));
-  return mysteryHits.length >= 2 ? ["非调查场景被写成了解密或谜团推进"] : [];
+  const forcedMystery = /恐怕不只是|这上面记的.{0,12}不只是|背后隐藏着什么|新的谜团|必须调查清楚|一切都没有那么简单|一定还藏着/.test(text);
+  const mysteryHits = ["神秘的旧物", "来历不明的线索", "故意留下的空白", "欲言又止", "必须追查"].filter((phrase) => text.includes(phrase));
+  return forcedMystery || mysteryHits.length >= 2 ? ["非调查场景被写成了解密或谜团推进"] : [];
 }
 
 export function observableCanonEventsForNarration(game: StoredGame) {

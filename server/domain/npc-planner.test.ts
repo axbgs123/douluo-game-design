@@ -25,7 +25,7 @@ describe("NPC欲望—责任—资源行动规划器", () => {
     delete original.world.npcs["yu-xiaogang"].activePlan;
     original.schemaVersion = 30;
     const game = ensureGameState(structuredClone(original));
-    expect(game.schemaVersion).toBe(37);
+    expect(game.schemaVersion).toBe(38);
     expect(game.world.npcs["yu-xiaogang"].activePlan).toBeDefined();
     const npc = game.world.npcs["yu-xiaogang"];
     game.world.canonCausalFootprints.push({ id: "player-impact", source: "玩家行动", description: "公开打乱了学院原定培养安排", atYear: 0, atDay: 1, locationId: npc.locationId, affectedNpcIds: [npc.id], affectedFactionIds: [], strength: 5 });

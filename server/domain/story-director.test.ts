@@ -87,7 +87,7 @@ describe("卷级故事导演", () => {
     delete (legacy as Partial<typeof legacy>).arcType;
     game.schemaVersion = 33;
     const migrated = ensureGameState(structuredClone(game));
-    expect(migrated.schemaVersion).toBe(37);
+    expect(migrated.schemaVersion).toBe(38);
     expect(migrated.view.storyArc?.stage).toBe("立局");
     expect(migrated.view.storyArc?.stageGates).toHaveLength(6);
     expect(migrated.view.storyArc?.payoffLedger.length).toBeGreaterThanOrEqual(3);

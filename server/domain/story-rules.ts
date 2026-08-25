@@ -274,15 +274,16 @@ function publicAndHiddenSoulNames(game: StoredGame): { publicNames: string[]; hi
 }
 
 function leaksUnavailableKnowledge(game: StoredGame, suggestion: string): boolean {
-  const { hiddenNames } = publicAndHiddenSoulNames(game);
+  const { publicNames, hiddenNames } = publicAndHiddenSoulNames(game);
   if (hiddenNames.some((name) => suggestion.includes(name)) && /告诉|询问|请教|展示|公开|上报|登记|交给|向/.test(suggestion)) return true;
   const knownNames = new Set([
     ...game.view.knownFigures.map((figure) => figure.name),
     ...game.view.relations.map((relation) => relation.name),
   ]);
-  const unknownCanonFigure = CANON_CHARACTERS.find((figure) =>
-    (suggestion.includes(figure.name) || figure.aliases.some((alias) => suggestion.includes(alias))) && !knownNames.has(figure.name),
-  );
+  const unknownCanonFigure = CANON_CHARACTERS.find((figure) => {
+    const identityTerms = [figure.name, ...figure.aliases].filter((term) => !publicNames.some((soulName) => soulName === term || soulName.includes(term) || term.includes(soulName)));
+    return identityTerms.some((term) => suggestion.includes(term)) && !knownNames.has(figure.name);
+  });
   return Boolean(unknownCanonFigure);
 }
 
@@ -307,9 +308,15 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
     const unbound = /凭空|异界|无户籍|没有亲人|无牵无挂|来历不明/.test(originText);
     const guardian = game.view.relations.find((relation) => relation.category === "亲属" || /父|母|祖|养父|养母|监护|叔|婶/.test(relation.relation));
     const era = game.view.era ?? 1;
-    const growth = character.innateSoulPower >= 10
-      ? "请主持者用备用水晶复测魂力"
-      : ({ 1: "请主持者说明第一魂环的适配方向", 2: "请主持者复测魂力与武魂特征", 3: "请传灵师确认魂力与魂师班资格", 4: "请主持者完成魂力测试并登记觉醒结果" } as const)[era];
+    const openingMode = String(game.world.flags.openingMode ?? "public");
+    const openingInstitution = String(game.world.flags.openingInstitutionName ?? faction ?? "当前机构");
+    const openingOfficiant = String(game.world.flags.openingOfficiant ?? "主持者");
+    const openingSoulTestFocus = String(game.world.flags.openingSoulTestFocus ?? "能力边界、消耗与收放");
+    const growth = openingMode === "internal" ? `请${openingOfficiant}测试${mainSoul}的${openingSoulTestFocus}`
+      : openingMode === "noble" ? `请家族教官测试${mainSoul}的${openingSoulTestFocus}`
+        : openingMode === "beast" ? `与岩叔确认${mainSoul}在人类规则中的含义`
+          : openingMode === "unbound" ? `请主持者测试${mainSoul}的${openingSoulTestFocus}`
+            : `请${openingOfficiant}测试${mainSoul}的${openingSoulTestFocus}`;
     const guardianPlan = guardian ? ({
       1: `和${guardian.name}商量学院名额、路费与猎魂帮助`,
       2: `和${guardian.name}商量学院报名、食宿与第一魂环`,
@@ -323,11 +330,14 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
     } as const)[era];
     const institution = unbound
       ? "请主持者先落实临时身份和今晚住处"
-      : faction
-        ? `听完${faction}的培养条件再表态`
-        : guardianPlan;
+      : openingMode === "beast" ? "和岩叔谈清离开兽群会失去的保护"
+        : openingMode === "internal" ? `问清${openingInstitution}的导师、训练场与猎魂责任`
+          : openingMode === "noble" ? "和家人核对教师、资源、同辈排序与猎魂安排"
+          : guardianPlan;
     const secret = hiddenNames.length
-      ? "暂不显露第二武魂，回住处后单独测试"
+      ? openingMode === "unbound" ? "暂不显露第二武魂，等有安全住处再测试"
+        : openingMode === "beast" ? "暂不显露第二武魂，先和岩叔单独确认"
+          : "暂不显露第二武魂，回住处后单独测试"
       : character.innateSoulPower >= 7 || ["传奇", "神话"].includes(character.martialSoul.grade ?? "平凡")
         ? "请求主持者暂缓外传武魂细节"
         : era === 4 ? "暂缓外传异常细节，先完成魂力测试" : `回住处练习${mainSoul}的收放与魂力消耗`;

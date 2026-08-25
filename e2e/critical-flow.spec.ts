@@ -53,6 +53,21 @@ async function seedCurrentLifeStageGame() {
   database.saveGame(game, "e2e.current-life-stage-fixture");
 }
 
+async function seedOpeningMatrixGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database, metaSouls] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js"), import("../server/data/meta-martial-souls.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 1, gender: "男", difficulty: "标准", seed: "e2e-opening-matrix" });
+  game.hiddenCandidates = generator.generateCandidates(game.view.seed, 0, "男", undefined, 0, 1, [], "hidden-sect-heir");
+  game.view.candidates = game.hiddenCandidates.map((candidate) => candidate.public);
+  generator.selectCandidate(game, game.view.candidates[0].id, "开局矩阵验收", metaSouls.metaSoulById("rainbow-dao-body"));
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, "在十八岁前完善先天道体与宗门剑道的协同修炼");
+  database.saveGame(game, "e2e.opening-matrix-fixture");
+}
+
 async function seedInheritanceRightsGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -505,6 +520,20 @@ test("已知人物只显示当前人生阶段姓名与公开归属", async ({ pa
   await expect(page.locator(".figure-list")).not.toContainText("古月娜");
   await expect(page.locator(".figure-list")).not.toContainText("银龙斗罗");
   await expect(page.locator(".figure-list")).not.toContainText("传灵塔");
+});
+
+test("宗门本体武魂开局使用专属显形、目标与资源路线", async ({ page }) => {
+  await seedOpeningMatrixGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "开局矩阵验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await expect(page.locator(".chapter-objective")).toContainText("太玄剑宗内部觉醒");
+  await expect(page.locator(".chapter-objective")).toContainText("导师、训练场、资源额度与猎魂护送");
+  await expect(page.locator(".narrative-stream")).toContainText("两手空空");
+  await expect(page.locator(".narrative-stream")).toContainText("身体本身的变化");
+  await expect(page.locator(".narrative-stream")).not.toContainText("先天道体托在掌心");
+  await expect(page.locator(".chapter-objective")).not.toContainText("加入宗门");
 });
 
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {

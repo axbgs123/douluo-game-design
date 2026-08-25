@@ -49,9 +49,21 @@ function activePressure(game: StoredGame, mainTask?: TaskView): string {
 function createPayoffLedger(game: StoredGame): StoryArcPayoffView[] {
   const era = game.view.era ?? 1;
   const profile = ERA_OPENING[era];
+  const mode = String(game.world.flags.openingMode ?? "public");
+  const institution = String(game.world.flags.openingInstitutionName ?? game.view.affiliations[0]?.name ?? "当前机构");
+  const route = mode === "internal" ? `确认武魂方向与${institution}内部培养方案`
+    : mode === "noble" ? "确认武魂方向、家族教师与同辈竞争位置"
+      : mode === "unbound" ? "在无户籍状态下取得合法训练与生存条件"
+        : mode === "beast" ? "确认留在兽群或接触人类修炼体系的边界"
+          : profile.route;
+  const living = mode === "internal" ? `落实${institution}内部的导师、训练场、资源额度和责任`
+    : mode === "noble" ? "落实家族教师、资源、监护和个人选择边界"
+      : mode === "unbound" ? "落实今晚住处、现场见证与临时身份凭据"
+        : mode === "beast" ? "落实离开兽群领地后的身份、语言、钱币与安全准备"
+          : profile.living;
   const ledger: StoryArcPayoffView[] = [
-    { id: "growth-route", label: profile.route, status: "待兑现", evidence: [] },
-    { id: "living-condition", label: profile.living, status: "待兑现", evidence: [] },
+    { id: "growth-route", label: route, status: "待兑现", evidence: [] },
+    { id: "living-condition", label: living, status: "待兑现", evidence: [] },
     { id: "first-milestone", label: profile.milestone, status: "待兑现", evidence: [] },
   ];
   if (Number(game.world.flags.talentResourcePriority ?? 0) >= 60 || (game.view.character?.innateSoulPower ?? 0) >= 9) {
@@ -157,7 +169,15 @@ function npcCandidates(game: StoredGame): Array<{ id?: string; name: string; rol
 
 function npcActionFor(game: StoredGame, candidate: { name: string; role: string }, stage: StoryArcStage): string {
   const era = game.view.era ?? 1;
-  if (/父|母|监护|祖/.test(candidate.role)) return ({ 1: `和${candidate.name}核对学院名额、路费与猎魂风险`, 2: `和${candidate.name}核对学院食宿、费用与第一魂环安排`, 3: `和${candidate.name}确认魂师班选择与后续魂灵费用`, 4: `和${candidate.name}核对魂力测试、记录用途与入学安排` } as const)[era];
+  const mode = String(game.world.flags.openingMode ?? "public");
+  const institution = String(game.world.flags.openingInstitutionName ?? game.view.affiliations[0]?.name ?? "当前机构");
+  if (/父|母|监护|祖/.test(candidate.role)) {
+    if (mode === "internal") return `和${candidate.name}核对${institution}内部导师、资源与第一魂环责任`;
+    if (mode === "noble") return `和${candidate.name}核对家族教师、同辈竞争与第一魂环安排`;
+    if (mode === "unbound") return `请${candidate.name}明确临时监护、住处与身份见证能维持多久`;
+    if (mode === "beast") return `和${candidate.name}确认离开领地后会失去哪些保护`;
+    return ({ 1: `和${candidate.name}核对学院名额、路费与猎魂风险`, 2: `和${candidate.name}核对学院食宿、费用与第一魂环安排`, 3: `和${candidate.name}确认魂师班选择与后续魂灵费用`, 4: `和${candidate.name}核对魂力测试、记录用途与入学安排` } as const)[era];
+  }
   if (stage === "阻力显形" || stage === "局势扩大") return `请${candidate.name}明确当前异议、权限与能够调动的资源`;
   return `回应${candidate.name}提出的复核与培养条件`;
 }
@@ -273,7 +293,14 @@ export function storyArcSuggestions(game: StoredGame): string[] {
   const profile = ERA_OPENING[era];
   const pendingNpc = arc.npcScenes.find((scene) => scene.status === "等待回应");
   const nextGate = arc.stageGates[arc.stageIndex + 1];
-  const growth = (game.view.character?.innateSoulPower ?? 0) >= 10 && arc.stageIndex <= 1 ? "请主持者用备用水晶复测魂力" : nextGate?.stage === "阶段兑现" ? ({ 1: "向负责人落实导师、训练与猎魂帮助", 2: "向学院落实食宿、培养与魂环帮助", 3: "落实魂师班安排与后续魂灵条件", 4: "落实魂力测试结果与学院基础课程" } as const)[era] : profile.growthAction;
+  const mode = String(game.world.flags.openingMode ?? "public");
+  const institution = String(game.world.flags.openingInstitutionName ?? game.view.affiliations[0]?.name ?? "当前机构");
+  const officiant = String(game.world.flags.openingOfficiant ?? "主持者");
+  const focus = String(game.world.flags.openingSoulTestFocus ?? "能力边界、消耗与收放");
+  const mainSoul = game.view.character?.martialSoul.name ?? "武魂";
+  const openingGrowth = mode === "internal" ? `请${officiant}测试${mainSoul}的${focus}` : mode === "noble" ? `请家族教官测试${mainSoul}的${focus}` : mode === "beast" ? `与养育者确认${mainSoul}的人兽差异` : `请${officiant}测试${mainSoul}的${focus}`;
+  const payoffAction = mode === "internal" ? `向${institution}落实导师、训练场与猎魂责任` : mode === "noble" ? "向家族落实教师、资源与第一魂环安排" : mode === "unbound" ? "落实住处、临时身份与基础训练条件" : mode === "beast" ? "落实离开兽群后的身份与安全准备" : ({ 1: "向负责人落实导师、训练与猎魂帮助", 2: "向学院落实食宿、培养与魂环帮助", 3: "落实魂师班安排与后续魂灵条件", 4: "落实魂力测试结果与学院基础课程" } as const)[era];
+  const growth = nextGate?.stage === "阶段兑现" ? payoffAction : openingGrowth;
   const relation = pendingNpc?.action ?? (game.view.relations[0] ? `向${game.view.relations[0].name}追问能提供的帮助与条件` : "向当前机构追问负责人、条件与答复期限");
   const risk = (game.view.character?.martialSouls.length ?? 0) > (game.view.character?.publiclyKnownMartialSoulIndices?.length ?? 1) ? "暂不公开隐藏武魂，先核对知情范围" : profile.riskAction;
   return [growth, relation, risk].map((item) => item.length > 28 ? item.slice(0, 28) : item);

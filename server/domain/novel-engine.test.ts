@@ -96,6 +96,7 @@ describe("增强小说引擎", () => {
     expect(profiles[3].eraTexture).toContain("岗位命令");
     const routine = buildCanonNarrativeProfile(awakened("routine-not-mystery"), "回家吃饭", lifeResolution);
     expect(auditCanonNarrativeVoice("桌上多了一件神秘的旧物，这又是一个新的谜团，一切都没有那么简单。", routine)).toContain("非调查场景被写成了解密或谜团推进");
+    expect(auditCanonNarrativeVoice("他盯着旧纸，心想这上面记的恐怕不只是魂环。", routine)).toContain("非调查场景被写成了解密或谜团推进");
     const investigation = buildCanonNarrativeProfile(awakened("actual-mystery"), "调查失踪证据", ordinaryResolution);
     expect(auditCanonNarrativeVoice("这是一件神秘的旧物，也是一个新的谜团。", investigation)).toEqual([]);
   });

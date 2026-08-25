@@ -1423,7 +1423,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 37;
+  legacy.schemaVersion = 38;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1622,6 +1622,65 @@ export function ensureGameState(game: StoredGame): StoredGame {
     openThreads: game.view.tasks.filter((task) => task.status !== "完成").map((task) => task.title).slice(0, 8),
     keyChoices: [], npcNotes: {}, chapterNumber: 1, chapterTitle: "未完的故事", lastUpdatedAction: game.actionIndex,
   };
+  if (previousSchemaVersion < 38 && game.view.character) {
+    const character = game.view.character;
+    const originText = `${character.originName}${character.originSummary}${character.originBurden}`;
+    const legacyMode = /凭空|无户籍|异界来客/.test(originText) ? "unbound"
+      : /凶兽养大|兽群养大|星斗兽群/.test(originText) ? "beast"
+        : /皇室|王府|公爵|贵族|质子/.test(originText) ? "noble"
+          : game.view.affiliations.length || /少宗主|内门亲传|核心嫡系|封山支脉|外门家庭|基层职员子女|军属子女|长老之子/.test(originText) ? "internal" : "public";
+    const institution = game.view.affiliations[0]?.name ?? game.view.relations.find((relation) => /觉醒|宗门|所属势力/.test(`${relation.relation}${relation.impression}`))?.faction ?? "地方武魂殿";
+    const officiant = game.view.relations.find((relation) => /觉醒主持|觉醒教习|守碑长老|觉醒执事/.test(`${relation.name}${relation.relation}`))?.name ?? (legacyMode === "internal" ? `${institution}觉醒主持者` : "地方武魂殿巡查执事");
+    const category = character.martialSoul.category;
+    const testFocus = /本体/.test(category) ? "体征、魂力流向、收放与承载" : /兽/.test(category) ? "兽化部位、本能控制、力量与收放" : /植物/.test(category) ? "生长形态、环境反应、消耗与收放" : /食物/.test(category) ? "制造速度、魂力消耗、保存与食用安全" : /元素/.test(category) ? "影响范围、稳定性、消耗与收放" : "形态、重量、结构、魂力反应与收放";
+    game.world.flags.openingMode ??= legacyMode;
+    game.world.flags.openingInstitutionName ??= institution;
+    game.world.flags.openingOfficiant ??= officiant;
+    game.world.flags.openingSoulTestFocus ??= testFocus;
+    const oldGenericObjective = game.view.chapterObjective?.title === "让觉醒结果真正变成第一步";
+    for (const bodySoul of character.martialSouls.filter((soul) => /本体/.test(soul.category))) {
+      const escapedSoul = bodySoul.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      for (const entry of game.view.narrative) entry.text = entry.text.replace(new RegExp(`[^。！？\\n]{0,16}摊开手。${escapedSoul}托在掌心，本体武魂特有的气息沿着指缝散开。[^。！？\\n]{0,100}记录员把形态一笔笔画下来。`, "g"), `${character.name}体内先是一热，随后身体本身传来清晰的魂力回响。${officiant}没有检查掌心中的外物，而是核对体征、动作和魂力流向，再让记录员写下变化位置。`);
+    }
+    if (legacyMode === "internal") {
+      for (const entry of game.view.narrative) {
+        entry.text = entry.text.replaceAll("学院名额、第一魂环和培养责任，今天便要有人给出答复。", `${institution}内部的导师、训练场、资源额度、保密范围与第一魂环护送责任，需要逐项确认。`);
+        entry.text = entry.text.replace(new RegExp(`[^。！？\\n]{0,48}心里翻过一个念头：这上面记的，恐怕不只是魂环。`, "g"), `${character.name}先记下与第一魂环有关的缺页，准备直接问清可用部分、风险和复核人。`);
+        entry.text = entry.text.replaceAll("这上面记的，恐怕不只是魂环。", `他先记下与第一魂环有关的缺页，准备直接问清可用部分、风险和复核人。`);
+        entry.text = entry.text.replaceAll("执事划掉重写", "记录员划掉重写");
+      }
+      if (oldGenericObjective) game.view.chapterObjective = {
+        title: `把${institution}内部觉醒变成具体培养方案`, stakes: character.originBurden, destinationId: game.view.locationId,
+        steps: [
+          { id: "understand", text: `请${officiant}完成${character.martialSoul.name}的${testFocus}测试`, status: "进行中" },
+          { id: "support", text: `核对${institution}能提供的导师、训练场、资源额度与猎魂护送`, status: "未开始" },
+          { id: "path", text: "决定主修顺序、公开范围和愿意承担的内部责任", status: "未开始" },
+        ],
+      };
+      game.storyMemory.openThreads = game.storyMemory.openThreads.map((thread) => thread === "家人与出身中尚未说清的细节" ? `谈清${institution}内部培养条件与责任` : thread);
+      if (game.view.storyArc?.arcNumber === 1) {
+        game.view.storyArc.centralGoal = game.view.chapterObjective?.title ?? game.view.storyArc.centralGoal;
+        game.view.storyArc.irreversibleTurn = `决定愿意承担哪些${institution}内部培养责任，以及武魂公开到什么范围`;
+      }
+    } else if (oldGenericObjective) {
+      const objectiveByMode = legacyMode === "unbound" ? {
+        title: "先在大陆活过觉醒后的第一天",
+        steps: [{ id: "identity", text: "取得今晚住处、现场见证和一份临时身份凭据", status: "进行中" as const }, { id: "understand", text: `请主持者测试${character.martialSoul.name}的${testFocus}`, status: "未开始" as const }, { id: "path", text: "决定登记来历、保留异界秘密或继续无籍生活", status: "未开始" as const }],
+      } : legacyMode === "beast" ? {
+        title: "决定觉醒后是否接触人类魂师体系",
+        steps: [{ id: "understand", text: `与养育者确认${character.martialSoul.name}在人类与魂兽视角下的含义`, status: "进行中" as const }, { id: "boundary", text: "确认离开兽群领地会失去哪些保护与资源", status: "未开始" as const }, { id: "path", text: "决定留在森林、短期接触人类或正式建立人类身份", status: "未开始" as const }],
+      } : legacyMode === "noble" ? {
+        title: "让家族身份与觉醒结果形成明确安排",
+        steps: [{ id: "understand", text: `请家族教官测试${character.martialSoul.name}的${testFocus}`, status: "进行中" as const }, { id: "support", text: "核对家族教师、资源、同辈竞争与第一魂环安排", status: "未开始" as const }, { id: "path", text: "决定接受、谈判或拒绝哪一项家族培养条件", status: "未开始" as const }],
+      } : {
+        title: "把觉醒结果换成下一步真实条件",
+        steps: [{ id: "understand", text: `请主持者测试${character.martialSoul.name}的${testFocus}`, status: "进行中" as const }, { id: "support", text: "落实当前时代的入学、监护、费用与第一成长资源", status: "未开始" as const }, { id: "path", text: "在家庭、资源与年龄限制内确定近期成长路线", status: "未开始" as const }],
+      };
+      game.view.chapterObjective = { title: objectiveByMode.title, stakes: character.originBurden, destinationId: game.view.locationId, steps: objectiveByMode.steps };
+      const thread = legacyMode === "unbound" ? "取得住处、见证与临时身份" : legacyMode === "beast" ? "决定与人类魂师体系保持多远的距离" : legacyMode === "noble" ? "处理家族培养、同辈竞争与个人选择的冲突" : "落实家庭能够承担的入学、费用与第一成长资源";
+      game.storyMemory.openThreads = game.storyMemory.openThreads.map((item) => item === "家人与出身中尚未说清的细节" ? thread : item);
+    }
+  }
   if (previousSchemaVersion < 35) {
     const day = game.view.worldTime?.day ?? 1;
     const replacements: Array<[string, string]> = [];
