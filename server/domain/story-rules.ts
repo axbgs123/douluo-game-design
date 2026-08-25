@@ -298,6 +298,16 @@ function isNearDuplicate(left: string, right: string): boolean {
 export function groundedNarrativeSuggestions(game: StoredGame): string[] {
   const character = game.view.character;
   if (!character) return [];
+  const activeHunt = game.view.hunting && game.view.hunting.stage !== "完成" ? game.view.hunting : undefined;
+  if (activeHunt?.stage === "需求" && !activeHunt.support) {
+    const routes = [game.view.relations.some((item) => item.category === "亲属") ? "选择家庭筹备第一魂环" : undefined, game.view.affiliations.some((item) => /学院/.test(item.name)) ? "申请学院承担首环带队责任" : undefined, game.view.mentorPursuit?.stage === "已拜师" ? "请求导师指导第一魂环" : undefined, game.view.affiliations.some((item) => !/学院/.test(item.name)) ? "申请宗门承担首环护送责任" : undefined].filter((item): item is string => Boolean(item));
+    return (routes.length >= 3 ? routes.slice(0, 3) : [...routes, "寻找能实名担责的成年魂师", "核对家庭能承担的首环预算"]).slice(0, 3);
+  }
+  if (activeHunt?.stage === "需求" && activeHunt.support) return ["开始调查适合当前武魂的魂兽", `请${activeHunt.support.responsibleParty}核对预算`, "比较其他猎魂责任路线"];
+  if (activeHunt) {
+    const target = activeHunt.targetName ?? "目标魂兽";
+    return [`核对${target}留下的踪迹`, "检查退路、补给与吸收准备", `向${activeHunt.support?.responsibleParty ?? "同行者"}确认撤退暗号`];
+  }
   const academy = game.view.academyApplication;
   if (academy && !["已入学", "未通过", "已撤回"].includes(academy.stage)) {
     if (academy.stage === "材料准备") {

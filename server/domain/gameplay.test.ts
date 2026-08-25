@@ -405,6 +405,8 @@ describe("完整游玩规则", () => {
     expect(switched.intent).toBe("切换武魂");
     expect(character.martialSoul.name).toBe("副生测试锤");
     expect(character.soulRings).toHaveLength(0);
+    expect(resolveAction(game, "开始调查适合当前武魂的魂兽").intent).toBe("比较猎魂责任路线");
+    expect(resolveAction(game, "选择家庭筹备第一魂环").intent).toBe("确认猎魂责任路线");
     expect(resolveAction(game, "开始调查适合当前武魂的魂兽").intent).toBe("猎魂调查");
 
     game.view.hunting = undefined;
@@ -503,6 +505,8 @@ describe("完整游玩规则", () => {
     game.view.locationId = "notting-city";
     game.view.location = "诺丁城";
     game.view.character!.soulRank = 10;
+    expect(resolveAction(game, "开始调查魂兽").intent).toBe("比较猎魂责任路线");
+    expect(resolveAction(game, "选择家庭筹备第一魂环").intent).toBe("确认猎魂责任路线");
     resolveAction(game, "开始调查魂兽");
     expect(game.view.hunting?.stage).toBe("调查");
     expect(game.view.hunting?.recommendations).toHaveLength(3);
@@ -534,9 +538,65 @@ describe("完整游玩规则", () => {
       expect(game.view.hunting.stage).toBe("准备");
     }
     expect(resolveAction(game, "请陆锋办理猎魂手令").intent).toBe("猎魂准备");
-    expect(game.view.hunting.preparation.filter((item) => item.startsWith("同行者："))).toHaveLength(4);
+    expect(game.view.hunting.preparation.filter((item) => /^(?:成年)?同行者：/.test(item))).toHaveLength(4);
+    expect(game.view.hunting.preparation.filter((item) => item.startsWith("成年同行者：")).length).toBeGreaterThanOrEqual(1);
     expect(resolveAction(game, "出发猎魂").intent).toBe("猎魂出发确认");
     expect(game.view.hunting.stage).toBe("旅行");
+  });
+
+  it("第一魂环先选择家庭、学院、宗门、导师或独行责任路线，并分别结算预算与成年责任", () => {
+    const academyGame = awakened("hunt-support-academy");
+    academyGame.view.character!.soulRank = 10;
+    academyGame.view.character!.coins = 2;
+    academyGame.view.affiliations.push({ id: "support-academy", name: "诺丁初级魂师学院", role: "普通学员", reputation: "在册", joinedAt: "测试" });
+    expect(resolveAction(academyGame, "开始调查魂兽").intent).toBe("比较猎魂责任路线");
+    expect(academyGame.view.hunting?.support).toBeUndefined();
+    expect(resolveAction(academyGame, "申请学院承担首环带队责任").intent).toBe("确认猎魂责任路线");
+    expect(academyGame.view.hunting?.support).toMatchObject({ route: "学院带队", sponsorBudget: 6, sponsorSpent: 0 });
+    resolveAction(academyGame, "开始调查魂兽");
+    const target = academyGame.view.hunting!.recommendations[0].name;
+    resolveAction(academyGame, `选择${target}作为魂环目标`);
+    expect(resolveAction(academyGame, "购买药物和猎魂绳作为补给").intent).toBe("猎魂准备");
+    expect(academyGame.view.character!.coins).toBe(0);
+    expect(academyGame.view.hunting?.support?.sponsorSpent).toBe(6);
+    const responsible = academyGame.view.hunting!.support!.responsibleParty;
+    expect(resolveAction(academyGame, `邀请${responsible}作为成年同行者`).intent).toBe("猎魂准备");
+    expect(academyGame.view.hunting?.preparation.some((item) => item.startsWith(`成年同行者：${responsible}`))).toBe(true);
+
+    const sectGame = awakened("hunt-support-sect");
+    sectGame.view.character!.soulRank = 10;
+    sectGame.view.affiliations.push({ id: "support-sect", name: "青岳宗", role: "弟子", reputation: "在册", joinedAt: "测试" });
+    resolveAction(sectGame, "开始调查魂兽");
+    expect(resolveAction(sectGame, "申请宗门承担首环护送责任").intent).toBe("确认猎魂责任路线");
+    expect(sectGame.view.hunting?.support).toMatchObject({ route: "宗门护送", sponsorBudget: 12 });
+
+    const mentorGame = awakened("hunt-support-mentor");
+    mentorGame.view.character!.soulRank = 10;
+    resolveAction(mentorGame, "寻找适合当前武魂的导师");
+    const mentorName = mentorGame.view.mentorPursuit!.mentorName;
+    resolveAction(mentorGame, `请${mentorName}评估公开武魂与现有基础`);
+    resolveAction(mentorGame, `完成${mentorName}第一次试学训练`);
+    resolveAction(mentorGame, `完成${mentorName}第二次试学训练`);
+    resolveAction(mentorGame, `与${mentorName}谈清责任后正式拜师`);
+    resolveAction(mentorGame, `请${mentorName}评估第一魂环路线`);
+    resolveAction(mentorGame, "开始调查魂兽");
+    expect(resolveAction(mentorGame, "请求导师指导第一魂环").intent).toBe("确认猎魂责任路线");
+    expect(mentorGame.view.hunting?.support).toMatchObject({ route: "导师指导", responsibleParty: mentorName, sponsorBudget: 4 });
+
+    const independent = awakened("hunt-support-independent");
+    independent.view.character!.soulRank = 10;
+    expect(resolveAction(independent, "开始调查魂兽").intent).toBe("比较猎魂责任路线");
+    expect(resolveAction(independent, "选择独行筹备第一魂环").intent).toBe("无法完成");
+    independent.view.character!.age = 12;
+    expect(resolveAction(independent, "选择独行筹备第一魂环").intent).toBe("确认猎魂责任路线");
+    expect(independent.view.hunting?.support?.route).toBe("独行筹备");
+
+    const childTeam = awakened("hunt-support-child-team");
+    childTeam.view.hunting = { stage: "准备", ringIndex: 1, targetBeastId: "datura-snake", targetName: "曼陀罗蛇", targetYears: 120, locationId: "star-dou-edge", recommendations: [], preparation: ["猎魂绳", "外敷伤药"], trailProgress: "待准备", support: { route: "家庭筹备", responsibleParty: "顾伯", fundingSource: "家庭", authorization: "仍需成年魂师", sponsorBudget: 0, sponsorSpent: 0, obligations: ["成年魂师同行"], evidence: [], status: "已确认" } };
+    childTeam.view.relations.push({ id: "child-peer", name: "小石", relation: "同班同学", impression: "六岁同龄魂师", age: 6, strength: 70, category: "同伴" });
+    resolveAction(childTeam, "邀请小石作为同行者组队猎魂");
+    expect(resolveAction(childTeam, "出发猎魂").intent).toBe("无法完成");
+    expect(resolveAction(childTeam, "出发猎魂").ruleSummary).toContain("同龄队友");
   });
 
   it("未到魂环瓶颈时不能提前猎取魂环", () => {
@@ -610,7 +670,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(42);
+    expect(migrated.schemaVersion).toBe(43);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -706,7 +766,7 @@ describe("完整游玩规则", () => {
     legacyAcademy.view.academyLife = undefined;
     legacyAcademy.world.flags.academyCourseProgress = 3;
     const migratedAcademy = ensureGameState(legacyAcademy);
-    expect(migratedAcademy.schemaVersion).toBe(42);
+    expect(migratedAcademy.schemaVersion).toBe(43);
     expect(migratedAcademy.view.academyLife).toMatchObject({ stage: "同辈磨合", courseProgress: 3, peerInteractions: 0 });
     expect(migratedAcademy.view.academyLife?.peers).toHaveLength(3);
     expect(migratedAcademy.view.tasks.find((task) => task.id === "academy-foundation")?.status).toBe("进行中");
@@ -750,7 +810,7 @@ describe("完整游玩规则", () => {
     delete oldApplication.obligations;
     delete oldApplication.availableFundingOptions;
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(42);
+    expect(migrated.schemaVersion).toBe(43);
     expect(migrated.view.academyApplication).toMatchObject({ fundingType: "家庭自费", fundingSource: "本人及家庭支付" });
   });
 
@@ -992,7 +1052,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.summary = "主角在东海学院见到了古月娜。";
     game.view.relations.push({ id: "gu-yue-na", name: "古月娜", relation: "同学", impression: "旧存档提前使用了后期姓名", strength: 10, category: "师友" });
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(42);
+    expect(migrated.schemaVersion).toBe(43);
     expect(migrated.world.npcs["gu-yue-na"].name).toBe("古月");
     expect(migrated.view.relations.find((item) => item.id === "gu-yue-na")?.name).toBe("古月");
     expect(migrated.storyMemory.summary).not.toContain("古月娜");
@@ -1018,7 +1078,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.openThreads = ["家人与出身中尚未说清的细节"];
     delete game.world.flags.openingMode; delete game.world.flags.openingInstitutionName; delete game.world.flags.openingOfficiant; delete game.world.flags.openingSoulTestFocus;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(42);
+    expect(migrated.schemaVersion).toBe(43);
     expect(migrated.view.narrative.at(-1)?.text).not.toMatch(/先天道体托在掌心|学院名额|恐怕不只是魂环/);
     expect(migrated.view.chapterObjective?.title).toContain("太玄剑宗内部觉醒");
     expect(JSON.stringify(migrated.view.chapterObjective)).not.toMatch(/加入宗门|学院名额/);
@@ -1127,7 +1187,7 @@ describe("第一部世界资料", () => {
     legacy.view.locationId = "mother-ship-port";
     legacy.view.location = "联邦母舰港";
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(42);
+    expect(migrated.schemaVersion).toBe(43);
     expect(migrated.view.location).toBe("联邦舰队集结基地");
   });
 

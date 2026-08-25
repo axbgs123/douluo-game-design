@@ -1423,7 +1423,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 42;
+  legacy.schemaVersion = 43;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1847,6 +1847,17 @@ export function ensureGameState(game: StoredGame): StoredGame {
     pursuit.reciprocalDuty ??= "如实记录失败，按时履行课程，不借师名索取超出权限的资源";
     pursuit.trialFocus ??= `${pursuit.specialty}中的一项可重复基础动作`;
     pursuit.lessonsCompleted ??= 0;
+  }
+  if (game.view.hunting) {
+    const hunting = game.view.hunting;
+    if (hunting.stage !== "需求" && !hunting.support) hunting.support = { route: "旧存档续接", responsibleParty: hunting.recommendations[0]?.source ?? "旧存档未完整记录的责任人", fundingSource: "旧存档已发生费用，不补造新补助", authorization: "沿用已发生的调查与准备，但后续受当前地点、凭证和未成年安全门禁约束", sponsorBudget: 0, sponsorSpent: 0, obligations: ["补齐成年魂师同行证据", "受管控区域补齐合法凭证"], evidence: ["Schema 43只续接旧猎魂进度，不反向虚构当时由学院、家族、宗门或导师承担"], status: "已确认" };
+    hunting.preparation = hunting.preparation.map((entry) => {
+      const name = entry.match(/^同行者：(.+?)（/)?.[1];
+      if (!name) return entry;
+      const relation = game.view.relations.find((item) => item.name === name);
+      const profile = `${relation?.relation ?? ""}${relation?.impression ?? ""}`;
+      return (relation?.age ?? 0) >= 18 || /导师|老师|教官|护卫|执事|父|母|叔|长老|向导|佣兵|带队责任人|护送责任人/.test(profile) ? `成年${entry}` : entry;
+    });
   }
   game.view.chapter ??= { number: game.storyMemory.chapterNumber, title: game.storyMemory.chapterTitle, summary: game.storyMemory.summary.slice(0, 160) };
   game.view.runProgress ??= {

@@ -622,6 +622,14 @@ test("学院入学与拜师必须经过材料、考核和试学，不会一句�
   await expect(page.locator(".growth-application-panel")).toContainText("正式课程1");
   await submitAction(page, `请${mentorName}评估第一魂环路线`);
   await expect(page.locator(".narrative-stream")).toContainText("魂环方向待调查");
+  await page.getByRole("button", { name: /^猎魂/ }).click();
+  await page.getByRole("button", { name: "调查魂兽", exact: true }).click();
+  await expect(page.locator(".hunt-panel")).toContainText("先确定谁承担首环责任");
+  await page.getByRole("button", { name: "导师指导", exact: true }).click();
+  await expect(page.locator(".hunt-support-card")).toContainText("导师指导");
+  await expect(page.locator(".hunt-support-card")).toContainText(mentorName);
+  await page.getByRole("button", { name: "开始调查", exact: true }).click();
+  await expect(page.locator(".recommendation-card")).toHaveCount(3);
 });
 
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {

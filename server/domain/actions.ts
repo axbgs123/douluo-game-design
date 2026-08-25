@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AcademyApplicationView, AcademyLifeView, AcademyPeerView, CompanionRole, ConditionLabel, HuntingStage, InstitutionAssignmentView, NarrativeEntry, SoulRingView, TaskView } from "../../shared/game.js";
+import type { AcademyApplicationView, AcademyLifeView, AcademyPeerView, CompanionRole, ConditionLabel, HuntSupportView, HuntingStage, InstitutionAssignmentView, NarrativeEntry, SoulRingView, TaskView } from "../../shared/game.js";
 import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, factionActiveAtYear, locationById, soulBeastById } from "../data/world.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
@@ -570,6 +570,49 @@ function travelResolution(game: StoredGame, action: string): ActionResolution {
   };
 }
 
+function huntSupportRouteFromAction(action: string): HuntSupportView["route"] | undefined {
+  if (/学院.*(?:带队|猎魂|负责)|请学院|学院路线/.test(action)) return "学院带队";
+  if (/宗门.*(?:护送|猎魂|负责)|请宗门|宗门路线/.test(action)) return "宗门护送";
+  if (/导师|师父/.test(action) && /指导|猎魂|负责|路线/.test(action)) return "导师指导";
+  if (/家庭|家人|监护人|家族/.test(action) && /筹备|猎魂|负责|路线/.test(action)) return "家庭筹备";
+  if (/独行|独自|自己筹备|不依靠/.test(action)) return "独行筹备";
+  return undefined;
+}
+
+function availableHuntSupportActions(game: StoredGame): string[] {
+  const actions: string[] = [];
+  if (game.view.relations.some((item) => item.category === "亲属" || /监护|父|母|祖|家族/.test(`${item.relation}${item.name}`))) actions.push("选择家庭筹备第一魂环");
+  if (game.view.affiliations.some((item) => /学院/.test(item.name))) actions.push("申请学院承担首环带队责任");
+  if (game.view.affiliations.some((item) => !/学院/.test(item.name))) actions.push("申请宗门承担首环护送责任");
+  if (game.view.mentorPursuit?.stage === "已拜师") actions.push("请求导师指导第一魂环");
+  if ((game.view.character?.age ?? 0) >= 12) actions.push("选择独行筹备第一魂环");
+  return actions.slice(0, 5);
+}
+
+function buildHuntSupport(game: StoredGame, route: HuntSupportView["route"]): HuntSupportView | string {
+  const guardian = game.view.relations.find((item) => item.category === "亲属" || /监护|父|母|祖|家族/.test(`${item.relation}${item.name}`));
+  const academy = game.view.affiliations.find((item) => /学院/.test(item.name));
+  const sect = game.view.affiliations.find((item) => !/学院/.test(item.name));
+  const mentor = game.view.mentorPursuit?.stage === "已拜师" ? game.view.mentorPursuit : undefined;
+  if (route === "家庭筹备" && !guardian) return "当前没有能够确认费用、路程与未成年安全责任的家庭或监护人";
+  if (route === "学院带队" && !academy) return "当前没有正式学院学籍，不能凭空要求学院承担猎魂带队责任";
+  if (route === "宗门护送" && !sect) return "当前没有已登记宗门或机构身份，不能虚构委培或护送名额";
+  if (route === "导师指导" && !mentor) return "当前没有已经成立的师徒关系，试学或普通请教不能替代猎魂责任";
+  if (route === "导师指导" && game.world.flags.mentorRingAssessment !== mentor?.mentorName) return `必须先请${mentor?.mentorName}完成武魂与魂环方向评估，再谈是否承担指导`;
+  if (route === "独行筹备" && (game.view.character?.age ?? 0) < 12) return `${game.view.character?.age ?? 0}岁的孩子不能选择没有成年责任人的独行猎魂路线`;
+  const responsibleParty = route === "家庭筹备" ? guardian!.name : route === "学院带队" ? game.view.academyLife?.homeroomTeacher ?? `${academy!.name}猎魂带队教师` : route === "宗门护送" ? `${sect!.name}外勤护送负责人` : route === "导师指导" ? mentor!.mentorName : game.view.character!.name;
+  const fundingSource = route === "家庭筹备" ? "玩家与家庭现有魂币" : route === "学院带队" ? `${academy!.name}首环补助与玩家自付差额` : route === "宗门护送" ? `${sect!.name}培养额度` : route === "导师指导" ? `${mentor!.mentorName}有限材料帮助与玩家自付差额` : "玩家个人魂币";
+  const sponsorBudget = route === "学院带队" ? 6 : route === "宗门护送" ? 12 : route === "导师指导" ? 4 : 0;
+  const authorization = route === "家庭筹备" ? "家庭只负责费用和监护，仍需另找有权限魂师与入林凭证" : route === "学院带队" ? `${academy!.name}只在正式带队教师签字后办理许可` : route === "宗门护送" ? `${sect!.name}按内部外勤名册和目的地规则办理许可` : route === "导师指导" ? `${mentor!.mentorName}只以个人实际权限签字，不能替其他机构盖章` : "独行者自行承担公开路线与许可，不能绕过管控区域";
+  const obligations = route === "家庭筹备" ? ["向监护人说明预算、路线与撤退条件", "另行邀请成年魂师同行"] : route === "学院带队" ? ["完成队前安全课与点名", "接受学院确定的集合时间和带队边界"] : route === "宗门护送" ? [`向${sect!.name}提交魂兽选择与损耗记录`, "护送不等于替玩家完成最后一击与吸收"] : route === "导师指导" ? [`遵守${mentor!.mentorName}的训练禁忌与撤退判断`, "导师建议不保证找到目标或吸收成功"] : ["自行承担全部费用、情报误差与撤退风险", "受管控区域仍需合法凭证"];
+  return { route, responsibleParty, fundingSource, authorization, sponsorBudget, sponsorSpent: 0, obligations, evidence: [`玩家明确选择${route}；${responsibleParty}只承担已写明范围`], status: "已确认" };
+}
+
+function ensureHuntSupportRelation(game: StoredGame, support: HuntSupportView): void {
+  if (!["学院带队", "宗门护送"].includes(support.route) || game.view.relations.some((relation) => relation.name === support.responsibleParty)) return;
+  game.view.relations.push({ id: `hunt-responsible-${game.actionIndex}`, name: support.responsibleParty, relation: support.route === "学院带队" ? "学院猎魂带队责任人" : "宗门猎魂护送责任人", impression: "只对本次已登记的集合、许可与撤退边界负责，不是无条件导师", strength: 30, category: "师友", dimensions: relationDimensions(30), history: [{ date: relationshipDate(game), reason: `接受${support.route}登记范围内的首环责任`, changes: "成为本次猎魂责任人" }] });
+}
+
 function generateRecommendations(game: StoredGame): void {
   const character = game.view.character;
   if (!character) return;
@@ -596,6 +639,7 @@ function generateRecommendations(game: StoredGame): void {
     .sort((left, right) => right.fit - left.fit || right.roll - left.roll)
     .slice(0, 3);
   const rules = DIFFICULTY_RULES[game.view.difficulty];
+  const support = game.view.hunting?.support;
   game.view.hunting = {
     stage: "调查",
     ringIndex,
@@ -608,11 +652,12 @@ function generateRecommendations(game: StoredGame): void {
         estimatedYears: uncertainty,
         risk: beast.danger >= 4 ? "高" : beast.danger === 3 ? "中" : "低",
         fit: fit === 2 ? "属性较合适" : "需要进一步判断",
-        source: game.view.relations.find((relation) => /导师|老师|教官|教习|执事|猎人|向导|魂师|学院|宗门|武魂殿/.test(`${relation.relation}${relation.impression}${relation.faction ?? ""}`))?.name ?? "地方魂师档案与猎魂向导交叉记录",
+        source: support ? `${support.responsibleParty}提交的${support.route}初筛，仍需实地核验` : game.view.relations.find((relation) => /导师|老师|教官|教习|执事|猎人|向导|魂师|学院|宗门|武魂殿/.test(`${relation.relation}${relation.impression}${relation.faction ?? ""}`))?.name ?? "地方魂师档案与猎魂向导交叉记录",
       };
     }),
     preparation: [],
     trailProgress: "尚未出发",
+    support,
   };
 }
 
@@ -692,11 +737,32 @@ function huntResolution(game: StoredGame, action: string): ActionResolution {
   const stage = hunting.stage;
 
   if (stage === "需求") {
+    const requestedRoute = huntSupportRouteFromAction(action);
+    if (!hunting.support) {
+      if (!requestedRoute) {
+        const options = availableHuntSupportActions(game);
+        return { intent: "比较猎魂责任路线", minutes: 30, ruleSummary: `第一魂环尚未确定由谁负责费用、情报、许可与未成年安全；当前可核对${options.length}条真实路线，没有自动选择学院、导师、家庭或独行。`, fallbackNarrative: `桌上先摆的不是魂兽名单，而是谁签字、谁出钱、出了事谁能叫停。家庭能管路费，却未必有魂师；学院和宗门有人手，却各有排期与责任；导师愿不愿带，也不能从“师徒”两个字里直接推出来。`, suggestions: options.length ? options.slice(0, 3) : ["寻找能承担首环责任的成年魂师", "核对家庭能够支付的预算", "暂缓猎魂并继续训练"], systemMessages: ["第一魂环 · 责任路线待选择"] };
+      }
+      const support = buildHuntSupport(game, requestedRoute);
+      if (typeof support === "string") return impossible(`${support}。`, availableHuntSupportActions(game).filter((item) => !item.includes(requestedRoute.slice(0, 2))).slice(0, 3));
+      hunting.support = support;
+      ensureHuntSupportRelation(game, support);
+      hunting.trailProgress = `${support.route}责任已确认，尚未调查魂兽`;
+      return { intent: "确认猎魂责任路线", minutes: 60, ruleSummary: `确定${support.route}：责任人${support.responsibleParty}；费用来源${support.fundingSource}；许可边界${support.authorization}；责任${support.obligations.join("；")}。尚未生成魂兽推荐。`, fallbackNarrative: `责任页上终于有了具体名字。能出多少钱、能不能带队、哪一步必须撤退，各自写在不同的栏里。签字并没有让魂环从纸上冒出来，只让接下来的调查知道该向谁问、哪些承诺真正存在。`, suggestions: ["开始调查适合当前武魂的魂兽", `请${support.responsibleParty}核对首环预算`, support.route === "导师指导" ? "核对导师能否亲自同行" : "核对成年魂师同行名单"], systemMessages: [`猎魂责任 · ${support.route} · ${support.responsibleParty}`] };
+    }
+    if (requestedRoute && requestedRoute !== hunting.support.route) {
+      const support = buildHuntSupport(game, requestedRoute);
+      if (typeof support === "string") return impossible(`${support}。`, availableHuntSupportActions(game).slice(0, 3));
+      const previous = hunting.support.route;
+      hunting.support = support;
+      ensureHuntSupportRelation(game, support);
+      return { intent: "变更猎魂责任路线", minutes: 45, ruleSummary: `在魂兽调查前将责任路线由${previous}改为${support.route}；旧路线未产生补助、手令或同行承诺。`, fallbackNarrative: `旧责任页被划线作废，新一页重新写上负责人与费用来源。没有人把尚未花出去的钱算成损失，也没有把原先口头提过的人继续留在队伍里。`, suggestions: ["开始调查适合当前武魂的魂兽", `请${support.responsibleParty}确认责任`, "保留新路线并核对许可"] };
+    }
     generateRecommendations(game);
     return {
       intent: "猎魂调查",
       minutes: speedMinutes(game, 180, 1440),
-      ruleSummary: `为第 ${hunting.ringIndex} 魂环调查候选目标，获得 ${game.view.hunting?.recommendations.length ?? 0} 条带来源的推荐。`,
+      ruleSummary: `按${game.view.hunting?.support?.route}和${game.view.hunting?.support?.responsibleParty}的责任边界，为第 ${hunting.ringIndex} 魂环调查候选目标，获得 ${game.view.hunting?.recommendations.length ?? 0} 条带来源的推荐。`,
       fallbackNarrative: "我跑了武魂分殿、药铺和两家旅店。说法不完全一样，有人想卖货，也有人只是照着旧经验讲。把重复的部分抄下来后，纸上剩了三个名字。",
       suggestions: game.view.hunting!.recommendations.map((item, index) => `选择第 ${index + 1} 个目标：${item.name}`),
     };
@@ -742,7 +808,7 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
   if (/出发|启程|开始前往|进入.*(?:森林|栖息地)/.test(action)) {
     if (hunting.preparation.length < 2) return impossible("至少完成两项可核验准备后才能出发猎魂。", ["购买猎魂补给", "寻找同行者", "研究目标习性"]);
-    if (character.age < 12 && !hunting.preparation.some((item) => item.startsWith("同行者："))) return impossible(`${character.age}岁的孩子不能只凭两件物资独自进入魂兽栖息地；必须有当前同地、明确同意并能承担责任的成年魂师同行。`, ["邀请可信成年魂师同行", "请学院或家族安排护送", "暂缓猎魂并继续准备"]);
+    if (character.age < 12 && !hunting.preparation.some((item) => item.startsWith("成年同行者："))) return impossible(`${character.age}岁的孩子不能把同龄队友算作成年责任人；必须有当前同地、明确同意并能承担责任的成年魂师同行。`, ["邀请可信成年魂师同行", "请学院或家族安排护送", "暂缓猎魂并继续准备"]);
     if ((hunting.locationId === "soul-hunting-forest" || /猎魂森林/.test(hunting.targetName ?? "")) && !hunting.preparation.some((item) => /入林凭证|猎魂手令/.test(item))) return impossible("猎魂森林属于受管控的圈养魂兽区，仅有补给和同行者仍不能入林，需要由有权限的机构或魂师办理入林凭证。", ["请同行导师办理猎魂手令", "向地方武魂殿申请入林凭证", "改查无需该凭证的合法路线"]);
     hunting.stage = "旅行";
     return {
@@ -755,27 +821,35 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
   }
   if (/买|购买|药|补给|绳|食物/.test(action)) {
     const cost = Math.ceil(8 * DIFFICULTY_RULES[game.view.difficulty].resourceCost);
-    if (character.coins < cost) return impossible(`基础伤药、绳索和干粮共需${formatSoulCoins(cost)}，当前钱不够；商铺不会把“准备猎魂”当成免单理由。`, ["向监护人说明用途并申请费用", "先工作或出售普通物品", "向所属学院申请有记录的猎魂补助"]);
-    character.coins -= cost;
+    const support = hunting.support;
+    const sponsorAvailable = Math.max(0, (support?.sponsorBudget ?? 0) - (support?.sponsorSpent ?? 0));
+    const sponsorPaid = Math.min(cost, sponsorAvailable);
+    const personalCost = cost - sponsorPaid;
+    if (character.coins < personalCost) return impossible(`基础伤药、绳索和干粮共需${formatSoulCoins(cost)}；${support ? `${support.route}可承担${formatSoulCoins(sponsorPaid)}` : "没有已确认补助"}，个人仍缺${formatSoulCoins(personalCost - character.coins)}。`, ["向责任人申请追加且有记录的预算", "先工作或出售普通物品", "更换能够承担费用的猎魂路线"]);
+    character.coins -= personalCost;
+    if (support) { support.sponsorSpent += sponsorPaid; support.evidence.push(`购买基础补给：责任方支付${formatSoulCoins(sponsorPaid)}，玩家支付${formatSoulCoins(personalCost)}`); }
     if (!game.view.inventory.includes("外敷伤药")) game.view.inventory.push("外敷伤药");
     if (!game.view.inventory.includes("猎魂绳")) game.view.inventory.push("猎魂绳");
-    additions.push("外敷伤药", "猎魂绳");
+    additions.push("外敷伤药", "猎魂绳", `补给账：责任方${formatSoulCoins(sponsorPaid)}／个人${formatSoulCoins(personalCost)}`);
   }
   if (/手令|入林凭证|入林许可/.test(action)) {
-    const responsible = game.view.relations.find((relation) => /师徒|导师|老师|执事|武魂殿|学院/.test(`${relation.relation}${relation.impression}${relation.faction ?? ""}`) && (relation.dimensions?.trust ?? relation.strength ?? 0) >= 25);
+    const supportResponsible = hunting.support && action.includes(hunting.support.responsibleParty) ? game.view.relations.find((relation) => relation.name === hunting.support!.responsibleParty) : undefined;
+    const responsible = supportResponsible ?? game.view.relations.find((relation) => /师徒|导师|老师|执事|武魂殿|学院/.test(`${relation.relation}${relation.impression}${relation.faction ?? ""}`) && (relation.dimensions?.trust ?? relation.strength ?? 0) >= 25);
     if (!responsible) return impossible("没有找到愿意实名担责且有机构关系的魂师，暂时不能凭空办出猎魂森林入林凭证。", ["先建立可信导师关系", "向学院申请猎魂安排", "寻找有登记的猎魂向导"]);
     additions.push(`入林凭证：${responsible.name}实名担责`);
+    hunting.support?.evidence.push(`${responsible.name}按实际权限办理入林凭证`);
   }
   if (/同伴|导师|帮手|组队|同行/.test(action)) {
     const eligible = game.view.relations.filter((relation) => {
       const trust = relation.dimensions?.trust ?? relation.strength ?? 0;
-      if (trust < 30 || relation.category === "敌对" || /敌|仇/.test(relation.relation)) return false;
+      const registeredResponsible = hunting.support?.status === "已确认" && relation.name === hunting.support.responsibleParty;
+      if ((!registeredResponsible && trust < 30) || relation.category === "敌对" || /敌|仇/.test(relation.relation)) return false;
       const npc = relation.id ? game.world.npcs[relation.id] : undefined;
       return !npc || (npc.alive && npc.locationId === game.view.locationId);
     });
     const companion = eligible.find((relation) => action.includes(relation.name)) ?? eligible[0];
     if (!companion) return impossible("没有找到信任足够、当前同地且愿意承担猎魂风险的同行者。", ["先建立可信关系", "与候选同伴会合", "独自准备并降低目标风险"]);
-    if (hunting.preparation.some((item) => item.startsWith(`同行者：${companion.name}（`))) return impossible(`${companion.name}已经在同行名单中，不能用重复邀请叠加战力。`, ["邀请另一名可信同伴", "明确小队战术", "检查猎魂补给"]);
+    if (hunting.preparation.some((item) => item.startsWith(`同行者：${companion.name}（`) || item.startsWith(`成年同行者：${companion.name}（`))) return impossible(`${companion.name}已经在同行名单中，不能用重复邀请叠加战力。`, ["邀请另一名可信同伴", "明确小队战术", "检查猎魂补给"]);
     const profile = `${companion.relation}${companion.impression}${companion.faction ?? ""}`;
     const inferredRole: CompanionRole = /治疗|医师|医术|治愈|辅助系/.test(profile) ? "治疗"
       : /控制系|束缚|冰封|阵法/.test(profile) ? "控制"
@@ -786,7 +860,8 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
     if (requestedRole && inferredRole !== requestedRole) return impossible(`${companion.name}现有关系档案不能证明具备“${requestedRole}”岗位能力。`, [`让${companion.name}按${inferredRole}岗位同行`, "寻找对应职业同伴", "先共同训练并记录能力"]);
     const role = requestedRole ?? inferredRole;
     const readiness = Math.min(90, Math.max(25, Math.round((companion.dimensions?.trust ?? companion.strength ?? 30) * .8)));
-    additions.push(`同行者：${companion.name}（${role}·协同${readiness}）`);
+    const adultResponsible = (companion.age ?? 0) >= 18 || /导师|老师|教官|护卫|执事|父|母|叔|长老|向导|佣兵|带队责任人|护送责任人/.test(profile);
+    additions.push(`${adultResponsible ? "成年同行者" : "同行者"}：${companion.name}（${role}·协同${readiness}）`);
   }
   if (/检查|适配|资料|研究/.test(action)) additions.push("目标习性笔记");
   if (!additions.length) additions.push("简易路线图");
@@ -825,7 +900,7 @@ function trackBeast(game: StoredGame): ActionResolution {
   const random = actionRandom(game);
   const perception = game.view.character?.abilityDescriptors.perception === "顶尖" ? 0.22 : game.view.character?.abilityDescriptors.perception === "优秀" ? 0.1 : 0;
   const fatiguePenalty = game.world.fatiguePoints > 70 ? 0.2 : 0;
-  const scoutBonus = hunting.preparation.some((item) => /^同行者：.+（侦察·协同\d+）$/.test(item)) ? .12 : 0;
+  const scoutBonus = hunting.preparation.some((item) => /^(?:成年)?同行者：.+（侦察·协同\d+）$/.test(item)) ? .12 : 0;
   const success = random() < 0.72 + perception + scoutBonus - fatiguePenalty;
   game.world.fatiguePoints += 10;
   if (success) {
@@ -843,9 +918,9 @@ function trackBeast(game: StoredGame): ActionResolution {
       escaped: false,
       insight: 0,
       guard: 0,
-      allies: hunting.preparation.filter((item) => item.startsWith("同行者：")).map((item) => {
-        const match = item.match(/^同行者：(.+?)（(?:(强攻|防护|控制|治疗|侦察|协同)·)?协同(\d+)）$/);
-        return { name: match?.[1] ?? item.replace("同行者：", ""), role: (match?.[2] ?? "协同") as CompanionRole, readiness: Number(match?.[3] ?? 30), condition: "完好" as const };
+      allies: hunting.preparation.filter((item) => /^(?:成年)?同行者：/.test(item)).map((item) => {
+        const match = item.match(/^(?:成年)?同行者：(.+?)（(?:(强攻|防护|控制|治疗|侦察|协同)·)?协同(\d+)）$/);
+        return { name: match?.[1] ?? item.replace(/^(?:成年)?同行者：/, ""), role: (match?.[2] ?? "协同") as CompanionRole, readiness: Number(match?.[3] ?? 30), condition: "完好" as const };
       }),
       controlResistance: Math.min(85, 18 + (beast?.danger ?? 2) * 10 + Math.round((hunting.targetYears ?? 100) / 2_000)),
       lastExchange: "刚刚锁定目标，双方都在判断距离。",
@@ -4034,7 +4109,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/星舰|舰桥|随舰|航次|真实飞行|船员|舰员|星际航行|探索舰|项目舰|星球探索|星球调查|指挥考核|指挥资格|参谋部|入舰培训|舰队培训|岗位评估|岗位分配|作战部培训|航线与指挥培训|损管与动力培训|作战与登陆培训|军纪与保密培训/.test(action)) resolution = starshipResolution(game, action);
   else if (/前往|去往|出发去|旅行到/.test(action) && /船票|客运|航班|民航|搭乘/.test(action)) resolution = travelResolution(game, action);
   else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
-  else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|目标|追踪|出发|准备|吸收|返回/.test(action))) resolution = huntResolution(game, action);
+  else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|首环|目标|追踪|出发|准备|吸收|返回|带队责任|护送责任|家庭筹备|独行筹备/.test(action))) resolution = huntResolution(game, action);
   else if (/建立|创建|招募|任命|扩建|领地|外交|情报网|经营势力|管理宗门/.test(action) && /宗门|势力|组织|成员|领地|外交|情报/.test(action)) resolution = factionManagementResolution(game, action);
   else if (/存入.*(?:魂币|钱)|存钱|取出.*(?:魂币|钱)|取钱|借贷|借钱|贷款|还债|偿还债务|黑市|开店|商铺|经营生意|悬赏|市场行情|调查物价|打听物价|询价|供需|运输合同|货运合同|运货委托/.test(action)) resolution = economyResolution(game, action);
   else if (/存放|收进仓库|放回住处|取回|从.*取出|拿回/.test(action)) resolution = storageResolution(game, action);

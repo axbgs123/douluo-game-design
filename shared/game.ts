@@ -682,6 +682,18 @@ export interface HuntRecommendationView {
   source: string;
 }
 
+export interface HuntSupportView {
+  route: "家庭筹备" | "学院带队" | "宗门护送" | "导师指导" | "独行筹备" | "旧存档续接";
+  responsibleParty: string;
+  fundingSource: string;
+  authorization: string;
+  sponsorBudget: number;
+  sponsorSpent: number;
+  obligations: string[];
+  evidence: string[];
+  status: "已确认";
+}
+
 export interface HuntingView {
   stage: HuntingStage;
   ringIndex: number;
@@ -694,6 +706,7 @@ export interface HuntingView {
   trailProgress: string;
   absorptionRisk?: string;
   result?: string;
+  support?: HuntSupportView;
 }
 
 export interface AcademyApplicationView {
