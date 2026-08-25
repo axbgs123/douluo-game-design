@@ -578,6 +578,11 @@ test("学院入学与拜师必须经过材料、考核和试学，不会一句�
   await submitAction(page, "申请诺丁初级魂师学院入学");
   await page.getByRole("button", { name: /^任务/ }).click();
   await expect(page.locator(".growth-application-panel")).toContainText("材料准备");
+  await expect(page.locator(".growth-application-panel")).toContainText("普通学员 · 家庭自费");
+  await expect(page.locator(".growth-application-panel")).not.toContainText("工读生 · 工读抵扣");
+  await page.getByRole("button", { name: "改走学院奖助", exact: true }).click();
+  await expect(page.locator(".growth-application-panel")).toContainText("普通学员 · 学院奖助");
+  await page.getByRole("button", { name: "改走家庭自费", exact: true }).click();
   await submitAction(page, "准备诺丁初级魂师学院报名材料和监护签字");
   await expect(page.locator(".growth-application-panel")).toContainText("入学考核");
   await submitAction(page, "参加诺丁初级魂师学院入学考核");

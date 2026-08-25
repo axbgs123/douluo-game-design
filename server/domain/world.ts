@@ -1423,7 +1423,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 40;
+  legacy.schemaVersion = 41;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1820,6 +1820,13 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.storyArchive ??= { summary: game.storyMemory.summary, openThreads: game.storyMemory.openThreads, keyChoices: game.storyMemory.keyChoices, recentConsequences: [], continuity: [], localConsequences: [] };
   game.view.storyArchive.localConsequences ??= [];
   game.view.affiliations ??= [];
+  if (game.view.academyApplication) {
+    const application = game.view.academyApplication as typeof game.view.academyApplication & Partial<Pick<import("../../shared/game.js").AcademyApplicationView, "fundingType" | "fundingSource" | "obligations" | "availableFundingOptions">>;
+    application.fundingType ??= application.route === "工读生" ? "工读抵扣" : game.view.era === 3 && application.fee === 0 ? "公共义务教育" : "家庭自费";
+    application.fundingSource ??= application.fundingType === "工读抵扣" ? "旧存档工读名额与在校劳动抵扣" : application.fundingType === "公共义务教育" ? "斗三适龄免费义务教育安排" : "本人及家庭支付";
+    application.obligations ??= application.fundingType === "工读抵扣" ? ["按排班完成适龄校内劳动", "劳动不能替代课程与考核"] : application.fundingType === "公共义务教育" ? ["完成适龄基础课程与纪律要求", "额外培养资源仍需另算"] : ["家庭承担学费、食宿与路费", "不附带工读、宗门或奖助义务"];
+    application.availableFundingOptions ??= ["家庭自费", ...(game.view.era === 1 ? ["工读抵扣" as const] : []), ...(game.view.era === 3 ? ["公共义务教育" as const] : [])];
+  }
   game.view.chapter ??= { number: game.storyMemory.chapterNumber, title: game.storyMemory.chapterTitle, summary: game.storyMemory.summary.slice(0, 160) };
   game.view.runProgress ??= {
     lifeGoal: game.view.lifeGoal,

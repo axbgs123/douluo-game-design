@@ -610,7 +610,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(40);
+    expect(migrated.schemaVersion).toBe(41);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -682,6 +682,7 @@ describe("完整游玩规则", () => {
     game.view.character!.soulRank = 10;
     game.view.character!.coins = 100;
     expect(resolveAction(game, "申请学院入学").intent).toBe("核对学院入学条件");
+    expect(game.view.academyApplication).toMatchObject({ route: "普通学员", fundingType: "家庭自费" });
     expect(game.view.affiliations.some((item) => /学院/.test(item.name))).toBe(false);
     expect(resolveAction(game, "准备学院报名材料和监护签字").intent).toBe("提交学院报名材料");
     expect(resolveAction(game, "参加学院入学考核").intent).toBe("通过学院入学考核");
@@ -689,6 +690,48 @@ describe("完整游玩规则", () => {
     expect(game.view.affiliations.some((item) => /学院/.test(item.name))).toBe(true);
     resolveAction(game, "参加课程"); resolveAction(game, "参加课程"); resolveAction(game, "参加课程");
     expect(game.view.tasks.find((task) => task.id === "academy-foundation")?.status).toBe("完成");
+  });
+
+  it("学院学籍与费用来源分开选择，不会把缺钱或贵族身份自动写成工读生", () => {
+    const prepare = (era: 1 | 2 | 3 | 4, seed: string) => {
+      const game = awakenedInEra(era, seed);
+      game.view.character!.innateSoulPower = 10;
+      game.view.character!.soulRank = 10;
+      game.view.character!.coins = 100;
+      if (!game.view.relations.some((item) => item.category === "亲属")) game.view.relations.push({ id: `${seed}-guardian`, name: "顾伯", relation: "监护人", impression: "负责入学签字", strength: 70, category: "亲属" });
+      return game;
+    };
+    const ordinary = prepare(1, "academy-funding-ordinary");
+    resolveAction(ordinary, "申请学院入学");
+    expect(ordinary.view.academyApplication).toMatchObject({ route: "普通学员", fundingType: "家庭自费" });
+    expect(resolveAction(ordinary, "改走工读抵扣路线").intent).toBe("变更学院费用路线");
+    expect(ordinary.view.academyApplication).toMatchObject({ route: "工读生", fundingType: "工读抵扣", fee: 0 });
+    expect(resolveAction(ordinary, "改走家族资助路线").intent).toBe("变更学院费用路线");
+    expect(ordinary.view.academyApplication).toMatchObject({ route: "普通学员", fundingType: "家族资助" });
+    expect(resolveAction(ordinary, "改走学院奖助路线").intent).toBe("变更学院费用路线");
+    expect(ordinary.view.academyApplication).toMatchObject({ route: "普通学员", fundingType: "学院奖助", fee: 0, passScore: 62 });
+
+    const commissioned = prepare(1, "academy-funding-sect");
+    commissioned.view.affiliations.push({ id: "test-sect", name: "青岳宗", role: "弟子", reputation: "已登记", joinedAt: "开局" });
+    resolveAction(commissioned, "申请学院入学");
+    expect(resolveAction(commissioned, "改走青岳宗宗门委培路线").intent).toBe("变更学院费用路线");
+    expect(commissioned.view.academyApplication).toMatchObject({ fundingType: "宗门委培", fundingSource: "青岳宗委托培养额度", fee: 0 });
+
+    const eraThree = prepare(3, "academy-funding-compulsory");
+    resolveAction(eraThree, "申请学院入学");
+    expect(eraThree.view.academyApplication).toMatchObject({ route: "义务教育生", fundingType: "公共义务教育", fee: 0 });
+    expect(eraThree.view.academyApplication?.obligations.join("；")).toContain("额外训练");
+
+    const legacy = structuredClone(ordinary);
+    legacy.schemaVersion = 40;
+    const oldApplication = legacy.view.academyApplication as Partial<NonNullable<typeof legacy.view.academyApplication>>;
+    delete oldApplication.fundingType;
+    delete oldApplication.fundingSource;
+    delete oldApplication.obligations;
+    delete oldApplication.availableFundingOptions;
+    const migrated = ensureGameState(legacy);
+    expect(migrated.schemaVersion).toBe(41);
+    expect(migrated.view.academyApplication).toMatchObject({ fundingType: "家庭自费", fundingSource: "本人及家庭支付" });
   });
 
   it("寻找导师必须经过评估和两次试学，不能一句话自动拜师", () => {
@@ -916,7 +959,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.summary = "主角在东海学院见到了古月娜。";
     game.view.relations.push({ id: "gu-yue-na", name: "古月娜", relation: "同学", impression: "旧存档提前使用了后期姓名", strength: 10, category: "师友" });
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(40);
+    expect(migrated.schemaVersion).toBe(41);
     expect(migrated.world.npcs["gu-yue-na"].name).toBe("古月");
     expect(migrated.view.relations.find((item) => item.id === "gu-yue-na")?.name).toBe("古月");
     expect(migrated.storyMemory.summary).not.toContain("古月娜");
@@ -942,7 +985,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.openThreads = ["家人与出身中尚未说清的细节"];
     delete game.world.flags.openingMode; delete game.world.flags.openingInstitutionName; delete game.world.flags.openingOfficiant; delete game.world.flags.openingSoulTestFocus;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(40);
+    expect(migrated.schemaVersion).toBe(41);
     expect(migrated.view.narrative.at(-1)?.text).not.toMatch(/先天道体托在掌心|学院名额|恐怕不只是魂环/);
     expect(migrated.view.chapterObjective?.title).toContain("太玄剑宗内部觉醒");
     expect(JSON.stringify(migrated.view.chapterObjective)).not.toMatch(/加入宗门|学院名额/);
@@ -1051,7 +1094,7 @@ describe("第一部世界资料", () => {
     legacy.view.locationId = "mother-ship-port";
     legacy.view.location = "联邦母舰港";
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(40);
+    expect(migrated.schemaVersion).toBe(41);
     expect(migrated.view.location).toBe("联邦舰队集结基地");
   });
 

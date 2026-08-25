@@ -1899,16 +1899,71 @@ function academyAtCurrentLocation(game: StoredGame, action: string): { id: strin
   return { id: `academy-${game.view.locationId}-${(named ?? local).replace(/\s/g, "")}`, name: named ?? local, local: !named || named === local || game.view.location?.includes(named) === true };
 }
 
-function academyApplicationProfile(game: StoredGame, academyName: string, action: string): Pick<AcademyApplicationView, "route" | "requirements" | "fee" | "passScore"> {
+function academyFundingFromAction(action: string): AcademyApplicationView["fundingType"] | undefined {
+  if (/工读/.test(action)) return "工读抵扣";
+  if (/家族资助|家族承担|家里出钱|家族出钱/.test(action)) return "家族资助";
+  if (/学院奖助|奖学|天赋资助|学院资助/.test(action)) return "学院奖助";
+  if (/宗门委培|宗门资助|宗门承担/.test(action)) return "宗门委培";
+  if (/义务教育|公共免费/.test(action)) return "公共义务教育";
+  if (/家庭自费|普通自费|自费/.test(action)) return "家庭自费";
+  return undefined;
+}
+
+function academyAvailableFunding(game: StoredGame): AcademyApplicationView["availableFundingOptions"] {
+  const options: AcademyApplicationView["availableFundingOptions"] = ["家庭自费"];
+  const guardian = game.view.relations.some((item) => item.category === "亲属" || /监护|父|母|祖|村长|里正/.test(`${item.relation}${item.name}`));
+  if ((game.view.era ?? 1) === 1 && guardian) options.push("工读抵扣");
+  if (guardian) options.push("家族资助");
+  if ((game.view.character?.innateSoulPower ?? 0) >= 7) options.push("学院奖助");
+  if (String(game.world.flags.openingMode ?? "") === "internal" || game.view.affiliations.some((item) => !/学院/.test(item.name))) options.push("宗门委培");
+  if ((game.view.era ?? 1) === 3 && (game.view.character?.age ?? 99) >= 6 && (game.view.character?.age ?? 99) <= 15) options.push("公共义务教育");
+  return [...new Set(options)];
+}
+
+function academyApplicationProfile(game: StoredGame, academyName: string, fundingType: AcademyApplicationView["fundingType"], action = ""): Pick<AcademyApplicationView, "route" | "fundingType" | "fundingSource" | "obligations" | "availableFundingOptions" | "requirements" | "fee" | "passScore"> {
   const era = game.view.era ?? 1;
   const elite = /史莱克|皇家|日月皇家|星际学院/.test(academyName);
-  const workStudy = era === 1 && /工读/.test(action);
-  const compulsory = era === 3 || era === 4;
-  const route: AcademyApplicationView["route"] = workStudy ? "工读生" : elite ? "选拔生" : era >= 3 ? "魂师班" : "普通学员";
+  const route: AcademyApplicationView["route"] = fundingType === "工读抵扣" ? "工读生" : elite ? "选拔生" : fundingType === "公共义务教育" ? "义务教育生" : era >= 3 ? "魂师班" : "普通学员";
+  const guardian = game.view.relations.find((item) => item.category === "亲属" || /监护|父|母|祖/.test(`${item.relation}${item.name}`));
+  const sect = game.view.affiliations.find((item) => !/学院/.test(item.name) && action.includes(item.name))?.name ?? game.view.affiliations.find((item) => !/学院/.test(item.name))?.name ?? String(game.world.flags.openingInstitutionName ?? "所属宗门");
+  const fundingSource = fundingType === "家庭自费" ? `${guardian?.name ?? "本人及家庭"}支付`
+    : fundingType === "工读抵扣" ? "地方工读名额与在校劳动抵扣"
+      : fundingType === "家族资助" ? `${guardian?.name ?? "家族监护人"}代表家族支付`
+        : fundingType === "学院奖助" ? `${academyName}竞争性奖助额度`
+          : fundingType === "宗门委培" ? `${sect}委托培养额度`
+            : "斗三适龄免费义务教育安排";
+  const obligations = fundingType === "工读抵扣" ? ["按排班完成适龄校内劳动", "劳动不能替代课程与考核"]
+    : fundingType === "家族资助" ? ["接受家族对费用用途的核对", "培养选择仍由玩家决定，但需回应家族责任"]
+      : fundingType === "学院奖助" ? ["维持奖助考核要求", "成绩或纪律不达标时重新评议资助"]
+        : fundingType === "宗门委培" ? [`向${sect}提交阶段培养记录`, "委培不等于学院或导师无条件服从宗门"]
+          : fundingType === "公共义务教育" ? ["完成适龄基础课程与纪律要求", "魂灵、额外训练和生活消费仍需另算"]
+            : ["家庭承担学费、食宿与路费", "不附带工读、宗门或奖助义务"];
+  const specialRequirement = fundingType === "工读抵扣" ? "取得真实工读名额与担保"
+    : fundingType === "学院奖助" ? "通过高于普通录取线的奖助评审"
+      : fundingType === "宗门委培" ? `取得${sect}书面委培责任`
+        : fundingType === "公共义务教育" ? "完成斗三适龄入学登记"
+          : fundingType === "家族资助" ? "由家族监护人确认费用与责任" : "确认学费、食宿与路费";
   const requirements = elite
-    ? ["核验年龄、觉醒档案与公开武魂", "取得监护人或原机构签字", "通过学院独立入学考核", "确认食宿、费用与在校责任"]
-    : ["提交觉醒档案与身份记录", "取得监护人或地方担保", workStudy ? "取得真实工读名额" : compulsory ? "完成适龄入学登记" : "确认学费、食宿与路费", "通过基础能力与纪律评估"];
-  return { route, requirements, fee: workStudy || compulsory ? 0 : elite ? 30 : era === 2 ? 15 : 12, passScore: elite ? 72 : 38 };
+    ? ["核验年龄、觉醒档案与公开武魂", "取得监护人或原机构签字", specialRequirement, "通过学院独立入学考核"]
+    : ["提交觉醒档案与身份记录", "取得监护人或地方担保", specialRequirement, "通过基础能力与纪律评估"];
+  const baseFee = elite ? 30 : era === 2 ? 15 : 12;
+  const fee = ["工读抵扣", "学院奖助", "宗门委培", "公共义务教育"].includes(fundingType) ? 0 : baseFee;
+  const passScore = elite ? 72 : fundingType === "学院奖助" ? 62 : 38;
+  return { route, fundingType, fundingSource, obligations, availableFundingOptions: academyAvailableFunding(game), requirements, fee, passScore };
+}
+
+function academyFundingProblem(game: StoredGame, fundingType: AcademyApplicationView["fundingType"], action = ""): string | undefined {
+  const guardian = game.view.relations.some((item) => item.category === "亲属" || /监护|父|母|祖|村长|里正/.test(`${item.relation}${item.name}`));
+  if (fundingType === "工读抵扣" && ((game.view.era ?? 1) !== 1 || !guardian)) return "工读路线只在斗一当前基层学院条件下开放，并且必须有村庄、监护人或地方责任人担保";
+  if (fundingType === "家族资助" && !guardian) return "当前没有能代表家庭或家族承担费用并签字的监护人";
+  if (fundingType === "学院奖助" && (game.view.character?.innateSoulPower ?? 0) < 7) return "当前公开天赋未达到学院受理竞争性奖助评审的最低范围，仍可走普通录取或其他有来源的资助";
+  if (fundingType === "宗门委培") {
+    const sponsors = game.view.affiliations.filter((item) => !/学院/.test(item.name));
+    if (String(game.world.flags.openingMode ?? "") !== "internal" && !sponsors.length) return "当前没有已经承担培养责任的宗门或机构，不能临时报一个不存在的委培名额";
+    if (sponsors.length > 1 && !sponsors.some((item) => action.includes(item.name))) return `当前有${sponsors.map((item) => item.name).join("、")}多个可能的委培方，必须明确由谁签字和承担责任`;
+  }
+  if (fundingType === "公共义务教育" && ((game.view.era ?? 1) !== 3 || (game.view.character?.age ?? 99) < 6 || (game.view.character?.age ?? 99) > 15)) return "公共义务教育只适用于斗三对应年代的适龄基础教育阶段，不能跨时代泛化为所有学院免费";
+  return undefined;
 }
 
 function academyResolution(game: StoredGame, action: string): ActionResolution {
@@ -1920,11 +1975,15 @@ function academyResolution(game: StoredGame, action: string): ActionResolution {
   if (game.view.affiliations.some((item) => item.name === academyName)) return impossible(`我已经是${academyName}的学员。`, ["参加课程", "寻找导师", "认识同学"]);
   let application = game.view.academyApplication;
   if (!application || application.academyName !== academyName || ["未通过", "已入学", "已撤回"].includes(application.stage)) {
-    const profile = academyApplicationProfile(game, academyName, action);
+    const availableFunding = academyAvailableFunding(game);
+    const requestedFunding = academyFundingFromAction(action) ?? (availableFunding.includes("公共义务教育") ? "公共义务教育" : "家庭自费");
+    const fundingProblem = academyFundingProblem(game, requestedFunding, action);
+    if (fundingProblem) return impossible(`${fundingProblem}。`, availableFunding.slice(0, 3).map((item) => `改走${item}路线`));
+    const profile = academyApplicationProfile(game, academyName, requestedFunding, action);
     if (/史莱克/.test(academyName) && (game.view.era ?? 1) === 1 && (character.age > 12 || character.soulRank < 21)) return impossible("当前史莱克学院的选拔门槛不是普通初级学院报名：年龄不得超过十二岁，魂力至少二十一级；现在只能先走其他学院或继续修炼。", ["申请当地初级魂师学院", "继续修炼到二十一级", "核对其他学院条件"]);
-    application = game.view.academyApplication = { academyId: target.id, academyName, stage: "材料准备", ...profile, evidence: [`已领取${academyName}报名条件`] };
+    application = game.view.academyApplication = { academyId: target.id, academyName, stage: "材料准备", ...profile, evidence: [`已领取${academyName}报名条件；暂选${profile.fundingType}`] };
     ensureTask(game, { id: `academy-application-${target.id}`, title: `申请${academyName}`, kind: "计划", detail: `${profile.requirements.join("；")}。尚未录取。`, status: "进行中" });
-    return { intent: "核对学院入学条件", minutes: 60, ruleSummary: `${academyName}只登记申请意向，列出${profile.requirements.length}项门槛；当前没有录取、宿舍钥匙或学员身份。`, fallbackNarrative: `接待老师没有先拿名册。他把觉醒证明翻到有印章的那一页，又问监护人是谁、住校的钱从哪里出。几项条件写完，纸角只盖了一枚“待申请”的小章，离录取还差得远。`, suggestions: [`准备${academyName}报名材料和监护签字`, profile.route === "工读生" ? "请地方担保人确认工读名额" : `核对${academyName}费用与食宿`, "暂缓申请并比较其他培养路线"], systemMessages: [`入学申请 · ${academyName} · 材料准备`] };
+    return { intent: "核对学院入学条件", minutes: 60, ruleSummary: `${academyName}只登记申请意向；学籍方向为${profile.route}，费用暂按${profile.fundingType}处理，来源登记为${profile.fundingSource}。当前没有录取、宿舍钥匙或学员身份。`, fallbackNarrative: `接待老师没有先拿名册。他把觉醒证明翻到有印章的那一页，又问监护人是谁、住校的钱从哪里出。工读、家里付钱、学院奖助和宗门委培被写在不同的栏里，谁也不能因为孩子口袋里钱少就替他勾上第一项。`, suggestions: [`准备${academyName}报名材料`, `比较${profile.availableFundingOptions.slice(0, 3).join("、")}`, "暂缓申请并保留选择权"], systemMessages: [`入学申请 · ${academyName} · ${profile.route} · ${profile.fundingType}`] };
   }
   if (/放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action)) {
     application.stage = "已撤回";
@@ -1932,15 +1991,26 @@ function academyResolution(game: StoredGame, action: string): ActionResolution {
     const task = game.view.tasks.find((item) => item.id === `academy-application-${application!.academyId}`); if (task) task.status = "失败";
     return { intent: "撤回学院申请", minutes: 30, ruleSummary: `撤回${academyName}本次申请；没有取得学员身份，已经形成的材料与考核记录不会被改写成录取。`, fallbackNarrative: `他把申请页从待办格里取回来，接待老师在右下角写明“本人撤回”。印章和成绩没有被撕掉，只是不再通向这次报到。`, suggestions: ["比较其他学院的公开条件", "继续当前训练路线", "保留记录等待下次申请"], systemMessages: [`入学申请 · ${academyName} · 已撤回`] };
   }
+  const requestedFunding = academyFundingFromAction(action);
+  if (application.stage === "材料准备" && requestedFunding && requestedFunding !== application.fundingType && /改走|改为|选择|申请|切换/.test(action)) {
+    const fundingProblem = academyFundingProblem(game, requestedFunding, action);
+    if (fundingProblem) return impossible(`${fundingProblem}。`, application.availableFundingOptions.filter((item) => item !== requestedFunding).slice(0, 3).map((item) => `改走${item}路线`));
+    const previous = application.fundingType;
+    Object.assign(application, academyApplicationProfile(game, academyName, requestedFunding, action));
+    application.evidence.push(`费用路线由${previous}改为${requestedFunding}；旧路线未形成身份或债务`);
+    const task = game.view.tasks.find((item) => item.id === `academy-application-${application!.academyId}`); if (task) task.detail = `${application.requirements.join("；")}。尚未录取。`;
+    return { intent: "变更学院费用路线", minutes: 30, ruleSummary: `${academyName}申请仍处于材料阶段；费用路线改为${requestedFunding}，来源为${application.fundingSource}，附带责任为${application.obligations.join("；")}。`, fallbackNarrative: `接待老师把原来那一格划掉，在旁边签了日期。新选的费用来源、谁来签字、以后要承担什么，都重新念了一遍。改的是申请办法，不是偷偷把人变成另一种学生。`, suggestions: [`按${requestedFunding}准备报名材料`, `向${application.fundingSource}确认责任`, "撤回申请并比较其他学院"], systemMessages: [`入学费用路线 · ${previous} → ${requestedFunding}`] };
+  }
   if (application.stage === "材料准备") {
     const guardian = game.view.relations.find((item) => item.category === "亲属" || /监护|父|母|祖|村长|里正/.test(`${item.relation}${item.name}`));
     if (character.age < 12 && !guardian && !game.view.inventory.includes("地方临时身份凭据")) return impossible("未满十二岁且没有监护人、地方担保或临时身份凭据，学院不能替来历空白的孩子自行签字。", ["寻找地方担保人", "办理临时身份凭据", "请觉醒主持机构说明情况"]);
-    if (application.route === "工读生" && !guardian) return impossible("工读名额必须由村庄、监护人或其他有责任能力的担保者确认，不能因为身上钱少就自动取得。", ["请村长确认工读名额", "寻找监护担保", "改走普通学员申请"]);
+    const fundingProblem = academyFundingProblem(game, application.fundingType, action);
+    if (fundingProblem) return impossible(`${fundingProblem}。`, application.availableFundingOptions.filter((item) => item !== application!.fundingType).slice(0, 3).map((item) => `改走${item}路线`));
     if (application.fee > 0 && character.coins < application.fee) return impossible(`${academyName}预计需要${formatSoulCoins(application.fee)}处理入学与首期食宿，当前资金不足；学院没有因为天赋自动免除费用。`, ["申请有凭据的资助", "准备学费与食宿费", "比较工读或其他学院"]);
     application.guardianName = guardian?.name ?? "临时身份见证人";
-    application.evidence.push(`觉醒档案、身份记录与${application.guardianName}签字已核对`);
+    application.evidence.push(`觉醒档案、身份记录与${application.guardianName}签字已核对；${application.fundingSource}责任已登记`);
     application.stage = "入学考核";
-    return { intent: "提交学院报名材料", minutes: 120, ruleSummary: `${academyName}收下觉醒档案、身份记录与监护/担保证据；费用只完成核对，尚未扣除，也尚未录取。`, fallbackNarrative: `监护人的名字签在最后一栏，接待老师又把住处和费用问了一遍。材料被麻绳穿成一册，放进“待考核”的木格里。没人递宿舍钥匙，只告诉他下一次该从哪扇门进。`, suggestions: [`参加${academyName}入学考核`, "询问考核项目和失败后的去向", "保留材料并比较其他培养路线"], systemMessages: [`入学申请 · ${academyName} · 材料通过`] };
+    return { intent: "提交学院报名材料", minutes: 120, ruleSummary: `${academyName}收下觉醒档案、身份记录、监护/担保证据和${application.fundingType}责任页；尚未扣费，也尚未录取。`, fallbackNarrative: `监护人的名字签在最后一栏，费用页上又多了一处责任人的印章。材料被麻绳穿成一册，放进“待考核”的木格里。工读排班、奖助复核或委培回报都写在各自的纸上，没有藏进一句“学院会安排”。`, suggestions: [`参加${academyName}入学考核`, "询问考核项目和失败后的去向", "核对费用路线附带的长期责任"], systemMessages: [`入学申请 · ${academyName} · ${application.fundingType}材料通过`] };
   }
   if (application.stage === "入学考核") {
     const talent = character.innateSoulPower * 5 + Math.min(25, character.soulRank) + Math.min(10, Math.floor(game.world.trainingPoints / 10));
@@ -1948,6 +2018,11 @@ function academyResolution(game: StoredGame, action: string): ActionResolution {
     application.examScore = score;
     application.evidence.push(`入学考核${score}分：魂力控制、基础体能与指令执行均有记录`);
     if (score < application.passScore) {
+      if (application.fundingType === "学院奖助" && score >= 38) {
+        application.stage = "材料准备";
+        application.evidence.push(`普通录取能力线已达到，但学院奖助评审未达到${application.passScore}分；是否改走其他费用路线由玩家决定`);
+        return { intent: "学院奖助评审未通过", minutes: 240, ruleSummary: `${academyName}考核${score}分，达到普通培养参考线但未达到${application.passScore}分奖助线；没有自动改成工读生，也没有替玩家接受自费。`, fallbackNarrative: `成绩纸上有两条线。下面那条已经过了，上面的奖助线还差一点。老师把几种还能继续的办法摊开，却没有伸手替他勾选：“读不读、谁出钱，你们回去自己定。”`, suggestions: ["改走家庭自费路线", "申请有来源的家族或宗门资助", "撤回申请并继续训练"], systemMessages: [`学院奖助 · ${academyName} · 未通过但保留普通申请资格`] };
+      }
       application.stage = "未通过";
       const task = game.view.tasks.find((item) => item.id === `academy-application-${application!.academyId}`); if (task) task.status = "失败";
       return { intent: "学院入学考核未通过", minutes: 240, ruleSummary: `${academyName}考核${score}分，低于${application.passScore}分门槛；材料保留，但本次不录取。`, fallbackNarrative: `最后一项收放做完，老师没有当场训斥，只把前两项失误圈了出来。成绩纸上写的是“本次未通过”，不是“没有前途”。他可以回去补短板，也可以拿着已经核验过的材料去问别处。`, suggestions: ["按考核记录补练薄弱项目", "申请当地普通学院", "等待下一次招生再考"], systemMessages: [`入学考核 · ${academyName} · 未通过`] };
@@ -1959,13 +2034,13 @@ function academyResolution(game: StoredGame, action: string): ActionResolution {
   if (!/报到|确认录取|接受录取|办理入学/.test(action)) return impossible("已经通过考核，但本人和监护人尚未确认报到，不能自动写成学院学员。", [`办理${academyName}入学报到`, "核对费用与宿舍", "放弃本次录取资格"]);
   if (application.fee > 0) character.coins -= application.fee;
   const joinedAt = `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`;
-  game.view.affiliations.push({ id: application.academyId, name: academyName, role: application.route, reputation: "新入学", joinedAt, contribution: 0, completedAssignments: 0, rankEvidence: [...application.evidence] });
+  game.view.affiliations.push({ id: application.academyId, name: academyName, role: application.route, reputation: "新入学", joinedAt, contribution: 0, completedAssignments: 0, rankEvidence: [...application.evidence, `费用：${application.fundingType}；${application.fundingSource}`, `责任：${application.obligations.join("；")}`] });
   game.view.relations.push({ id: application.academyId, name: academyName, relation: "所属学院", impression: "通过材料核验与入学考核后正式报到", strength: 12, category: "势力" });
   ensureTask(game, { id: "academy-foundation", title: "完成学院基础课程", kind: "计划", detail: "学习魂兽、魂环、冥想和实战基础。", status: "进行中" });
   const applicationTask = game.view.tasks.find((item) => item.id === `academy-application-${application!.academyId}`); if (applicationTask) applicationTask.status = "完成";
   application.stage = "已入学";
   game.world.deviation += 1;
-  return { intent: "加入学院", minutes: 180, ruleSummary: `完成报到并支付${formatSoulCoins(application.fee)}，成为${academyName}${application.route}；录取依据与监护签字已写入档案。`, fallbackNarrative: `钱和回执分开点清，监护人在报到册旁又签了一次名字。登记老师这才把宿舍钥匙推过来，边角已经磨得发白。走廊那头正响起上课钟声，从今天起，他得按这里的规矩过日子了。`, suggestions: ["去宿舍安置随身物品", "参加第一堂基础课程", "认识同届学员并了解班级规矩"], systemMessages: [`身份 · ${academyName} · ${application.route}`] };
+  return { intent: "加入学院", minutes: 180, ruleSummary: `完成报到，费用来源登记为${application.fundingSource}，本次结算${formatSoulCoins(application.fee)}；成为${academyName}${application.route}，费用类型为${application.fundingType}，责任为${application.obligations.join("；")}。`, fallbackNarrative: `费用回执和录取册分开放着，谁出的钱、往后要不要排工、交成绩或向宗门回报，都写得清清楚楚。登记老师这才把宿舍钥匙推过来。身份落定了，却不是因为口袋里钱少就被谁顺手写成工读生。`, suggestions: ["去宿舍安置随身物品", "参加第一堂基础课程", "认识同届学员并了解班级规矩"], systemMessages: [`身份 · ${academyName} · ${application.route} · ${application.fundingType}`] };
 }
 
 function factionResolution(game: StoredGame, action: string): ActionResolution {
@@ -3824,7 +3899,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/参悟|修炼传承|修行剑|炼丹|炼器|特殊体系|异界功法/.test(action)) resolution = specialSystemResolution(game, action);
   else if (/处理|介入|参与|帮助处理|阻止.*恶化|查看新事件|拒绝|不接受|回绝/.test(action) && game.world.dynamicEvents.some((item) => item.status === "可介入" && (action.includes(item.title) || item.participantIds.some((id) => action.includes(game.world.npcs[id]?.name ?? "")) || /查看新事件/.test(action)))) resolution = dynamicEventResolution(game, action);
   else if (/完成承诺|履行承诺/.test(action)) resolution = fulfillPromiseResolution(game, action);
-  else if (game.view.academyApplication && !["已入学", "未通过", "已撤回"].includes(game.view.academyApplication.stage) && /学院|报名|材料|监护|担保|工读|入学考核|录取|报到|食宿|放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action)) resolution = academyResolution(game, action);
+  else if (game.view.academyApplication && !["已入学", "未通过", "已撤回"].includes(game.view.academyApplication.stage) && /学院|报名|材料|监护|担保|工读|家族资助|家族承担|学院奖助|奖学|宗门委培|宗门资助|义务教育|家庭自费|普通自费|入学考核|录取|报到|食宿|放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action)) resolution = academyResolution(game, action);
   else if (/上课|课程|学院学习|参加实战课/.test(action)) resolution = academyStudyResolution(game);
   else if (/入学|报名.*学院|申请.*学院|成为工读生/.test(action)) resolution = academyResolution(game, action);
   else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|推进.*机构事务|登记.*阶段|提交.*阶段|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正|询问.*(?:异议|验收|复核)|协商.*(?:验收|复核|派系)|提交.*(?:共同复核|联合复核|协调方案)|支持.*(?:派|组)|采纳.*(?:派|组)|查看.*(?:复核人|验收人)/.test(action)) resolution = institutionResolution(game, action);

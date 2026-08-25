@@ -700,7 +700,11 @@ export interface AcademyApplicationView {
   academyId: string;
   academyName: string;
   stage: "条件核对" | "材料准备" | "入学考核" | "待报到" | "已入学" | "未通过" | "已撤回";
-  route: "普通学员" | "工读生" | "魂师班" | "选拔生";
+  route: "普通学员" | "工读生" | "魂师班" | "选拔生" | "义务教育生";
+  fundingType: "家庭自费" | "工读抵扣" | "家族资助" | "学院奖助" | "宗门委培" | "公共义务教育";
+  fundingSource: string;
+  obligations: string[];
+  availableFundingOptions: Array<"家庭自费" | "工读抵扣" | "家族资助" | "学院奖助" | "宗门委培" | "公共义务教育">;
   requirements: string[];
   evidence: string[];
   fee: number;

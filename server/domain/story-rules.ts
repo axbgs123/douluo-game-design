@@ -300,7 +300,10 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
   if (!character) return [];
   const academy = game.view.academyApplication;
   if (academy && !["已入学", "未通过", "已撤回"].includes(academy.stage)) {
-    if (academy.stage === "材料准备") return [`提交${academy.academyName}报名材料`, `请${academy.guardianName ?? "监护人"}核对签字责任`, "保留材料并比较其他培养路线"];
+    if (academy.stage === "材料准备") {
+      const alternative = academy.availableFundingOptions.find((item) => item !== academy.fundingType);
+      return [`提交${academy.academyName}报名材料`, `请${academy.guardianName ?? "费用责任人"}核对${academy.fundingType}责任`, alternative ? `改走${alternative}路线` : "撤回申请并保留材料记录"];
+    }
     if (academy.stage === "入学考核") return [`参加${academy.academyName}入学考核`, "询问考核项目与失败去向", "暂缓考核并补练薄弱能力"];
     if (academy.stage === "待报到") return [`办理${academy.academyName}入学报到`, "和监护人核对食宿与费用", "放弃名额并保留考核记录"];
   }
