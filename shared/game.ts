@@ -713,6 +713,36 @@ export interface AcademyApplicationView {
   passScore: number;
 }
 
+export interface AcademyPeerView {
+  id: string;
+  name: string;
+  role: "竞争者" | "务实同学" | "协作同学";
+  background: string;
+  motive: string;
+  attitude: number;
+  competition: number;
+  interactions: number;
+  lastAction: string;
+}
+
+export interface AcademyLifeView {
+  academyName: string;
+  stage: "报到安置" | "基础课程" | "同辈磨合" | "首月实战考核" | "首月结业";
+  className: string;
+  homeroomTeacher: string;
+  dormitory: string;
+  attendance: number;
+  courseProgress: number;
+  practicalProgress: number;
+  fundingDutyProgress: number;
+  peerInteractions: number;
+  standing: number;
+  discipline: number;
+  monthlyScore?: number;
+  evidence: string[];
+  peers: AcademyPeerView[];
+}
+
 export interface MentorPursuitView {
   mentorId?: string;
   mentorName: string;
@@ -722,6 +752,13 @@ export interface MentorPursuitView {
   motive: string;
   requirements: string[];
   evidence: string[];
+  specialty: string;
+  teachingStyle: string;
+  taboo: string;
+  resourceOffer: string;
+  reciprocalDuty: string;
+  trialFocus: string;
+  lessonsCompleted: number;
 }
 
 export interface CombatView {
@@ -1009,6 +1046,7 @@ export interface GameView {
   chapterObjective?: ChapterObjectiveView;
   storyArc?: StoryArcView;
   academyApplication?: AcademyApplicationView;
+  academyLife?: AcademyLifeView;
   mentorPursuit?: MentorPursuitView;
   hunting?: HuntingView;
   combat?: CombatView;

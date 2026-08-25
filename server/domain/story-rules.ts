@@ -307,12 +307,20 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
     if (academy.stage === "入学考核") return [`参加${academy.academyName}入学考核`, "询问考核项目与失败去向", "暂缓考核并补练薄弱能力"];
     if (academy.stage === "待报到") return [`办理${academy.academyName}入学报到`, "和监护人核对食宿与费用", "放弃名额并保留考核记录"];
   }
+  const academyLife = game.view.academyLife;
+  if (academyLife && academyLife.stage !== "首月结业") {
+    if (academyLife.stage === "报到安置") return ["去宿舍安置并领取课表", `向${academyLife.homeroomTeacher}确认首月要求`, `记住${academyLife.peers[0].name}等同班新生`];
+    if (academyLife.stage === "首月实战考核") return ["参加学院首月实战考核", `与${academyLife.peers[0].name}复盘实战分组`, academy?.fundingType === "学院奖助" ? "提交学院奖助首月月评" : "核对费用责任是否已经履行"];
+    const peer = [...academyLife.peers].sort((left, right) => left.interactions - right.interactions)[0];
+    return ["参加下一堂魂师基础课程", `与${peer.name}完成一次小组练习`, academy?.fundingType === "工读抵扣" && academyLife.fundingDutyProgress < 1 ? "完成一次适龄工读排班" : "核对隐藏武魂的在校知情范围"];
+  }
   const mentor = game.view.mentorPursuit;
   if (mentor && !["已拜师", "被拒绝", "已结束"].includes(mentor.stage)) {
     if (mentor.stage === "候选接触") return [`请${mentor.mentorName}评估公开武魂`, `询问${mentor.mentorName}授业条件`, "继续比较其他导师候选"];
     if (["能力评估", "试学考察"].includes(mentor.stage)) return [`完成${mentor.mentorName}下一次试学`, "核对试学失败与改进记录", "结束试学并选择学院路线"];
     if (mentor.stage === "待决定") return [`与${mentor.mentorName}谈清责任后拜师`, "追问训练资源与猎魂边界", "保留试学记录并拒绝拜师"];
   }
+  if (mentor?.stage === "已拜师") return [`完成${mentor.mentorName}下一节专项课程`, `请${mentor.mentorName}评估第一魂环`, "核对导师资源与学院课程冲突"];
   const awakeningTask = game.view.tasks.find((task) => task.status !== "完成" && /觉醒|培养评估|亲自复核/.test(`${task.id}${task.title}${task.detail}`));
   if (game.view.status === "awakening" || game.view.status === "life_goal_selection" || awakeningTask) {
     const awakeningRelation = game.view.relations.find((relation) => /觉醒主持|觉醒/.test(`${relation.relation}${relation.impression}`));
@@ -388,6 +396,7 @@ export function buildChineseWebnovelSceneCard(game: StoredGame, resolution: Acti
     protagonistSecrets: { hiddenMartialSouls: hiddenNames, specialSystem: game.view.character?.specialSystem?.name },
     unresolvedPromises: game.storyMemory.openThreads.slice(0, 8),
     academyApplication: game.view.academyApplication,
+    academyLife: game.view.academyLife,
     mentorPursuit: game.view.mentorPursuit,
     storyArc: game.view.storyArc ? { title: game.view.storyArc.title, stage: game.view.storyArc.stage, goal: game.view.storyArc.centralGoal, conflict: game.view.storyArc.centralConflict, opposingForce: game.view.storyArc.opposingForce, payoff: game.view.storyArc.promisedPayoff, payoffLedger: game.view.storyArc.payoffLedger, nextGate: game.view.storyArc.stageGates[game.view.storyArc.stageIndex + 1], activeNpcScene: game.view.storyArc.npcScenes.find((scene) => scene.status === "等待回应"), sideThreads: game.view.storyArc.sideThreads, irreversibleTurn: game.view.storyArc.irreversibleTurn, pressure: game.view.storyArc.pressure } : undefined,
     reactionChain: ["谁目击", "谁有权限", "谁获益或受损", "立即反应", "留下何种记录、关系或代价"],
@@ -491,6 +500,7 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
     game.view.combat ? `战斗状态：${game.view.combat.playerCondition}` : undefined,
     game.view.hunting ? `猎魂阶段：${game.view.hunting.stage}` : undefined,
     game.view.academyApplication ? `学院申请：${game.view.academyApplication.academyName}·${game.view.academyApplication.stage}，尚不能越过下一阶段` : undefined,
+    game.view.academyLife ? `学院首月：${game.view.academyLife.className}·${game.view.academyLife.stage}；课程${game.view.academyLife.courseProgress}、同辈互动${game.view.academyLife.peerInteractions}、费用责任${game.view.academyLife.fundingDutyProgress}` : undefined,
     game.view.mentorPursuit ? `导师关系：${game.view.mentorPursuit.mentorName}·${game.view.mentorPursuit.stage}，未到已拜师不得写成师徒` : undefined,
   ].filter((item): item is string => Boolean(item));
   return {

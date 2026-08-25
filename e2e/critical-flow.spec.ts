@@ -570,7 +570,7 @@ test("宗门本体武魂开局使用专属显形、目标与资源路线", async
 });
 
 test("学院入学与拜师必须经过材料、考核和试学，不会一句话送身份", async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   await seedEarlyGrowthGame();
   await page.goto("/");
   const save = page.locator(".save-shelf article").filter({ hasText: "早期成长验收" });
@@ -589,9 +589,26 @@ test("学院入学与拜师必须经过材料、考核和试学，不会一句�
   await expect(page.locator(".growth-application-panel")).toContainText("待报到");
   await submitAction(page, "办理诺丁初级魂师学院入学报到");
   await expect(page.locator(".growth-application-panel")).toContainText("已入学");
+  await expect(page.locator(".growth-application-panel")).toContainText("学院首月 · 报到安置");
+  await submitAction(page, "去宿舍安置并领取课表");
+  await submitAction(page, "参加第一堂魂师基础课程");
+  await submitAction(page, "参加第二堂魂师基础课程");
+  const peerNames = await page.locator(".academy-peer-list section > strong").allTextContents();
+  expect(peerNames).toHaveLength(3);
+  const firstPeer = peerNames[0].split(" · ")[0];
+  const secondPeer = peerNames[1].split(" · ")[0];
+  await submitAction(page, `与${firstPeer}完成一次小组练习`);
+  await submitAction(page, "参加第三堂魂师基础课程");
+  await submitAction(page, `与${secondPeer}完成一次小组练习`);
+  await expect(page.locator(".growth-application-panel")).toContainText("首月实战考核");
+  await submitAction(page, "参加学院首月实战考核");
+  await expect(page.locator(".growth-application-panel")).toContainText("学院首月 · 首月结业");
 
   await submitAction(page, "寻找适合当前武魂的导师");
   await expect(page.locator(".growth-application-panel")).toContainText("候选接触");
+  await expect(page.locator(".growth-application-panel")).toContainText("专长");
+  await expect(page.locator(".growth-application-panel")).toContainText("教学");
+  await expect(page.locator(".growth-application-panel")).toContainText("禁忌");
   const mentorName = await page.locator(".growth-application-panel article").filter({ hasText: "导师候选" }).locator("strong").textContent();
   if (!mentorName) throw new Error("导师候选未显示姓名");
   await submitAction(page, `请${mentorName}评估公开武魂与现有基础`);
@@ -601,6 +618,10 @@ test("学院入学与拜师必须经过材料、考核和试学，不会一句�
   await expect(page.locator(".growth-application-panel")).toContainText("待决定");
   await submitAction(page, `与${mentorName}谈清责任后正式拜师`);
   await expect(page.locator(".growth-application-panel")).toContainText("已拜师");
+  await submitAction(page, `完成${mentorName}下一节正式课程`);
+  await expect(page.locator(".growth-application-panel")).toContainText("正式课程1");
+  await submitAction(page, `请${mentorName}评估第一魂环路线`);
+  await expect(page.locator(".narrative-stream")).toContainText("魂环方向待调查");
 });
 
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {

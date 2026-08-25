@@ -610,7 +610,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(41);
+    expect(migrated.schemaVersion).toBe(42);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -688,8 +688,28 @@ describe("完整游玩规则", () => {
     expect(resolveAction(game, "参加学院入学考核").intent).toBe("通过学院入学考核");
     expect(resolveAction(game, "办理学院入学报到").intent).toBe("加入学院");
     expect(game.view.affiliations.some((item) => /学院/.test(item.name))).toBe(true);
-    resolveAction(game, "参加课程"); resolveAction(game, "参加课程"); resolveAction(game, "参加课程");
+    expect(resolveAction(game, "参加课程").intent).toBe("无法完成");
+    expect(resolveAction(game, "去宿舍安置并领取课表").intent).toBe("学院新生安置");
+    resolveAction(game, "参加第一堂魂师基础课程");
+    resolveAction(game, "参加第二堂魂师基础课程");
+    const [competitor, practicalPeer] = game.view.academyLife!.peers;
+    const competitionBefore = competitor.competition;
+    expect(resolveAction(game, `与${competitor.name}完成一次小组练习`).intent).toBe("学院同辈训练");
+    resolveAction(game, "参加第三堂魂师基础课程");
+    expect(resolveAction(game, `与${practicalPeer.name}完成一次小组练习`).intent).toBe("学院同辈训练");
+    expect(game.view.academyLife).toMatchObject({ stage: "首月实战考核", courseProgress: 3, peerInteractions: 2 });
+    expect(resolveAction(game, "参加学院首月实战考核").intent).toBe("完成学院首月考核");
+    expect(game.view.academyLife?.peers.find((item) => item.id === competitor.id)?.competition).toBeGreaterThan(competitionBefore);
     expect(game.view.tasks.find((task) => task.id === "academy-foundation")?.status).toBe("完成");
+    const legacyAcademy = structuredClone(game);
+    legacyAcademy.schemaVersion = 41;
+    legacyAcademy.view.academyLife = undefined;
+    legacyAcademy.world.flags.academyCourseProgress = 3;
+    const migratedAcademy = ensureGameState(legacyAcademy);
+    expect(migratedAcademy.schemaVersion).toBe(42);
+    expect(migratedAcademy.view.academyLife).toMatchObject({ stage: "同辈磨合", courseProgress: 3, peerInteractions: 0 });
+    expect(migratedAcademy.view.academyLife?.peers).toHaveLength(3);
+    expect(migratedAcademy.view.tasks.find((task) => task.id === "academy-foundation")?.status).toBe("进行中");
   });
 
   it("学院学籍与费用来源分开选择，不会把缺钱或贵族身份自动写成工读生", () => {
@@ -730,7 +750,7 @@ describe("完整游玩规则", () => {
     delete oldApplication.obligations;
     delete oldApplication.availableFundingOptions;
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(41);
+    expect(migrated.schemaVersion).toBe(42);
     expect(migrated.view.academyApplication).toMatchObject({ fundingType: "家庭自费", fundingSource: "本人及家庭支付" });
   });
 
@@ -745,6 +765,19 @@ describe("完整游玩规则", () => {
     expect(resolveAction(game, `完成${mentor}第二次试学训练`).intent).toBe("完成导师试学");
     expect(resolveAction(game, `与${mentor}谈清责任后正式拜师`).intent).toBe("拜师");
     expect(game.view.relations.find((item) => item.name === mentor)?.relation).toBe("师徒");
+    expect(game.view.mentorPursuit).toMatchObject({ stage: "已拜师", lessonsCompleted: 0 });
+    expect(game.view.mentorPursuit?.specialty.length).toBeGreaterThan(4);
+    expect(resolveAction(game, `完成${mentor}下一节正式课程`).intent).toBe("导师正式课程");
+    expect(game.view.mentorPursuit?.lessonsCompleted).toBe(1);
+    expect(resolveAction(game, `请${mentor}评估第一魂环路线`).intent).toBe("导师评估魂环路线");
+    expect(game.world.flags.mentorRingAssessment).toBe(mentor);
+    const legacyMentor = structuredClone(game);
+    legacyMentor.schemaVersion = 41;
+    const oldMentor = legacyMentor.view.mentorPursuit as Partial<NonNullable<typeof legacyMentor.view.mentorPursuit>>;
+    delete oldMentor.specialty; delete oldMentor.teachingStyle; delete oldMentor.taboo; delete oldMentor.resourceOffer; delete oldMentor.reciprocalDuty; delete oldMentor.trialFocus; delete oldMentor.lessonsCompleted;
+    const migratedMentor = ensureGameState(legacyMentor);
+    expect(migratedMentor.view.mentorPursuit?.specialty.length).toBeGreaterThan(4);
+    expect(migratedMentor.view.mentorPursuit?.lessonsCompleted).toBe(0);
   });
 
   it("猎魂补给不会在余额不足时免费发放", () => {
@@ -959,7 +992,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.summary = "主角在东海学院见到了古月娜。";
     game.view.relations.push({ id: "gu-yue-na", name: "古月娜", relation: "同学", impression: "旧存档提前使用了后期姓名", strength: 10, category: "师友" });
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(41);
+    expect(migrated.schemaVersion).toBe(42);
     expect(migrated.world.npcs["gu-yue-na"].name).toBe("古月");
     expect(migrated.view.relations.find((item) => item.id === "gu-yue-na")?.name).toBe("古月");
     expect(migrated.storyMemory.summary).not.toContain("古月娜");
@@ -985,7 +1018,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.openThreads = ["家人与出身中尚未说清的细节"];
     delete game.world.flags.openingMode; delete game.world.flags.openingInstitutionName; delete game.world.flags.openingOfficiant; delete game.world.flags.openingSoulTestFocus;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(41);
+    expect(migrated.schemaVersion).toBe(42);
     expect(migrated.view.narrative.at(-1)?.text).not.toMatch(/先天道体托在掌心|学院名额|恐怕不只是魂环/);
     expect(migrated.view.chapterObjective?.title).toContain("太玄剑宗内部觉醒");
     expect(JSON.stringify(migrated.view.chapterObjective)).not.toMatch(/加入宗门|学院名额/);
@@ -1094,7 +1127,7 @@ describe("第一部世界资料", () => {
     legacy.view.locationId = "mother-ship-port";
     legacy.view.location = "联邦母舰港";
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(41);
+    expect(migrated.schemaVersion).toBe(42);
     expect(migrated.view.location).toBe("联邦舰队集结基地");
   });
 

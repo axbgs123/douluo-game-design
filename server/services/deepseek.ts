@@ -260,7 +260,7 @@ export async function interpretActionWithDeepSeek(game: StoredGame, playerInput:
           "遇到后世专属行动时保留关键术语：魂灵调查/评估/签约，魂导器学习/制作/认证，斗铠设计/制作，机甲训练/考核/购买/驾驶，星舰训练/考核/招募船员/取得舰船/补给/航行/星球调查。不要把这些动作改写成普通修炼或普通旅行。",
           "输出 JSON：{\"ruleAction\":\"整理后的一句话\"}。",
         ].join("\n") },
-        { role: "user", content: JSON.stringify({ playerInput, relevantPast, era: game.view.era ?? 1, worldTime: game.view.worldTime, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), academyApplication: game.view.academyApplication, mentorPursuit: game.view.mentorPursuit, currentHunt: game.view.hunting, currentEvents: game.view.activeEvents.map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
+        { role: "user", content: JSON.stringify({ playerInput, relevantPast, era: game.view.era ?? 1, worldTime: game.view.worldTime, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), academyApplication: game.view.academyApplication, academyLife: game.view.academyLife, mentorPursuit: game.view.mentorPursuit, currentHunt: game.view.hunting, currentEvents: game.view.activeEvents.map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
       ],
     }, 20_000, signal);
   const content = payload.choices?.[0]?.message?.content;
@@ -292,6 +292,7 @@ export async function narrateWithDeepSeek(
     playerInput, resolution.intent, resolution.ruleSummary, game.view.location,
     publicSoulNames.length ? `已公开${publicSoulNames.length}个武魂：${publicSoulNames.join("、")}；先天魂力${game.view.character?.innateSoulPower ?? "未知"}；社会评价${game.view.character?.reputation ?? "尚未形成"}` : "",
     game.view.storyArc ? `当前故事卷：${game.view.storyArc.title}；阶段${game.view.storyArc.stage}；目标${game.view.storyArc.centralGoal}；冲突${game.view.storyArc.centralConflict}；对抗压力${game.view.storyArc.opposingForce}` : "",
+    game.view.academyLife ? `学院首月：${game.view.academyLife.className}；${game.view.academyLife.stage}；班主任${game.view.academyLife.homeroomTeacher}；同辈${game.view.academyLife.peers.map((peer) => `${peer.name}/${peer.motive}`).join("、")}` : "",
     ...game.view.tasks.filter((task) => task.status !== "完成").slice(0, 6).map((task) => `${task.title} ${task.detail}`),
     ...game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === game.view.locationId).map((item) => `持续后果：${item.summary}`),
     ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => `${npc.name}：${npc.activePlan?.nextAction ?? npc.currentGoal}；责任${npc.activePlan?.responsibility ?? "个人事务"}`),
@@ -377,6 +378,7 @@ export async function narrateWithDeepSeek(
             managedFactions: game.view.managedFactions,
             currentTaskRecords: game.view.tasks.filter((task) => task.status !== "完成").slice(0, 10),
             academyApplication: game.view.academyApplication,
+            academyLife: game.view.academyLife,
             mentorPursuit: game.view.mentorPursuit,
             hunting: game.view.hunting,
             combat: game.view.combat,

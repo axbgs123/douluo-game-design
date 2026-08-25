@@ -1423,7 +1423,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 41;
+  legacy.schemaVersion = 42;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1826,6 +1826,27 @@ export function ensureGameState(game: StoredGame): StoredGame {
     application.fundingSource ??= application.fundingType === "工读抵扣" ? "旧存档工读名额与在校劳动抵扣" : application.fundingType === "公共义务教育" ? "斗三适龄免费义务教育安排" : "本人及家庭支付";
     application.obligations ??= application.fundingType === "工读抵扣" ? ["按排班完成适龄校内劳动", "劳动不能替代课程与考核"] : application.fundingType === "公共义务教育" ? ["完成适龄基础课程与纪律要求", "额外培养资源仍需另算"] : ["家庭承担学费、食宿与路费", "不附带工读、宗门或奖助义务"];
     application.availableFundingOptions ??= ["家庭自费", ...(game.view.era === 1 ? ["工读抵扣" as const] : []), ...(game.view.era === 3 ? ["公共义务教育" as const] : [])];
+    if (application.stage === "已入学" && !game.view.academyLife) {
+      const progress = Number(game.world.flags.academyCourseProgress ?? 0);
+      const era = game.view.era ?? 1;
+      const peerSpecs = ({ 1: [["陆峥", "竞争者"], ["石禾", "务实同学"], ["苏棠", "协作同学"]], 2: [["徐铮", "竞争者"], ["安禾", "务实同学"], ["林晚照", "协作同学"]], 3: [["贺骁", "竞争者"], ["唐禾", "务实同学"], ["叶清", "协作同学"]], 4: [["穆辰星", "竞争者"], ["蓝禾", "务实同学"], ["周澄", "协作同学"]] } as const)[era];
+      game.view.academyLife = { academyName: application.academyName, stage: progress >= 2 ? "同辈磨合" : "报到安置", className: era === 1 ? "初级魂师一年级" : era === 2 ? "新生魂师基础班" : era === 3 ? "初等学院魂师班" : "初等学院魂力基础班", homeroomTeacher: `${application.academyName}新生班主任`, dormitory: application.route === "工读生" ? "工读生集体宿舍" : `${application.academyName}新生宿舍`, attendance: progress, courseProgress: progress, practicalProgress: 0, fundingDutyProgress: ["家庭自费", "公共义务教育"].includes(application.fundingType) ? 1 : 0, peerInteractions: 0, standing: 0, discipline: 100, evidence: progress ? [`旧存档保留${progress}次基础课程；同辈互动与首月考核从本次载入后补记`] : ["旧存档已有学籍；宿舍、课表与班级生活从本次载入后补记"], peers: peerSpecs.map(([name, role], index) => ({ id: `academy-peer-${era}-${name}`, name, role, background: "旧存档未记录具体家庭，只保留同班身份", motive: role === "竞争者" ? "争取首月考核名次" : role === "务实同学" ? "稳住课程与家庭开销" : "寻找可靠的小组练习同伴", attitude: index ? 4 : 0, competition: index === 0 ? 28 : index === 1 ? 12 : 6, interactions: 0, lastAction: "正在处理自己的课程、生活与首月目标" })) };
+      if (!game.view.relations.some((relation) => relation.name === game.view.academyLife!.homeroomTeacher)) game.view.relations.push({ id: `academy-teacher-${era}`, name: game.view.academyLife.homeroomTeacher, relation: "学院班主任", impression: "旧存档补建的新生课程、生活与考核责任人", strength: 12, category: "师友" });
+      for (const peer of game.view.academyLife.peers) if (!game.view.relations.some((relation) => relation.name === peer.name)) game.view.relations.push({ id: peer.id, name: peer.name, relation: "同班同学", impression: `${peer.background}；${peer.motive}`, strength: 8, category: "其他" });
+      const foundationTask = game.view.tasks.find((item) => item.id === "academy-foundation");
+      if (foundationTask?.status === "完成") { foundationTask.status = "进行中"; foundationTask.detail = "旧课程次数保留；补齐宿舍、同辈互动、费用责任与首月实战考核。"; }
+    }
+  }
+  if (game.view.mentorPursuit) {
+    const pursuit = game.view.mentorPursuit as typeof game.view.mentorPursuit & Partial<Pick<import("../../shared/game.js").MentorPursuitView, "specialty" | "teachingStyle" | "taboo" | "resourceOffer" | "reciprocalDuty" | "trialFocus" | "lessonsCompleted">>;
+    const category = game.view.character?.martialSoul.category ?? "器武魂";
+    pursuit.specialty ??= /本体/.test(category) ? "身体承载、魂力流向与本体控制" : /兽/.test(category) ? "兽化部位、本能压制与近身发力" : /植物/.test(category) ? "环境感应、生长控制与消耗管理" : /食物/.test(category) ? "制造稳定、保存安全与团队补给" : /元素/.test(category) ? "范围控制、稳定性与属性环境" : "器武魂结构、收放精度与发力路线";
+    pursuit.teachingStyle ??= "逐次记录型：先复现失败，再改一个动作";
+    pursuit.taboo ??= "禁止以偶然成功冒充稳定能力，也不以伤害幼年身体换取短期表现";
+    pursuit.resourceOffer ??= `${pursuit.mentorName}只提供权限范围内的训练、复核与介绍，不包办稀有资源`;
+    pursuit.reciprocalDuty ??= "如实记录失败，按时履行课程，不借师名索取超出权限的资源";
+    pursuit.trialFocus ??= `${pursuit.specialty}中的一项可重复基础动作`;
+    pursuit.lessonsCompleted ??= 0;
   }
   game.view.chapter ??= { number: game.storyMemory.chapterNumber, title: game.storyMemory.chapterTitle, summary: game.storyMemory.summary.slice(0, 160) };
   game.view.runProgress ??= {
