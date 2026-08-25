@@ -70,6 +70,16 @@ const FAMILY_CLIMATES = [
   "家里人各有打算，饭桌上的亲近不妨碍暗中竞争",
 ] as const;
 
+function stableIndex(key: string, length: number): number {
+  let hash = 0;
+  for (const character of key) hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
+  return length ? hash % length : 0;
+}
+
+function representativeOriginLocation(origin: OriginTemplate): string {
+  return origin.locations[stableIndex(`${origin.id}:location`, origin.locations.length)] ?? origin.locations[0];
+}
+
 function dwellingOptions(origin: OriginTemplate, location: string): string[] {
   if (origin.id === "fierce-beast-raised") return ["盘根古树下的干燥树洞", "岩壁暖泉旁的兽巢", "倒伏巨木形成的内腔", "覆满苔藓的山腹洞穴", "兽群领地中央的石窟", "高大树冠遮住的岩棚"];
   if (origin.id === "void-arrival-unbound") return ["昨夜落地的荒草坡", "暂时避雨的废弃土地庙", "城外路碑背风处", "无人看守的旧车棚", "荒道旁倒塌一半的草亭", "公共觉醒队营地外的空地"];
@@ -430,6 +440,27 @@ const ORIGINS: OriginTemplate[] = [
   })),
 ];
 
+function resolvedOriginTier(origin: OriginTemplate): CandidateRarity {
+  return origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "优秀" : "平凡");
+}
+
+const REPRESENTATIVE_LOW_TIER_ORIGIN_IDS = new Set([
+  // 白色：乡村、工匠、采药、猎户四类现实生活底盘。
+  "village-farmer", "smith-family", "herbalist", "hunter-family",
+  // 蓝色：没落家族、小贵族、附庸村、学院劳作、原著村落和理论家庭。
+  "fallen-clan", "minor-noble", "sect-village", "plant-academy", "holy-soul-hunter-neighbor", "yu-xiaogang-notes-helper",
+  // 紫色：宗门核心、封山旁支、穿越、地下势力、强者养育、军旅、百业和灾后生存。
+  "seven-treasure-core", "clear-sky-sealed-branch", "modern-transmigrator", "underworld-heir", "hidden-master-ward",
+  "scout-orphan", "spirit-beekeeper", "small-sect-collateral-heir", "beast-raid-survivor", "seven-treasure-caravan-guard",
+]);
+
+const ACTIVE_ORIGINS = ORIGINS.filter((origin) => ["传奇", "神话"].includes(resolvedOriginTier(origin)) || REPRESENTATIVE_LOW_TIER_ORIGIN_IDS.has(origin.id));
+export const ORIGIN_CURATION_STATS = {
+  before: ORIGINS.length,
+  after: ACTIVE_ORIGINS.length,
+  byTier: Object.fromEntries(["平凡", "优秀", "稀有", "传奇", "神话"].map((tier) => [tier, ACTIVE_ORIGINS.filter((origin) => resolvedOriginTier(origin) === tier).length])),
+};
+
 export const ERA_BASE_YEARS: Record<GameEra, number> = { 1: 0, 2: 10000, 3: 20000, 4: 30000 };
 const ERA_ANCHORS: Record<GameEra, string> = { 1: "唐三觉醒", 2: "霍雨浩离府求学", 3: "唐舞麟觉醒", 4: "蓝轩宇觉醒" };
 
@@ -468,7 +499,7 @@ const RAINBOW_META_ORIGIN_IDS = new Set(["spirit-hall-elder-child", "hidden-sect
 const RED_META_ORIGIN_IDS = new Set(["d2-body-sect-omen", "d3-shrek-lineage"]);
 
 export const META_ORIGIN_POOL = ([
-  ...ORIGINS.map((origin) => ({ origin, era: 1 as const })),
+  ...ACTIVE_ORIGINS.map((origin) => ({ origin, era: 1 as const })),
   ...([2, 3, 4] as const).flatMap((era) => LATER_ERA_ORIGINS[era].map((origin) => ({ origin, era }))),
 ] as const).filter(({ origin }) => ["稀有", "传奇", "神话"].includes(origin.tier ?? "平凡")).map(({ origin, era }) => ({
   id: origin.id,
@@ -489,10 +520,10 @@ function metaOriginTemplateById(id: string, era: GameEra): OriginTemplate | unde
   return (era === 1 ? ORIGINS : LATER_ERA_ORIGINS[era]).find((origin) => origin.id === id);
 }
 
-export const BIRTH_PROFILE_COUNT = ORIGINS.length * FAMILY_CLIMATES.length * 6;
-export const CORE_ORIGIN_COUNT = ORIGINS.length;
-export const CORE_ORIGIN_UNIQUE_NAME_COUNT = new Set(ORIGINS.map((origin) => origin.name)).size;
-export const CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT = new Set(ORIGINS.map((origin) => [origin.advantage, origin.burden, origin.route, origin.startingCoins, origin.startingItems?.join("、")].join("|"))).size;
+export const BIRTH_PROFILE_COUNT = ACTIVE_ORIGINS.length;
+export const CORE_ORIGIN_COUNT = ACTIVE_ORIGINS.length;
+export const CORE_ORIGIN_UNIQUE_NAME_COUNT = new Set(ACTIVE_ORIGINS.map((origin) => origin.name)).size;
+export const CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT = new Set(ACTIVE_ORIGINS.map((origin) => [origin.advantage, origin.burden, origin.route, origin.startingCoins, origin.startingItems?.join("、")].join("|"))).size;
 
 const BASE_MARTIAL_SOULS: MartialSoulTemplate[] = [
   {
@@ -763,12 +794,8 @@ function originPool(preferences?: WeightPreferences, era: GameEra = 1): OriginTe
     if (preference === "无羁绊") return openingStyleFor(origin) === "无羁绊异客";
     return false;
   };
-  const pool = era === 1 ? ORIGINS : LATER_ERA_ORIGINS[era];
+  const pool = era === 1 ? ACTIVE_ORIGINS : LATER_ERA_ORIGINS[era];
   return pool.map((origin) => ({ ...origin, weight: origin.weight * (preferredIds.includes(origin.id) || matchesGeneratedPreference(origin) ? 2.4 : 1) }));
-}
-
-function resolvedOriginTier(origin: OriginTemplate): CandidateRarity {
-  return origin.tier ?? (origin.id === "mystery-arrival" ? "稀有" : ["minor-noble", "fallen-clan", "sect-village"].includes(origin.id) ? "优秀" : "平凡");
 }
 
 function chooseSoul(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences, excludedIds: string[] = [], era: GameEra = 1, requiredGrade?: CandidateRarity): MartialSoulTemplate {
@@ -838,7 +865,7 @@ function harmonizeMultiSoulQuality(random: () => number, candidate: HiddenCandid
   const souls = candidate.martialSouls?.length ? candidate.martialSouls : [candidate.martialSoul];
   if (souls.length < 2) return;
   const targetGrade = candidate.martialSoul.grade ?? martialSoulGrade(candidate.martialSoul.name, candidate.martialSoul.metaRarity, candidate.martialSoul.soulPowerRange[1]);
-  const origin = originPool(undefined, era).find((item) => item.id === candidate.originId);
+  const origin = metaOriginTemplateById(candidate.originId, era);
   if (!origin) return;
   const harmonized = [candidate.martialSoul];
   for (let index = 1; index < souls.length; index += 1) {
@@ -895,14 +922,15 @@ function specificOrigin(
   let authority = `${location}里正 ${pick(random, SURNAMES)}伯安`;
   let livelihood = origin.summary;
   let obligation = detail;
-  const familyClimateIndex = integer(random, 0, FAMILY_CLIMATES.length - 1);
+  const familyClimateIndex = stableIndex(`${origin.id}:family-climate`, FAMILY_CLIMATES.length);
 
   if (origin.id === "sect-village") {
-    const variant = pick(random, [
+    const variants = [
       { name: "七宝琉璃宗青禾药庄佃户", location: "七宝琉璃宗东南青禾村", authority: "七宝琉璃宗外务堂青禾药庄", livelihood: "家里替七宝琉璃宗照料止血草和宁神花，每年按册交药。", obligation: "药庄管事下月会挑两名识字孩子进外院做杂役。" },
       { name: "蓝电霸王龙宗雷谷属村牧户", location: "蓝电霸王龙宗西麓雷谷村", authority: "蓝电霸王龙宗外事院雷谷执事", livelihood: "家里替宗门放养驮兽，也负责清理山门外的雷击木。", obligation: "外事院刚补发一份欠了半年的驮兽草料钱。" },
       { name: "七宝琉璃宗商道护庄村民", location: "天斗城西南七宝商道护庄", authority: "七宝琉璃宗商队护卫所", livelihood: "村里替七宝商队修车、喂马并轮值守夜，收成按户折成役期。", obligation: "最近一支商队误了归期，护卫所正在逐户问话。" },
-    ]);
+    ];
+    const variant = variants[stableIndex(`${origin.id}:sect-village`, variants.length)];
     ({ name: originName, location, authority, livelihood, obligation } = variant);
   } else {
     const authorityByOrigin: Record<string, string> = {
@@ -1027,16 +1055,16 @@ function specificOrigin(
     "void-arrival-unbound": "独身无监护",
   };
   const dwellings = dwellingOptions(origin, location);
-  const dwellingIndex = integer(random, 0, dwellings.length - 1);
+  const dwellingIndex = stableIndex(`${origin.id}:dwelling`, dwellings.length);
   const dwelling = `${location} · ${authority}管辖区 · ${dwellings[dwellingIndex]}`;
   const specialStartingRelations = specialRelations[origin.id];
   const householdVariants = ["双亲家庭", "单亲父亲", "单亲母亲", "孤儿", "祖辈抚养", "收养家庭", "宗门共同抚养", "师徒监护", "商队集体抚养", "兄姐抚养", "寄居亲族", "家臣监护"] as const;
-  let householdStructure: typeof householdVariants[number] = pick(random, householdVariants);
+  let householdStructure: typeof householdVariants[number] = householdVariants[stableIndex(`${origin.id}:household`, householdVariants.length)];
   if (/孤儿|遗孤|无籍/.test(`${origin.name}${origin.summary}`)) householdStructure = "孤儿";
   else if (/收养|养子|养女/.test(`${origin.name}${origin.summary}`)) householdStructure = "收养家庭";
   else if (/商队/.test(`${origin.name}${location}`)) householdStructure = "商队集体抚养";
   else if (/亲传|弟子/.test(origin.name)) householdStructure = "师徒监护";
-  else if (/少宗主|核心|嫡系|皇室|公爵|长老|斗罗|继承/.test(origin.name)) householdStructure = random() < .72 ? "双亲家庭" : "家臣监护";
+  else if (/少宗主|核心|嫡系|皇室|公爵|长老|斗罗|继承/.test(origin.name)) householdStructure = stableIndex(`${origin.id}:elite-household`, 4) < 3 ? "双亲家庭" : "家臣监护";
   const sibling = `${familySurname}${pick(random, GIVEN_NAMES)}${pick(random, GIVEN_NAMES)}`;
   const grandparent = `${familySurname}${pick(random, FATHER_GIVEN_NAMES)}`;
   const genericHouseholds: Record<typeof householdVariants[number], { summary: string; members: CandidatePublic["household"]["members"]; relations: CandidatePublic["startingRelations"] }> = {
@@ -1076,7 +1104,7 @@ function specificOrigin(
   return {
     location,
     dwelling,
-    birthProfileId: `${origin.id}-${familyClimateIndex + 1}-${dwellingIndex + 1}`,
+    birthProfileId: origin.id,
     originName,
     originSummary: joinDistinctOriginText(livelihood, obligation),
     originFacts: [
@@ -1178,7 +1206,7 @@ export function generateCandidates(
       if (origin.id === "fierce-beast-raised") name = pick(random, ["岩芽", "青叶", "小岚", "灰耳", "石果", "溪羽", "阿藤", "月枝", "霜爪", "青角", "木生", "星苔"]);
     }
     usedNames.add(name);
-    const concreteOrigin = specificOrigin(random, origin, pick(random, origin.locations), name);
+    const concreteOrigin = specificOrigin(random, origin, representativeOriginLocation(origin), name);
     const locationId = inferLocationId(concreteOrigin.location);
     const mapPoint = worldMapPoint(locationId);
     const houseAngle = random() * Math.PI * 2;
@@ -1671,7 +1699,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       rerollIndex: 0,
       candidateRerollsUsed: 0,
       candidatePaidRerolls: 0,
-      birthProfileCount: era === 1 ? BIRTH_PROFILE_COUNT : LATER_ERA_ORIGINS[era].length * FAMILY_CLIMATES.length * 6,
+      birthProfileCount: era === 1 ? BIRTH_PROFILE_COUNT : LATER_ERA_ORIGINS[era].length,
       candidates: hiddenCandidates.map((candidate) => candidate.public),
       narrative: [createEntry("system", `这一轮从${eraName}时代抽出三个人。先看出身和征兆，武魂要等选定后才会揭晓。`)],
       suggestions: [],

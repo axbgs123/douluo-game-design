@@ -5,6 +5,7 @@ import {
   CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT,
   CORE_ORIGIN_UNIQUE_NAME_COUNT,
   MARTIAL_SOUL_CATALOG_STATS,
+  ORIGIN_CURATION_STATS,
   awakenCharacter,
   createGame,
   createEraSuccessor,
@@ -20,7 +21,8 @@ import { MARTIAL_SOUL_GRADE_ORDER, martialSoulGrade, normalizeMartialSoulName } 
 import type { MetaProgressionView } from "../../shared/game.js";
 import { fixedTraitEffect } from "./traits.js";
 import { auditNarrative, sanitizeNarrativeSuggestions } from "./story-rules.js";
-import { META_MARTIAL_SOUL_POOL_SIZE, META_MARTIAL_SOULS } from "../data/meta-martial-souls.js";
+import { META_MARTIAL_SOUL_POOL_SIZE, META_MARTIAL_SOULS, metaSoulById } from "../data/meta-martial-souls.js";
+import { ORIGINAL_MARTIAL_SOUL_CURATION_STATS } from "../data/original-martial-souls.js";
 import { advanceWorldTime } from "./world.js";
 
 const personality = {
@@ -38,10 +40,14 @@ const personality = {
 };
 
 describe("candidate generation", () => {
-  it("provides at least three hundred distinct summonable warehouse souls", () => {
-    expect(META_MARTIAL_SOUL_POOL_SIZE).toBeGreaterThanOrEqual(300);
+  it("keeps a compact summon pool and only representative low-grade original souls", () => {
+    expect(META_MARTIAL_SOUL_POOL_SIZE).toBeGreaterThanOrEqual(180);
+    expect(META_MARTIAL_SOUL_POOL_SIZE).toBeLessThan(260);
+    expect(ORIGINAL_MARTIAL_SOUL_CURATION_STATS).toMatchObject({ before: 432, after: 98, byGrade: { 平凡: 6, 优秀: 8, 稀有: 12, 传奇: 72 } });
     expect(new Set(META_MARTIAL_SOULS.map((item) => item.name)).size).toBe(META_MARTIAL_SOULS.length);
     expect(META_MARTIAL_SOULS.every((item) => item.growthRoutes.length >= 3)).toBe(true);
+    expect(META_MARTIAL_SOULS.some((item) => item.id === "catalog-original-1-1")).toBe(false);
+    expect(metaSoulById("catalog-original-1-1")).toBeDefined();
   });
   it("repeats exactly for the same seed and reroll index", () => {
     const first = generateCandidates("fixed-seed", 0, "男");
@@ -71,15 +77,16 @@ describe("candidate generation", () => {
     expect(candidates.every((candidate) => candidate.public.selfKnowledge.length > 0 && candidate.public.knownBackground.length > 20)).toBe(true);
   });
 
-  it("uses a compact hand-authored origin pool with thousands of concrete homes", () => {
-    expect(BIRTH_PROFILE_COUNT).toBeGreaterThanOrEqual(1000);
-    expect(CORE_ORIGIN_COUNT).toBeGreaterThanOrEqual(120);
-    expect(CORE_ORIGIN_COUNT).toBeLessThan(200);
+  it("uses a curated origin pool with one stable representative home per identity", () => {
+    expect(ORIGIN_CURATION_STATS).toMatchObject({ before: 151, after: 80, byTier: { 平凡: 4, 优秀: 6, 稀有: 10, 传奇: 44, 神话: 16 } });
+    expect(BIRTH_PROFILE_COUNT).toBeGreaterThanOrEqual(60);
+    expect(BIRTH_PROFILE_COUNT).toBeLessThan(100);
+    expect(CORE_ORIGIN_COUNT).toBe(BIRTH_PROFILE_COUNT);
     expect(CORE_ORIGIN_UNIQUE_NAME_COUNT).toBe(CORE_ORIGIN_COUNT);
     expect(CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT).toBe(CORE_ORIGIN_COUNT);
-    expect(BIRTH_PROFILE_COUNT).toBe(CORE_ORIGIN_COUNT * 36);
     const candidates = Array.from({ length: 30 }, (_, rerollIndex) => generateCandidates("birth-map", rerollIndex, "男")).flat();
     expect(candidates.every((candidate) => candidate.public.birthProfileId && candidate.public.dwelling.includes(" · "))).toBe(true);
+    expect(candidates.every((candidate) => candidate.public.birthProfileId === candidate.originId)).toBe(true);
     expect(candidates.every((candidate) => candidate.public.mapX >= 0 && candidate.public.mapX <= 100 && candidate.public.mapY >= 0 && candidate.public.mapY <= 100)).toBe(true);
   });
 
@@ -217,8 +224,8 @@ describe("candidate generation", () => {
     );
     const sectNames = new Set(sectDraws.map((candidate) => (candidate.public.openingStyle ?? "").replace("宗门开局 · ", "")));
     expect(sectDraws.every((candidate) => candidate.public.openingStyle?.startsWith("宗门开局 · "))).toBe(true);
-    expect(sectNames.size).toBeGreaterThanOrEqual(16);
-    expect([...sectNames]).toEqual(expect.arrayContaining(["七宝琉璃宗", "蓝电霸王龙宗", "象甲宗", "圣龙宗", "归潮门", "眠云谷", "药王涧"]));
+    expect(sectNames.size).toBeGreaterThanOrEqual(6);
+    expect([...sectNames]).toEqual(expect.arrayContaining(["七宝琉璃宗", "昊天宗", "太玄剑宗", "眠云谷", "断碑门", "栖凤岭"]));
 
     const hidden = generateCandidates("hidden-sect-opening", 0, "女", { origin: "隐世宗门", martialSoul: "均衡", gift: "均衡" })[0];
     expect(hidden.public.openingStyle).toMatch(/^宗门开局 · /);
@@ -390,7 +397,8 @@ describe("candidate generation", () => {
   });
 
   it("loads martial souls recorded across all four eras", () => {
-    expect(MARTIAL_SOUL_CATALOG_STATS.total).toBeGreaterThanOrEqual(500);
+    expect(MARTIAL_SOUL_CATALOG_STATS.total).toBeGreaterThanOrEqual(250);
+    expect(MARTIAL_SOUL_CATALOG_STATS.total).toBeLessThan(350);
     for (const era of [1, 2, 3, 4]) expect(MARTIAL_SOUL_CATALOG_STATS.bySource[era]).toBeGreaterThanOrEqual(12);
   });
 
@@ -477,9 +485,11 @@ describe("candidate generation", () => {
       ["查看地图", "把不可见副武魂告诉唐三", "继续行动"],
       game.view.suggestions,
     );
-    expect(suggestions).toEqual(game.view.suggestions);
     expect(suggestions).toHaveLength(3);
     expect(suggestions.every((item) => item.length >= 8 && item.length <= 28)).toBe(true);
+    expect(suggestions.every((item) => !/查看地图|查看新事件|观察周围|继续行动|不可见副武魂|唐三/.test(item))).toBe(true);
+    expect(suggestions.some((item) => /魂环|修炼|武魂/.test(item))).toBe(true);
+    expect(suggestions.some((item) => /主持者|教习|培养|复核|条件/.test(item))).toBe(true);
   });
 
   it("replaces vague screenshot-style choices with canon-grounded awakening actions", () => {

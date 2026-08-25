@@ -1290,6 +1290,9 @@ describe("第一部世界资料", () => {
 
   it("斗一使用早期传播链，后世才进入各时代媒体渠道", () => {
     const earlyGame = awakened("early-circulation-era-1");
+    for (const npc of Object.values(earlyGame.world.npcs)) if (npc.alive) npc.locationId = "heaven-dou-city";
+    const earlyWitness = earlyGame.world.npcs["tang-san"];
+    earlyWitness.alive = true; earlyWitness.locationId = earlyGame.view.locationId!; earlyWitness.factionIds = ["spirit-hall"];
     const earlyDelivery = { intent: "交付悬赏", minutes: 30, ruleSummary: "公开登记并完成悬赏。", fallbackNarrative: "登记处签发回单。", suggestions: [] };
     applyActionResult(earlyGame, "公开交付悬赏", earlyDelivery, earlyDelivery.fallbackNarrative, earlyDelivery.suggestions);
     expect(earlyGame.world.socialRumors[0]).toMatchObject({ earlyCirculationChannel: "势力通告", earlyCirculationStatus: "待扩散", sourceKind: "公开登记", confidence: 92, verificationStatus: "双记录核验", corroborationCount: 2 });
@@ -1656,6 +1659,7 @@ describe("第一部世界资料", () => {
   it("宗门事务会按角色能力或明确选择分支，失败尝试保留但不能冒充验收证据", () => {
     const game = awakened("sect-specialized-assignment");
     game.view.character!.martialSoul.description = "擅长精神控制、侦察与隐匿";
+    game.view.character!.martialSouls[game.view.character!.activeMartialSoulIndex].description = "擅长精神控制、侦察与隐匿";
     game.view.affiliations = [{ id: "seven-treasure", name: "七宝琉璃宗", role: "外围成员", reputation: "生疏", joinedAt: "测试", contribution: 0, completedAssignments: 0, rankEvidence: [] }];
     const commit = (action: string, result = resolveAction(game, action)) => {
       applyActionResult(game, action, result, result.fallbackNarrative, result.suggestions);

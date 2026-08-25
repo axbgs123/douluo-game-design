@@ -438,7 +438,7 @@ test("候选页只显示人工身份并保证三张开局流派不同", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "抽取三名角色" }).click();
   await expect(page.getByRole("heading", { name: "选择角色" })).toBeVisible();
-  await expect(page.getByText("出生池现有 5436 份具体档案", { exact: false })).toBeVisible();
+  await expect(page.getByText("出生池现有 80 份具体档案", { exact: false })).toBeVisible();
   const styles = await page.locator(".opening-style").allTextContents();
   expect(styles).toHaveLength(3);
   expect(new Set(styles).size).toBe(3);
@@ -450,7 +450,7 @@ test("局外召唤区直接提供武魂、身世与遗物仓库", async ({ page 
   await page.goto("/");
   await page.getByRole("button", { name: "✦ 局外成长 传承与图鉴" }).click();
   const poolText = await page.locator(".soul-draw-rules").innerText();
-  expect(Number(poolText.match(/武魂池\s+(\d+)\s+种/)?.[1] ?? 0)).toBeGreaterThanOrEqual(300);
+  expect(Number(poolText.match(/武魂池\s+(\d+)\s+种/)?.[1] ?? 0)).toBeGreaterThanOrEqual(180);
   await expect(page.getByTestId("summon-tab-souls")).toBeVisible();
   await expect(page.getByTestId("summon-tab-origins")).toBeVisible();
   await expect(page.getByTestId("summon-tab-heirlooms")).toBeVisible();

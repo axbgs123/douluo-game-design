@@ -42,7 +42,7 @@ const PROFILE: Record<CandidateRarity, { rarity: number; range: [number, number]
   传奇: { rarity: 1.1, range: [6, 10] }, 神话: { rarity: .18, range: [8, 10] },
 };
 
-export const ORIGINAL_MARTIAL_SOULS: MartialSoulTemplate[] = ASPECTS.flatMap(([aspect, affinity], aspectIndex) =>
+export const LEGACY_ORIGINAL_MARTIAL_SOULS: MartialSoulTemplate[] = ASPECTS.flatMap(([aspect, affinity], aspectIndex) =>
   CORES.map((core, coreIndex) => {
     const grade = GRADES[(aspectIndex * 5 + coreIndex * 3) % GRADES.length];
     const profile = PROFILE[grade];
@@ -61,3 +61,38 @@ export const ORIGINAL_MARTIAL_SOULS: MartialSoulTemplate[] = ASPECTS.flatMap(([a
     };
   }),
 );
+
+const REPRESENTATIVE_LIMITS: Partial<Record<CandidateRarity, number>> = { 平凡: 6, 优秀: 8, 稀有: 12 };
+const representativeSeenCores = new Set<string>();
+const representativeSeenAffinities = new Set<string>();
+
+function representativeIds(grade: CandidateRarity, limit: number): string[] {
+  const pool = LEGACY_ORIGINAL_MARTIAL_SOULS.filter((soul) => soul.grade === grade);
+  const selected: MartialSoulTemplate[] = [];
+  const seenCategories = new Set<string>();
+  while (selected.length < limit && pool.length) {
+    pool.sort((left, right) => {
+      const leftAffinity = left.affinityTags?.[0] ?? ""; const rightAffinity = right.affinityTags?.[0] ?? "";
+      const leftCore = left.id.split("-").at(-1) ?? left.id; const rightCore = right.id.split("-").at(-1) ?? right.id;
+      const leftScore = (seenCategories.has(left.category) ? 0 : 100) + (representativeSeenCores.has(leftCore) ? 0 : 40) + (representativeSeenAffinities.has(leftAffinity) ? 0 : 20) + new Set(left.affinityTags ?? []).size;
+      const rightScore = (seenCategories.has(right.category) ? 0 : 100) + (representativeSeenCores.has(rightCore) ? 0 : 40) + (representativeSeenAffinities.has(rightAffinity) ? 0 : 20) + new Set(right.affinityTags ?? []).size;
+      return rightScore - leftScore || left.id.localeCompare(right.id);
+    });
+    const chosen = pool.shift()!;
+    selected.push(chosen);
+    seenCategories.add(chosen.category);
+    representativeSeenCores.add(chosen.id.split("-").at(-1) ?? chosen.id);
+    if (chosen.affinityTags?.[0]) representativeSeenAffinities.add(chosen.affinityTags[0]);
+  }
+  return selected.map((soul) => soul.id);
+}
+
+const REPRESENTATIVE_LOW_GRADE_IDS = new Set(Object.entries(REPRESENTATIVE_LIMITS).flatMap(([grade, limit]) => representativeIds(grade as CandidateRarity, limit)));
+
+export const ORIGINAL_MARTIAL_SOULS: MartialSoulTemplate[] = LEGACY_ORIGINAL_MARTIAL_SOULS.filter((soul) => !["平凡", "优秀", "稀有"].includes(soul.grade ?? "稀有") || REPRESENTATIVE_LOW_GRADE_IDS.has(soul.id));
+
+export const ORIGINAL_MARTIAL_SOUL_CURATION_STATS = {
+  before: LEGACY_ORIGINAL_MARTIAL_SOULS.length,
+  after: ORIGINAL_MARTIAL_SOULS.length,
+  byGrade: Object.fromEntries(["平凡", "优秀", "稀有", "传奇", "神话"].map((grade) => [grade, ORIGINAL_MARTIAL_SOULS.filter((soul) => soul.grade === grade).length])),
+};

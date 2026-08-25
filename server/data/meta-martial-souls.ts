@@ -1,7 +1,7 @@
 import type { MartialSoulRarity } from "../../shared/game.js";
 import type { MartialSoulTemplate } from "../domain/model.js";
 import { ERA_MARTIAL_SOULS } from "./era-martial-souls.js";
-import { ORIGINAL_MARTIAL_SOULS } from "./original-martial-souls.js";
+import { LEGACY_ORIGINAL_MARTIAL_SOULS, ORIGINAL_MARTIAL_SOULS } from "./original-martial-souls.js";
 
 export interface MetaMartialSoulDefinition extends MartialSoulTemplate {
   metaRarity: MartialSoulRarity;
@@ -86,6 +86,8 @@ export const META_MARTIAL_SOULS: MetaMartialSoulDefinition[] = [...CURATED_META_
 
 export const META_MARTIAL_SOUL_POOL_SIZE = META_MARTIAL_SOULS.filter((item) => ["紫色", "金色", "红色", "七彩"].includes(item.metaRarity)).length;
 
+const LEGACY_META_MARTIAL_SOULS = LEGACY_ORIGINAL_MARTIAL_SOULS.filter((definition) => !definition.lineageBound).map(catalogSoulToMeta);
+
 export function metaSoulById(id: string): MetaMartialSoulDefinition | undefined {
-  return META_MARTIAL_SOULS.find((item) => item.id === id);
+  return META_MARTIAL_SOULS.find((item) => item.id === id) ?? LEGACY_META_MARTIAL_SOULS.find((item) => item.id === id);
 }

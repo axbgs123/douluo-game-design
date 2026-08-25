@@ -71,7 +71,7 @@ describe("存档数据库", () => {
     const equippedMeta = database.getMetaProgression();
     const game = createGame({ era: result.drawn.era, gender: "男", difficulty: "标准", seed: "equipped-origin" }, equippedMeta);
     expect(game.hiddenCandidates[0].originId).toBe(result.drawn.id);
-    expect(game.view.candidates[0].originSummary).toContain(result.drawn.summary.slice(0, 8));
+    expect(game.view.candidates[0].originSummary).toContain(result.drawn.summary.replace(/^[他她]/, "").slice(0, 8));
     rerollCandidates(game, equippedMeta.weightPreferences);
     expect(game.hiddenCandidates[0].originId).toBe(result.drawn.id);
     database.saveGameAndClaimEquippedLoadout(game, undefined, result.drawn.id, "test.origin-claimed");
