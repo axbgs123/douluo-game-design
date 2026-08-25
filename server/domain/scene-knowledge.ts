@@ -68,15 +68,15 @@ export function buildSceneKnowledgePack(game: StoredGame, action: string, budget
   }
 
   for (const event of game.world.dynamicEvents) {
-    const witnessedParticipant = event.participantIds.some((id) => game.world.npcs[id]?.knownToPlayer);
-    const relevant = event.locationId === game.view.locationId || witnessedParticipant || mentions(action, event.title);
+    const learned = game.view.news.some((item) => item.id === event.id || `${item.title}${item.detail}`.includes(event.title)) || game.world.intelligenceRecords.some((record) => record.subjectType === "事件" && (record.subjectId === event.id || `${record.title}${record.detail}`.includes(event.title)) && record.confidence >= 60);
+    const relevant = event.locationId === game.view.locationId || learned;
     if (!relevant || (event.status === "错过" && !mentions(action, event.title))) continue;
     add({ id: event.id, kind: "事件", name: event.title, fact: `${event.detail}；状态：${event.status}${event.outcome ? `；结果：${event.outcome}` : ""}`, reason: event.locationId === game.view.locationId ? "本地事件" : "相关人物事件" }, event.status === "可介入" ? 92 : 55);
   }
 
   for (const event of CANON_EVENTS.filter((item) => game.world.firedCanonEvents.includes(item.id)).slice(-12)) {
-    const involvedKnownNpc = event.participantIds.some((id) => game.world.npcs[id]?.knownToPlayer);
-    if (!mentions(action, event.title) && event.locationId !== game.view.locationId && !involvedKnownNpc) continue;
+    const learned = game.view.news.some((item) => item.id === event.id || `${item.title}${item.detail}`.includes(event.title)) || game.world.intelligenceRecords.some((record) => record.subjectType === "事件" && (record.subjectId === event.id || `${record.title}${record.detail}`.includes(event.title)) && record.confidence >= 60);
+    if (event.locationId !== game.view.locationId && !learned) continue;
     add({ id: event.id, kind: "事件", name: event.title, fact: event.publicSummary, reason: "已经发生的公开历史" }, 65);
   }
 

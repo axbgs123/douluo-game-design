@@ -1,5 +1,5 @@
 import type { ActionResolution, StoredGame } from "../domain/model.js";
-import { CANON_CHARACTERS, CANON_EVENTS, characterById } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, characterById, locationById } from "../data/world.js";
 import { toThirdPersonNarrative } from "../domain/narrative.js";
 import { auditNarrative, auditNarrativeLogicPacket, buildChineseWebnovelSceneCard, buildNarrativeLogicPacket, refreshStoryArchive, sanitizeNarrativeSuggestions, selectNarrativeRules, violatesCanonChronology } from "../domain/story-rules.js";
 import { readDeepSeekSettings } from "./settings.js";
@@ -66,7 +66,20 @@ export function observableCanonEventsForNarration(game: StoredGame) {
 }
 
 export function observableCausalFootprintsForNarration(game: StoredGame) {
-  return game.world.canonCausalFootprints.filter((cause) => cause.source !== "历史分支结算" || game.view.canonInfluences.some((item) => item.id === cause.id));
+  return game.world.canonCausalFootprints
+    .filter((cause) => cause.source !== "历史分支结算" || game.view.canonInfluences.some((item) => item.id === cause.id))
+    .map((cause) => ({
+      id: cause.id,
+      source: cause.source,
+      description: cause.description,
+      atYear: cause.atYear,
+      atDay: cause.atDay,
+      location: locationById(cause.locationId)?.name ?? "玩家当时所在地点",
+      affectedPeople: cause.affectedNpcIds.map((id) => game.world.npcs[id]).filter((npc) => npc?.knownToPlayer).map((npc) => npc.name),
+      affectedFactions: cause.affectedFactionIds.map((id) => FACTIONS.find((item) => item.id === id)).filter((faction) => faction && (cause.description.includes(faction.name) || game.view.affiliations.some((item) => item.id === faction.id) || cause.affectedNpcIds.some((npcId) => game.world.npcs[npcId]?.knownToPlayer && game.world.npcs[npcId]?.factionIds.includes(faction.id)) || game.world.intelligenceRecords.some((record) => record.subjectType === "势力" && record.subjectId === faction.id && record.confidence >= 60))).map((faction) => faction!.name),
+      strength: cause.strength,
+      domains: cause.domains,
+    }));
 }
 
 export class NarrativeAuditError extends Error {

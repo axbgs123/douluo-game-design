@@ -606,7 +606,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(36);
+    expect(migrated.schemaVersion).toBe(37);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -631,6 +631,7 @@ describe("完整游玩规则", () => {
       actionIndex: game.actionIndex,
     });
     expect(game.view.relations.some((relation) => relation.name === "唐三")).toBe(true);
+    expect(game.world.canonCausalFootprints).toHaveLength(0);
   });
 
   it("地方事件可以被玩家介入并改写世界指标", () => {
@@ -648,6 +649,17 @@ describe("完整游玩规则", () => {
     expect(game.world.npcRelations.length).toBeGreaterThan(0);
     expect(game.world.dynamicEvents.length).toBeGreaterThan(0);
     expect(game.world.lastAutonomyOrdinal).toBeGreaterThan(0);
+  });
+
+  it("长时间快进按中间日期执行NPC行动而不是套用终点年份", () => {
+    const game = awakened("chronological-long-skip");
+    game.world = createHiddenWorld(0, game.view.locationId!);
+    game.view.worldTime = { era: "唐三觉醒基准年", year: 0, day: 1, time: "08:00", season: "春" };
+    advanceWorldTime(game, 360 * 1440);
+    const logs = Object.values(game.world.npcs).flatMap((npc) => npc.autonomyLog);
+    expect(logs.length).toBeGreaterThan(0);
+    expect(logs.some((log) => log.year === 0 && log.day > 1)).toBe(true);
+    expect(logs.every((log) => !(log.year === 1 && log.day === 1))).toBe(true);
   });
 
   it("隐藏传承会被调查发现并能够独立成长", () => {
@@ -689,6 +701,37 @@ describe("完整游玩规则", () => {
     advanceWorldTime(game, 20 * 1440 + 120);
     expect(game.world.firedCanonEvents).toContain("tang-awakening");
     expect(game.world.suppressedCanonEvents).not.toContain("tang-awakening");
+  });
+
+  it("轻微关系接触不会冻结人物后续人生阶段", () => {
+    const game = awakened("minor-contact-does-not-freeze-stage");
+    game.world = createHiddenWorld(0, "notting-academy");
+    game.view.worldTime = { era: "唐三觉醒基准年", year: 0, day: 30, time: "08:00", season: "春" };
+    recordCanonInfluence(game, { source: "普通寒暄", description: "与唐三短暂说过一句话", affectedNpcIds: ["tang-san"], strength: 1, domains: ["relationship"] });
+    advanceWorldTime(game, 6 * 360 * 1440);
+    expect(game.world.npcs["tang-san"].currentGoal).toContain("史莱克");
+    expect(game.world.npcs["tang-san"].currentGoal).not.toContain("诺丁学院学习");
+  });
+
+  it("修炼路线被玩家改变后不会重新套用未来原著实力快照", () => {
+    const game = awakened("altered-power-route");
+    game.world = createHiddenWorld(0, "notting-academy");
+    game.view.worldTime = { era: "唐三觉醒基准年", year: 0, day: 30, time: "08:00", season: "春" };
+    recordCanonInfluence(game, { source: "长期培养改变", description: "唐三改用另一套持续修炼安排", affectedNpcIds: ["tang-san"], strength: 20, domains: ["power"] });
+    advanceWorldTime(game, 8 * 360 * 1440);
+    expect(game.world.npcs["tang-san"].soulRank).not.toBe(40);
+    expect(game.world.npcs["tang-san"].powerTier).not.toContain("魂宗");
+  });
+
+  it("被延后的相识节点不会按旧日期强行建立原著关系", () => {
+    const game = awakened("relationship-prerequisite-branch");
+    game.world = createHiddenWorld(-1, "notting-academy");
+    game.view.locationId = "notting-academy";
+    game.view.worldTime = { era: "比唐三早一年", year: -1, day: 360, time: "23:00", season: "冬" };
+    recordCanonInfluence(game, { source: "测试", description: "改变唐三个人入学安排", affectedNpcIds: ["tang-san"], strength: 50, domains: ["goal"] });
+    advanceWorldTime(game, 30 * 1440);
+    expect(game.world.suppressedCanonEvents).toContain("notting-master-disciple");
+    expect(game.world.npcRelations.some((relation) => [relation.leftId, relation.rightId].includes("tang-san") && [relation.leftId, relation.rightId].includes("yu-xiaogang"))).toBe(false);
   });
 
   it("原作事件按年内日期依次发生而不是在元旦一起触发", () => {
@@ -741,23 +784,23 @@ describe("完整游玩规则", () => {
     game.world = createHiddenWorld(-1, game.view.locationId!);
     game.view.canonInfluences = [];
     game.view.worldTime = { era: "比唐三早一年", year: -1, day: 360, time: "23:00", season: "冬" };
-    recordCanonInfluence(game, { source: "测试", description: "提前改变唐三的入学条件", affectedNpcIds: ["tang-san"], strength: 50 });
+    recordCanonInfluence(game, { source: "测试", description: "提前改变唐三的个人入学安排", affectedNpcIds: ["tang-san"], strength: 50, domains: ["goal"] });
     advanceWorldTime(game, 20 * 1440 + 120);
     expect(game.world.suppressedCanonEvents).toContain("tang-awakening");
     expect(game.view.canonInfluences[0].affects).toContain("唐三");
     expect(game.world.canonTimelineBranches).toEqual(expect.arrayContaining([expect.objectContaining({ eventId: "tang-awakening", state: "延后", status: "待结算" })]));
 
-    advanceWorldTime(game, 116 * 1440);
+    advanceWorldTime(game, 300 * 1440);
     const branch = game.world.canonTimelineBranches.find((item) => item.eventId === "tang-awakening");
-    expect(branch).toMatchObject({ state: "延后", status: "已结算" });
-    expect(game.world.firedCanonEvents).toContain("tang-awakening");
-    expect(game.world.suppressedCanonEvents).not.toContain("tang-awakening");
+    expect(branch).toMatchObject({ state: "替代", status: "已结算", recheckCount: 2 });
+    expect(game.world.firedCanonEvents).not.toContain("tang-awakening");
+    expect(game.world.suppressedCanonEvents).toContain("tang-awakening");
     expect(game.world.dynamicEvents.some((item) => item.id === branch?.replacementEventId && item.status === "可介入")).toBe(true);
-    expect(game.world.npcs["tang-san"].currentGoal).toContain("延后");
+    expect(game.world.npcs["tang-san"].currentGoal).toMatch(/利益|计划失效/);
     expect(game.world.canonCausalFootprints.some((item) => item.source === "历史分支结算" && item.affectedNpcIds.includes("tang-san"))).toBe(true);
   });
 
-  it("改写后的节点会把因果传播给后续相关原著事件", () => {
+  it("改写后的节点只向直接后继衰减传播，不会感染整条原著", () => {
     const game = awakened("causal-cascade");
     game.world = createHiddenWorld(-1, "notting-academy");
     game.view.locationId = "notting-academy";
@@ -766,9 +809,12 @@ describe("完整游玩规则", () => {
     recordCanonInfluence(game, { source: "测试", description: "提前改变诺丁学院的入学制度", locationId: "notting-academy", strength: 50 });
     advanceWorldTime(game, 140 * 1440);
     expect(game.world.canonTimelineBranches.some((item) => item.eventId === "tang-awakening" && item.status === "已结算")).toBe(true);
+    const propagated = game.world.canonCausalFootprints.find((item) => item.originEventId === "tang-awakening");
+    expect(propagated?.strength).toBeLessThan(50);
+    expect(game.world.canonTimelineBranches.some((item) => item.eventId === "notting-master-disciple")).toBe(true);
 
     advanceWorldTime(game, (6 * 360 - 120) * 1440);
-    expect(game.world.canonTimelineBranches.some((item) => item.eventId === "shrek-enrollment")).toBe(true);
+    expect(game.world.canonTimelineBranches.some((item) => item.eventId === "shrek-enrollment")).toBe(false);
   });
 
   it("远方未获知的历史分支不会通过模型因果上下文泄露", () => {
@@ -777,6 +823,7 @@ describe("完整游玩规则", () => {
     expect(observableCausalFootprintsForNarration(game).some((item) => item.id === "hidden-branch-cause")).toBe(false);
     game.view.canonInfluences.push({ id: "hidden-branch-cause", action: "已获知的历史分支", affects: "武魂殿", strength: "已形成历史分支", date: "原作 +8 年" });
     expect(observableCausalFootprintsForNarration(game).some((item) => item.id === "hidden-branch-cause")).toBe(true);
+    expect(JSON.stringify(observableCausalFootprintsForNarration(game))).not.toContain("qian-renxue");
   });
 
   it("respects birth years and canonical locations", () => {
@@ -837,7 +884,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.summary = "主角在东海学院见到了古月娜。";
     game.view.relations.push({ id: "gu-yue-na", name: "古月娜", relation: "同学", impression: "旧存档提前使用了后期姓名", strength: 10, category: "师友" });
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(36);
+    expect(migrated.schemaVersion).toBe(37);
     expect(migrated.world.npcs["gu-yue-na"].name).toBe("古月");
     expect(migrated.view.relations.find((item) => item.id === "gu-yue-na")?.name).toBe("古月");
     expect(migrated.storyMemory.summary).not.toContain("古月娜");
@@ -948,7 +995,7 @@ describe("第一部世界资料", () => {
     legacy.view.locationId = "mother-ship-port";
     legacy.view.location = "联邦母舰港";
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(36);
+    expect(migrated.schemaVersion).toBe(37);
     expect(migrated.view.location).toBe("联邦舰队集结基地");
   });
 

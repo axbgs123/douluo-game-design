@@ -138,6 +138,8 @@ export interface NpcRelationState {
   history: Array<{ year: number; day: number; delta: number; reason: string }>;
 }
 
+export type CanonCausalDomain = "identity" | "goal" | "faction" | "relationship" | "power" | "location" | "survival" | "resource" | "institution";
+
 export interface CanonCausalFootprint {
   id: string;
   source: string;
@@ -148,6 +150,10 @@ export interface CanonCausalFootprint {
   affectedNpcIds: string[];
   affectedFactionIds: string[];
   strength: number;
+  domains?: CanonCausalDomain[];
+  expiresOrdinal?: number;
+  originEventId?: string;
+  propagationDepth?: number;
 }
 
 export interface CanonTimelineBranch {
@@ -163,6 +169,7 @@ export interface CanonTimelineBranch {
   summary: string;
   status: "待结算" | "已结算";
   replacementEventId?: string;
+  recheckCount?: number;
 }
 
 export interface DynamicWorldEvent {

@@ -470,7 +470,7 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
       publicIdentity: `${game.view.character?.name ?? "角色"}；${game.view.character?.originName ?? "身份未定"}`,
       publicMartialSouls: publicNames,
       hiddenMartialSouls: hiddenNames,
-      relevantCausalFootprints: game.world.canonCausalFootprints.slice(-8).map((item) => item.description),
+      relevantCausalFootprints: game.world.canonCausalFootprints.filter((item) => (item.expiresOrdinal ?? Number.POSITIVE_INFINITY) >= (game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1) && (item.source !== "历史分支结算" || game.view.canonInfluences.some((view) => view.id === item.id))).slice(-8).map((item) => item.description),
     },
     protagonistContract: {
       desire: playerInput.trim(),

@@ -37,4 +37,16 @@ describe("场景知识检索", () => {
     npc.knownToPlayer = true;
     expect(buildSceneKnowledgePack(game, "看看周围", 4_800).entries.some((entry) => entry.id === "tang-san")).toBe(true);
   });
+
+  it("认识参与者不等于实时知道其远方事件", () => {
+    const game = playableGame();
+    game.world.npcs["tang-san"].knownToPlayer = true;
+    game.world.dynamicEvents.push({ id: "remote-private-event", title: "唐三在远方处理的私事", kind: "人物", locationId: "heaven-dou-city", participantIds: ["tang-san"], detail: "这件事尚未通过任何消息渠道传来。", stakes: 3, status: "可介入", createdYear: 1, createdDay: 1, expiresOrdinal: 500 });
+    game.world.firedCanonEvents.push("ice-fire-herbs");
+    let pack = buildSceneKnowledgePack(game, "询问唐三最近的消息", 4_800);
+    expect(pack.entries.some((entry) => entry.id === "remote-private-event" || entry.id === "ice-fire-herbs")).toBe(false);
+    game.view.news.push({ id: "remote-private-event", title: "远方来信", detail: "来信确认唐三在远方处理的私事。", date: "原作 +1 年" });
+    pack = buildSceneKnowledgePack(game, "查看远方来信", 4_800);
+    expect(pack.entries.some((entry) => entry.id === "remote-private-event")).toBe(true);
+  });
 });

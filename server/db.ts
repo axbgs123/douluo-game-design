@@ -410,11 +410,9 @@ function seedCanonKnowledge(): void {
 export function retrieveCanonKnowledge(game: StoredGame, query: string, limit = 10): RetrievedCanonKnowledge[] {
   const year = game.view.worldTime?.year ?? 0;
   const era = game.view.era ?? eraAtYear(year);
-  const observableCausalFootprints = game.world.canonCausalFootprints.filter((cause) => cause.source !== "历史分支结算" || game.view.canonInfluences.some((item) => item.id === cause.id));
   const knownCharacterIds = new Set([
     ...game.view.knownFigures.map((item) => item.id),
     ...Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer).map((npc) => npc.id),
-    ...observableCausalFootprints.flatMap((item) => item.affectedNpcIds),
   ]);
   const knownLocationIds = new Set([game.view.locationId, ...game.world.discoveredLocations, ...game.view.map.filter((item) => item.discovered || item.current).map((item) => item.id)]);
   const publicFactionIdsByEra: Record<1 | 2 | 3 | 4, string[]> = {
@@ -423,8 +421,8 @@ export function retrieveCanonKnowledge(game: StoredGame, query: string, limit = 
     3: ["douluo-federation", "spirit-pagoda", "war-god-temple", "d3-tang-sect", "star-luo-overseas", "dou-spirit-overseas"],
     4: ["douluo-federation", "spirit-pagoda", "d4-federal-fleet", "d4-first-fleet", "d4-second-fleet", "d4-third-fleet", "d4-fourth-fleet", "d4-fifth-fleet", "d4-sixth-fleet", "shrek-space-command", "senluo-planet", "elf-planet"],
   };
-  const publiclyLearnedFactions = FACTIONS.filter((faction) => game.world.intelligenceRecords.some((record) => record.subjectType === "势力" && record.subjectId === faction.id && record.confidence >= 60) || game.view.news.some((item) => `${item.title}${item.detail}`.includes(faction.name))).map((faction) => faction.id);
-  const knownFactionIds = new Set([...publicFactionIdsByEra[era], ...publiclyLearnedFactions, ...game.view.affiliations.map((item) => item.id), ...game.view.managedFactions.map((item) => item.id), ...observableCausalFootprints.flatMap((item) => item.affectedFactionIds)]);
+  const publiclyLearnedFactions = FACTIONS.filter((faction) => game.world.intelligenceRecords.some((record) => record.subjectType === "势力" && record.subjectId === faction.id && record.confidence >= 60) || game.view.news.some((item) => `${item.title}${item.detail}`.includes(faction.name)) || game.view.canonInfluences.some((item) => item.affects.includes(faction.name))).map((faction) => faction.id);
+  const knownFactionIds = new Set([...publicFactionIdsByEra[era], ...publiclyLearnedFactions, ...game.view.affiliations.map((item) => item.id), ...game.view.managedFactions.map((item) => item.id)]);
   const knownCanonEventIds = new Set(CANON_EVENTS.filter((event) => game.world.firedCanonEvents.includes(event.id) && (game.view.news.some((item) => item.id === event.id || item.title === event.title || item.detail.includes(event.title)) || game.world.intelligenceRecords.some((item) => item.subjectId === event.id || item.title === event.title || item.detail.includes(event.title)))).map((event) => event.id));
   const queryVector = embedMemoryText(query);
   const rows = database.prepare(`SELECT kind, subject_id, subject_name, valid_from_year, text, metadata_json, vector_blob, importance FROM canon_knowledge_vectors WHERE (era = 0 OR era = ?) AND valid_from_year <= ? AND valid_until_year >= ?`).all(era, year, year) as Array<{ kind: string; subject_id?: string; subject_name: string; valid_from_year: number; text: string; metadata_json: string; vector_blob: Uint8Array; importance: number }>;
