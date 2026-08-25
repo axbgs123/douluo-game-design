@@ -30,6 +30,7 @@ import { ORIGINAL_MARTIAL_SOULS } from "../data/original-martial-souls.js";
 import { fixedTraitEffect } from "./traits.js";
 import { CHARACTER_SURNAMES, FEMALE_GIVEN_NAMES, MALE_GIVEN_NAMES, MATURE_FEMALE_GIVEN_NAMES, MATURE_MALE_GIVEN_NAMES, NEUTRAL_GIVEN_NAMES } from "../data/chinese-name-pool.js";
 import { GOLD_FINGERS, createSpecialSystemView, goldFingerByPreference, isGoldFinger } from "../data/gold-fingers.js";
+import { createStoryArc } from "./story-director.js";
 
 interface OriginTemplate {
   id: string;
@@ -1597,6 +1598,7 @@ export function selectLifeGoal(game: StoredGame, lifeGoal: string, options?: { a
   ];
   game.view.status = "playing";
   game.view.shaping = undefined;
+  game.view.storyArc = createStoryArc(game);
   game.storyMemory.openThreads = [...new Set([goal, ...game.storyMemory.openThreads])].slice(0, 12);
   game.view.updatedAt = new Date().toISOString();
   refreshStoryArchive(game);
@@ -1640,7 +1642,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 29,
+    schemaVersion: 30,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,

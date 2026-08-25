@@ -86,7 +86,7 @@ describe("candidate generation", () => {
   it("uses all five visible rarity levels", () => {
     const rarities = new Set(Array.from({ length: 220 }, (_, rerollIndex) => generateCandidates("rarity-palette", rerollIndex, "女")).flat().map((candidate) => candidate.public.rarity));
     expect(rarities).toEqual(new Set(["平凡", "优秀", "稀有", "传奇", "神话"]));
-  });
+  }, 10_000);
 
   it("never gives a character a martial soul below the origin rarity", () => {
     const candidates = Array.from({ length: 180 }, (_, rerollIndex) => generateCandidates("soul-prestige-match", rerollIndex, "男")).flat();

@@ -91,6 +91,29 @@ export interface ChapterObjectiveView {
   steps: Array<{ id: string; text: string; status: "未开始" | "进行中" | "完成" }>;
 }
 
+export type StoryArcStage = "立局" | "主动推进" | "阻力显形" | "局势扩大" | "阶段兑现" | "不可逆转折";
+
+export interface StoryArcView {
+  id: string;
+  arcNumber: number;
+  title: string;
+  stage: StoryArcStage;
+  stageIndex: number;
+  centralGoal: string;
+  centralConflict: string;
+  opposingForce: string;
+  stakes: string;
+  promisedPayoff: string;
+  irreversibleTurn: string;
+  pressure: number;
+  startedActionIndex: number;
+  stageStartedActionIndex: number;
+  lastUpdatedAction: number;
+  beats: Array<{ actionIndex: number; kind: "推进" | "关系" | "受挫" | "升级" | "兑现" | "转折"; summary: string }>;
+  evidence: string[];
+  completedArcTitles: string[];
+}
+
 export interface SoulRingView {
   index: number;
   beastId: string;
@@ -918,6 +941,7 @@ export interface GameView {
   affiliations: AffiliationView[];
   chapter: StoryChapterView;
   chapterObjective?: ChapterObjectiveView;
+  storyArc?: StoryArcView;
   hunting?: HuntingView;
   combat?: CombatView;
   comboTrainings: ComboTrainingView[];

@@ -269,6 +269,7 @@ export async function narrateWithDeepSeek(
   const memoryQuery = [
     playerInput, resolution.intent, resolution.ruleSummary, game.view.location,
     publicSoulNames.length ? `已公开${publicSoulNames.length}个武魂：${publicSoulNames.join("、")}；先天魂力${game.view.character?.innateSoulPower ?? "未知"}；社会评价${game.view.character?.reputation ?? "尚未形成"}` : "",
+    game.view.storyArc ? `当前故事卷：${game.view.storyArc.title}；阶段${game.view.storyArc.stage}；目标${game.view.storyArc.centralGoal}；冲突${game.view.storyArc.centralConflict}；对抗压力${game.view.storyArc.opposingForce}` : "",
     ...game.view.tasks.filter((task) => task.status !== "完成").slice(0, 6).map((task) => `${task.title} ${task.detail}`),
     ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => npc.name),
   ].join("\n");
@@ -317,6 +318,7 @@ export async function narrateWithDeepSeek(
             "重要原著事件在没有玩家因果足迹时保持惯性；普通人物、关系、资源和地方事件应持续自主变化。玩家形成足够的目击、关系、权限、资源、战力或势力影响后，重要事件也必须从新状态重新推演，不能强行回轨。",
             "retrievedWorldLogic 是独立的世界基本逻辑库。先核对每条的触发前提，再执行目击—复测—上报—利益判断—具体行动—状态痕迹链。高天赋会立刻改变关注、投资、收徒、拉拢、忌惮和敌对概率，但不保证成功拜师、无条件送宝、忠诚或私人好感。",
             "敌对反应必须逐级升级：可靠消息、威胁评估、监视或接触、控制失败、行动资源与可达性成立后，才可能绑架或暗杀。不得让远方敌人无来源瞬移袭击，也不得让敌人连续送死。",
+            "storyArc 是程序根据已发生行动维护的当前卷级导演状态。围绕 centralGoal、centralConflict、opposingForce 和当前 stage 组织本场意义，让本次结果为阶段兑现或不可逆转折积累证据；不得为了推进阶段伪造失败、胜利、敌人、资源或玩家决定。",
             `activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗${game.view.era === 1 ? "一" : game.view.era === 2 ? "二" : game.view.era === 3 ? "三" : "四"}适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。`,
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
@@ -359,6 +361,7 @@ export async function narrateWithDeepSeek(
             retrievedLongTermMemories,
             retrievedCanonKnowledge,
             retrievedWorldLogic,
+            storyArc: game.view.storyArc,
             recentNarrative: game.view.narrative.slice(-6).map((entry) => ({ ...entry, text: entry.text.slice(0, 1_600) })),
             playerInput,
             fixedRuleResult: resolution.ruleSummary,

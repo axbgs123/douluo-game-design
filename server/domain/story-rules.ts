@@ -348,6 +348,7 @@ export function buildChineseWebnovelSceneCard(game: StoredGame, resolution: Acti
     publicFacts: { martialSouls: publicNames, soulPower: game.view.character?.innateSoulPower, location: game.view.location },
     protagonistSecrets: { hiddenMartialSouls: hiddenNames, specialSystem: game.view.character?.specialSystem?.name },
     unresolvedPromises: game.storyMemory.openThreads.slice(0, 8),
+    storyArc: game.view.storyArc ? { title: game.view.storyArc.title, stage: game.view.storyArc.stage, goal: game.view.storyArc.centralGoal, conflict: game.view.storyArc.centralConflict, opposingForce: game.view.storyArc.opposingForce, payoff: game.view.storyArc.promisedPayoff, irreversibleTurn: game.view.storyArc.irreversibleTurn, pressure: game.view.storyArc.pressure } : undefined,
     reactionChain: ["谁目击", "谁有权限", "谁获益或受损", "立即反应", "留下何种记录、关系或代价"],
     choiceVectors: ["成长或资源", "关系或势力", "秘密或风险"],
     deterministicSuggestions: groundedNarrativeSuggestions(game),
@@ -549,6 +550,7 @@ export function refreshStoryArchive(game: StoredGame): StoryArchiveView {
   current.openThreads = [...new Set([...game.storyMemory.openThreads, ...game.view.tasks.filter((task) => task.status !== "完成").map((task) => task.title)])].slice(0, 12);
   current.keyChoices = game.storyMemory.keyChoices.slice(-12).reverse();
   current.continuity = [
+    ...(game.view.storyArc ? [{ label: "本卷", detail: `${game.view.storyArc.stage} · ${game.view.storyArc.centralGoal} · 压力${game.view.storyArc.pressure}`, status: game.view.storyArc.pressure >= 70 ? "留意" as const : game.view.storyArc.stageIndex >= 4 ? "变化" as const : "稳定" as const }] : []),
     { label: "年代", detail: time ? `${worldDate(game)}，角色${game.view.character?.age ?? 6}岁` : "尚未正式进入时间线", status: "稳定" },
     { label: "原作", detail: causal ? `已有${causal}条主角因果记录，相关节点可能变化` : "主角尚未触及关键因果，原作照常推进", status: causal ? "变化" : "稳定" },
     { label: "线索", detail: current.openThreads.length ? `${current.openThreads.length}件事仍未解决` : "眼前没有未决线索", status: current.openThreads.length >= 8 ? "留意" : "稳定" },

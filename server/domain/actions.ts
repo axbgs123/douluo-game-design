@@ -9,6 +9,7 @@ import { guardActionByStoryRules, recordStoryConsequence, sanitizeNarrativeSugge
 import { formatSoulCoins } from "../../shared/currency.js";
 import { createSpecialSystemView, goldFingerByName, isGoldFinger } from "../data/gold-fingers.js";
 import { heirloomByName } from "../../shared/heirlooms.js";
+import { updateStoryArc } from "./story-director.js";
 
 interface DifficultyRules {
   training: number;
@@ -3759,6 +3760,7 @@ export function applyActionResult(
     const factionIds = FACTIONS.filter((faction) => input.includes(faction.name)).map((faction) => faction.id);
     if (npcIds.length || factionIds.length) recordCanonInfluence(game, { source: "玩家实际行动", description: input.slice(0, 100), affectedNpcIds: npcIds, affectedFactionIds: factionIds, strength: /杀|救下|摧毁|夺取/.test(input) ? 10 : /加入|拜师|保护|阻止/.test(input) ? 5 : 2 });
   }
+  updateStoryArc(game, input, result);
   recordStoryConsequence(game, input, result);
   queueSocialRumor(game, input, result.intent, result.ruleSummary);
   game.view.updatedAt = new Date().toISOString();

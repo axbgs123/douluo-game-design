@@ -10,6 +10,7 @@ import { heirloomByName } from "../../shared/heirlooms.js";
 import { martialSoulGrade, normalizeMartialSoulName } from "../../shared/martial-soul.js";
 import { fixedTraitEffect } from "./traits.js";
 import { CANON_RELATIONSHIPS } from "../data/canon-relationships.js";
+import { ensureStoryArc } from "./story-director.js";
 
 const DAYS_PER_YEAR = 360;
 
@@ -1117,7 +1118,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 29;
+  legacy.schemaVersion = 30;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -1436,6 +1437,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.knownFigures = buildKnownFigures(game);
   game.view.intelligence = buildIntelligenceView(game);
   game.view.activeEvents = buildActiveEvents(game);
+  ensureStoryArc(game);
   refreshStoryArchive(game);
   return game;
 }
