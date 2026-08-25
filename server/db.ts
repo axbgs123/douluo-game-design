@@ -11,6 +11,7 @@ import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
 import { ensureGameState } from "./domain/world.js";
 import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_NAMES, META_ORIGIN_POOL, META_ORIGIN_POOL_SIZE, selectCandidate } from "./domain/generator.js";
+import { bytesToVector, embedMemoryText, vectorSimilarity, vectorToBytes, VECTOR_MEMORY_DIMENSIONS } from "./domain/vector-memory.js";
 
 const databasePath = process.env.DOULUO_DATA_DIR
   ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
@@ -86,6 +87,26 @@ database.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_model_calls_game_created ON model_calls(game_id, id DESC);
 
+  CREATE TABLE IF NOT EXISTS vector_memories (
+    id TEXT PRIMARY KEY,
+    game_id TEXT NOT NULL,
+    source_key TEXT NOT NULL,
+    action_index INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    text TEXT NOT NULL,
+    metadata_json TEXT NOT NULL,
+    vector_blob BLOB NOT NULL,
+    importance REAL NOT NULL,
+    year INTEGER NOT NULL,
+    day INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(game_id, source_key),
+    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_vector_memories_game_action
+  ON vector_memories(game_id, action_index DESC);
+
   CREATE TABLE IF NOT EXISTS canon_characters (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -119,6 +140,110 @@ database.exec(`
   );
 `);
 
+export interface RetrievedVectorMemory {
+  id: string;
+  kind: string;
+  text: string;
+  actionIndex: number;
+  year: number;
+  day: number;
+  importance: number;
+  similarity: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface VectorMemoryInput {
+  gameId: string;
+  sourceKey: string;
+  actionIndex: number;
+  kind: "action" | "choice" | "npc" | "intelligence" | "continuity";
+  text: string;
+  importance?: number;
+  year?: number;
+  day?: number;
+  metadata?: Record<string, unknown>;
+}
+
+const upsertVectorMemoryStatement = database.prepare(`
+  INSERT INTO vector_memories (id, game_id, source_key, action_index, kind, text, metadata_json, vector_blob, importance, year, day, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(game_id, source_key) DO UPDATE SET
+    action_index = excluded.action_index,
+    kind = excluded.kind,
+    text = excluded.text,
+    metadata_json = excluded.metadata_json,
+    vector_blob = excluded.vector_blob,
+    importance = excluded.importance,
+    year = excluded.year,
+    day = excluded.day,
+    created_at = excluded.created_at
+`);
+
+export function storeVectorMemory(input: VectorMemoryInput): void {
+  const text = input.text.replace(/\s+/g, " ").trim().slice(0, 2_400);
+  if (!text) return;
+  const vector = embedMemoryText(text);
+  upsertVectorMemoryStatement.run(
+    randomUUID(), input.gameId, input.sourceKey.slice(0, 160), Math.max(0, input.actionIndex), input.kind,
+    text, JSON.stringify(input.metadata ?? {}), vectorToBytes(vector), Math.max(0, Math.min(1, input.importance ?? 0.6)),
+    input.year ?? 0, input.day ?? 1, new Date().toISOString(),
+  );
+  database.prepare(`DELETE FROM vector_memories WHERE id IN (
+    SELECT id FROM vector_memories WHERE game_id = ? ORDER BY importance DESC, action_index DESC LIMIT -1 OFFSET 2000
+  )`).run(input.gameId);
+}
+
+function ensureVectorMemoryBackfill(game: StoredGame): void {
+  const sourceKeys = new Set((database.prepare("SELECT source_key FROM vector_memories WHERE game_id = ?").all(game.view.id) as Array<{ source_key: string }>).map((row) => row.source_key));
+  for (const entry of game.world.actionLedger) if (!sourceKeys.has(`action:${entry.index}`) && !sourceKeys.has(`ledger:${entry.index}`)) storeVectorMemory({
+    gameId: game.view.id,
+    sourceKey: `ledger:${entry.index}`,
+    actionIndex: entry.index,
+    kind: "action",
+    text: `${entry.year}年${entry.day}日，玩家行动：${entry.action}。程序结果：${entry.result}`,
+    importance: 0.65,
+    year: entry.year,
+    day: entry.day,
+    metadata: { intent: entry.intent, source: "actionLedger" },
+  });
+  game.storyMemory.keyChoices.forEach((choice, index) => {
+    if (sourceKeys.has(`choice:${index}`)) return;
+    storeVectorMemory({
+      gameId: game.view.id, sourceKey: `choice:${index}`, actionIndex: Math.max(0, game.actionIndex - game.storyMemory.keyChoices.length + index + 1),
+      kind: "choice", text: `玩家已经作出的关键选择：${choice}`, importance: 0.9,
+      year: game.view.worldTime?.year, day: game.view.worldTime?.day, metadata: { source: "storyMemory.keyChoices" },
+    });
+  });
+  for (const [name, note] of Object.entries(game.storyMemory.npcNotes)) storeVectorMemory({
+    gameId: game.view.id, sourceKey: `npc:${name}`, actionIndex: game.storyMemory.lastUpdatedAction,
+    kind: "npc", text: `${name}与玩家之间应延续的已知互动：${note}`, importance: 0.82,
+    year: game.view.worldTime?.year, day: game.view.worldTime?.day, metadata: { npcName: name, source: "storyMemory.npcNotes" },
+  });
+  for (const item of game.view.intelligence.slice(0, 80)) storeVectorMemory({
+    gameId: game.view.id, sourceKey: `intelligence:${item.id}`, actionIndex: game.actionIndex,
+    kind: "intelligence", text: `已知情报：${item.title}。${item.detail}。来源：${item.source}，状态：${item.status}`, importance: item.status === "确定" ? 0.78 : 0.58,
+    year: game.view.worldTime?.year, day: game.view.worldTime?.day, metadata: { subjectId: item.subjectId, confidence: item.confidence, acquiredAt: item.acquiredAt, source: "intelligence" },
+  });
+}
+
+export function retrieveVectorMemories(game: StoredGame, query: string, limit = 8): RetrievedVectorMemory[] {
+  ensureVectorMemoryBackfill(game);
+  const queryVector = embedMemoryText(query);
+  const rows = database.prepare(`
+    SELECT id, kind, text, action_index, metadata_json, vector_blob, importance, year, day
+    FROM vector_memories WHERE game_id = ? AND action_index <= ?
+  `).all(game.view.id, game.actionIndex) as Array<{ id: string; kind: string; text: string; action_index: number; metadata_json: string; vector_blob: Uint8Array; importance: number; year: number; day: number }>;
+  return rows.map((row) => {
+    const similarity = vectorSimilarity(queryVector, bytesToVector(row.vector_blob));
+    const recency = game.actionIndex > 0 ? Math.max(0, 1 - (game.actionIndex - row.action_index) / Math.max(20, game.actionIndex)) : 1;
+    const score = similarity * 0.78 + row.importance * 0.15 + recency * 0.07;
+    return {
+      id: row.id, kind: row.kind, text: row.text, actionIndex: row.action_index, year: row.year, day: row.day,
+      importance: row.importance, similarity: Number(score.toFixed(4)), metadata: JSON.parse(row.metadata_json) as Record<string, unknown>,
+    };
+  }).filter((item) => item.similarity > 0.08).sort((left, right) => right.similarity - left.similarity || right.actionIndex - left.actionIndex).slice(0, Math.max(1, Math.min(16, limit)));
+}
+
 export function recordModelCall(input: { gameId: string; role: "intent" | "narrator"; model: string; status: "success" | "failure"; latencyMs: number; promptChars: number; outputChars: number; promptTokens?: number; completionTokens?: number; totalTokens?: number; errorCode?: string }): void {
   database.prepare("INSERT INTO model_calls (game_id, role, model, status, latency_ms, prompt_chars, output_chars, prompt_tokens, completion_tokens, total_tokens, error_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.model.slice(0, 120), input.status, Math.max(0, Math.round(input.latencyMs)), Math.max(0, input.promptChars), Math.max(0, input.outputChars), Math.max(0, input.promptTokens ?? 0), Math.max(0, input.completionTokens ?? 0), Math.max(0, input.totalTokens ?? 0), input.errorCode?.slice(0, 80) ?? null, new Date().toISOString());
 }
@@ -126,7 +251,8 @@ export function recordModelCall(input: { gameId: string; role: "intent" | "narra
 export function getModelUsage(gameId?: string): ModelUsageView {
   const where = gameId ? " WHERE game_id = ?" : "";
   const row = database.prepare(`SELECT COUNT(*) calls, SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) failures, COALESCE(SUM(prompt_tokens), 0) prompt_tokens, COALESCE(SUM(completion_tokens), 0) completion_tokens, COALESCE(SUM(total_tokens), 0) total_tokens, COALESCE(SUM(latency_ms), 0) total_latency_ms, MAX(created_at) last_call_at FROM model_calls${where}`).get(...(gameId ? [gameId] : [])) as { calls: number; failures: number; prompt_tokens: number; completion_tokens: number; total_tokens: number; total_latency_ms: number; last_call_at?: string };
-  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined };
+  const vectorRow = database.prepare(`SELECT COUNT(*) AS count FROM vector_memories${gameId ? " WHERE game_id = ?" : ""}`).get(...(gameId ? [gameId] : [])) as { count: number };
+  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8 };
 }
 
 const gameColumns = database.prepare("PRAGMA table_info(games)").all() as Array<{ name: string }>;
@@ -738,6 +864,22 @@ export function commitResolvedAction(previous: StoredGame, resolved: StoredGame,
   try {
     writeCheckpoint(previous, checkpointLabel);
     if (settlement) applyRunReward(resolved, settlement);
+    const committed = resolved.lastCommittedAction;
+    if (committed) {
+      const narrative = resolved.view.narrative.find((entry) => entry.id === committed.narrativeEntryId)?.text ?? "";
+      const date = resolved.view.worldTime;
+      storeVectorMemory({
+        gameId: resolved.view.id,
+        sourceKey: `action:${resolved.actionIndex}`,
+        actionIndex: resolved.actionIndex,
+        kind: "action",
+        text: `${date?.year ?? 0}年${date?.day ?? 1}日，地点：${resolved.view.location}。玩家行动：${committed.playerInput}。程序判定：${committed.resolution.ruleSummary}。已发生场景：${narrative}`,
+        importance: committed.resolution.conditionAfter || /承诺|关系|加入|离开|获得|失去|死亡|觉醒|突破|魂环|魂骨|历史|秘密/.test(`${committed.playerInput}${committed.resolution.ruleSummary}`) ? 0.88 : 0.62,
+        year: date?.year,
+        day: date?.day,
+        metadata: { requestId: committed.requestId, intent: committed.resolution.intent, locationId: resolved.view.locationId },
+      });
+    }
     writeGameAndEvent(resolved, eventType, payload);
     database.exec("COMMIT");
   } catch (error) {

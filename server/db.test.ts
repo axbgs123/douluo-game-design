@@ -158,6 +158,19 @@ describe("存档数据库", () => {
     expect(database.getModelUsage("telemetry-game")).toMatchObject({ calls: 2, failures: 1, promptTokens: 120, completionTokens: 45, totalTokens: 165, totalLatencyMs: 401 });
   });
 
+  it("persists and retrieves relevant long-term memories without injecting future actions", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "vector-memory-database" });
+    database.saveGame(game, "test.vector-memory-game");
+    database.storeVectorMemory({ gameId: game.view.id, sourceKey: "hunt", actionIndex: 0, kind: "action", text: "大师答应带主角前往猎魂森林寻找曼陀罗蛇，准备吸收第一魂环。", importance: 0.8 });
+    database.storeVectorMemory({ gameId: game.view.id, sourceKey: "meal", actionIndex: 0, kind: "action", text: "主角在学院食堂买了晚饭，花掉两枚铜魂币。", importance: 0.5 });
+    database.storeVectorMemory({ gameId: game.view.id, sourceKey: "future", actionIndex: 99, kind: "action", text: "未来已经获得十万年魂环。", importance: 1 });
+
+    const recalled = database.retrieveVectorMemories(game, "去森林猎魂，为自己的第一魂环选择合适魂兽", 4);
+    expect(recalled[0].text).toContain("曼陀罗蛇");
+    expect(recalled.some((item) => item.text.includes("十万年魂环"))).toBe(false);
+    database.deleteGame(game.view.id);
+  });
+
   it("replaces a settled slot with its next-era successor and preserves a terminal checkpoint", () => {
     const parent = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "database-era-successor" });
     selectCandidate(parent, parent.view.candidates[0].id, "顾远");

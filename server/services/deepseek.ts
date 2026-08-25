@@ -161,6 +161,15 @@ async function safeRecordModelCall(input: Parameters<(typeof import("../db.js"))
   }
 }
 
+async function safeRetrieveVectorMemories(game: StoredGame, query: string) {
+  try {
+    const { retrieveVectorMemories } = await import("../db.js");
+    return retrieveVectorMemories(game, query, 8).map(({ text, kind, actionIndex, year, day, importance, similarity, metadata }) => ({ text, kind, actionIndex, year, day, importance, similarity, metadata }));
+  } catch {
+    return [];
+  }
+}
+
 async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", settings: { apiKey: string; baseUrl: string; model: string }, body: unknown, timeout: number, signal?: AbortSignal): Promise<ChatCompletionPayload> {
   const started = performance.now();
   const serialized = JSON.stringify(body);
@@ -196,6 +205,7 @@ async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", s
 export async function interpretActionWithDeepSeek(game: StoredGame, playerInput: string, signal?: AbortSignal): Promise<string | null> {
   const settings = readDeepSeekSettings();
   if (!settings.apiKey) return null;
+  const relevantPast = await safeRetrieveVectorMemories(game, `${playerInput}\n${game.view.location}\n${game.view.tasks.filter((task) => task.status !== "完成").slice(0, 4).map((task) => task.title).join("\n")}`);
   const payload = await tracedCompletion(game, "intent", settings, {
       model: settings.model,
       max_tokens: 256,
@@ -206,12 +216,13 @@ export async function interpretActionWithDeepSeek(game: StoredGame, playerInput:
         { role: "system", content: [
           "你是文字RPG的行动语义整理器，只把玩家原话整理成规则程序容易识别的一句话。",
           "不能决定成功失败，不能增加物品、能力、地点、人物或前提。保留玩家的具体目标、方法、谨慎程度和退路。",
+          "relevantPast 是本地向量库召回的玩家已知旧事，只能用于判断‘他、那里、上次承诺’等指代，不能把旧状态当成当前状态，也不能据此新增权限或结果。",
           "玩家一次输入多项行动时，只整理能够连续安全执行的第一个阶段；在战斗、生死、入宗或背叛、魂环魂骨、婚恋、杀死重要人物、暴露秘密、改变原作节点、消耗不可恢复物品、复活成神等重大节点前停下，不替玩家跨过去。",
           "可用动作词包括修炼、休息、前往、询问、调查、购买、使用、工作、等待、攻击、防御、逃跑、猎魂、追踪、吸收、入学、加入势力、拜师、承诺、履行承诺、参悟特殊体系、介入事件。",
           "遇到后世专属行动时保留关键术语：魂灵调查/评估/签约，魂导器学习/制作/认证，斗铠设计/制作，机甲训练/考核/购买/驾驶，星舰训练/考核/招募船员/取得舰船/补给/航行/星球调查。不要把这些动作改写成普通修炼或普通旅行。",
           "输出 JSON：{\"ruleAction\":\"整理后的一句话\"}。",
         ].join("\n") },
-        { role: "user", content: JSON.stringify({ playerInput, era: game.view.era ?? 1, worldTime: game.view.worldTime, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), currentHunt: game.view.hunting, currentEvents: game.world.dynamicEvents.filter((item) => item.status === "可介入").map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
+        { role: "user", content: JSON.stringify({ playerInput, relevantPast, era: game.view.era ?? 1, worldTime: game.view.worldTime, character: game.view.character, location: game.view.location, map: game.view.map.map((item) => item.name), currentHunt: game.view.hunting, currentEvents: game.world.dynamicEvents.filter((item) => item.status === "可介入").map((item) => item.title), tasks: game.view.tasks.filter((item) => item.status === "进行中").map((item) => item.title) }) },
       ],
     }, 20_000, signal);
   const content = payload.choices?.[0]?.message?.content;
@@ -237,6 +248,12 @@ export async function narrateWithDeepSeek(
   const canonNarrativeProfile = buildCanonNarrativeProfile(game, playerInput, resolution);
   const logicIssues = auditNarrativeLogicPacket(narrativeLogicPacket);
   if (logicIssues.length) throw new NarrativeLogicPreflightError(logicIssues);
+  const memoryQuery = [
+    playerInput, resolution.intent, resolution.ruleSummary, game.view.location,
+    ...game.view.tasks.filter((task) => task.status !== "完成").slice(0, 6).map((task) => `${task.title} ${task.detail}`),
+    ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => npc.name),
+  ].join("\n");
+  const retrievedLongTermMemories = await safeRetrieveVectorMemories(game, memoryQuery);
   const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
   const eraTitle = ({ 1: "《斗罗大陆》第一部", 2: "《绝世唐门》", 3: "《龙王传说》", 4: "《终极斗罗》" } as const)[game.view.era ?? 1];
 
@@ -271,6 +288,7 @@ export async function narrateWithDeepSeek(
             "每个重要反应都要通过欲望、信息、权限、资源、行动、后果六环。异常天赋必须引发符合目击者利益和权限的复测、上报、谈条件、争夺或戒备，不能只惊叹一句便散场。",
             "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
             "narrativeLogicPacket 是正文生成前已经通过的硬逻辑合同。先逐项满足 protagonistContract、participantContracts、reactionChain 与 continuityContract，再写句子；不得在正文中提到逻辑包、状态版本或检查过程。",
+            "retrievedLongTermMemories 是本地向量库按当前行动召回的玩家已知旧事。只在与当前场景相关时自然延续；它不能覆盖当前程序状态，也不能让未亲历该事的NPC突然知情。发生冲突时以当前结构化状态和 fixedRuleResult 为准。",
             `activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗${game.view.era === 1 ? "一" : game.view.era === 2 ? "二" : game.view.era === 3 ? "三" : "四"}适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。`,
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
@@ -305,12 +323,13 @@ export async function narrateWithDeepSeek(
             hunting: game.view.hunting,
             combat: game.view.combat,
             knownFigures: game.view.knownFigures.slice(0, 12),
-            intelligenceWithSources: game.view.intelligence.slice(0, 20),
-            knownNpcMemories: Object.fromEntries(Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer && npc.episodicMemory.length).map((npc) => [npc.name, npc.episodicMemory.slice(-8).map(({ text, year, day, significance }) => ({ text, year, day, significance }))])),
-            sceneNpcProfiles: Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => { const definition = characterById(npc.id); return { name: npc.name, personality: definition?.personality, currentGoal: npc.currentGoal, attitude: npc.dispositionToPlayer, rememberedInteractions: npc.episodicMemory.slice(-8).map(({ text, year, day, significance }) => ({ text, year, day, significance })), knownPower: game.view.knownFigures.find((item) => item.id === npc.id)?.knownPower }; }),
+            intelligenceWithSources: game.view.intelligence.slice(0, 12),
+            knownNpcMemories: Object.fromEntries(Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer && npc.episodicMemory.length).map((npc) => [npc.name, npc.episodicMemory.slice(-4).map(({ text, year, day, significance }) => ({ text, year, day, significance }))])),
+            sceneNpcProfiles: Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => { const definition = characterById(npc.id); return { name: npc.name, personality: definition?.personality, currentGoal: npc.currentGoal, attitude: npc.dispositionToPlayer, rememberedInteractions: npc.episodicMemory.slice(-4).map(({ text, year, day, significance }) => ({ text, year, day, significance })), knownPower: game.view.knownFigures.find((item) => item.id === npc.id)?.knownPower }; }),
             recentNews: game.view.news.slice(0, 8),
-            longTermMemory: game.storyMemory,
-            recentNarrative: game.view.narrative.slice(-12),
+            longTermMemory: { summary: game.storyMemory.summary.slice(0, 1_800), openThreads: game.storyMemory.openThreads, keyChoices: game.storyMemory.keyChoices.slice(-8) },
+            retrievedLongTermMemories,
+            recentNarrative: game.view.narrative.slice(-6).map((entry) => ({ ...entry, text: entry.text.slice(0, 1_600) })),
             playerInput,
             fixedRuleResult: resolution.ruleSummary,
             fixedSuggestions: resolution.suggestions,

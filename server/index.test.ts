@@ -174,8 +174,16 @@ describe("HTTP 状态机", () => {
     expect(intentRequest.thinking?.type).toBe("disabled");
     expect(narratorRequest.thinking?.type).toBe("disabled");
     expect(Math.max(...modelRequestBodyLengths.slice(-2))).toBeLessThan(50_000);
+    const intentContext = JSON.parse(intentRequest.messages?.[1]?.content ?? "{}") as { relevantPast?: unknown[] };
+    expect(intentContext.relevantPast).toEqual(expect.any(Array));
+    const narratorContext = JSON.parse(narratorRequest.messages?.[1]?.content ?? "{}") as { retrievedLongTermMemories?: unknown[]; recentNarrative?: unknown[]; longTermMemory?: Record<string, unknown> };
+    expect(narratorContext.retrievedLongTermMemories).toEqual(expect.any(Array));
+    expect(narratorContext.recentNarrative?.length).toBeLessThanOrEqual(6);
+    expect(narratorContext.longTermMemory).not.toHaveProperty("npcNotes");
     const usageResponse = await fetch(`${baseUrl}/api/settings/deepseek/usage?gameId=${game.view.id}`);
     expect(usageResponse.status).toBe(200);
-    expect(await usageResponse.json()).toMatchObject({ calls: 2, failures: 0 });
+    const usage = await usageResponse.json() as { vectorMemories: number };
+    expect(usage).toMatchObject({ calls: 2, failures: 0, vectorDimensions: 384, vectorRetrievalLimit: 8 });
+    expect(usage.vectorMemories).toBeGreaterThanOrEqual(1);
   });
 });

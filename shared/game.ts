@@ -990,6 +990,9 @@ export interface ModelUsageView {
   totalTokens: number;
   totalLatencyMs: number;
   lastCallAt?: string;
+  vectorMemories: number;
+  vectorDimensions: number;
+  vectorRetrievalLimit: number;
 }
 
 export interface MetaProgressionView {

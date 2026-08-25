@@ -435,6 +435,13 @@ test("局外召唤区直接提供武魂、身世与遗物仓库", async ({ page 
   await expect(page.locator(".heirloom-warehouse-section")).toContainText("每局发动次数限制");
 });
 
+test("模型设置显示本地向量记忆状态", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "模型设置" }).click();
+  await expect(page.getByRole("dialog", { name: "DeepSeek 设置" })).toBeVisible();
+  await expect(page.getByText(/本地向量记忆：\d+ 条 · 384 维 · 每回合最多召回 8 条/)).toBeVisible();
+});
+
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {
   const saved = await request.post("/api/meta/preferences", { data: { origin: "均衡", martialSoul: "均衡", gift: "签到系统" } });
   expect(saved.ok()).toBeTruthy();
