@@ -633,6 +633,7 @@ export interface StoryArchiveView {
   keyChoices: string[];
   recentConsequences: StoryConsequenceView[];
   continuity: Array<{ label: string; detail: string; status: "稳定" | "留意" | "变化" }>;
+  localConsequences: Array<{ id: string; kind: string; summary: string; magnitude: number; remainingDays: number }>;
 }
 
 export interface HuntRecommendationView {

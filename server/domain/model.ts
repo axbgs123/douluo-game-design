@@ -163,6 +163,21 @@ export interface DynamicWorldEvent {
   createdDay: number;
   expiresOrdinal: number;
   outcome?: string;
+  consequences?: string[];
+}
+
+export interface LocalWorldConsequence {
+  id: string;
+  sourceEventId: string;
+  locationId: string;
+  kind: "供需" | "治安" | "伤亡" | "制度" | "关系" | "势力" | "生态";
+  summary: string;
+  magnitude: number;
+  marketEffects: Array<{ category: "药材" | "金属" | "粮食" | "魂导材料" | "日用品"; supplyDelta: number; demandDelta: number }>;
+  riskDelta: number;
+  startedOrdinal: number;
+  expiresOrdinal: number;
+  status: "生效中" | "已消退";
 }
 
 export interface StoryMemory {
@@ -183,6 +198,7 @@ export interface HiddenWorldState {
   canonCausalFootprints: CanonCausalFootprint[];
   npcRelations: NpcRelationState[];
   dynamicEvents: DynamicWorldEvent[];
+  localConsequences: LocalWorldConsequence[];
   socialRumors: SocialRumorState[];
   lastAutonomyOrdinal: number;
   resurrectionCount: number;

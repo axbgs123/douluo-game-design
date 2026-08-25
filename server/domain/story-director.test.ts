@@ -41,7 +41,7 @@ describe("卷级故事导演", () => {
     delete game.view.storyArc;
     game.schemaVersion = 29;
     const migrated = ensureGameState(structuredClone(game));
-    expect(migrated.schemaVersion).toBe(31);
+    expect(migrated.schemaVersion).toBe(32);
     expect(migrated.view.storyArc?.stage).toBe("立局");
 
     migrated.view.storyArc!.stage = "不可逆转折";

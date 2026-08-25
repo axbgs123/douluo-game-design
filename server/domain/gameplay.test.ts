@@ -503,7 +503,7 @@ describe("完整游玩规则", () => {
     expect(game.view.hunting?.stage).toBe("准备");
     expect(resolveAction(game, "出发猎魂").intent).toBe("猎魂出发确认");
     expect(game.view.hunting?.stage).toBe("旅行");
-    expect(game.view.inventory).toContain("止血散");
+    expect(game.view.inventory).toContain("外敷伤药");
   });
 
   it("猎魂准备不会替玩家提前出发，可以登记四名固定编队成员", () => {
@@ -595,7 +595,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(31);
+    expect(migrated.schemaVersion).toBe(32);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -1371,7 +1371,7 @@ describe("第一部世界资料", () => {
     const game = awakened("purchase-ledger");
     game.view.character!.coins = 30;
     resolveAction(game, "购买止血药");
-    expect(game.view.inventory).toContain("止血散");
+    expect(game.view.inventory).toContain("外敷伤药");
     expect(game.view.economy.transactions.at(-1)).toMatchObject({ kind: "支出", counterparty: expect.stringContaining("商铺") });
     expect(game.view.economy.transactions.at(-1)?.balance).toBe(game.view.character!.coins);
   });

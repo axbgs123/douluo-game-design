@@ -544,17 +544,20 @@ export function recordStoryConsequence(game: StoredGame, action: string, result:
 }
 
 export function refreshStoryArchive(game: StoredGame): StoryArchiveView {
-  const current = game.view.storyArchive ?? { summary: "", openThreads: [], keyChoices: [], recentConsequences: [], continuity: [] };
+  const current = game.view.storyArchive ?? { summary: "", openThreads: [], keyChoices: [], recentConsequences: [], continuity: [], localConsequences: [] };
   const time = game.view.worldTime;
   const causal = game.world.canonCausalFootprints.length;
   current.summary = game.storyMemory.summary;
   current.openThreads = [...new Set([...game.storyMemory.openThreads, ...game.view.tasks.filter((task) => task.status !== "完成").map((task) => task.title)])].slice(0, 12);
   current.keyChoices = game.storyMemory.keyChoices.slice(-12).reverse();
+  const currentOrdinal = (time?.year ?? 0) * 360 + (time?.day ?? 1);
+  current.localConsequences = game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === game.view.locationId).map((item) => ({ id: item.id, kind: item.kind, summary: item.summary, magnitude: item.magnitude, remainingDays: Math.max(0, item.expiresOrdinal - currentOrdinal) })).slice(-12).reverse();
   current.continuity = [
     ...(game.view.storyArc ? [{ label: "本卷", detail: `${game.view.storyArc.stage} · ${game.view.storyArc.centralGoal} · 压力${game.view.storyArc.pressure}`, status: game.view.storyArc.pressure >= 70 ? "留意" as const : game.view.storyArc.stageIndex >= 4 ? "变化" as const : "稳定" as const }] : []),
     { label: "年代", detail: time ? `${worldDate(game)}，角色${game.view.character?.age ?? 6}岁` : "尚未正式进入时间线", status: "稳定" },
     { label: "原作", detail: causal ? `已有${causal}条主角因果记录，相关节点可能变化` : "主角尚未触及关键因果，原作照常推进", status: causal ? "变化" : "稳定" },
     { label: "线索", detail: current.openThreads.length ? `${current.openThreads.length}件事仍未解决` : "眼前没有未决线索", status: current.openThreads.length >= 8 ? "留意" : "稳定" },
+    { label: "地方后果", detail: game.world.localConsequences.filter((item) => item.status === "生效中").length ? `${game.world.localConsequences.filter((item) => item.status === "生效中").length}项错过事件后果仍在改变供需、治安、关系或势力` : "当前没有持续生效的地方事件后果", status: game.world.localConsequences.some((item) => item.status === "生效中" && item.magnitude >= 4) ? "变化" : game.world.localConsequences.some((item) => item.status === "生效中") ? "留意" : "稳定" },
     { label: "状态", detail: game.view.character ? `${game.view.character.condition}，${game.view.character.fatigue}` : "等待武魂觉醒", status: /重伤|濒死|死亡/.test(game.view.character?.condition ?? "") ? "留意" : "稳定" },
   ];
   game.view.storyArchive = current;

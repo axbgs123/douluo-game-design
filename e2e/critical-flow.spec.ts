@@ -16,6 +16,22 @@ async function seedUnlimitedMartialSoulWarehouse() {
   database.drawMetaMartialSoul(() => .9);
 }
 
+async function seedLocalConsequenceGame() {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database, storyRules] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js"), import("../server/domain/story-rules.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 1, gender: "男", difficulty: "标准", seed: "e2e-local-consequence" });
+  generator.selectCandidate(game, game.view.candidates[0].id, "地方后果验收");
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  const now = (game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
+  game.world.localConsequences.push({ id: "e2e-herb-shortage", sourceEventId: "e2e-missed-herb-team", locationId: game.view.locationId!, kind: "供需", summary: "采药队失踪后，本地常用药材短缺。", magnitude: 3, marketEffects: [{ category: "药材", supplyDelta: -22, demandDelta: 12 }], riskDelta: 0, startedOrdinal: now, expiresOrdinal: now + 90, status: "生效中" });
+  storyRules.refreshStoryArchive(game);
+  database.saveGame(game, "e2e.local-consequence-fixture");
+}
+
 async function seedInheritanceRightsGame() {
   process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
   const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
@@ -443,6 +459,18 @@ test("模型设置显示本地向量记忆状态", async ({ page }) => {
   await expect(page.getByText(/斗罗世界知识：\d+ 条 · 每回合最多召回 10 条/)).toBeVisible();
   await expect(page.getByText(/世界基本逻辑：\d+ 条 · 每回合最多召回 8 条/)).toBeVisible();
   await expect(page.getByText(/生成前检索审计：累计 \d+ 次/)).toBeVisible();
+});
+
+test("手记显示错过地方事件留下的持续后果", async ({ page }) => {
+  await seedLocalConsequenceGame();
+  await page.goto("/");
+  const save = page.locator(".save-shelf article").filter({ hasText: "地方后果验收" });
+  await expect(save).toBeVisible();
+  await save.locator("button").first().click();
+  await page.getByRole("button", { name: /^手记/ }).click();
+  await expect(page.locator(".local-consequence-list")).toContainText("正在改变当地生活");
+  await expect(page.locator(".local-consequence-list")).toContainText("本地常用药材短缺");
+  await expect(page.locator(".local-consequence-list")).toContainText("影响 3/5");
 });
 
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {

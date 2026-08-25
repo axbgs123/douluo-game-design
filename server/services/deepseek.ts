@@ -271,6 +271,7 @@ export async function narrateWithDeepSeek(
     publicSoulNames.length ? `已公开${publicSoulNames.length}个武魂：${publicSoulNames.join("、")}；先天魂力${game.view.character?.innateSoulPower ?? "未知"}；社会评价${game.view.character?.reputation ?? "尚未形成"}` : "",
     game.view.storyArc ? `当前故事卷：${game.view.storyArc.title}；阶段${game.view.storyArc.stage}；目标${game.view.storyArc.centralGoal}；冲突${game.view.storyArc.centralConflict}；对抗压力${game.view.storyArc.opposingForce}` : "",
     ...game.view.tasks.filter((task) => task.status !== "完成").slice(0, 6).map((task) => `${task.title} ${task.detail}`),
+    ...game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === game.view.locationId).map((item) => `持续后果：${item.summary}`),
     ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => `${npc.name}：${npc.activePlan?.nextAction ?? npc.currentGoal}；责任${npc.activePlan?.responsibility ?? "个人事务"}`),
   ].join("\n");
   const retrievedLongTermMemories = await retrieveVectorMemoryContext(game, memoryQuery);
@@ -320,6 +321,7 @@ export async function narrateWithDeepSeek(
             "敌对反应必须逐级升级：可靠消息、威胁评估、监视或接触、控制失败、行动资源与可达性成立后，才可能绑架或暗杀。不得让远方敌人无来源瞬移袭击，也不得让敌人连续送死。",
             "storyArc 是程序根据已发生行动维护的当前卷级导演状态。围绕 centralGoal、centralConflict、opposingForce 和当前 stage 组织本场意义，让本次结果为阶段兑现或不可逆转折积累证据；不得为了推进阶段伪造失败、胜利、敌人、资源或玩家决定。",
             "sceneNpcProfiles 中的 directorPlan 是NPC欲望—责任—信息—权限—资源行动规划，只用于让人物主动且连续地行动。不得把完整计划、内心或未知信息直接告诉主角；只能通过现场动作、说话、拒绝、调动资源和留下的后果表现。",
+            "activeLocalConsequences 是错过事件已经写入程序的持续后果。正文必须让供需、治安、伤亡、制度、关系、势力或生态变化落到当前生活中；不得把已经发生的损失恢复成事件前状态。",
             `activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗${game.view.era === 1 ? "一" : game.view.era === 2 ? "二" : game.view.era === 3 ? "三" : "四"}适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。`,
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
@@ -363,6 +365,7 @@ export async function narrateWithDeepSeek(
             retrievedCanonKnowledge,
             retrievedWorldLogic,
             storyArc: game.view.storyArc,
+            activeLocalConsequences: game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === game.view.locationId),
             recentNarrative: game.view.narrative.slice(-6).map((entry) => ({ ...entry, text: entry.text.slice(0, 1_600) })),
             playerInput,
             fixedRuleResult: resolution.ruleSummary,

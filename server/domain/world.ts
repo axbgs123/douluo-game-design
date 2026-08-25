@@ -12,6 +12,7 @@ import { fixedTraitEffect } from "./traits.js";
 import { CANON_RELATIONSHIPS } from "../data/canon-relationships.js";
 import { ensureStoryArc } from "./story-director.js";
 import { compileNpcPlan, ensureNpcPlans, executeNpcPlanStep } from "./npc-planner.js";
+import { decayLocalConsequences, resolveExpiredDynamicEvent } from "./event-consequences.js";
 
 const DAYS_PER_YEAR = 360;
 
@@ -265,6 +266,7 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
     canonCausalFootprints: [],
     npcRelations,
     dynamicEvents: [],
+    localConsequences: [],
     socialRumors: [],
     lastAutonomyOrdinal: ordinal(startYear, 1),
     resurrectionCount: 0,
@@ -857,15 +859,14 @@ function createTalentThreatEvent(game: StoredGame, cycle: number, random: () => 
 
 function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentOrdinal: number): string[] {
   const messages: string[] = [];
+  decayLocalConsequences(game, currentOrdinal);
   const startCycle = Math.floor(Math.max(previousOrdinal, game.world.lastAutonomyOrdinal) / 30) + 1;
   const endCycle = Math.floor(currentOrdinal / 30);
   const firstCycle = Math.max(startCycle, endCycle - 60);
   for (let cycle = firstCycle; cycle <= endCycle; cycle += 1) {
     for (const event of game.world.dynamicEvents) {
       if (event.status === "可介入" && event.expiresOrdinal < cycle * 30) {
-        event.status = "错过";
-        event.outcome = "没有人及时处理，事情按当地局势自行收场。";
-        const task = game.view.tasks.find((item) => item.id === event.id); if (task) task.status = "失败";
+        resolveExpiredDynamicEvent(game, event, cycle * 30);
       }
     }
     const random = createRandom(`${game.view.seed}:autonomy:${cycle}`);
@@ -914,10 +915,7 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
   }
   for (const event of game.world.dynamicEvents) {
     if (event.status !== "可介入" || event.expiresOrdinal >= currentOrdinal) continue;
-    event.status = "错过";
-    event.outcome = "没有人及时处理，事情按当地局势自行收场。";
-    const task = game.view.tasks.find((item) => item.id === event.id);
-    if (task) task.status = "失败";
+    resolveExpiredDynamicEvent(game, event, currentOrdinal);
     if (event.locationId === game.view.locationId) messages.push(`错过事件 · ${event.title}`);
   }
   if (game.world.dynamicEvents.length > 120) game.world.dynamicEvents = game.world.dynamicEvents.filter((event) => event.status === "可介入").concat(game.world.dynamicEvents.filter((event) => event.status !== "可介入").slice(-80));
@@ -1111,7 +1109,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 31;
+  legacy.schemaVersion = 32;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.npcRelations ??= [];
@@ -1120,6 +1118,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
   legacy.world.firedCanonEvents ??= [];
   legacy.world.suppressedCanonEvents ??= [];
   legacy.world.dynamicEvents ??= [];
+  legacy.world.localConsequences ??= [];
   legacy.world.socialRumors ??= [];
   for (const rumor of legacy.world.socialRumors) {
     rumor.confidence ??= rumor.witnessNpcIds.length ? Math.min(85, 35 + rumor.witnessNpcIds.length * 7) : 92;
@@ -1215,7 +1214,11 @@ export function ensureGameState(game: StoredGame): StoredGame {
       affiliation.flightHours ??= 0;
     }
   }
-  game.view.inventoryLoad ??= { used: game.view.inventory?.length ?? 0, capacity: 18, state: "轻便", storage: [] };
+  game.view.inventory ??= [];
+  game.view.inventory = game.view.inventory.map((item) => item === "止血散" ? "外敷伤药" : item);
+  game.view.inventoryLoad ??= { used: game.view.inventory.length, capacity: 18, state: "轻便", storage: [] };
+  game.view.inventoryLoad.storage ??= [];
+  game.view.inventoryLoad.storage = game.view.inventoryLoad.storage.map((item) => item === "止血散" ? "外敷伤药" : item);
   game.view.professions ??= [];
   game.view.managedFactions ??= [];
   game.view.comboTrainings ??= [];
@@ -1363,7 +1366,8 @@ export function ensureGameState(game: StoredGame): StoredGame {
     strength: cause.strength >= 30 ? "足以撼动关键节点" : cause.strength >= 12 ? "可能形成长期偏差" : "轻微影响",
     date: `原作 ${cause.atYear >= 0 ? "+" : ""}${cause.atYear} 年 · 第 ${cause.atDay} 日`,
   }));
-  game.view.storyArchive ??= { summary: game.storyMemory.summary, openThreads: game.storyMemory.openThreads, keyChoices: game.storyMemory.keyChoices, recentConsequences: [], continuity: [] };
+  game.view.storyArchive ??= { summary: game.storyMemory.summary, openThreads: game.storyMemory.openThreads, keyChoices: game.storyMemory.keyChoices, recentConsequences: [], continuity: [], localConsequences: [] };
+  game.view.storyArchive.localConsequences ??= [];
   game.view.affiliations ??= [];
   game.view.chapter ??= { number: game.storyMemory.chapterNumber, title: game.storyMemory.chapterTitle, summary: game.storyMemory.summary.slice(0, 160) };
   game.view.runProgress ??= {

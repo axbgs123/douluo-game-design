@@ -10,6 +10,7 @@ import { formatSoulCoins } from "../../shared/currency.js";
 import { createSpecialSystemView, goldFingerByName, isGoldFinger } from "../data/gold-fingers.js";
 import { heirloomByName } from "../../shared/heirlooms.js";
 import { updateStoryArc } from "./story-director.js";
+import { resolveExpiredDynamicEvent } from "./event-consequences.js";
 
 interface DifficultyRules {
   training: number;
@@ -296,6 +297,12 @@ function updateMarketReport(game: StoredGame, category: MarketCategory, location
   if (/城|学院|宗门|联邦/.test(locationText)) { demand += 14; reasons.push("人口与机构采购集中"); }
   const disruptions = game.world.dynamicEvents.filter((event) => event.status === "可介入" && event.locationId === locationId && /失踪|封锁|袭击|灾|短缺|中断/.test(`${event.title}${event.detail}`));
   if (disruptions.length) { supply -= 12 * disruptions.length; demand += 10 * disruptions.length; reasons.push(`${disruptions.length}项本地事件扰乱运输`); }
+  const consequenceEffects = game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === locationId).flatMap((item) => item.marketEffects).filter((item) => item.category === category);
+  if (consequenceEffects.length) {
+    supply += consequenceEffects.reduce((sum, item) => sum + item.supplyDelta, 0);
+    demand += consequenceEffects.reduce((sum, item) => sum + item.demandDelta, 0);
+    reasons.push(`${consequenceEffects.length}项事件后果仍在影响供需`);
+  }
   supply = Math.max(5, Math.min(95, supply));
   demand = Math.max(5, Math.min(95, demand));
   const priceIndex = Math.max(65, Math.min(165, Math.round(100 + (demand - supply) * .75)));
@@ -747,9 +754,9 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
   if (/买|购买|药|补给|绳|食物/.test(action)) {
     const cost = Math.min(character.coins, 8);
     character.coins -= cost;
-    if (!game.view.inventory.includes("止血散")) game.view.inventory.push("止血散");
+    if (!game.view.inventory.includes("外敷伤药")) game.view.inventory.push("外敷伤药");
     if (!game.view.inventory.includes("猎魂绳")) game.view.inventory.push("猎魂绳");
-    additions.push("止血散", "猎魂绳");
+    additions.push("外敷伤药", "猎魂绳");
   }
   if (/同伴|导师|帮手|组队|同行/.test(action)) {
     const eligible = game.view.relations.filter((relation) => {
@@ -2296,8 +2303,8 @@ function dynamicEventResolution(game: StoredGame, action: string): ActionResolut
   const event = game.world.dynamicEvents.find((item) => item.status === "可介入" && (item.locationId === game.view.locationId || action.includes(item.title)));
   if (!event) return impossible("眼下没有我能直接介入的公开事件。", ["查看世界消息", "调查本地传闻", "前往事件地点"]);
   if (/拒绝|不接受|回绝/.test(action)) {
-    event.status = "已解决";
-    event.outcome = "玩家明确拒绝介入。";
+    event.outcome = "玩家明确拒绝介入，但事件仍会按原期限继续发展。";
+    game.world.flags[`declinedEvent:${event.id}`] = true;
     const task = game.view.tasks.find((item) => item.id === event.id); if (task) task.status = "失败";
     for (const id of event.participantIds) {
       const npc = game.world.npcs[id]; if (!npc) continue;
@@ -2305,7 +2312,7 @@ function dynamicEventResolution(game: StoredGame, action: string): ActionResolut
       const relation = game.view.relations.find((item) => item.id === id);
       if (relation) recordPlayerRelation(game, relation, `主角拒绝${event.title}`, { trust: -2, sharedInterest: -4, vigilance: 2 });
     }
-    return { intent: "拒绝人物请求", minutes: 10, ruleSummary: `明确拒绝${event.title}；相关人物会依据自身目标记住这次答复。`, fallbackNarrative: `他把条件说完后没有催。我把拒绝的话讲清楚，没有留一个能被误解成答应的口子。对面的神色没变，只把原先摊开的东西收了回去。`, suggestions: ["解释拒绝原因", "留意对方后续行动", "继续自己的计划"] };
+    return { intent: "拒绝人物请求", minutes: 10, ruleSummary: `明确拒绝${event.title}；相关人物会记住答复，事件仍将在原期限到来时产生后果。`, fallbackNarrative: `他把条件说完后没有催。我把拒绝的话讲清楚，没有留一个能被误解成答应的口子。对面的神色没变，只把原先摊开的东西收了回去。事情却没有因为我的拒绝停住，期限还在往前走。`, suggestions: ["解释拒绝原因", "期限前改变决定", "留意事件自行发展的后果"] };
   }
   if (/调查|打听|观察|查看/.test(action) && !/介入|帮助|阻止|解决/.test(action)) {
     return { intent: "调查世界事件", minutes: 90, ruleSummary: `确认${event.title}的地点、期限和主要风险。`, fallbackNarrative: `我把几种说法分开问了一遍。有人夸大，也有人故意漏话。能互相对上的部分不多，至少地点和最后期限是真的。`, suggestions: [`帮助处理${event.title}`, `阻止${event.title}继续恶化`, "寻找参与者核对"] };
@@ -2313,8 +2320,13 @@ function dynamicEventResolution(game: StoredGame, action: string): ActionResolut
   const random = actionRandom(game);
   const power = (game.view.character?.soulRank ?? 0) + game.view.relations.length * 2 + game.view.affiliations.length * 3;
   const success = random() < Math.min(0.9, 0.42 + power / 120 + (game.personalityProfile.scores.patience ?? 0) * 0.025);
-  event.status = "已解决";
-  event.outcome = success ? "玩家的介入改变了结果。" : "介入失败，事情以更糟的方式收场。";
+  if (success) {
+    event.status = "已解决";
+    event.outcome = "玩家的介入改变了结果。";
+  } else {
+    resolveExpiredDynamicEvent(game, event, worldOrdinal(game));
+    event.outcome = `玩家介入失败。${event.outcome}`;
+  }
   const task = game.view.tasks.find((item) => item.id === event.id); if (task) task.status = success ? "完成" : "失败";
   const impact = event.stakes * (success ? 3 : 2);
   game.world.deviation += impact;
@@ -2515,10 +2527,10 @@ function buyResolution(game: StoredGame, action: string): ActionResolution {
           : /稀有金属|魂导金属/.test(action) ? "魂导器用稀有金属"
             : /魂导核心|核心阵法材料|魂导晶体/.test(action) ? "魂导核心晶体"
               : /魂导图纸|空白图纸/.test(action) ? "魂导器空白图纸"
-                : /药/.test(action) ? "止血散" : /食|干粮/.test(action) ? "两日干粮" : /绳/.test(action) ? "猎魂绳" : "基础补给包";
+                : /药/.test(action) ? "外敷伤药" : /食|干粮/.test(action) ? "两日干粮" : /绳/.test(action) ? "猎魂绳" : "基础补给包";
   const baseCosts: Record<string, number> = { "魂导器用稀有金属": 80, "魂导核心晶体": 60, "魂导器空白图纸": 15, "基础补给包": 10, "千锻斗铠金属胚料": 200, "灵锻斗铠金属胚料": 800, "魂锻斗铠金属胚料": 3_000, "天锻斗铠金属胚料": 10_000 };
   const baseCost = baseCosts[item] ?? 5;
-  const category: MarketCategory = /魂导|斗铠/.test(item) ? "魂导材料" : /金属/.test(item) ? "金属" : /药/.test(item) ? "药材" : /粮/.test(item) ? "粮食" : "日用品";
+  const category: MarketCategory = /魂导|斗铠/.test(item) ? "魂导材料" : /金属/.test(item) ? "金属" : /药|止血|疗伤/.test(item) ? "药材" : /粮/.test(item) ? "粮食" : "日用品";
   const market = updateMarketReport(game, category);
   const cost = Math.max(1, Math.round(baseCost * market.priceIndex / 100 * DIFFICULTY_RULES[game.view.difficulty].resourceCost));
   if (character.coins < cost) return impossible(`购买${item}需要${formatSoulCoins(cost)}，当前只有${formatSoulCoins(character.coins)}。`, ["找临时工作", "换便宜的东西", "离开商店"]);
