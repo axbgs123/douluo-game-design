@@ -179,6 +179,15 @@ async function safeRetrieveCanonKnowledge(game: StoredGame, query: string) {
   }
 }
 
+async function safeRetrieveWorldLogic(game: StoredGame, query: string) {
+  try {
+    const { retrieveWorldLogic } = await import("../db.js");
+    return retrieveWorldLogic(game, query, 8).map(({ category, trigger, logic, importance, similarity, metadata }) => ({ category, trigger, logic, importance, similarity, metadata }));
+  } catch {
+    return [];
+  }
+}
+
 async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", settings: { apiKey: string; baseUrl: string; model: string }, body: unknown, timeout: number, signal?: AbortSignal): Promise<ChatCompletionPayload> {
   const started = performance.now();
   const serialized = JSON.stringify(body);
@@ -257,13 +266,17 @@ export async function narrateWithDeepSeek(
   const canonNarrativeProfile = buildCanonNarrativeProfile(game, playerInput, resolution);
   const logicIssues = auditNarrativeLogicPacket(narrativeLogicPacket);
   if (logicIssues.length) throw new NarrativeLogicPreflightError(logicIssues);
+  const publicSoulIndices = game.view.character?.publiclyKnownMartialSoulIndices ?? [0];
+  const publicSoulNames = game.view.character?.martialSouls.filter((_soul, index) => publicSoulIndices.includes(index)).map((soul) => soul.name) ?? [];
   const memoryQuery = [
     playerInput, resolution.intent, resolution.ruleSummary, game.view.location,
+    publicSoulNames.length ? `已公开${publicSoulNames.length}个武魂：${publicSoulNames.join("、")}；先天魂力${game.view.character?.innateSoulPower ?? "未知"}；社会评价${game.view.character?.reputation ?? "尚未形成"}` : "",
     ...game.view.tasks.filter((task) => task.status !== "完成").slice(0, 6).map((task) => `${task.title} ${task.detail}`),
     ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => npc.name),
   ].join("\n");
   const retrievedLongTermMemories = await safeRetrieveVectorMemories(game, memoryQuery);
   const retrievedCanonKnowledge = await safeRetrieveCanonKnowledge(game, memoryQuery);
+  const retrievedWorldLogic = await safeRetrieveWorldLogic(game, memoryQuery);
   const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
   const eraTitle = ({ 1: "《斗罗大陆》第一部", 2: "《绝世唐门》", 3: "《龙王传说》", 4: "《终极斗罗》" } as const)[game.view.era ?? 1];
 
@@ -302,6 +315,8 @@ export async function narrateWithDeepSeek(
             "retrievedCanonKnowledge 是按当前时代和场景召回的斗罗结构化知识与原创社会运行法则。人物性格和原著人生阶段只构成行为惯性，不是固定台词；玩家已经改变其关系、资源、职位或处境时，以当前存档为准。",
             "原著关系向量默认只用于保持人物行为一致，不能直接向主角陈述。只有 sceneKnowledge 或玩家情报明确证明主角已经知道该关系时，正文和NPC才可以说破；不得借旁白泄露隐藏血缘、感情、阵营或未来身份。",
             "重要原著事件在没有玩家因果足迹时保持惯性；普通人物、关系、资源和地方事件应持续自主变化。玩家形成足够的目击、关系、权限、资源、战力或势力影响后，重要事件也必须从新状态重新推演，不能强行回轨。",
+            "retrievedWorldLogic 是独立的世界基本逻辑库。先核对每条的触发前提，再执行目击—复测—上报—利益判断—具体行动—状态痕迹链。高天赋会立刻改变关注、投资、收徒、拉拢、忌惮和敌对概率，但不保证成功拜师、无条件送宝、忠诚或私人好感。",
+            "敌对反应必须逐级升级：可靠消息、威胁评估、监视或接触、控制失败、行动资源与可达性成立后，才可能绑架或暗杀。不得让远方敌人无来源瞬移袭击，也不得让敌人连续送死。",
             `activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗${game.view.era === 1 ? "一" : game.view.era === 2 ? "二" : game.view.era === 3 ? "三" : "四"}适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。`,
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
             "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
@@ -343,6 +358,7 @@ export async function narrateWithDeepSeek(
             longTermMemory: { summary: game.storyMemory.summary.slice(0, 1_800), openThreads: game.storyMemory.openThreads, keyChoices: game.storyMemory.keyChoices.slice(-8) },
             retrievedLongTermMemories,
             retrievedCanonKnowledge,
+            retrievedWorldLogic,
             recentNarrative: game.view.narrative.slice(-6).map((entry) => ({ ...entry, text: entry.text.slice(0, 1_600) })),
             playerInput,
             fixedRuleResult: resolution.ruleSummary,

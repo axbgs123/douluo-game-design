@@ -21,6 +21,7 @@ import type { MetaProgressionView } from "../../shared/game.js";
 import { fixedTraitEffect } from "./traits.js";
 import { auditNarrative, sanitizeNarrativeSuggestions } from "./story-rules.js";
 import { META_MARTIAL_SOUL_POOL_SIZE, META_MARTIAL_SOULS } from "../data/meta-martial-souls.js";
+import { advanceWorldTime } from "./world.js";
 
 const personality = {
   keywords: ["谨慎", "重情", "好学", "坚韧", "自由"],
@@ -420,6 +421,28 @@ describe("candidate generation", () => {
     expect(game.view.narrative.at(-1)?.text).toContain("阵外的人只看见");
   });
 
+  it("turns a publicly revealed dual martial soul into resource priority, recruitment competition, and staged hostile risk", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "public-dual-soul-world-reaction" });
+    const hidden = game.hiddenCandidates[0];
+    hidden.innateSoulPower = 10;
+    hidden.martialSouls = [hidden.martialSoul, { ...hidden.martialSoul, id: "public-second-soul", name: "公开副武魂", category: "器武魂" }];
+    selectCandidate(game, hidden.public.id);
+    finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(game);
+    selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0], { activeMartialSoulIndex: 0, publiclyKnownMartialSoulIndices: [0, 1] });
+
+    expect(Number(game.world.flags.talentResourcePriority)).toBeGreaterThanOrEqual(80);
+    expect(Number(game.world.flags.talentRecruitmentPressure)).toBeGreaterThanOrEqual(3);
+    expect(Number(game.world.flags.talentHostileRisk)).toBeGreaterThanOrEqual(4);
+    expect(game.view.tasks.find((task) => task.id === "awakening-recruitment")?.detail).toMatch(/导师面谈|训练场时段|第一魂环评估/);
+    expect(game.world.dynamicEvents.some((event) => event.id === "talent-recruitment-competition")).toBe(true);
+    expect(game.view.intelligence.some((item) => item.subjectId === "talent-recruitment-competition")).toBe(true);
+
+    advanceWorldTime(game, 3_600 * 1_440);
+    expect(Number(game.world.flags.talentThreatStage)).toBeGreaterThanOrEqual(3);
+    expect(game.world.dynamicEvents.some((event) => event.title.includes("袭击准备"))).toBe(true);
+  });
+
   it("explains the gameplay impact of identity-fixed traits", () => {
     expect(fixedTraitEffect("戒备")).toContain("风险判断");
     expect(fixedTraitEffect("好胜")).toContain("公开失败");
@@ -489,6 +512,8 @@ describe("candidate generation", () => {
     selectCandidate(game, game.view.candidates[0].id);
     finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
     awakenCharacter(game);
+    expect(Number(game.world.flags.talentResourcePriority)).toBe(78);
+    expect(Number(game.world.flags.talentHostileRisk)).toBe(3);
     expect(auditNarrative(game, "水晶球完全亮起。先天满魂力。众人随后各自回家。"))
       .toContain("异常觉醒结果没有引发主持者、监护者或围观者的具体反应");
   });

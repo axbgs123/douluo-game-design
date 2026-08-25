@@ -995,6 +995,8 @@ export interface ModelUsageView {
   vectorRetrievalLimit: number;
   canonKnowledgeVectors: number;
   canonRetrievalLimit: number;
+  worldLogicVectors: number;
+  worldLogicRetrievalLimit: number;
 }
 
 export interface MetaProgressionView {

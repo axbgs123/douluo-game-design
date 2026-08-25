@@ -13,7 +13,7 @@ export const WORLD_SOCIAL_LAWS: WorldSocialLaw[] = [
   { id: "local-autonomy", era: 0, category: "历史惯性", importance: .94, text: "普通人物、地方关系、市场资源、委托和小型冲突不等待玩家触发，会根据时间、地点、职业、利益和已有关系自主变化；这些变化不能无证据改写远方重要事件。" },
   { id: "npc-own-day", era: 0, category: "人物自主", importance: .96, text: "每个具名人物在主角出现前都有当天原本要完成的工作、训练、照料、巡查、交易或私人安排。主角只能打断、帮助、交换或阻碍，不能让对方无事可做地等候。" },
   { id: "personality-is-inertia", era: 0, category: "人物自主", importance: .98, text: "性格是行为倾向而非固定台词。人物在不同年龄、实力、职位、伤势、关系与风险下会使用不同手段，但其重视之物、底线、偏见和惯常判断应连续存在，除非经历足以改变它。" },
-  { id: "goal-before-plot", era: 0, category: "人物自主", importance: .96, text: "人物先维护自己的目标、家人、宗门职责、名誉与生存，再考虑帮助主角。原著人物不会因为主角是玩家就主动提供机缘、秘密、收徒名额或忠诚。" },
+  { id: "goal-before-plot", era: 0, category: "人物自主", importance: .96, text: "人物先维护自己的目标、家人、宗门职责、名誉与生存，再考虑如何对待主角。罕见天赋会立刻提高关注、投资、收徒、拉拢、忌惮或敌对的可能，但具体条件取决于人物利益、权限、资源和风险，不保证成功或无条件善意。" },
   { id: "knowledge-boundary", era: 0, category: "人物自主", importance: 1, text: "人物只能根据亲历、被告知、职责档案、可靠调查或公开传闻行动。未公开武魂、血脉、系统、未来事件和远方秘密不得通过直觉被精确识破。" },
   { id: "relationship-evidence", era: 0, category: "人际关系", importance: 1, text: "友情、信任、尊重、敌意与亲密必须由共同经历、履约、利益交换、救助、伤害或长期相处形成。高天赋、高身份和送礼只能提高接触机会，不能自动生成好感。" },
   { id: "relationship-multidimensional", era: 0, category: "人际关系", importance: .93, text: "同一关系可以同时包含亲近、信任、敬重、警惕、利益、亏欠、嫉妒与竞争。人物可以喜欢主角但不同意其决定，也可以合作却不信任。" },

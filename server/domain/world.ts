@@ -830,6 +830,29 @@ function createDynamicEvent(game: StoredGame, cycle: number, random: () => numbe
   return undefined;
 }
 
+function createTalentThreatEvent(game: StoredGame, cycle: number, random: () => number): string | undefined {
+  const risk = Number(game.world.flags.talentHostileRisk ?? 0);
+  const stage = Number(game.world.flags.talentThreatStage ?? 0);
+  if (risk < 3 || game.world.dynamicEvents.some((event) => event.status === "可介入" && event.id.startsWith("talent-threat-")) || random() > .08 + risk * .045) return undefined;
+  const createdOrdinal = cycle * 30;
+  const createdYear = Math.floor((createdOrdinal - 1) / DAYS_PER_YEAR);
+  const createdDay = createdOrdinal - createdYear * DAYS_PER_YEAR;
+  const escalation = stage >= 2 && risk >= 4;
+  const title = escalation ? "疑似敌对势力的袭击准备" : stage === 1 ? "住处附近出现的陌生盯梢者" : "有人私下查问觉醒名册";
+  const detail = escalation
+    ? "此前的查问与盯梢没有得到可控接触，身份不明者开始核对主角的出行、护卫与猎魂安排。现有证据只能确认针对性准备，尚不能断言幕后势力；若继续放任，可能升级为绑架、途中伏击或暗杀。"
+    : stage === 1
+      ? "有人在住处、学院或训练场外反复确认主角的作息与同行者。对方没有公开敌意，可能是招募前观察、情报收集，也可能在寻找保护漏洞。"
+      : "多武魂与高魂力消息离开最初见证范围后，有陌生人通过学员家长、商户或外围人员查问姓名、住处和培养安排。消息来源尚未查清。";
+  const id = `talent-threat-${stage}-${cycle}`;
+  game.world.dynamicEvents.push({ id, title, kind: "人物", locationId: game.view.locationId ?? "notting-city", participantIds: [], detail, stakes: escalation ? 5 : 3 + Math.min(1, stage), status: "可介入", createdYear, createdDay, expiresOrdinal: createdOrdinal + 45 });
+  game.view.tasks.push({ id, title, kind: "线索", detail: `${detail}可以调查消息来源、调整公开行程、寻找保护或布置反监视。`, status: "进行中", destinationId: game.view.locationId, deadline: "发现迹象后45日内" });
+  game.world.flags.talentThreatStage = stage + 1;
+  game.world.flags.talentThreatLastEvidence = title;
+  addNews(game, id, title, detail, { year: createdYear, day: createdDay });
+  return `新事件 · ${title}`;
+}
+
 function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentOrdinal: number): string[] {
   const messages: string[] = [];
   const startCycle = Math.floor(Math.max(previousOrdinal, game.world.lastAutonomyOrdinal) / 30) + 1;
@@ -844,6 +867,8 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
       }
     }
     const random = createRandom(`${game.view.seed}:autonomy:${cycle}`);
+    const talentThreat = createTalentThreatEvent(game, cycle, random);
+    if (talentThreat) messages.push(talentThreat);
     const living = Object.values(game.world.npcs).filter((npc) => npc.alive);
     if (living.length < 2) continue;
     const actor = pick(random, living);

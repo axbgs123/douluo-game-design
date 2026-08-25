@@ -180,7 +180,6 @@ describe("存档数据库", () => {
     const knowledge = database.retrieveCanonKnowledge(game, "唐三原作0年先天满魂力觉醒阶段的实力、性格、目标；唐三和小舞如何相处；与唐三建立信任的人际逻辑", 20);
     expect(knowledge.some((item) => item.subjectId === "tang-san" && item.kind === "character")).toBe(true);
     expect(knowledge.some((item) => item.subjectId === "tang-san" && item.kind === "character-timeline")).toBe(true);
-    expect(knowledge.some((item) => item.kind === "social-law" && /信任|关系|共同经历/.test(item.text))).toBe(true);
     expect(knowledge.some((item) => item.kind === "relationship" && item.subjectName.includes("唐三") && item.subjectName.includes("小舞"))).toBe(true);
     expect(knowledge.some((item) => item.subjectId === "di-tian")).toBe(false);
     expect(database.getModelUsage().canonKnowledgeVectors).toBeGreaterThan(100);
@@ -194,6 +193,16 @@ describe("存档数据库", () => {
     game.view.worldTime = { era: "斗罗大陆", year: 0, day: 20, time: "08:00", season: "春" };
     ensureGameState(game);
     expect(game.world.npcRelations.some((item) => [item.leftId, item.rightId].includes("tang-san") && [item.leftId, item.rightId].includes("xiao-wu"))).toBe(true);
+  });
+
+  it("retrieves separate world reaction logic for public talent, resource tilt, and hostile escalation", () => {
+    const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "world-logic-vector" });
+    const logic = database.retrieveWorldLogic(game, "觉醒仪式公开双生武魂和先天满魂力后，老师争取收徒，敌对势力评估监视绑架暗杀", 16);
+    const resourceLogic = database.retrieveWorldLogic(game, "罕见高天赋完成复核后，机构怎样优先安排导师面谈、训练场、猎魂名额和资源额度", 8);
+    expect(logic.some((item) => item.metadata.ruleId === "public-dual-martial-souls")).toBe(true);
+    expect(resourceLogic.some((item) => item.metadata.ruleId === "talent-resource-priority")).toBe(true);
+    expect(logic.some((item) => ["hostile-threat-assessment", "assassination-escalation"].includes(String(item.metadata.ruleId)))).toBe(true);
+    expect(database.getModelUsage().worldLogicVectors).toBeGreaterThan(40);
   });
 
   it("replaces a settled slot with its next-era successor and preserves a terminal checkpoint", () => {

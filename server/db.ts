@@ -14,6 +14,7 @@ import { BIRTH_PROFILE_COUNT, MARTIAL_SOUL_CATALOG_NAMES, META_ORIGIN_POOL, META
 import { bytesToVector, embedMemoryText, vectorSimilarity, vectorToBytes, VECTOR_MEMORY_DIMENSIONS } from "./domain/vector-memory.js";
 import { WORLD_SOCIAL_LAWS } from "./data/world-social-laws.js";
 import { CANON_RELATIONSHIPS } from "./data/canon-relationships.js";
+import { WORLD_REACTION_LOGIC } from "./data/world-reaction-logic.js";
 
 const databasePath = process.env.DOULUO_DATA_DIR
   ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
@@ -127,6 +128,22 @@ database.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_canon_knowledge_era_year
   ON canon_knowledge_vectors(era, valid_from_year, valid_until_year);
+
+  CREATE TABLE IF NOT EXISTS world_logic_vectors (
+    id TEXT PRIMARY KEY,
+    source_key TEXT NOT NULL UNIQUE,
+    era INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    trigger_text TEXT NOT NULL,
+    logic_text TEXT NOT NULL,
+    metadata_json TEXT NOT NULL,
+    vector_blob BLOB NOT NULL,
+    importance REAL NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_world_logic_era_category
+  ON world_logic_vectors(era, category);
 
   CREATE TABLE IF NOT EXISTS canon_characters (
     id TEXT PRIMARY KEY,
@@ -351,11 +368,6 @@ function seedCanonKnowledge(): void {
         text: `${from?.name ?? relationship.fromId}与${to?.name ?? relationship.toId}在该阶段的原著关系：${relationship.relation}。形成依据：${relationship.basis}。互动惯性：${relationship.dynamics}。边界：${relationship.boundary}。当前存档中的共同经历和玩家因果可以改变这段关系。`,
         metadata: { fromId: relationship.fromId, toId: relationship.toId, validFromDay: relationship.validFromDay ?? 1, disclosure: "behavior-only", sourceType: "结构化原著关系" } });
     }
-    for (const law of WORLD_SOCIAL_LAWS) {
-      const sourceKey = `social-law:${law.id}`; validKeys.push(sourceKey);
-      storeCanonKnowledge({ sourceKey, era: law.era, kind: "social-law", subjectId: law.id, subjectName: law.category, importance: law.importance,
-        text: `斗罗世界运行规律【${law.category}】：${law.text}`, metadata: { category: law.category, sourceType: "原创运行规则" } });
-    }
     if (validKeys.length) database.prepare(`DELETE FROM canon_knowledge_vectors WHERE source_key NOT IN (${validKeys.map(() => "?").join(",")})`).run(...validKeys);
     database.exec("COMMIT");
   } catch (error) {
@@ -378,7 +390,6 @@ export function retrieveCanonKnowledge(game: StoredGame, query: string, limit = 
   const rows = database.prepare(`SELECT kind, subject_id, subject_name, valid_from_year, text, metadata_json, vector_blob, importance FROM canon_knowledge_vectors WHERE (era = 0 OR era = ?) AND valid_from_year <= ? AND valid_until_year >= ?`).all(era, year, year) as Array<{ kind: string; subject_id?: string; subject_name: string; valid_from_year: number; text: string; metadata_json: string; vector_blob: Uint8Array; importance: number }>;
   return rows.map((row) => ({ ...row, metadata: JSON.parse(row.metadata_json) as Record<string, unknown>, rawSimilarity: vectorSimilarity(queryVector, bytesToVector(row.vector_blob)) }))
     .filter((row) => {
-      if (row.kind === "social-law") return true;
       if (row.kind === "relationship") {
         const fromId = String(row.metadata.fromId ?? ""); const toId = String(row.metadata.toId ?? "");
         const started = row.valid_from_year < year || (row.valid_from_year === year && Number(row.metadata.validFromDay ?? 1) <= (game.view.worldTime?.day ?? 1));
@@ -396,6 +407,55 @@ export function retrieveCanonKnowledge(game: StoredGame, query: string, limit = 
     }).filter((item) => item.similarity > .1).sort((left, right) => right.similarity - left.similarity).slice(0, Math.max(1, Math.min(20, limit)));
 }
 
+export interface RetrievedWorldLogic {
+  category: string;
+  trigger: string;
+  logic: string;
+  importance: number;
+  similarity: number;
+  metadata: Record<string, unknown>;
+}
+
+function seedWorldLogic(): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const validKeys: string[] = [];
+    for (const law of WORLD_SOCIAL_LAWS) {
+      const sourceKey = `social:${law.id}`; validKeys.push(sourceKey);
+      const logic = `斗罗世界基础规律【${law.category}】：${law.text}`;
+      database.prepare(`INSERT INTO world_logic_vectors (id, source_key, era, category, trigger_text, logic_text, metadata_json, vector_blob, importance, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source_key) DO UPDATE SET era=excluded.era, category=excluded.category, trigger_text=excluded.trigger_text,
+        logic_text=excluded.logic_text, metadata_json=excluded.metadata_json, vector_blob=excluded.vector_blob, importance=excluded.importance, updated_at=excluded.updated_at`).run(
+        randomUUID(), sourceKey, law.era, law.category, law.category, logic, JSON.stringify({ type: "social-law", lawId: law.id }), vectorToBytes(embedMemoryText(`${law.category} ${logic}`)), law.importance, new Date().toISOString(),
+      );
+    }
+    for (const rule of WORLD_REACTION_LOGIC) {
+      const sourceKey = `reaction:${rule.id}`; validKeys.push(sourceKey);
+      const logic = `触发：${rule.trigger}。前提：${rule.preconditions}。合理反应链：${rule.reactionChain}。必须留下：${rule.stateTrace}。禁止跳跃：${rule.forbiddenLeap}`;
+      database.prepare(`INSERT INTO world_logic_vectors (id, source_key, era, category, trigger_text, logic_text, metadata_json, vector_blob, importance, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source_key) DO UPDATE SET era=excluded.era, category=excluded.category, trigger_text=excluded.trigger_text,
+        logic_text=excluded.logic_text, metadata_json=excluded.metadata_json, vector_blob=excluded.vector_blob, importance=excluded.importance, updated_at=excluded.updated_at`).run(
+        randomUUID(), sourceKey, rule.era, rule.category, rule.trigger, logic, JSON.stringify({ type: "reaction-logic", ruleId: rule.id, preconditions: rule.preconditions, stateTrace: rule.stateTrace, forbiddenLeap: rule.forbiddenLeap }), vectorToBytes(embedMemoryText(`${rule.category} ${rule.trigger} ${logic}`)), rule.importance, new Date().toISOString(),
+      );
+    }
+    if (validKeys.length) database.prepare(`DELETE FROM world_logic_vectors WHERE source_key NOT IN (${validKeys.map(() => "?").join(",")})`).run(...validKeys);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function retrieveWorldLogic(game: StoredGame, query: string, limit = 8): RetrievedWorldLogic[] {
+  const era = game.view.era ?? eraAtYear(game.view.worldTime?.year ?? 0);
+  const queryVector = embedMemoryText(query);
+  const rows = database.prepare("SELECT category, trigger_text, logic_text, metadata_json, vector_blob, importance FROM world_logic_vectors WHERE era = 0 OR era = ?").all(era) as Array<{ category: string; trigger_text: string; logic_text: string; metadata_json: string; vector_blob: Uint8Array; importance: number }>;
+  return rows.map((row) => {
+    const similarity = vectorSimilarity(queryVector, bytesToVector(row.vector_blob)) * .84 + row.importance * .16;
+    return { category: row.category, trigger: row.trigger_text, logic: row.logic_text, importance: row.importance, similarity: Number(similarity.toFixed(4)), metadata: JSON.parse(row.metadata_json) as Record<string, unknown> };
+  }).filter((item) => item.similarity > .1).sort((left, right) => right.similarity - left.similarity).slice(0, Math.max(1, Math.min(16, limit)));
+}
+
 export function recordModelCall(input: { gameId: string; role: "intent" | "narrator"; model: string; status: "success" | "failure"; latencyMs: number; promptChars: number; outputChars: number; promptTokens?: number; completionTokens?: number; totalTokens?: number; errorCode?: string }): void {
   database.prepare("INSERT INTO model_calls (game_id, role, model, status, latency_ms, prompt_chars, output_chars, prompt_tokens, completion_tokens, total_tokens, error_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.model.slice(0, 120), input.status, Math.max(0, Math.round(input.latencyMs)), Math.max(0, input.promptChars), Math.max(0, input.outputChars), Math.max(0, input.promptTokens ?? 0), Math.max(0, input.completionTokens ?? 0), Math.max(0, input.totalTokens ?? 0), input.errorCode?.slice(0, 80) ?? null, new Date().toISOString());
 }
@@ -405,7 +465,8 @@ export function getModelUsage(gameId?: string): ModelUsageView {
   const row = database.prepare(`SELECT COUNT(*) calls, SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) failures, COALESCE(SUM(prompt_tokens), 0) prompt_tokens, COALESCE(SUM(completion_tokens), 0) completion_tokens, COALESCE(SUM(total_tokens), 0) total_tokens, COALESCE(SUM(latency_ms), 0) total_latency_ms, MAX(created_at) last_call_at FROM model_calls${where}`).get(...(gameId ? [gameId] : [])) as { calls: number; failures: number; prompt_tokens: number; completion_tokens: number; total_tokens: number; total_latency_ms: number; last_call_at?: string };
   const vectorRow = database.prepare(`SELECT COUNT(*) AS count FROM vector_memories${gameId ? " WHERE game_id = ?" : ""}`).get(...(gameId ? [gameId] : [])) as { count: number };
   const canonRow = database.prepare("SELECT COUNT(*) AS count FROM canon_knowledge_vectors").get() as { count: number };
-  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8, canonKnowledgeVectors: Number(canonRow.count), canonRetrievalLimit: 10 };
+  const logicRow = database.prepare("SELECT COUNT(*) AS count FROM world_logic_vectors").get() as { count: number };
+  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8, canonKnowledgeVectors: Number(canonRow.count), canonRetrievalLimit: 10, worldLogicVectors: Number(logicRow.count), worldLogicRetrievalLimit: 8 };
 }
 
 const gameColumns = database.prepare("PRAGMA table_info(games)").all() as Array<{ name: string }>;
@@ -448,6 +509,7 @@ function seedCanonCatalog(): void {
 
 seedCanonCatalog();
 seedCanonKnowledge();
+seedWorldLogic();
 
 const defaultMetaProgression: MetaProgressionView = {
   legacyPoints: 0,

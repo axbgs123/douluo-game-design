@@ -4,7 +4,7 @@
 
 长篇行动不能依赖把完整聊天历史反复塞给模型。本项目使用 SQLite 表 `vector_memories` 保存玩家已知的长期记忆，每次生成正文前只按当前行动召回最多 8 条相关旧事。
 
-人物性格、人生时间线、势力、地点、原著事件、魂兽生态和社会运行法则使用独立的 `canon_knowledge_vectors` 全局知识层，每回合最多召回 10 条；设计与知识边界见 `canon-knowledge-vector.md`。
+人物性格、人生时间线、关键关系、势力、地点、原著事件和魂兽生态使用独立的 `canon_knowledge_vectors` 全局知识层，每回合最多召回 10 条；世界基本逻辑另存于 `world_logic_vectors`，每回合最多召回 8 条。设计与知识边界见 `canon-knowledge-vector.md`。
 
 ## 当前实现
 

@@ -1574,9 +1574,18 @@ export function selectLifeGoal(game: StoredGame, lifeGoal: string, options?: { a
       const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId)!;
       const context = awakeningContext(candidate);
       game.world.flags.awakeningAttention = "最高优先";
+      game.world.flags.publicTalentLevel = Math.min(5, publicIndices.length + (game.view.character.innateSoulPower >= 10 ? 2 : 1));
+      game.world.flags.talentResourcePriority = Math.min(100, 45 + publicIndices.length * 18 + game.view.character.innateSoulPower * 3);
+      game.world.flags.talentRecruitmentPressure = Math.min(5, publicIndices.length + (game.view.character.innateSoulPower >= 8 ? 1 : 0));
+      game.world.flags.talentHostileRisk = Math.min(5, Math.max(1, publicIndices.length + (game.view.character.innateSoulPower >= 10 ? 2 : 0)));
+      game.world.flags.talentThreatStage = 0;
+      game.world.flags.publicTalentWitness = context.officiant;
       const existing = game.view.tasks.find((task) => task.id === "awakening-recruitment");
-      if (existing) existing.detail = `${context.officiant}已经亲眼确认${publicIndices.length}个武魂；所属势力会立即复核培养、保密与魂环路线。公开不等于必须效忠，但消息一旦进入档案便无法当作从未发生。`;
-      else game.view.tasks.push({ id: "awakening-recruitment", title: `回应${context.factionName}的多武魂培养复核`, kind: "线索", detail: `${context.officiant}已经亲眼确认${publicIndices.length}个武魂；需要谈清保密范围、培养资源和归属。`, status: "进行中", destinationId: game.view.locationId, deadline: "觉醒当日" });
+      if (existing) existing.detail = `${context.officiant}已经亲眼确认${publicIndices.length}个武魂；所属势力会立即复核培养、保密与魂环路线，并优先安排导师面谈、基础食宿、训练场时段和第一魂环评估。公开不等于必须效忠，资源也会附带考核与归属谈判。`;
+      else game.view.tasks.push({ id: "awakening-recruitment", title: `回应${context.factionName}的多武魂培养复核`, kind: "线索", detail: `${context.officiant}已经亲眼确认${publicIndices.length}个武魂；可优先获得导师面谈、基础食宿、训练场时段和第一魂环评估，但需要谈清保密、考核、资源额度和归属。`, status: "进行中", destinationId: game.view.locationId, deadline: "觉醒当日" });
+      const currentOrdinal = (game.view.worldTime?.year ?? candidate.public.birthYearOffset ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
+      if (!game.world.dynamicEvents.some((event) => event.id === "talent-recruitment-competition")) game.world.dynamicEvents.push({ id: "talent-recruitment-competition", title: "多武魂天才培养权复核", kind: "势力", locationId: game.view.locationId ?? candidate.public.locationId, participantIds: [], detail: `${context.factionName}内部将围绕导师、资源、保密和未来归属形成不同意见；有权限者会先复测和谈条件，不会仅凭惊叹定案。`, stakes: 4, status: "可介入", createdYear: game.view.worldTime?.year ?? candidate.public.birthYearOffset ?? 0, createdDay: game.view.worldTime?.day ?? 1, expiresOrdinal: currentOrdinal + 30 });
+      recordIntelligence(game, { subjectType: "事件", subjectId: "talent-recruitment-competition", title: "多武魂觉醒已进入培养复核", detail: `${context.officiant}亲眼确认并暂停普通流程；首轮资源会倾斜，但导师、额度、保密和归属仍需谈判。`, source: `${context.officiant}现场说明`, confidence: 100, status: "确定" });
       game.view.character.reputation = `${context.factionName}最高优先记录的多武魂天才`;
     }
   }
@@ -2168,6 +2177,12 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     const beastAwakening = selected.originId === "fierce-beast-raised";
     const attentionLevel = selected.innateSoulPower === 10 || Math.max(...soulGrades) >= MARTIAL_SOUL_GRADE_ORDER.indexOf("神话") ? "最高优先" : "重点";
     game.world.flags.awakeningAttention = attentionLevel;
+    game.world.flags.publicTalentLevel = attentionLevel === "最高优先" ? 4 : 3;
+    game.world.flags.talentResourcePriority = attentionLevel === "最高优先" ? 78 : 62;
+    game.world.flags.talentRecruitmentPressure = attentionLevel === "最高优先" ? 3 : 2;
+    game.world.flags.talentHostileRisk = attentionLevel === "最高优先" ? 3 : 2;
+    game.world.flags.talentThreatStage ??= 0;
+    game.world.flags.publicTalentWitness = awakening.officiant;
     let awakeningRelation = game.view.relations.find((relation) => relation.faction === awakening.factionName || /觉醒/.test(`${relation.relation}${relation.name}`));
     if (!awakeningRelation) {
       awakeningRelation = { name: awakening.officiant, relation: "觉醒主持者", impression: "已按所属势力流程封存觉醒记录", faction: awakening.factionName, strength: 18, category: "势力", dimensions: { closeness: 0, trust: 12, respect: 18, sharedInterest: 15, vigilance: 5, hostility: 0, favorDebt: 0, identityKnowledge: 70 }, history: [] };
@@ -2177,7 +2192,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
       awakeningRelation.impression = beastAwakening ? "确认孩子已经具备离开领地或继续留在兽群修炼的选择资格" : `将觉醒结果列入${awakening.factionName}内部培养评估`;
       awakeningRelation.history = [...(awakeningRelation.history ?? []), { date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `${selected.innateSoulPower}级先天魂力与公开显露的${publicSoulViews[0].name}引起注意`, changes: `${awakening.factionName}关注提升至${attentionLevel}` }];
     }
-    game.view.tasks.push({ id: "awakening-recruitment", title: beastAwakening ? "与养育者商量觉醒后的去向" : `回应${awakening.factionName}的培养评估`, kind: "线索", detail: beastAwakening ? "兽群能提供森林生存与魂兽知识，却没有人类学院、户籍或公开导师资格；是否离开必须由角色自己决定。" : `${awakening.officiant}会先向${awakening.factionName}内部上报，由所属势力提供学院、导师、魂环与身份安排；其他势力不会无视归属直接接管。`, status: "进行中", destinationId: selected.public.locationId, deadline: beastAwakening ? "没有强制期限" : selected.innateSoulPower === 10 ? "今日内会有高层过问" : "约十日内会有正式答复" });
+    game.view.tasks.push({ id: "awakening-recruitment", title: beastAwakening ? "与养育者商量觉醒后的去向" : `回应${awakening.factionName}的培养评估`, kind: "线索", detail: beastAwakening ? "兽群能提供森林生存与魂兽知识，却没有人类学院、户籍或公开导师资格；是否离开必须由角色自己决定。" : `${awakening.officiant}会先向${awakening.factionName}内部上报。所属势力会优先评估导师面谈、训练场时段、学院推荐、基础食宿和第一魂环协助；资源额度、考核、保密与未来归属需要逐项谈判。其他势力若得到可靠消息，也可能拉拢、监视或针对。`, status: "进行中", destinationId: selected.public.locationId, deadline: beastAwakening ? "没有强制期限" : selected.innateSoulPower === 10 ? "今日内会有高层过问" : "约十日内会有正式答复" });
     const year = game.view.worldTime?.year ?? 0;
     const day = game.view.worldTime?.day ?? 1;
     const participantIds = awakening.notableNpc ? [awakening.notableNpc.id] : [];
