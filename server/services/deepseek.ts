@@ -391,7 +391,7 @@ export async function narrateWithDeepSeek(
             "若本次行动是隐藏、私下测试、独处、保密或不公开，正文不得让敲门、传唤、NPC进门、实际前往议事堂或培养会议抢走行动，也不得凭空生成未持有物品。测试确实完成后，可以用一句内心提醒承接结构化状态中已经存在的未来安排，但不能实际转场、赴会或替玩家决定如何回应；suggestions必须从私下行动完成后的真实状态继续。",
             "每个重要反应都要通过欲望、信息、权限、资源、行动、后果六环。异常天赋必须引发符合目击者利益和权限的复测、上报、谈条件、争夺或戒备，不能只惊叹一句便散场。",
             "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
-            "narrativeLogicPacket 是正文生成前已经通过的硬逻辑合同。先逐项满足 protagonistContract、participantContracts、reactionChain 与 continuityContract，再写句子；不得在正文中提到逻辑包、状态版本或检查过程。",
+            "narrativeLogicPacket 是正文生成前已经通过的硬逻辑合同。generationContract是本稿的正向场景白名单：先按sceneGoal和requiredBeats搭好本场骨架，只从allowedFacts取事实，逐条避开forbiddenClaims，并严格停在endingBoundary；然后再满足protagonistContract、participantContracts、reactionChain与continuityContract。不要先自由发挥再依赖审校纠错，也不得在正文中提到逻辑包、白名单、状态版本或检查过程。",
             "retrievedLongTermMemories 是本地向量库按当前行动召回的玩家已知旧事。只在与当前场景相关时自然延续；它不能覆盖当前程序状态，也不能让未亲历该事的NPC突然知情。发生冲突时以当前结构化状态和 fixedRuleResult 为准。",
             "retrievedCanonKnowledge 是按当前时代和场景召回的斗罗结构化世界资料。地点与势力条目必须读取 metadata.provenance：原著归纳不是原著原话，原创不能宣称原著出现过。人物条目只描述当前人生时间片；未提供的后来姓名、称号、武魂变化、关系结果、势力归属与目标一律视为尚未发生。玩家已经改变其关系、资源、职位或处境时，以当前存档为准。",
             "玩家出身、宗门、武魂或遗物若标为原创，只是服从斗罗底层规则的同人事实，不是原著实体。只能使用结构化状态已声明的形态、能力和限制，不得补成原著古老传承、已知历史或大陆公认体系，也不得凭感觉赋予武魂灵智、主动回应、警告、拒绝、择主或隐藏能力。",

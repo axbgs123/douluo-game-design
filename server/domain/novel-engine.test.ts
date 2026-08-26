@@ -43,9 +43,28 @@ describe("增强小说引擎", () => {
     const packet = buildNarrativeLogicPacket(game, "调查觉醒记录", { ...ordinaryResolution, minutes: 45, ruleSummary: "看过负责觉醒的魂师留下的姓名，但没有取得原件。" }, knowledge);
     expect(packet.version).toBe("narrative-logic.v1");
     expect(packet.protagonistContract).toMatchObject({ desire: "调查觉醒记录", action: "调查", fixedConsequence: "看过负责觉醒的魂师留下的姓名，但没有取得原件。" });
+    expect(packet.generationContract.requiredBeats).toHaveLength(4);
+    expect(packet.generationContract.forbiddenClaims).toContain("新增未持有物品、未结算能力或未知NPC");
     expect(packet.continuityContract.requiredStateChanges).toContain("时间推进 45 分钟");
     expect(packet.continuityContract.forbiddenInventions).toContain("让 NPC 知道隐藏武魂、系统、未来事件或未公开身份");
     expect(packet.reactionChain.requiredTraces.at(-1)).toContain("不强制制造谜题");
+    expect(auditNarrativeLogicPacket(packet)).toEqual([]);
+  });
+
+  it("removes NPC participants and supplies a positive scene blueprint before private-soul narration", () => {
+    const game = awakened("private-generation-contract");
+    const first = game.view.character!.martialSouls[0];
+    game.view.character!.martialSouls = [first, { ...first, name: "太玄剑胎", category: "器武魂", sourceEra: "原创", description: "一道无锋剑形武魂，能力尚未验证。", cultivationState: "未修炼" }];
+    game.view.character!.publiclyKnownMartialSoulIndices = [0];
+    const resolution = { ...ordinaryResolution, intent: "私下测试隐藏武魂", ruleSummary: "独自在住处确认太玄剑胎能够短暂显形；没有NPC在场，没有新能力或灵智。" };
+    const packet = buildNarrativeLogicPacket(game, "回静室单独感应太玄剑胎的状态", resolution, buildSceneKnowledgePack(game, "回静室单独感应太玄剑胎的状态"));
+    expect(packet.participantContracts).toEqual([]);
+    expect(packet.reactionChain.witnesses).toEqual([]);
+    expect(packet.reactionChain.requiredImmediateReactions).toEqual(["本场无人旁观；玩家完成行动后秘密仍只由本人知道，不产生NPC反应"]);
+    expect(packet.generationContract.sceneGoal).toContain("只完成隐藏武魂太玄剑胎");
+    expect(packet.generationContract.requiredBeats).toEqual(expect.arrayContaining([expect.stringContaining("短暂显形"), expect.stringContaining("主动停止") ]));
+    expect(packet.generationContract.forbiddenClaims).toEqual(expect.arrayContaining([expect.stringContaining("木匣"), expect.stringContaining("灵智"), expect.stringContaining("新魂技") ]));
+    expect(packet.generationContract.originalEntityBoundary).toContain("同人原创/局外实体而非原著实体");
     expect(auditNarrativeLogicPacket(packet)).toEqual([]);
   });
 

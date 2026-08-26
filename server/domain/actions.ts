@@ -460,7 +460,7 @@ function privateHiddenSoulTestResolution(game: StoredGame, action: string): Acti
   return {
     intent: "私下测试隐藏武魂",
     minutes: 45,
-    ruleSummary: `${character.name}在${location}独自确认隐藏武魂${selected.soul.name}确实能够显形，并完成${focus}的第一次短测；没有NPC在场，没有公开、上报、拜师、培养会议或资源承诺。`,
+    ruleSummary: `${character.name}在${location}独自确认隐藏武魂${selected.soul.name}确实能够显形，并完成${focus}的第一次短测；没有NPC在场，没有公开、上报、拜师、培养会议或资源承诺；没有获得新魂技或额外能力，也没有证据表明武魂拥有灵智或主动意志。`,
     fallbackNarrative: `${character.name}关好门窗，等外面的脚步声走远，才重新引动意识深处那股不同的魂力。${manifestation}${pronoun}只试了片刻，记住${focus}最明显的变化，便在气息可能传出房间以前将武魂收回。屋外始终安静，没人知道这次测试已经发生。`,
     suggestions: [`继续独自测试${selected.soul.name}的魂力消耗`, "把两种武魂的差异记在只有自己知道的地方", "暂停测试，照公开路线练习第一武魂"],
     systemMessages: [`秘密 · ${selected.soul.name} · 已私下测试 · 知情者仅本人`],

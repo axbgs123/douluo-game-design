@@ -450,6 +450,15 @@ export interface NarrativeLogicPacket {
     fulfillmentOrder: string;
     completionEvidence: string;
   };
+  generationContract: {
+    sceneGoal: string;
+    requiredBeats: string[];
+    allowedFacts: string[];
+    forbiddenClaims: string[];
+    endingBoundary: string;
+    eraLanguage: string;
+    originalEntityBoundary: string;
+  };
   participantContracts: Array<{
     name: string;
     desire: string;
@@ -481,16 +490,17 @@ function relationAuthority(relation: StoredGame["view"]["relations"][number]): s
 
 export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string, resolution: ActionResolution, sceneKnowledge: SceneKnowledgePack): NarrativeLogicPacket {
   const { publicNames, hiddenNames } = publicAndHiddenSoulNames(game);
-  const onSceneNpcs = Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId);
+  const privateSolitaryAction = /私下测试隐藏武魂/.test(resolution.intent) || (/独自|单独|私下|无人旁观|闭门|不公开|暂不公开/.test(playerInput) && /没有NPC在场|无NPC在场|无人旁观/.test(resolution.ruleSummary));
+  const onSceneNpcs = privateSolitaryAction ? [] : Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId);
   const knowledgeByNpc = new Map(sceneKnowledge.entries.filter((entry) => entry.kind === "人物").map((entry) => [entry.name, entry]));
   const participantRelations = game.view.relations.filter((relation) => onSceneNpcs.some((npc) => npc.name === relation.name) || knowledgeByNpc.has(relation.name));
   const awakeningRelation = game.view.relations.find((relation) => /觉醒主持|觉醒魂师|主持觉醒/.test(`${relation.relation}${relation.impression}`));
-  if (awakeningRelation && !participantRelations.includes(awakeningRelation)) participantRelations.push(awakeningRelation);
+  if (!privateSolitaryAction && awakeningRelation && !participantRelations.includes(awakeningRelation)) participantRelations.push(awakeningRelation);
   const activeNpcScene = game.view.storyArc?.npcScenes.find((scene) => scene.status === "等待回应");
   const activeSceneRelation = activeNpcScene && game.view.relations.find((relation) => relation.name === activeNpcScene.npcName);
-  if (activeSceneRelation && !participantRelations.includes(activeSceneRelation)) participantRelations.push(activeSceneRelation);
+  if (!privateSolitaryAction && activeSceneRelation && !participantRelations.includes(activeSceneRelation)) participantRelations.push(activeSceneRelation);
   const mentorRelation = game.view.mentorPursuit && game.view.relations.find((relation) => relation.name === game.view.mentorPursuit?.mentorName);
-  if (mentorRelation && !participantRelations.includes(mentorRelation)) participantRelations.push(mentorRelation);
+  if (!privateSolitaryAction && mentorRelation && !participantRelations.includes(mentorRelation)) participantRelations.push(mentorRelation);
   const participants = participantRelations.slice(0, 12).map((relation) => {
     const npc = onSceneNpcs.find((item) => item.name === relation.name);
     const knowledge = knowledgeByNpc.get(relation.name);
@@ -506,7 +516,9 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
   });
   const authorityHolders = participants.filter((item) => /可在职责范围内|可以主持|可以影响|可以执行/.test(item.authority)).map((item) => item.name);
   const exceptionalAwakening = Boolean(game.view.character && game.view.character.innateSoulPower >= 10 && (game.view.status === "awakening" || /觉醒|满魂力|重新测试|复测|培养条件|负责.*觉醒/.test(`${playerInput}${resolution.intent}${resolution.ruleSummary}`)));
-  const requiredImmediateReactions = exceptionalAwakening
+  const requiredImmediateReactions = privateSolitaryAction
+    ? ["本场无人旁观；玩家完成行动后秘密仍只由本人知道，不产生NPC反应"]
+    : exceptionalAwakening
     ? ["负责觉醒的人换水晶重新测试并停下后续仪式", "真正有权安排培养的人被请到场", "同行长辈或所属势力讨论谁来教、食宿、猎魂帮助与代价"]
     : participants.length ? ["利益或职责被触及的在场人物作出具体反应"] : ["没有可用见证者时，不得凭空制造远方人物反应"];
   const requiredStateChanges = [
@@ -526,6 +538,31 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
     game.view.academyLife ? `${game.view.academyLife.periodLabel}：${game.view.academyLife.className}·${game.view.academyLife.stage}；${game.view.academyLife.teacherRole}${game.view.academyLife.teacherName}负责；课程${game.view.academyLife.courseProgress}、同辈互动${game.view.academyLife.peerInteractions}、费用约定${game.view.academyLife.fundingDutyProgress}` : undefined,
     game.view.mentorPursuit ? `导师关系：${game.view.mentorPursuit.mentorName}·${game.view.mentorPursuit.stage}，未到已拜师不得写成师徒` : undefined,
   ].filter((item): item is string => Boolean(item));
+  const originalEntities = (game.view.character?.martialSouls ?? []).filter((soul) => soul.sourceEra === "原创" || soul.sourceEra === "局外");
+  const originalEntityFacts = originalEntities.map((soul) => `${soul.name}：${soul.category}；${soul.description}；品质${soul.grade}`);
+  const privateSoulName = hiddenNames.find((name) => playerInput.includes(name) || resolution.ruleSummary.includes(name)) ?? hiddenNames[0];
+  const generationContract: NarrativeLogicPacket["generationContract"] = privateSolitaryAction ? {
+    sceneGoal: `只完成${privateSoulName ? `隐藏武魂${privateSoulName}` : "隐藏力量"}的本次私下短测，不处理培养会议或其他任务`,
+    requiredBeats: [
+      "主角在当前住处确保无人旁观后开始感应或催动",
+      `让${privateSoulName ?? "隐藏武魂"}按fixedConsequence已经确认的方式短暂显形或产生可感知变化`,
+      "只写一次结构化结果允许的形态、触感、魂力消耗或收回速度差异",
+      "主角主动停止并收回力量，秘密知情范围保持不变",
+    ],
+    allowedFacts: [resolution.ruleSummary, ...originalEntityFacts, `随身物品仅限：${game.view.inventory.join("、") || "无"}`, "可描写呼吸、出汗、疲劳、魂力接触和当前房间已有环境"],
+    forbiddenClaims: ["NPC敲门、传唤、进场、看见或作出反应", "实际前往议事堂、培养会议、拜师或领取资源", "生成库存中不存在的木匣、剑胚容器、药物、记录册或测试器具", "赋予武魂灵智、回应、警告、拒绝、等待、择主或主动意志", "发现新魂技、隐藏能力、魂环效果、精确数值或原著未声明的修炼体系"],
+    endingBoundary: "停在私测完成、力量收回和秘密仍被守住；最多一句想起已有未来安排，不实际转场或替玩家决定回应",
+    eraLanguage: (game.view.era ?? 1) === 1 ? "只使用斗一当时可用的武魂、魂力、魂环和身体感知语言；不用识海、精神之海、意识海等后世空间化术语" : `使用斗${game.view.era ?? 1}当前时代已经成立的术语，不倒灌未来制度`,
+    originalEntityBoundary: originalEntityFacts.length ? `以下是同人原创/局外实体而非原著实体，只能按已声明事实描写：${originalEntityFacts.join("；")}` : "本场没有需要扩写的原创实体；不得自行创建原著不存在的体系",
+  } : {
+    sceneGoal: `完成玩家行动“${playerInput.trim()}”及程序固定结果，不扩展下一项重大行动`,
+    requiredBeats: ["正文前半段呈现玩家动作的可见执行证据", "呈现fixedConsequence对应的结果证据", "只写现场人物基于亲历、利益和权限产生的直接反应", "结尾停在本次状态变化或玩家可决定的下一步"],
+    allowedFacts: [resolution.ruleSummary, ...originalEntityFacts, `随身物品仅限：${game.view.inventory.join("、") || "无"}`, ...sceneKnowledge.entries.slice(0, 12).map((entry) => `${entry.name}：${entry.fact}`)],
+    forbiddenClaims: ["改变程序胜负、时间、资源、关系、伤势或任务结果", "新增未持有物品、未结算能力或未知NPC", "让原创实体冒充原著实体或大陆公认体系", "替玩家执行fixedConsequence之后的新决定"],
+    endingBoundary: "完成本次结果后停止；下一项重大行动只能成为建议，不能写进正文已经发生",
+    eraLanguage: (game.view.era ?? 1) === 1 ? "使用斗一当时成立的生活、武魂、魂力与势力语言；禁止后世制度和精神空间术语倒灌" : `使用斗${game.view.era ?? 1}当前时代已经成立的制度和词汇`,
+    originalEntityBoundary: originalEntityFacts.length ? `以下实体为同人原创/局外，只能按声明事实描写：${originalEntityFacts.join("；")}` : "不得临时创建或伪造原著实体",
+  };
   return {
     version: "narrative-logic.v1",
     stateVersion: `schema-${game.schemaVersion}:revision-${game.revision}:action-${game.actionIndex}`,
@@ -550,6 +587,7 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
       fulfillmentOrder: "正文前半段必须先让玩家行动实际发生并呈现固定后果，然后才允许写现场反应；不得拿新任务、来访、会议或转场替换",
       completionEvidence: "正文必须留下读者能直接指出的一处执行证据和一处结果证据，不能只在旁白中说已经处理",
     },
+    generationContract,
     participantContracts: participants,
     reactionChain: {
       witnesses: [...new Set([...onSceneNpcs.map((npc) => npc.name), ...participants.map((item) => item.name)])],
@@ -574,6 +612,7 @@ export function auditNarrativeLogicPacket(packet: NarrativeLogicPacket): string[
   if (!packet.protagonistContract.action.trim()) issues.push("逻辑预检缺少程序动作");
   if (!packet.protagonistContract.fixedConsequence.trim()) issues.push("逻辑预检缺少不可改写的程序后果");
   if (!packet.protagonistContract.fulfillmentOrder.trim() || !packet.protagonistContract.completionEvidence.trim()) issues.push("逻辑预检缺少玩家行动兑现顺序或可见证据要求");
+  if (!packet.generationContract.sceneGoal.trim() || packet.generationContract.requiredBeats.length < 3 || !packet.generationContract.allowedFacts.length || !packet.generationContract.forbiddenClaims.length || !packet.generationContract.endingBoundary.trim()) issues.push("逻辑预检缺少可执行的正向生成合同");
   if (!packet.canonAnchor.location.trim() || packet.canonAnchor.location === "未知地点") issues.push("逻辑预检缺少当前地点");
   if (packet.canonAnchor.publicMartialSouls.some((name) => packet.canonAnchor.hiddenMartialSouls.includes(name))) issues.push("公开武魂与隐藏武魂边界冲突");
   if (!packet.continuityContract.requiredStateChanges.length) issues.push("逻辑预检没有任何可追踪状态变化");
