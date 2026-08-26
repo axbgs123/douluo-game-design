@@ -136,15 +136,86 @@ export const CHARACTER_LIFE_STAGES: CharacterLifeStageDefinition[] = [
   stage("yuanen-huihui", 30000, "原恩辉辉", "在家人与学院安排下学习、修炼并处理自己的身体与血脉问题", [], 30004),
   stage("yuanen-huihui", 30005, "原恩辉辉", "进入史莱克星际培养体系后训练远程作战并承担团队任务", ["shrek-space-command"]),
 
+  stage("tang-xiao", -5, "唐啸", "以昊天宗宗主身份维持封山后的宗门秩序，保护族人并处理旧事留下的压力", ["clear-sky"]),
+  stage("xue-beng", 0, "雪崩", "以天斗四皇子身份处理皇室生活、学院往来与眼前的政治压力", ["heaven-dou"], 16),
+  stage("xue-beng", 17, "雪崩", "在皇室局势公开变化后承担继承、军政与帝国安全责任", ["heaven-dou"]),
+  stage("bo-saixi", -20, "波赛西", "主持海神岛秩序与考核，保护岛民并维护海神传承规则", ["sea-god-island"]),
+  stage("tang-chen", -20, "杀戮之王", "维持杀戮之都的血腥秩序，对进入者只按当地规则与实际威胁作出反应", ["slaughter-city"]),
+  stage("a-yin", -6, "阿银", "在当前生命状态下保存本源并等待能够继续生长的现实条件", []),
+  stage("da-ming", -100, "大明", "维持星斗核心区秩序，保护核心族群并警惕进入领地的人类强者", []),
+  stage("er-ming", -100, "二明", "守住星斗核心领地和重要族群，对越界威胁采取直接反应", []),
+  stage("di-tian", -100, "帝天", "维持星斗核心区秩序与魂兽延续，只处理真正触及核心领地的威胁", []),
+  stage("bi-ji", -100, "碧姬", "治疗受伤魂兽、维持族群生存，并缓和会造成无谓损失的冲突", []),
+  stage("zi-ji", -100, "紫姬", "守卫星斗核心区并维护地狱魔龙一脉，对外来强者保持戒备", []),
+  stage("xiong-jun", -100, "熊君", "扩张自身威势并挑战值得出手的强敌，同时服从核心区不能被毁的底线", []),
+  stage("wan-yao-wang", -100, "万妖王", "利用根系与精神感知守住领地，优先控制风险而非无意义追击", []),
+  stage("chi-wang", -100, "赤王", "巡守星斗核心区外围并保护族群幼崽，对可靠威胁及时示警", []),
+  stage("tian-meng", -100, "天梦冰蚕", "寻找摆脱控制并保存自身本源的机会，不向无法信任的对象暴露计划", [], 10004),
+  stage("tian-meng", 10005, "天梦冰蚕", "在存在状态已经改变后维护自身本源，并参与已经建立的魂灵实验", []),
+  stage("snow-empress", -100, "雪帝", "维持极北核心圈秩序，保护冰雪族群并应对自身寿限压力", [], 10004),
+  stage("snow-empress", 10005, "雪帝", "在本源状态改变后保存意识与力量，处理已经卷入的人类争夺", []),
+  stage("ice-empress", -100, "冰帝", "守卫极北之地与冰碧蝎族群，对侵入核心圈的人类保持敌意", [], 9999),
+  stage("ice-empress", 10000, "冰帝", "在存在状态改变后维护自身本源，并判断当前合作是否仍值得继续", []),
+  stage("xiao-bai", -20, "小白", "守卫海神岛近海、保护族群并执行海神岛当前通行规则", ["sea-god-island"]),
+  stage("yu-yuanzhen", -20, "玉元震", "以蓝电霸王龙宗宗主身份维护宗门威望、传承与族人安全", ["blue-lightning"]),
+  stage("golden-crocodile", -20, "金鳄斗罗", "履行供奉殿职责，维护天使一脉与武魂殿核心秩序", ["worship-hall", "spirit-hall"]),
+  stage("qian-jun", -20, "千钧斗罗", "执行供奉殿交付的守卫与战斗职责，不介入权限之外的地方争端", ["worship-hall"]),
+  stage("jiang-mo", -20, "降魔斗罗", "执行供奉殿交付的守卫与战斗职责，以兄弟协同应对高阶威胁", ["worship-hall"]),
+  stage("sea-dragon-douluo", -20, "海龙斗罗", "守卫海龙圣柱并主持职责范围内的考核，不替考核者规避代价", ["sea-pillar-guardians"]),
+  stage("sea-witch-douluo", -20, "海魔女斗罗", "守卫海魔女圣柱并履行考核职责，对岛外来客保持好奇与边界", ["sea-pillar-guardians"]),
+  stage("silver-dragon-sleeping", -100, "银龙王", "在当前生命状态下恢复本源，外界尚无可公开确认的日常行动", []),
+  stage("qian-xunji", -20, "千寻疾", "以教皇身份维护教皇殿权力与天使传承利益，调动资源追索重大目标", ["pope-palace", "spirit-hall"], -6),
+
+  stage("du-busi", 9990, "毒不死", "以本体宗宗主身份寻找和保护本体武魂人才，优先维护宗门传承", ["body-sect"]),
+  stage("zhongli-wu", 9990, "钟离乌", "统筹圣灵教资源与行动，在暴露风险和扩张收益之间作取舍", ["holy-spirit-cult"]),
+  stage("long-xiaoyao", 9990, "龙逍遥", "履行当前承诺并处理圣灵教高阶事务，不向普通成员解释私人旧事", ["holy-spirit-cult"]),
+  stage("ye-xishui", 9990, "叶夕水", "维持圣灵教核心权力并推进当前计划，对失败和背叛采取高压处置", ["holy-spirit-cult"]),
+  stage("ma-xiaotao", 10000, "马小桃", "以史莱克内院学生身份训练并控制武魂隐患，承担带队与护校责任", ["shrek-inner-court"]),
+  stage("dai-yaoheng", 10000, "戴钥衡", "兼顾史莱克内院训练与星罗家族责任，以实际战绩维护队伍", ["shrek-inner-court", "star-luo"]),
+  stage("wang-qiuer", 10000, "三眼金猊", "在星斗核心区活动，观察异常变化并维护自身与族群安全", [], 10005),
+  stage("wang-qiuer", 10006, "王秋儿", "以当前公开身份了解人类生活、修炼与情感，并保留自己的选择边界", []),
+  stage("snow-empress-human", 10005, "雪女", "以当前可见形态保存本源、适应交流并保护自己认可的人", []),
+
+  stage("long-yue", 20000, "龙跃", "以怪物学院核心学员身份训练山龙王武魂并维护星罗方面荣誉", ["star-luo-overseas"]),
+  stage("dai-yuner", 20000, "戴云儿", "以星罗皇室成员身份学习、修炼并完成当前交流与家族职责", ["star-luo-overseas"]),
+  stage("zhen-hua", 19990, "震华", "主持锻造师协会事务、培养锻造人才并维护神匠作品标准", ["gengxin-smiths"]),
+  stage("mu-ye", 19990, "牧野", "维持本体宗传承并考察值得投入的人才，训练要求服从身体承载", ["body-sect"]),
+  stage("yun-ming", 19990, "云冥", "主持海神阁与史莱克城安全事务，在学院存续与大陆责任间决策", ["sea-god-pavilion"]),
+  stage("ya-li", 19990, "雅莉", "救治伤者、培养治疗人才并守护史莱克，不把救援变成无代价奇迹", ["sea-god-pavilion"]),
+  stage("leng-yaozhu", 19990, "冷遥茱", "处理传灵塔职责、魂灵事务与内部关系，保护自己认可的学生", ["spirit-pagoda"]),
+  stage("qiangu-dongfeng", 19990, "千古东风", "维护传灵塔权力、资源与家族利益，推进能够扩大组织影响的计划", ["spirit-pagoda"]),
+  stage("chen-xinjie", 19990, "陈新杰", "统筹战神殿与海神军团职责，维护联邦安全和军令边界", ["sea-god-army", "war-god-temple"]),
+  stage("cao-dezhi", 19990, "曹德智", "兼顾唐门与血神军团职责，维持深渊防线和军中秩序", ["d3-tang-sect", "blood-god-army"]),
+  stage("zang-xin", 19990, "臧鑫", "处理唐门传承、组织资源与大陆局势，优先保证宗门能够延续", ["d3-tang-sect"]),
+  stage("dark-phoenix", 19990, "冷雨莱", "执行圣灵教高阶任务并维护自身立场，对旧关系保持复杂戒备", ["d3-holy-spirit"]),
+
+  stage("tang-yuge", 30000, "唐雨格", "以史莱克高年级学员身份训练五行麒麟并处理团队与家庭关系", ["shrek-space-command"]),
+  stage("bai-ling-admiral", 30012, "白凌", "以第七舰队司令身份统筹舰队任务、人员安全与联邦军令", ["d4-federal-fleet", "d4-seventh-fleet"]),
+  stage("wang-tianyu", 29990, "汪天羽", "履行海神阁与史莱克管理职责，维护学院传承、规则与学生安全", ["sea-god-pavilion"]),
+  stage("le-gongzi", 30000, "乐公子", "以公众人物身份工作和生活，只处理当前能够确认的记忆与关系", []),
+  stage("na-na-teacher", 30000, "娜娜", "以娜娜身份在天斗星生活，履行已经建立的教学与照料责任", []),
+  stage("huang-yuanlang", 30000, "皇元朗", "以天龙星上位龙族身份维护家族利益，评估外来者的价值与风险", ["dragon-horse-federation"]),
+  stage("zhong-zhichang", 30000, "钟志昌", "履行曙光龙骑士职责，维护龙族秩序并权衡族群长期利益", ["sky-dragon-guild"]),
+  stage("luo-lan", 30000, "罗镧", "履行黑恐龙骑士职责，维护自身领地并争取值得培养的龙族人才", ["sky-dragon-guild"]),
+  stage("jiang-weiquang", 30000, "江炜强", "以天龙首座身份维护龙族统治、资源与龙马星系权力秩序", ["sky-dragon-guild"]),
+
   stage("qian-renxue", -5, "雪清河", "以天斗太子的公开身份完成当前政治职责，维持朝堂与皇室关系", ["heaven-dou"], 16),
   stage("qian-renxue", 17, "千仞雪", "在太子身份秘密公开后处理武魂殿、天使传承与天斗冲突", ["spirit-hall"]),
 ];
 
 function ordinal(year: number, day: number): number { return year * 360 + day; }
 
+const CHARACTER_LIFE_STAGES_BY_ID = new Map<string, CharacterLifeStageDefinition[]>();
+for (const item of CHARACTER_LIFE_STAGES) {
+  const entries = CHARACTER_LIFE_STAGES_BY_ID.get(item.characterId) ?? [];
+  entries.push(item);
+  CHARACTER_LIFE_STAGES_BY_ID.set(item.characterId, entries);
+}
+for (const entries of CHARACTER_LIFE_STAGES_BY_ID.values()) entries.sort((left, right) => ordinal(right.validFromYear, right.validFromDay ?? 1) - ordinal(left.validFromYear, left.validFromDay ?? 1));
+
 export function characterLifeStageAtDate(characterId: string, year: number, day = 1): CharacterLifeStageDefinition | undefined {
   const current = ordinal(year, day);
-  return CHARACTER_LIFE_STAGES.filter((item) => item.characterId === characterId && ordinal(item.validFromYear, item.validFromDay ?? 1) <= current && ordinal(item.validUntilYear ?? 100_000, item.validUntilDay ?? 360) >= current).sort((left, right) => ordinal(right.validFromYear, right.validFromDay ?? 1) - ordinal(left.validFromYear, left.validFromDay ?? 1))[0];
+  return CHARACTER_LIFE_STAGES_BY_ID.get(characterId)?.find((item) => ordinal(item.validFromYear, item.validFromDay ?? 1) <= current && ordinal(item.validUntilYear ?? 100_000, item.validUntilDay ?? 360) >= current);
 }
 
 export const CHARACTER_LIFE_STAGE_CHARACTER_COUNT = new Set(CHARACTER_LIFE_STAGES.map((item) => item.characterId)).size;

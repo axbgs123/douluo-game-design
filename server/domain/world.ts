@@ -494,6 +494,15 @@ function knownPower(npc: WorldNpcState): string {
   return npc.powerTier;
 }
 
+function confidentialPowerAtDate(characterId: string, year: number, day: number): boolean {
+  const definition = characterById(characterId);
+  const snapshot = definition?.powerSnapshots
+    .filter((item) => ordinal(item.year, item.day ?? 1) <= ordinal(year, day))
+    .sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1))
+    .at(-1);
+  return Boolean(snapshot && (definition?.hidden || /隐藏|保密|未公开|真实能力|真实实力|反噬|神位|神考|献祭|化形|潜伏|自保|失忆|沉睡|受侵蚀/.test(`${snapshot.tier}${snapshot.note}`)));
+}
+
 function estimatedPower(npc: WorldNpcState): string {
   if (npc.powerTier === "尚未觉醒") return "尚未觉醒";
   if (npc.soulRank === undefined) return "实力不明";
@@ -508,7 +517,9 @@ export function buildKnownFigures(game: StoredGame): KnownFigureView[] {
     const relation = game.view.relations.some((item) => item.id === npc.id);
     const metInPerson = relation || npc.memoryOfPlayer.length > 0 || Boolean(intel && /亲历|当面|交谈/.test(intel.source));
     const confidence = intel?.confidence ?? (metInPerson ? 90 : 30);
-    const visiblePower = confidence >= 85 && metInPerson ? knownPower(npc) : confidence >= 55 ? estimatedPower(npc) : "实力不明";
+    const exactPowerVerified = Boolean(intel && intel.confidence >= 85 && /魂力|实力|境界|战斗|鉴定|测试/.test(`${intel.title}${intel.detail}${intel.source}`));
+    const powerMustStayPrivate = confidentialPowerAtDate(npc.id, game.view.worldTime?.year ?? 0, game.view.worldTime?.day ?? 1) && !exactPowerVerified;
+    const visiblePower = powerMustStayPrivate ? "实力不明" : confidence >= 85 && metInPerson ? knownPower(npc) : confidence >= 55 ? estimatedPower(npc) : "实力不明";
     const locationName = locationById(npc.locationId)?.name ?? "不明";
     return {
       id: npc.id,
@@ -516,7 +527,7 @@ export function buildKnownFigures(game: StoredGame): KnownFigureView[] {
       faction: faction?.name,
       knownPower: visiblePower,
       location: metInPerson && npc.locationId === game.view.locationId ? locationName : confidence >= 70 ? locationName : `${locationName}一带（未核实）`,
-      status: npc.alive ? (metInPerson ? (npc.activePlan?.lastOutcome ? `可观察近况：${npc.activePlan.lastOutcome}` : npc.currentGoal) : intel?.status === "确定" ? "消息已核实" : "近况不明") : "已死亡",
+      status: npc.alive ? (metInPerson ? (npc.activePlan?.lastOutcome ? `可观察近况：${npc.activePlan.lastOutcome}` : "已当面接触，当前打算仍需从行动判断") : intel?.status === "确定" ? "消息已核实" : "近况不明") : "已死亡",
       source: intel?.source ?? (metInPerson ? "亲历" : "旧闻"),
       confidence,
     };

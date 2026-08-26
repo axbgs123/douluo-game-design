@@ -4,7 +4,7 @@ import { awakenCharacter, createGame, ERA_BASE_YEARS, finalizeCharacterShaping, 
 import { settleRun } from "./endings.js";
 import { guardActionByStoryRules, selectNarrativeRules, violatesCanonChronology } from "./story-rules.js";
 import { applyActionResult, resolveAction } from "./actions.js";
-import { advanceWorldTime, buildMapView, canonicalFactionIdsAtDate, createHiddenWorld } from "./world.js";
+import { advanceWorldTime, buildKnownFigures, buildMapView, canonicalFactionIdsAtDate, createHiddenWorld } from "./world.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, factionActiveAtYear } from "../data/world.js";
 import { CHARACTER_LIFE_STAGES, CHARACTER_LIFE_STAGE_CHARACTER_COUNT } from "../data/character-life-stages.js";
@@ -117,8 +117,10 @@ describe("multi-era foundations", () => {
   });
 
   it("gives the core Douluo-one cast non-overlapping public life stages without early team leakage", () => {
-    expect(CHARACTER_LIFE_STAGE_CHARACTER_COUNT).toBe(50);
+    expect(CHARACTER_LIFE_STAGE_CHARACTER_COUNT).toBe(104);
     expect(CANON_CHARACTERS).toHaveLength(160);
+    const stagedIds = new Set(CHARACTER_LIFE_STAGES.map((stage) => stage.characterId));
+    expect(CANON_CHARACTERS.filter((character) => character.importance >= 4 && !stagedIds.has(character.id))).toEqual([]);
     expect(CHARACTER_LIFE_STAGES.every((stage) => !/后来|尚未形成|真实身份|真实来历|不能公开|后世|未来/.test(stage.currentGoal))).toBe(true);
     for (const characterId of new Set(CHARACTER_LIFE_STAGES.map((stage) => stage.characterId))) {
       const stages = CHARACTER_LIFE_STAGES.filter((stage) => stage.characterId === characterId).sort((left, right) => (left.validFromYear * 360 + (left.validFromDay ?? 1)) - (right.validFromYear * 360 + (right.validFromDay ?? 1)));
@@ -168,6 +170,27 @@ describe("multi-era foundations", () => {
     const era4Opening = createHiddenWorld(30_000, "tianluo-planet");
     for (const id of ["qian-lei", "liu-feng", "lan-mengqin", "yuanen-huihui"]) expect(era4Opening.npcs[id].factionIds).toEqual([]);
     expect(era4Opening.npcs["yuanen-huihui"].currentGoal).not.toMatch(/性别变化|史莱克/);
+
+    const hiddenIdentityEra = createHiddenWorld(0, "slaughter-city");
+    expect(hiddenIdentityEra.npcs["tang-chen"].name).toBe("杀戮之王");
+    expect(hiddenIdentityEra.npcs["tang-chen"].factionIds).toEqual(["slaughter-city"]);
+    const era2Beast = createHiddenWorld(10_000, "star-dou-core");
+    expect(era2Beast.npcs["wang-qiuer"].name).toBe("三眼金猊");
+    expect(era2Beast.npcs["wang-qiuer"].currentGoal).not.toMatch(/王秋儿|人类情感/);
+    expect(createHiddenWorld(10_006, "shrek-city").npcs["wang-qiuer"].name).toBe("王秋儿");
+    expect(era4Opening.npcs["le-gongzi"].currentGoal).not.toMatch(/唐舞麟|蓝轩宇|找回记忆/);
+    expect(era4Opening.npcs["na-na-teacher"].currentGoal).not.toMatch(/古月娜|找回记忆/);
+
+    const publicBoundary = playingGame(2, "known-figure-private-boundary");
+    publicBoundary.view.worldTime = { era: "绝世唐门", year: 10_000, day: 1, time: "08:00", season: "春" };
+    publicBoundary.world = era2Beast;
+    const beast = publicBoundary.world.npcs["wang-qiuer"];
+    beast.knownToPlayer = true;
+    publicBoundary.view.relations.push({ id: "wang-qiuer", name: "三眼金猊", relation: "短暂接触", impression: "只看见外在行动", strength: 5, category: "其他" });
+    const publicBeast = buildKnownFigures(publicBoundary).find((item) => item.id === "wang-qiuer");
+    expect(publicBeast?.knownPower).toBe("实力不明");
+    expect(publicBeast?.status).toBe("已当面接触，当前打算仍需从行动判断");
+    expect(publicBeast?.status).not.toContain(beast.currentGoal);
   });
 
   it("unlocks future faction memberships only when their joining event occurs", () => {
