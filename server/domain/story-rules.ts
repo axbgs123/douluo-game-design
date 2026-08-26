@@ -225,6 +225,7 @@ export function auditNarrative(game: StoredGame, text: string, options: { exclud
   if (/(玩家|主角|程序判定|固定结果|规则包|小说引擎|写作模块|语言模型|系统替|AI)/i.test(outside)) issues.push("正文泄露后台叙事称谓");
   if (/(^|[。！？\n])\s*(首先|其次|最后)[，,:：]|值得注意的是|这意味着|本质上|总而言之|综上所述|不是.{0,18}而是/.test(text)) issues.push("正文含有模板化表达");
   if (violatesCanonChronology(text, game.view.worldTime?.year ?? 0)) issues.push("正文违反当前时代或原作时间线");
+  if ((game.view.era ?? 1) === 1 && /识海|精神之海|意识海/.test(text)) issues.push("斗一正文倒灌了后世精神空间术语");
   for (const npc of Object.values(game.world.npcs)) {
     const escapedName = npc.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const rankClaims = [
