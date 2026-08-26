@@ -291,6 +291,47 @@ describe("存档数据库", () => {
     expect(database.retrieveCanonKnowledge(era4, "龙马联邦", 20).some((item) => item.subjectId === "dragon-horse-federation")).toBe(true);
   });
 
+  it("keeps hidden identities, injuries, exact power and divine progress out of ordinary character vectors", () => {
+    const xiaoWuGame = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "xiao-wu-private-snapshot" });
+    xiaoWuGame.view.worldTime = { era: "唐三觉醒基准年", year: 0, day: 20, time: "08:00", season: "春" };
+    xiaoWuGame.world = createHiddenWorld(0, "notting-academy");
+    xiaoWuGame.world.npcs["xiao-wu"].knownToPlayer = true;
+    xiaoWuGame.view.knownFigures.push({ id: "xiao-wu", name: "小舞", knownPower: "实力未知", location: "诺丁学院", status: "已知", source: "同学" });
+    const xiaoWuKnowledge = database.retrieveCanonKnowledge(xiaoWuGame, "小舞当前实力、身份和入学阶段", 20).filter((item) => item.subjectId === "xiao-wu");
+    expect(xiaoWuKnowledge.length).toBeGreaterThan(0);
+    expect(xiaoWuKnowledge.every((item) => !/化形魂兽|十万年魂兽|真实身份/.test(item.text))).toBe(true);
+    expect(xiaoWuKnowledge.find((item) => item.kind === "character-timeline")?.metadata).toMatchObject({ confidentialPower: true, tier: "未公开" });
+
+    const popeGame = createGame({ era: 1, gender: "女", difficulty: "标准", seed: "pope-private-power" });
+    popeGame.view.worldTime = { era: "斗罗大陆", year: 13, day: 1, time: "08:00", season: "春" };
+    popeGame.world = createHiddenWorld(13, "spirit-city");
+    popeGame.world.npcs["bibi-dong"].knownToPlayer = true;
+    popeGame.view.knownFigures.push({ id: "bibi-dong", name: "比比东", knownPower: "实力未知", location: "武魂城", status: "已知", source: "公开身份" });
+    const popeKnowledge = database.retrieveCanonKnowledge(popeGame, "比比东当前实力、教皇身份与修炼进度", 20).filter((item) => item.subjectId === "bibi-dong");
+    expect(popeKnowledge.length).toBeGreaterThan(0);
+    expect(popeKnowledge.every((item) => !/99级|神位|神考|终考/.test(item.text))).toBe(true);
+    expect(popeKnowledge.find((item) => item.kind === "character-timeline")?.metadata).toMatchObject({ confidentialPower: true, tier: "未公开" });
+
+    const duguGame = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "dugu-private-injury" });
+    duguGame.view.worldTime = { era: "斗罗大陆", year: 7, day: 1, time: "08:00", season: "春" };
+    duguGame.world = createHiddenWorld(7, "heaven-dou-city");
+    duguGame.world.npcs["dugu-bo"].knownToPlayer = true;
+    duguGame.view.knownFigures.push({ id: "dugu-bo", name: "独孤博", knownPower: "封号斗罗", location: "天斗城", status: "已知", source: "公开身份" });
+    const duguKnowledge = database.retrieveCanonKnowledge(duguGame, "独孤博实力、伤势和当前状态", 20).filter((item) => item.subjectId === "dugu-bo");
+    expect(duguKnowledge.every((item) => !/剧毒反噬|家族毒患/.test(item.text))).toBe(true);
+
+    const preEnrollment = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "pre-enrollment-power-snapshot" });
+    preEnrollment.view.worldTime = { era: "史莱克入学年", year: 6, day: 1, time: "08:00", season: "春" };
+    preEnrollment.world = createHiddenWorld(6, "shrek-village");
+    preEnrollment.world.npcs["xiao-wu"].knownToPlayer = true;
+    preEnrollment.view.knownFigures.push({ id: "xiao-wu", name: "小舞", knownPower: "实力未知", location: "诺丁学院", status: "已知", source: "旧识" });
+    const earlyKnowledge = database.retrieveCanonKnowledge(preEnrollment, "小舞现在的魂力和学院阶段", 20).filter((item) => item.subjectId === "xiao-wu");
+    expect(earlyKnowledge.every((item) => !/29级|进入史莱克学院/.test(item.text))).toBe(true);
+    preEnrollment.view.worldTime.day = 20;
+    const enrollmentKnowledge = database.retrieveCanonKnowledge(preEnrollment, "小舞进入史莱克时的魂力", 20).filter((item) => item.subjectId === "xiao-wu");
+    expect(enrollmentKnowledge.some((item) => /29级|进入史莱克学院/.test(item.text))).toBe(true);
+  });
+
   it("does not retrieve a past secret event merely because the hidden world has already fired it", () => {
     const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "secret-event-knowledge" });
     game.view.worldTime = { era: "唐三觉醒基准年", year: 0, day: 1, time: "08:00", season: "春" };

@@ -125,7 +125,8 @@ export function characterCurrentGoalAtDate(characterId: string, year: number, da
   const age = definition.birthYear === undefined ? undefined : year - definition.birthYear;
   if (age !== undefined && age < 6) return "在家庭或族群照料下成长，尚未形成后来的修炼与势力目标";
   if (age !== undefined && age < 12) return "处理当前家庭生活、武魂觉醒与基础学习，不预设后来的人际和势力选择";
-  const snapshot = [...definition.powerSnapshots].filter((item) => item.year <= year).sort((left, right) => left.year - right.year).at(-1);
+  const snapshot = [...definition.powerSnapshots].filter((item) => ordinal(item.year, item.day ?? 1) <= ordinal(year, day)).sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1)).at(-1);
+  if (snapshot && (definition.hidden || /隐藏|保密|未公开|真实能力|真实实力|反噬|神位|神考|献祭|化形魂兽/.test(`${snapshot.tier}${snapshot.note}`))) return "处理当前已公开的职责、修炼与现实关系";
   if (snapshot) return `处理“${snapshot.note}”阶段的修炼、职责与现实关系`;
   return "维持当前生活并处理已经发生的职责，不使用后来才形成的目标";
 }
@@ -152,6 +153,7 @@ function reconcileTimedFactionMemberships(game: StoredGame, year: number, day: n
     const activeCauses = game.world.canonCausalFootprints.filter((item) => item.affectedNpcIds.includes(npc.id)).map((cause) => ({ cause, strength: effectiveCauseStrength(cause, now) }));
     const goalAltered = activeCauses.some((item) => item.strength >= 4 && causeHasDomain(item.cause, "goal", "survival"));
     const factionAltered = activeCauses.some((item) => item.strength >= 1 && causeHasDomain(item.cause, "faction", "institution"));
+    const powerAltered = activeCauses.some((item) => item.strength >= 1 && causeHasDomain(item.cause, "power", "survival"));
     const definition = characterById(npc.id);
     const identityRevealed = Boolean(definition && game.world.intelligenceRecords.some((record) => record.subjectType === "人物" && record.subjectId === npc.id && record.confidence >= 85 && record.status === "确定" && /交叉核验|身份核验|密档/.test(record.source) && `${record.title}${record.detail}`.includes(definition.name)));
     if (npc.alive) {
@@ -159,6 +161,11 @@ function reconcileTimedFactionMemberships(game: StoredGame, year: number, day: n
       npc.name = currentPublicName;
       for (const relation of game.view.relations.filter((item) => item.id === npc.id)) relation.name = currentPublicName;
       if (!goalAltered) npc.currentGoal = characterCurrentGoalAtDate(npc.id, year, day);
+      if (!powerAltered) {
+        const power = powerAtDate(npc.id, year, day);
+        npc.soulRank = power.soulRank;
+        npc.powerTier = power.tier;
+      }
     }
     const canonical = canonicalFactionIdsAtDate(npc.id, year, day);
     if (!factionAltered) npc.factionIds = canonical.filter((factionId) => {
@@ -278,18 +285,19 @@ function tierForRank(rank: number): string {
   return "封号斗罗";
 }
 
-function powerAtYear(characterId: string, year: number): { soulRank?: number; tier: string } {
+function powerAtDate(characterId: string, year: number, day = 1): { soulRank?: number; tier: string } {
   const definition = characterById(characterId);
   if (!definition?.powerSnapshots.length) return { tier: "未知" };
-  const snapshots = [...definition.powerSnapshots].sort((left, right) => left.year - right.year);
+  const snapshots = [...definition.powerSnapshots].sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1));
   const first = snapshots[0];
-  if (year < first.year) {
+  const now = ordinal(year, day);
+  if (now < ordinal(first.year, first.day ?? 1)) {
     if (definition.birthYear === undefined) return { tier: "实力未核实" };
     const age = year - definition.birthYear;
     if (age < 6) return { tier: "尚未觉醒" };
     return { tier: "实力未核实" };
   }
-  const prior = snapshots.filter((snapshot) => snapshot.year <= year).at(-1) ?? first;
+  const prior = snapshots.filter((snapshot) => ordinal(snapshot.year, snapshot.day ?? 1) <= now).at(-1) ?? first;
   return { soulRank: prior.soulRank, tier: prior.tier };
 }
 
@@ -304,7 +312,7 @@ function canonicalLocationAtYear(characterId: string, year: number, day = 360): 
 
 export function createHiddenWorld(startYear: number, startLocationId: string): HiddenWorldState {
   const npcs = Object.fromEntries(CANON_CHARACTERS.map((definition) => {
-    const power = powerAtYear(definition.id, startYear);
+    const power = powerAtDate(definition.id, startYear, 1);
     const born = definition.birthYear === undefined || startYear >= definition.birthYear;
     const inCurrentEra = characterExistsInEra(definition.id, startYear);
     const aliveAtStart = inCurrentEra && born && (definition.deathYear === undefined || startYear < definition.deathYear);
@@ -1273,7 +1281,7 @@ function simulateNpcYears(game: StoredGame, year: number): void {
       if (npc.soulRank !== undefined && elapsedYears > 0) npc.soulRank = Math.min(99, npc.soulRank + elapsedYears * (npc.soulRank < 30 ? 3 : npc.soulRank < 60 ? 2 : 1));
       npc.powerTier = npc.soulRank === undefined ? "实力路线已偏转，当前未核实" : tierForRank(npc.soulRank);
     } else {
-      const power = powerAtYear(npc.id, year);
+      const power = powerAtDate(npc.id, year, 1);
       npc.soulRank = power.soulRank;
       npc.powerTier = power.tier;
     }

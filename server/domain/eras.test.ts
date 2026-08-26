@@ -4,9 +4,10 @@ import { awakenCharacter, createGame, ERA_BASE_YEARS, finalizeCharacterShaping, 
 import { settleRun } from "./endings.js";
 import { guardActionByStoryRules, selectNarrativeRules, violatesCanonChronology } from "./story-rules.js";
 import { applyActionResult, resolveAction } from "./actions.js";
-import { advanceWorldTime, buildMapView, createHiddenWorld } from "./world.js";
+import { advanceWorldTime, buildMapView, canonicalFactionIdsAtDate, createHiddenWorld } from "./world.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, factionActiveAtYear } from "../data/world.js";
+import { CHARACTER_LIFE_STAGES, CHARACTER_LIFE_STAGE_CHARACTER_COUNT } from "../data/character-life-stages.js";
 
 function playingGame(era: GameEra, seed: string) {
   const game = createGame({ gender: "男", difficulty: "标准", seed, era });
@@ -113,6 +114,45 @@ describe("multi-era foundations", () => {
     const dongQianqiu = createHiddenWorld(30_001, "tianluo-planet").npcs["bai-xiuxiu"];
     expect(dongQianqiu.name).toBe("冻千秋");
     expect(dongQianqiu.currentGoal).not.toMatch(/白秀秀|舰队|伴侣/);
+  });
+
+  it("gives the core Douluo-one cast non-overlapping public life stages without early team leakage", () => {
+    expect(CHARACTER_LIFE_STAGE_CHARACTER_COUNT).toBe(19);
+    expect(CANON_CHARACTERS).toHaveLength(160);
+    expect(CHARACTER_LIFE_STAGES.every((stage) => !/后来|尚未形成|真实身份|真实来历|不能公开|后世|未来/.test(stage.currentGoal))).toBe(true);
+    for (const characterId of new Set(CHARACTER_LIFE_STAGES.map((stage) => stage.characterId))) {
+      const stages = CHARACTER_LIFE_STAGES.filter((stage) => stage.characterId === characterId).sort((left, right) => (left.validFromYear * 360 + (left.validFromDay ?? 1)) - (right.validFromYear * 360 + (right.validFromDay ?? 1)));
+      for (let index = 1; index < stages.length; index += 1) {
+        const previousEnd = (stages[index - 1].validUntilYear ?? 100_000) * 360 + (stages[index - 1].validUntilDay ?? 360);
+        const nextStart = stages[index].validFromYear * 360 + (stages[index].validFromDay ?? 1);
+        expect(previousEnd, `${characterId}的人生阶段发生重叠`).toBeLessThan(nextStart);
+      }
+    }
+
+    const opening = createHiddenWorld(0, "holy-soul-village");
+    expect(opening.npcs["xiao-wu"].factionIds).toEqual([]);
+    expect(opening.npcs["xiao-wu"].currentGoal).not.toMatch(/史莱克|保护重要的人/);
+    expect(opening.npcs["ning-rongrong"].factionIds).toEqual(["seven-treasure"]);
+    expect(opening.npcs["ning-rongrong"].currentGoal).not.toContain("同伴责任");
+    expect(opening.npcs["yu-xiaogang"].factionIds).toEqual([]);
+    expect(opening.npcs["yu-xiaogang"].currentGoal).not.toMatch(/史莱克|培养弟子/);
+
+    const beforeEnrollment = createHiddenWorld(6, "shrek-village");
+    expect(beforeEnrollment.npcs["ao-si-ka"].factionIds).toContain("shrek");
+    expect(beforeEnrollment.npcs["ma-hongjun"].factionIds).toContain("shrek");
+    expect(beforeEnrollment.npcs["ning-rongrong"].factionIds).not.toContain("shrek");
+    expect(beforeEnrollment.npcs["xiao-wu"].soulRank).toBe(10);
+    expect(canonicalFactionIdsAtDate("ning-rongrong", 6, 20)).toContain("shrek");
+
+    const dayPrecise = playingGame(1, "day-precise-character-snapshot");
+    dayPrecise.view.worldTime = { era: "史莱克入学年", year: 6, day: 1, time: "08:00", season: "春" };
+    dayPrecise.world = createHiddenWorld(6, "shrek-village");
+    advanceWorldTime(dayPrecise, 19 * 1_440);
+    expect(dayPrecise.world.npcs["xiao-wu"].soulRank).toBe(29);
+    expect(dayPrecise.world.npcs["ning-rongrong"].factionIds).toContain("shrek");
+
+    const beforeTournament = createHiddenWorld(8, "heaven-dou-city");
+    expect(beforeTournament.npcs["xiao-wu"].soulRank).toBe(29);
   });
 
   it("unlocks future faction memberships only when their joining event occurs", () => {

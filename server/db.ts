@@ -625,19 +625,25 @@ function seedCanonKnowledge(): void {
           text: `${stage.publicName}在这一时点可安全使用的稳定气质锚点为${stableTemperament.join("、")}；这不代表后来形成的价值观或同伴责任已经出现。当前目标：${stage.currentGoal}。当前可证公开势力：${factionNames.join("、") || "暂无"}。本时间片不提供后来才形成的称号、武魂变化、关系结果、势力归属或人生目标。`,
           metadata: { hidden: Boolean(character.hidden), personality: stableTemperament, publicName: stage.publicName, publicFactionIds: stage.publicFactionIds, validFromDay: stage.validFromDay ?? 1, validUntilYear: stage.validUntilYear ?? character.deathYear ?? 100_000, validUntilDay: stage.validUntilDay ?? 360, sourceType: "结构化人物人生阶段" } });
       });
-      const snapshots = [...character.powerSnapshots].sort((left, right) => left.year - right.year);
+      const snapshots = [...character.powerSnapshots].sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1));
       snapshots.forEach((snapshot, index) => {
-        const publicName = characterPublicNameAtDate(character.id, snapshot.year, 1);
+        const snapshotDay = snapshot.day ?? 1;
+        const publicName = characterPublicNameAtDate(character.id, snapshot.year, snapshotDay);
         const unpublicNames = [character.name, ...character.aliases].filter((name) => name !== publicName);
         if (unpublicNames.some((name) => `${snapshot.tier}${snapshot.note}`.includes(name))) return;
-        const currentGoal = characterCurrentGoalAtDate(character.id, snapshot.year, 1);
-        const currentFactions = canonicalFactionIdsAtDate(character.id, snapshot.year, 1).map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id);
-        const snapshotKey = `character:${character.id}:timeline:${snapshot.year}`;
+        const currentGoal = characterCurrentGoalAtDate(character.id, snapshot.year, snapshotDay);
+        const currentFactionIds = canonicalFactionIdsAtDate(character.id, snapshot.year, snapshotDay);
+        const currentFactions = currentFactionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id);
+        const confidentialPower = Boolean(character.hidden || /隐藏|保密|未公开|真实能力|真实实力|反噬|神位|神考|献祭|化形魂兽/.test(`${snapshot.tier}${snapshot.note}`));
+        const stageFact = confidentialPower
+          ? "公开层面只能确认其正处于这一人生阶段；除此之外不提供未经角色可靠获知的信息。"
+          : `${snapshot.tier}${snapshot.soulRank !== undefined ? `，公开魂力约${snapshot.soulRank}级` : ""}。阶段事实：${snapshot.note}。`;
+        const snapshotKey = `character:${character.id}:timeline:${snapshot.year}:${snapshotDay}`;
         validKeys.push(snapshotKey);
         storeCanonKnowledge({ sourceKey: snapshotKey, era: eraAtYear(snapshot.year), kind: "character-timeline", subjectId: character.id, subjectName: publicName,
           validFromYear: snapshot.year, validUntilYear: snapshots[index + 1] ? snapshots[index + 1].year - 1 : character.deathYear ?? 100_000,
-          importance: character.importance / 5, text: `${publicName}在原作${snapshot.year}年前后的已证生命阶段：${snapshot.tier}${snapshot.soulRank !== undefined ? `，公开魂力约${snapshot.soulRank}级` : ""}。阶段事实：${snapshot.note}。当前目标：${currentGoal}。当前可证公开势力：${currentFactions.join("、") || "暂无"}。不得据此推导下一时间片的称号、力量、关系或归属。`,
-          metadata: { soulRank: snapshot.soulRank, tier: snapshot.tier, hidden: Boolean(character.hidden), publicName, publicFactionIds: canonicalFactionIdsAtDate(character.id, snapshot.year, 1), validFromDay: 1, sourceType: "结构化原著时间线" } });
+          importance: character.importance / 5, text: `${publicName}在原作${snapshot.year}年前后的已证生命阶段：${stageFact}当前目标：${currentGoal}。当前可证公开势力：${currentFactions.join("、") || "暂无"}。不得据此推导下一时间片的称号、力量、关系或归属。`,
+          metadata: { soulRank: confidentialPower ? undefined : snapshot.soulRank, tier: confidentialPower ? "未公开" : snapshot.tier, confidentialPower, hidden: Boolean(character.hidden), publicName, publicFactionIds: currentFactionIds, validFromDay: snapshotDay, sourceType: "结构化原著时间线" } });
       });
     }
     for (const faction of FACTIONS) {
