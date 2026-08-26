@@ -304,6 +304,7 @@ export interface ActionResolution {
   systemMessages?: string[];
   conditionAfter?: ConditionLabel;
   appliedRuleIds?: number[];
+  routing?: { selected: string; candidates: string[] };
 }
 
 export interface CreateGameInput {

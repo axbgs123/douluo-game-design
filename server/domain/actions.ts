@@ -445,7 +445,7 @@ function trainingResolution(game: StoredGame, action = ""): ActionResolution {
       intent: "修炼",
       minutes: 30,
       ruleSummary: `魂力停在 ${character.soulRank} 级瓶颈，继续冥想不能突破，需要第 ${expectedRings} 魂环。`,
-      fallbackNarrative: `魂力在经脉里走了一圈，最后还是堵在原处。我又试了两次，胸口发闷，等级一点没动。现在缺的是第 ${expectedRings} 魂环。`,
+      fallbackNarrative: `魂力在${character.name}的经脉里走了一圈，最后还是堵在原处。他又试了两次，胸口已经发闷，等级仍旧没动。眼下真正缺的是第 ${expectedRings} 魂环。`,
       suggestions: ["调查适合的魂兽", "找人推荐猎魂目标", "准备猎魂物资"],
     };
   }
@@ -488,14 +488,15 @@ function trainingResolution(game: StoredGame, action = ""): ActionResolution {
     minutes,
     ruleSummary: `完成修炼，获得 ${gain} 点内部修炼进度，魂力 ${before === character.soulRank ? "未升级" : `提升到 ${character.soulRank} 级`}，疲劳增加。`,
     fallbackNarrative: levels > 0
-      ? `窗外换过几次光。我把最后一轮魂力运完，堵了许久的地方忽然松开，呼吸也跟着顺了。再测时，魂力已经到了 ${character.soulRank} 级。腿麻得厉害，我扶着墙才站稳。`
-      : `我坐到腿脚发麻，魂力一遍遍从胸口沉到掌心。中途散过几次，只好重新来。结束时等级没变，控制倒比开始时稳了一些。`,
+      ? `窗外已经换过几次光。${character.name}运完最后一轮魂力，堵了许久的地方忽然松开，呼吸也跟着顺了。再测时，魂力已经到了 ${character.soulRank} 级。他的腿麻得厉害，只能扶着墙慢慢站稳。`
+      : `${character.name}坐到腿脚发麻，魂力一遍遍从胸口沉到掌心。中途散过几次，他只得重新来过。结束时等级没变，控制倒比开始时稳了一些。`,
     suggestions: character.soulRank % 10 === 0 ? ["调查魂兽", "找导师商量", "整理猎魂物资"] : ["休息", "记录修炼问题", "修炼到下个瓶颈"],
     systemMessages,
   };
 }
 
 function restResolution(game: StoredGame): ActionResolution {
+  const name = game.view.character?.name ?? "他";
   const minutes = speedMinutes(game, 480, 1440);
   const before = game.world.fatiguePoints;
   game.world.fatiguePoints -= game.view.speed === "高速" ? 65 : 45;
@@ -504,7 +505,7 @@ function restResolution(game: StoredGame): ActionResolution {
     intent: "休息",
     minutes,
     ruleSummary: `休息 ${minutes} 分钟，疲劳由 ${before} 降低，轻度伤势得到恢复。`,
-    fallbackNarrative: "我把门闩好，连外衣都没脱就躺了下去。醒来时嘴里发干，屋外的声音已经换了一拨。肩背还酸，脑子总算清醒了。",
+    fallbackNarrative: `${name}把门闩好，连外衣都没脱就躺了下去。醒来时嘴里发干，屋外的声音已经换了一拨。肩背还酸，脑子总算清醒了。`,
     suggestions: ["吃点东西", "查看当前计划", "继续行动"],
   };
 }
@@ -1399,9 +1400,9 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
     ruleSummary: detail,
     fallbackNarrative: mentioned
       ? detail.startsWith("没有找到")
-        ? `我问了几处，也翻了能接触到的登记。没人能证明“${game.world.npcs[mentioned.id]?.name ?? "这个名字"}”对应一个真实身份；我没有把猜测当成事实记进人物档案。`
-        : `我问到${game.world.npcs[mentioned.id]?.name ?? "那个人"}时，对方先看了看周围。话说得不多，真假也掺在一起。我把能互相对上的那几句记住，剩下的没急着信。`
-      : "我把问题问了。对方手里的活没停，只挑了几句能说的答。再追问时，他摇头，说自己也只是听来的。",
+        ? `${game.view.character!.name}问了几处，也翻过能够接触的登记。没人能证明“${game.world.npcs[mentioned.id]?.name ?? "这个名字"}”对应一个真实身份；他没有把猜测当成事实记进人物档案。`
+        : `${game.view.character!.name}问到${game.world.npcs[mentioned.id]?.name ?? "那个人"}时，对方先看了看周围。话说得不多，真假也掺在一起。他只记住能互相对上的几句，剩下的没有急着相信。`
+      : `${game.view.character!.name}把问题问了出来。对方手里的活没停，只挑了几句能说的回答。再追问时，那人摇摇头，说自己也只是听来的。`,
     suggestions: ["追问消息来源", "换个话题", "把情报记下来"],
     systemMessages,
   };
@@ -1743,6 +1744,7 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
 }
 
 function investigateResolution(game: StoredGame, action: string): ActionResolution {
+  const name = game.view.character!.name;
   const random = actionRandom(game);
   const localNpc = Object.values(game.world.npcs).find((npc) => npc.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId && !npc.knownToPlayer && canDiscoverNpc(game, npc.id) && random() < 0.45);
   const systemMessages: string[] = [];
@@ -1769,10 +1771,10 @@ function investigateResolution(game: StoredGame, action: string): ActionResoluti
     minutes: speedMinutes(game, 120, 720),
     ruleSummary: giftRevealed ? `反复调查后确认自身隐藏着${selected?.hiddenGift}，目前仍未完全激活。` : localNpc ? `调查获得关于 ${localNpc.name} 的可验证线索。` : "调查补充了当前地点的信息，没有发现重要人物。",
     fallbackNarrative: giftRevealed
-      ? `这已经是我第三次把旧线索摆在一起。那道一直说不清的感觉终于有了轮廓：${selected?.hiddenGift}。它没有立刻给我力量，只留下一个能继续追查和修炼的入口。`
+      ? `这已经是${name}第三次把旧线索摆在一起。那道一直说不清的感觉终于有了轮廓：${selected?.hiddenGift}。它没有立刻带来力量，只留下一个能继续追查和修炼的入口。`
       : localNpc
-      ? `我顺着几个重复出现的说法找过去，最后在一张旧登记上看见了${localNpc.name}的名字。墨迹不新，至少能证明这人确实来过。`
-      : "我沿着附近走了一圈，问了三个人。能对上的只有路线、价钱和最近的治安，没挖出什么大秘密。",
+      ? `${name}顺着几个重复出现的说法找过去，最后在一张旧登记上看见了${localNpc.name}的名字。墨迹不新，至少能证明这人确实来过。`
+      : `${name}沿着附近走了一圈，又问了三个人。能对上的只有路线、价钱和最近的治安，没有挖出什么大秘密。`,
     suggestions: giftRevealed ? ["尝试感应这份传承", "记录触发条件", "暂时保守秘密"] : localNpc ? [`打听${localNpc.name}`, "核对线索日期", "查看世界记录"] : ["换个地点调查", "找当地老人", "检查地图"],
     systemMessages,
   };
@@ -2872,7 +2874,7 @@ function workResolution(game: StoredGame, action: string): ActionResolution {
     intent: "工作",
     minutes: speedMinutes(game, character.age < 10 ? 120 : 360, character.age < 10 ? 360 : 1440),
     ruleSummary: `完成${job.name}，按年龄、地点与熟练度结算${formatSoulCoins(earned)}，雇主留下验收记录。`,
-    fallbackNarrative: `这轮活是${job.scene}。管事验过结果，才把${formatSoulCoins(earned)}倒进我手里；数目、工时和差错都记进了当天的工账。`,
+    fallbackNarrative: `这轮活是${job.scene}。管事验过结果，才把${formatSoulCoins(earned)}倒进${character.name}手里；数目、工时和差错都记进了当天的工账。`,
     suggestions: ["购买补给", "回去休息", "继续工作"],
   };
 }
@@ -3962,6 +3964,7 @@ function storageResolution(game: StoredGame, action: string): ActionResolution {
 }
 
 function waitResolution(game: StoredGame, action: string): ActionResolution {
+  const name = game.view.character?.name ?? "他";
   const minutes = /一年/.test(action) ? 360 * 1440 : /月/.test(action) ? 30 * 1440 : /天|一日/.test(action) ? 1440 : 180;
   const salaryMonths = Math.floor(minutes / (30 * 1440));
   const salary = salaryMonths * game.view.economy.salary;
@@ -3971,7 +3974,7 @@ function waitResolution(game: StoredGame, action: string): ActionResolution {
     intent: "快进",
     minutes,
     ruleSummary: `世界时间推进 ${minutes} 分钟；NPC 与历史事件同步模拟。${salary ? `按当前身份领取${formatSoulCoins(salary)}俸禄。` : ""}`,
-    fallbackNarrative: minutes >= 30 * 1440 ? "日子一天天过去。城里的价钱、来往的人和告示都换了几轮，我也不再是刚到这里时的样子。" : "我暂时没做别的事。天色和街上的人声慢慢变了，时间照常往前走。",
+    fallbackNarrative: minutes >= 30 * 1440 ? `日子一天天过去。城里的价钱、来往的人和告示都换了几轮，${name}也不再是刚到这里时的样子。` : `${name}暂时没有做别的事。天色和街上的人声慢慢变了，时间照常往前走。`,
     suggestions: ["查看世界消息", "继续修炼", "检查人生计划"],
   };
 }
@@ -4044,7 +4047,7 @@ function impossible(reason: string, suggestions = ["检查当前状态", "换一
     intent: "无法完成",
     minutes: 10,
     ruleSummary: reason,
-    fallbackNarrative: `我动手试了一下，很快就停住。${reason}继续硬来只会多添麻烦。`,
+    fallbackNarrative: `尝试才刚开始，很快便停了下来。${reason}继续硬来只会多添麻烦。`,
     suggestions,
   };
 }
@@ -4156,6 +4159,33 @@ function ambiguousRoleTargetGuard(game: StoredGame, action: string): ActionResol
   return undefined;
 }
 
+export interface CoreActionRoutingDecision {
+  selected: string;
+  candidates: string[];
+}
+
+export function classifyCoreActionRoute(game: StoredGame, input: string): CoreActionRoutingDecision {
+  const action = firstRoutingClause(input.trim()).action;
+  const candidates: string[] = [];
+  const huntingActive = Boolean(game.view.hunting && game.view.hunting.stage !== "完成");
+  const mentor = game.view.mentorPursuit;
+  const mentorIndependentPractice = mentor?.stage === "已拜师" && /独立复练|按.*课程记录.*复练|复盘.*导师.*独立/.test(action);
+  const mentorHuntSupport = Boolean(huntingActive && /请求.*(?:导师|师父).*(?:指导|负责).*(?:魂环|首环)|(?:导师|师父)承担.*(?:猎魂|首环)/.test(action));
+  const establishedMentor = mentor?.stage === "已拜师" && !mentorIndependentPractice && !mentorHuntSupport && (action.includes(mentor.mentorName) || /师父|导师/.test(action)) && /课程|训练|练习|授业|修行|魂环|猎魂|资源|训练场|条件|禁忌|规矩|请教|询问|评估/.test(action);
+  const nonLethalHunt = huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action);
+  const hunt = huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|首环|目标|追踪|出发|准备|吸收|返回|带队责任|护送责任|家庭筹备|独行筹备/.test(action));
+  const academyApplication = Boolean(game.view.academyApplication && !["已入学", "未通过", "已撤回"].includes(game.view.academyApplication.stage) && /学院|报名|材料|证明|来处|监护|担保|工读|家族资助|家族承担|学院奖助|奖学|宗门委培|宗门资助|义务教育|家庭自费|普通自费|入学考核|分班测试|录取|报到|进入学院|接受.*入学|食宿|放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action));
+  const academyLife = Boolean(game.view.academyLife && /宿舍|课表|安置|安顿|报到|校服|上课|课程|学院学习|体能课|魂师基础|同学|同桌|舍友|认识|交谈|切磋|共同训练|小组练习|一起吃饭|阶段考核|新生考核|班级实战|基础课程与实战检查|工读|排班|校内劳动|奖助|宗门|委培|培养情况|家族|费用用途/.test(action));
+  const mentorPursuit = Boolean(mentor && !["已拜师", "被拒绝", "已结束"].includes(mentor.stage) && (action.includes(mentor.mentorName) || /导师|拜师|师徒|试学|考察|考验|授业/.test(action))) || /拜师|拜.*为师|收我为徒|请.*指导|寻找.*导师/.test(action);
+  const knownConversation = /问|询问|请教|交谈|告诉|拜访/.test(action) && game.view.relations.some((relation) => action.includes(relation.name));
+  for (const [id, matched] of [
+    ["mentor-independent-practice", mentorIndependentPractice], ["mentor-hunt-support", mentorHuntSupport], ["established-mentor", establishedMentor],
+    ["hunt-nonlethal", nonLethalHunt], ["active-hunt", hunt], ["academy-application", academyApplication], ["academy-life", academyLife],
+    ["mentor-pursuit", mentorPursuit], ["known-conversation", knownConversation],
+  ] as Array<[string, boolean]>) if (matched) candidates.push(id);
+  return { selected: candidates[0] ?? "unclassified", candidates };
+}
+
 export function resolveAction(game: StoredGame, input: string): ActionResolution {
   const routed = firstRoutingClause(input.trim());
   const action = routed.action;
@@ -4166,13 +4196,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   let resolution: ActionResolution;
   const guarded = guardActionByStoryRules(game, action) ?? ambiguousRoleTargetGuard(game, action);
   let openingFollowup: ActionResolution | undefined;
-  const huntingActive = game.view.hunting && game.view.hunting.stage !== "完成";
-  const mentorFollowup = game.view.mentorPursuit && !["已拜师", "被拒绝", "已结束"].includes(game.view.mentorPursuit.stage) && (action.includes(game.view.mentorPursuit.mentorName) || /导师|拜师|师徒|试学|考察|考验|授业/.test(action));
-  const mentorIndependentPractice = game.view.mentorPursuit?.stage === "已拜师" && /独立复练|按.*课程记录.*复练|复盘.*导师.*独立/.test(action);
-  const mentorHuntSupportRequest = Boolean(huntingActive && /请求.*(?:导师|师父).*(?:指导|负责).*(?:魂环|首环)|(?:导师|师父)承担.*(?:猎魂|首环)/.test(action));
-  const establishedMentorFollowup = game.view.mentorPursuit?.stage === "已拜师" && !mentorIndependentPractice && !mentorHuntSupportRequest && (action.includes(game.view.mentorPursuit.mentorName) || /师父|导师/.test(action)) && /课程|训练|练习|授业|修行|魂环|猎魂|资源|训练场|条件|禁忌|规矩|请教|询问|评估/.test(action);
-  const academyLifeFollowup = Boolean(game.view.academyLife && /宿舍|课表|安置|报到|校服|上课|课程|学院学习|体能课|魂师基础|同学|同桌|舍友|认识|交谈|切磋|共同训练|小组练习|一起吃饭|首月|月度|实战考核|班级考核|工读|排班|校内劳动|奖助|月评|宗门|委培|培养记录|家族|费用用途/.test(action));
-  const explicitKnownConversation = /问|询问|请教|交谈|告诉|拜访/.test(action) && game.view.relations.some((relation) => action.includes(relation.name));
+  const routing = classifyCoreActionRoute(game, action);
   const activeHeirloom = game.view.activeHeirloom;
   if (activeHeirloom?.actionCommand && action.includes(activeHeirloom.actionCommand)) resolution = heirloomActionResolution(game)!;
   else if (guarded) resolution = guarded;
@@ -4184,10 +4208,10 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/机甲/.test(action) && (!game.view.combat || !/攻击|防御|格挡|闪避|逃跑|弱点/.test(action) || !game.view.mecha?.model)) resolution = mechaResolution(game, action);
   else if (/星舰|舰桥|随舰|航次|真实飞行|船员|舰员|星际航行|探索舰|项目舰|星球探索|星球调查|指挥考核|指挥资格|参谋部|入舰培训|舰队培训|岗位评估|岗位分配|作战部培训|航线与指挥培训|损管与动力培训|作战与登陆培训|军纪与保密培训/.test(action)) resolution = starshipResolution(game, action);
   else if (/前往|去往|出发去|旅行到/.test(action) && /船票|客运|航班|民航|搭乘/.test(action)) resolution = travelResolution(game, action);
-  else if (mentorIndependentPractice) resolution = trainingResolution(game, action);
-  else if (establishedMentorFollowup) resolution = mentorLessonResolution(game, action);
-  else if (huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action)) resolution = nonLethalRingResolution(game, action);
-  else if (huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|首环|目标|追踪|出发|准备|吸收|返回|带队责任|护送责任|家庭筹备|独行筹备/.test(action))) resolution = huntResolution(game, action);
+  else if (routing.selected === "mentor-independent-practice") resolution = trainingResolution(game, action);
+  else if (routing.selected === "established-mentor") resolution = mentorLessonResolution(game, action);
+  else if (routing.selected === "hunt-nonlethal") resolution = nonLethalRingResolution(game, action);
+  else if (["active-hunt", "mentor-hunt-support"].includes(routing.selected)) resolution = huntResolution(game, action);
   else if (/建立|创建|招募|任命|扩建|领地|外交|情报网|经营势力|管理宗门/.test(action) && /宗门|势力|组织|成员|领地|外交|情报/.test(action)) resolution = factionManagementResolution(game, action);
   else if (/存入.*(?:魂币|钱)|存钱|取出.*(?:魂币|钱)|取钱|借贷|借钱|贷款|还债|偿还债务|黑市|开店|商铺|经营生意|悬赏|市场行情|调查物价|打听物价|询价|供需|运输合同|货运合同|运货委托/.test(action)) resolution = economyResolution(game, action);
   else if (/存放|收进仓库|放回住处|取回|从.*取出|拿回/.test(action)) resolution = storageResolution(game, action);
@@ -4198,13 +4222,13 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/参悟|修炼传承|修行剑|炼丹|炼器|特殊体系|异界功法/.test(action)) resolution = specialSystemResolution(game, action);
   else if (/处理|介入|参与|帮助处理|阻止.*恶化|查看新事件|拒绝|不接受|回绝/.test(action) && game.world.dynamicEvents.some((item) => item.status === "可介入" && (action.includes(item.title) || item.participantIds.some((id) => action.includes(game.world.npcs[id]?.name ?? "")) || /查看新事件/.test(action)))) resolution = dynamicEventResolution(game, action);
   else if (/完成承诺|履行承诺/.test(action)) resolution = fulfillPromiseResolution(game, action);
-  else if (game.view.academyApplication && !["已入学", "未通过", "已撤回"].includes(game.view.academyApplication.stage) && /学院|报名|材料|证明|来处|监护|担保|工读|家族资助|家族承担|学院奖助|奖学|宗门委培|宗门资助|义务教育|家庭自费|普通自费|入学考核|分班测试|录取|报到|进入学院|接受.*入学|食宿|放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action)) resolution = academyResolution(game, action);
-  else if (academyLifeFollowup) resolution = academyStudyResolution(game, action);
+  else if (routing.selected === "academy-application") resolution = academyResolution(game, action);
+  else if (routing.selected === "academy-life") resolution = academyStudyResolution(game, action);
   else if (/上课|课程|学院学习|参加实战课/.test(action)) resolution = academyStudyResolution(game, action);
   else if (/入学|报名.*学院|申请.*学院|成为工读生/.test(action)) resolution = academyResolution(game, action);
   else if (/领取.*(?:任务|事务)|申请.*(?:内部任务|机构任务)|推进.*机构事务|登记.*阶段|提交.*阶段|交付.*(?:机构任务|内部任务|事务)|完成.*(?:机构任务|内部任务|事务)|申请.*晋升|升职|转正|询问.*(?:异议|验收|复核)|协商.*(?:验收|复核|派系)|提交.*(?:共同复核|联合复核|协调方案)|支持.*(?:派|组)|采纳.*(?:派|组)|查看.*(?:复核人|验收人)/.test(action)) resolution = institutionResolution(game, action);
   else if (/加入|投靠|宗门考核/.test(action) && /宗|门|殿|势力|史莱克|舰队|联邦|传灵塔|战神/.test(action)) resolution = factionResolution(game, action);
-  else if (mentorFollowup || /拜师|拜.*为师|收我为徒|请.*指导|寻找.*导师/.test(action)) resolution = mentorResolution(game, action);
+  else if (routing.selected === "mentor-pursuit") resolution = mentorResolution(game, action);
   else if ((goldFingerByName(game.view.character.specialSystem?.name ?? "")?.actionCommand && action.includes(goldFingerByName(game.view.character.specialSystem?.name ?? "")!.actionCommand)) || /签到|加点面板|查看面板|潜能|给.*加点|人生模拟|命运模拟|模拟未来|系统任务|图鉴扫描|扫描.*(?:武魂|魂兽|图鉴)|查看图鉴|查看金手指/.test(action)) resolution = specialSystemResolution(game, action);
   else if (/成为朋友|确认朋友|建立友情|长期关系|成为伴侣|确认恋爱|表达.*心意|求婚|婚姻|结婚|成婚|婚礼|组建家庭|家庭住所|共同住所|家庭准备|生育|收养.*孩子|孩子.*加入家庭|孩子出生/.test(action)) resolution = relationshipResolution(game, action);
   else if (/训练|排练|复盘/.test(action) && /连携|合击|组合技|阵型|生命防线|锁定爆发|破绽突袭|封锁阵线|攻守枢纽|生息铁壁|猎杀三角|四象战阵|逐影围猎|五环协战阵|六芒轮转阵|七星全域战阵/.test(action) && !game.view.combat) resolution = comboTrainingResolution(game, action);
@@ -4217,7 +4241,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/打工|工作|赚钱|干活/.test(action)) resolution = workResolution(game, action);
   else if (game.view.worldInheritance && (/旧世|祖先|档案|家谱|谱牒|旧产业|历史权益|旁支|年表|历史节点|转交|衰减|再发现/.test(action) || game.view.worldInheritance.institutions.some((item) => action.includes(item.name)) || game.view.worldInheritance.branches?.some((item) => action.includes(item.name)) || game.view.worldInheritance.chronology?.some((item) => action.includes(item.title))) && /核验|查证|调查|追查|验证|提交|申请|主张|听证|审理|裁定|投资|复建|经营/.test(action)) resolution = inheritanceResolution(game, action);
   else if ((openingFollowup = openingFollowupResolution(game, action))) resolution = openingFollowup;
-  else if (explicitKnownConversation) resolution = conversationResolution(game, action);
+  else if (routing.selected === "known-conversation") resolution = conversationResolution(game, action);
   else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);
@@ -4277,6 +4301,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   syncCharacterState(game);
   syncInventoryAndEconomy(game);
   game.view.updatedAt = new Date().toISOString();
+  resolution.routing = routing;
   return resolution;
 }
 
@@ -4304,6 +4329,7 @@ export function applyActionResult(
     elapsedMinutes: result.minutes,
     appliedRuleIds: result.appliedRuleIds ?? [],
     actionIndex: game.actionIndex,
+    routing: result.routing,
   };
   const objective = game.view.chapterObjective;
   if (objective && !/无法完成|规则阻止/.test(result.intent)) {

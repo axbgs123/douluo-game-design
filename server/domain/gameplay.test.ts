@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "../data/world.js";
-import { applyActionResult, resolveAction } from "./actions.js";
+import { applyActionResult, classifyCoreActionRoute, resolveAction } from "./actions.js";
 import { settleRun } from "./endings.js";
 import { awakenCharacter, createEraSuccessor, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { advanceWorldTime, buildMapView, canDiscoverNpc, createHiddenWorld, ensureGameState, recordCanonInfluence, recordIntelligence, recordMediaCompetition, recordMediaOutletReputation, revealNpc } from "./world.js";
@@ -29,6 +29,18 @@ function awakenedInEra(era: 1 | 2 | 3 | 4, seed: string) {
 }
 
 describe("完整游玩规则", () => {
+  it("高频自由行动直接返回原生第三人称兜底正文", () => {
+    const actions = ["冥想修炼", "休息恢复", "调查附近环境", "打工赚钱", "等待一天", "整理下一步计划", "攻击没有说明的目标"];
+    for (const [index, action] of actions.entries()) {
+      const game = awakened(`native-third-person-${index}`);
+      const result = resolveAction(game, action);
+      expect(auditNarrative(game, result.fallbackNarrative)).not.toContain("正文出现第一人称叙述");
+    }
+    const conversation = awakened("native-third-person-conversation");
+    const target = conversation.view.relations[0].name;
+    const result = resolveAction(conversation, `询问${target}附近消息`);
+    expect(auditNarrative(conversation, result.fallbackNarrative)).not.toContain("正文出现第一人称叙述");
+  });
   it("四时代学院生活不会再共用斗一首月结业模板", () => {
     const eraOne = academyEraLifeProfile(1);
     expect(`${eraOne.teacherRole}${eraOne.arrangementName}${eraOne.assessmentName}${eraOne.completionName}`).not.toMatch(/班主任|课表|学籍|首月|结业/);
@@ -589,7 +601,9 @@ describe("完整游玩规则", () => {
     resolveAction(mentorGame, `与${mentorName}谈清责任后正式拜师`);
     resolveAction(mentorGame, `请${mentorName}评估第一魂环路线`);
     resolveAction(mentorGame, "开始调查魂兽");
-    expect(resolveAction(mentorGame, "请求导师指导第一魂环").intent).toBe("确认猎魂责任路线");
+    const mentorSupport = resolveAction(mentorGame, "请求导师指导第一魂环");
+    expect(mentorSupport.intent).toBe("确认猎魂责任路线");
+    expect(mentorSupport.routing).toMatchObject({ selected: "mentor-hunt-support", candidates: expect.arrayContaining(["mentor-hunt-support", "active-hunt"]) });
     expect(mentorGame.view.hunting?.support).toMatchObject({ route: "导师指导", responsibleParty: mentorName, sponsorBudget: 4 });
 
     const independent = awakened("hunt-support-independent");
@@ -845,6 +859,7 @@ describe("完整游玩规则", () => {
 
   it("寻找导师必须经过评估和两次试学，不能一句话自动拜师", () => {
     const game = awakened("mentor-pursuit");
+    expect(classifyCoreActionRoute(game, "寻找适合当前武魂的导师").selected).toBe("mentor-pursuit");
     expect(resolveAction(game, "寻找适合当前武魂的导师").intent).toBe("寻找导师候选");
     const mentor = game.view.mentorPursuit!.mentorName;
     expect(game.view.relations.find((item) => item.name === mentor)?.relation).toBe("导师候选");
@@ -856,10 +871,14 @@ describe("完整游玩规则", () => {
     expect(game.view.relations.find((item) => item.name === mentor)?.relation).toBe("师徒");
     expect(game.view.mentorPursuit).toMatchObject({ stage: "已拜师", lessonsCompleted: 0 });
     expect(game.view.mentorPursuit?.specialty.length).toBeGreaterThan(4);
-    expect(resolveAction(game, `完成${mentor}下一节正式课程`).intent).toBe("导师正式课程");
+    const firstLesson = resolveAction(game, `完成${mentor}下一节正式课程`);
+    expect(firstLesson.intent).toBe("导师正式课程");
+    expect(firstLesson.routing?.selected).toBe("established-mentor");
     expect(game.view.mentorPursuit?.lessonsCompleted).toBe(1);
     expect(resolveAction(game, `完成${mentor}第二节正式课程`).intent).toBe("无法完成");
-    expect(resolveAction(game, "按导师课程记录独立复练").intent).toBe("修炼");
+    const practice = resolveAction(game, "按导师课程记录独立复练");
+    expect(practice.intent).toBe("修炼");
+    expect(practice.routing?.selected).toBe("mentor-independent-practice");
     expect(game.world.flags.mentorIndependentPracticeReady).toBe(true);
     expect(resolveAction(game, `完成${mentor}第二节正式课程`).intent).toBe("导师正式课程");
     expect(resolveAction(game, `请${mentor}评估第一魂环路线`).intent).toBe("导师评估魂环路线");
@@ -899,7 +918,9 @@ describe("完整游玩规则", () => {
     const ambiguous = resolveAction(game, "询问老师第一魂环意见");
     expect(ambiguous.intent).toBe("无法完成");
     expect(ambiguous.suggestions).toEqual(expect.arrayContaining(["明确询问严老师", "明确询问顾导师"]));
-    expect(resolveAction(game, "询问严老师第一魂环意见").intent).toBe("与已知人物交谈");
+    const explicit = resolveAction(game, "询问严老师第一魂环意见");
+    expect(explicit.intent).toBe("与已知人物交谈");
+    expect(explicit.routing?.selected).toBe("known-conversation");
   });
 
   it("AI长期记忆补丁会更新章节、线索和NPC记忆", () => {

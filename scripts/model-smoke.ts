@@ -40,6 +40,9 @@ type EraReport = {
   completionTokens: number;
   totalTokens: number;
   totalLatencyMs: number;
+  narratorContextRetrievals: number;
+  contextRetrievalReady: boolean;
+  contextRetrievalStatus: string;
   estimatedMaximumActualCostCny: number;
   errors: string[];
 };
@@ -101,7 +104,8 @@ try {
     totalTokens: sum.totalTokens + report.totalTokens,
     totalLatencyMs: sum.totalLatencyMs + report.totalLatencyMs,
     successfulRounds: sum.successfulRounds + report.successfulRounds,
-  }), { calls: 0, failures: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, totalLatencyMs: 0, successfulRounds: 0 });
+    contextReadyEras: sum.contextReadyEras + (report.contextRetrievalReady ? 1 : 0),
+  }), { calls: 0, failures: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, totalLatencyMs: 0, successfulRounds: 0, contextReadyEras: 0 });
   const actualUpperEstimateCny = Number(((totals.promptTokens * 1 + totals.completionTokens * 2) / 1_000_000).toFixed(6));
   console.log(JSON.stringify({
     generatedAt: new Date().toISOString(),
@@ -122,7 +126,7 @@ try {
     totals: { ...totals, actualUpperEstimateCny },
     reports,
   }, null, 2));
-  if (totals.successfulRounds !== 8 || totals.calls > 16 || actualUpperEstimateCny > 5) process.exitCode = 1;
+  if (totals.successfulRounds !== 8 || totals.calls > 16 || actualUpperEstimateCny > 5 || totals.contextReadyEras !== 4) process.exitCode = 1;
 } finally {
   closeDatabase?.();
   delete process.env.DOULUO_DATA_DIR;

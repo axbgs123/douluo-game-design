@@ -184,8 +184,8 @@ describe("HTTP 状态机", () => {
     expect(narratorContext.longTermMemory).not.toHaveProperty("npcNotes");
     const usageResponse = await fetch(`${baseUrl}/api/settings/deepseek/usage?gameId=${game.view.id}`);
     expect(usageResponse.status).toBe(200);
-    const usage = await usageResponse.json() as { vectorMemories: number; lastRetrievedLogicCount: number };
-    expect(usage).toMatchObject({ calls: 2, failures: 0, vectorDimensions: 384, vectorRetrievalLimit: 8, canonRetrievalLimit: 10, worldLogicRetrievalLimit: 8, contextRetrievals: 2 });
+    const usage = await usageResponse.json() as { vectorMemories: number; lastRetrievedLogicCount: number; contextRetrievalReady: boolean };
+    expect(usage).toMatchObject({ calls: 2, failures: 0, vectorDimensions: 384, vectorRetrievalLimit: 8, canonRetrievalLimit: 10, worldLogicRetrievalLimit: 8, contextRetrievals: 2, narratorContextRetrievals: 1, contextRetrievalReady: true, contextRetrievalStatus: "最近正文已完成三层检索" });
     expect(usage.vectorMemories).toBeGreaterThanOrEqual(1);
     expect(usage.lastRetrievedLogicCount).toBeGreaterThanOrEqual(1);
   });

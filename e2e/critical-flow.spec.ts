@@ -532,6 +532,7 @@ test("模型设置显示本地向量记忆状态", async ({ page }) => {
   await expect(page.getByText(/斗罗世界知识：\d+ 条 · 每回合最多召回 10 条/)).toBeVisible();
   await expect(page.getByText(/世界基本逻辑：\d+ 条 · 每回合最多召回 8 条/)).toBeVisible();
   await expect(page.getByText(/生成前检索审计：累计 \d+ 次/)).toBeVisible();
+  await expect(page.getByText(/正文检索验收：未产生升级后正文样本/)).toBeVisible();
 });
 
 test("手记显示错过地方事件留下的持续后果", async ({ page }) => {

@@ -153,10 +153,16 @@ describe("存档数据库", () => {
   });
 
   it("records model cost telemetry without storing prompts or generated prose", () => {
+    const telemetryGame = createGame({ gender: "男", difficulty: "标准", seed: "telemetry-game" });
+    telemetryGame.view.id = "telemetry-game";
+    database.saveGame(telemetryGame, "test.telemetry-game");
     database.recordModelCall({ gameId: "telemetry-game", role: "narrator", model: "test-model", status: "success", latencyMs: 321, promptChars: 900, outputChars: 300, promptTokens: 120, completionTokens: 45, totalTokens: 165 });
     database.recordModelCall({ gameId: "telemetry-game", role: "intent", model: "test-model", status: "failure", latencyMs: 80, promptChars: 200, outputChars: 0, errorCode: "timeout" });
 
-    expect(database.getModelUsage("telemetry-game")).toMatchObject({ calls: 2, failures: 1, promptTokens: 120, completionTokens: 45, totalTokens: 165, totalLatencyMs: 401 });
+    expect(database.getModelUsage("telemetry-game")).toMatchObject({ calls: 2, failures: 1, promptTokens: 120, completionTokens: 45, totalTokens: 165, totalLatencyMs: 401, narratorContextRetrievals: 0, contextRetrievalReady: false, contextRetrievalStatus: "未产生升级后正文样本" });
+    database.recordContextRetrieval({ gameId: "telemetry-game", role: "narrator", actionIndex: 1, memory: 0, canon: 4, logic: 3 });
+    expect(database.getModelUsage("telemetry-game")).toMatchObject({ narratorContextRetrievals: 1, contextRetrievalReady: true, contextRetrievalStatus: "最近正文已完成三层检索", lastRetrievedMemoryCount: 0, lastRetrievedCanonCount: 4, lastRetrievedLogicCount: 3 });
+    database.deleteGame("telemetry-game");
   });
 
   it("persists and retrieves relevant long-term memories without injecting future actions", () => {

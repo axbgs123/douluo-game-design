@@ -665,6 +665,7 @@ export interface ActionReceiptView {
   elapsedMinutes: number;
   appliedRuleIds: number[];
   actionIndex: number;
+  routing?: { selected: string; candidates: string[] };
 }
 
 export interface StoryArchiveView {
@@ -1152,6 +1153,9 @@ export interface ModelUsageView {
   worldLogicVectors: number;
   worldLogicRetrievalLimit: number;
   contextRetrievals: number;
+  narratorContextRetrievals: number;
+  contextRetrievalReady: boolean;
+  contextRetrievalStatus: "未产生升级后正文样本" | "最近正文已完成三层检索" | "最近正文检索不完整";
   lastRetrievedMemoryCount: number;
   lastRetrievedCanonCount: number;
   lastRetrievedLogicCount: number;

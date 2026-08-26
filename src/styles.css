@@ -580,6 +580,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .settings-modal h2 { font: 32px var(--display-font); margin: 0 0 14px; }
 .settings-copy { color: var(--muted); font-size: 11px; line-height: 1.8; }
 .settings-copy code { color: var(--gold); }
+.settings-copy.retrieval-ready { color: #5f7d54; }
+.settings-copy.retrieval-warning { color: #9b653f; }
 .settings-modal label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; margin: 15px 0; }
 .settings-modal .engine-toggle { grid-template-columns: auto 1fr; align-items: start; gap: 11px; padding: 13px; border: 1px solid var(--line); background: rgba(255,255,255,.28); cursor: pointer; }
 .settings-modal .engine-toggle input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--gold); }
