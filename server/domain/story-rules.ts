@@ -222,6 +222,7 @@ export function auditNarrative(game: StoredGame, text: string, options: { exclud
   const issues: string[] = [];
   const outside = narrationOutsideDialogue(text);
   if (/(^|[。！？\n])\s*我/.test(outside) || /我的/.test(outside)) issues.push("正文出现第一人称叙述");
+  if (/(玩家|主角|程序判定|固定结果|规则包|小说引擎|写作模块|语言模型|系统替|AI)/i.test(outside)) issues.push("正文泄露后台叙事称谓");
   if (/(^|[。！？\n])\s*(首先|其次|最后)[，,:：]|值得注意的是|这意味着|本质上|总而言之|综上所述|不是.{0,18}而是/.test(text)) issues.push("正文含有模板化表达");
   if (violatesCanonChronology(text, game.view.worldTime?.year ?? 0)) issues.push("正文违反当前时代或原作时间线");
   for (const npc of Object.values(game.world.npcs)) {
@@ -261,7 +262,7 @@ export function auditNarrative(game: StoredGame, text: string, options: { exclud
   if (new Set(repeatedSentences).size >= 2) issues.push("正文重复近期已经出现的多句完整叙述");
   if ((game.view.academyLife || game.view.hunting?.support || game.view.mentorPursuit?.stage === "已拜师") && /(?:再次|又一次|重新).{0,8}(?:复测觉醒|登记觉醒|核对觉醒水晶)/.test(text)) issues.push("成长阶段已经推进，正文却重复觉醒复测流程");
   if (/先天满魂力|水晶球.{0,20}(?:冲到顶|完全亮起)/.test(text) && !/停笔|复测|上报|登记|招揽|议论|围观|惊|愣|僵|变色|叫停/.test(text)) {
-    issues.push("异常觉醒结果没有引发主持者、监护者或围观者的具体反应");
+    issues.push("异常觉醒结果没有引发负责觉醒的人、同行长辈或围观者的具体反应");
   }
   if (text.length > 4800) issues.push("单次正文过长");
   return issues;
@@ -321,17 +322,17 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
   if (academy && !["已入学", "未通过", "已撤回"].includes(academy.stage)) {
     if (academy.stage === "材料准备") {
       const alternative = academy.availableFundingOptions.find((item) => item !== academy.fundingType);
-      return [`提交${academy.academyName}报名材料`, `请${academy.guardianName ?? "费用责任人"}核对${academy.fundingType}责任`, alternative ? `改走${alternative}路线` : "撤回申请并保留材料记录"];
+      return [`准备${academy.academyName}需要的证明`, `和${academy.guardianName ?? "同行长辈"}谈清${academy.fundingType}安排`, alternative ? `改走${alternative}路线` : "撤回申请并保留已有证明"];
     }
-    if (academy.stage === "入学考核") return [`参加${academy.academyName}入学考核`, "询问考核项目与失败去向", "暂缓考核并补练薄弱能力"];
-    if (academy.stage === "待报到") return [`办理${academy.academyName}入学报到`, "和监护人核对食宿与费用", "放弃名额并保留考核记录"];
+    if (academy.stage === "入学考核") return [`参加${academy.academyName}${academy.admissionAssessmentName}`, "询问测试内容与失败去向", "暂缓测试并补练薄弱能力"];
+    if (academy.stage === "待报到") return [`接受${academy.academyName}入学安排`, "和同行长辈谈清食宿与费用", "放弃机会并保留已有证明"];
   }
   const academyLife = game.view.academyLife;
-  if (academyLife && academyLife.stage !== "首月结业") {
-    if (academyLife.stage === "报到安置") return ["去宿舍安置并领取课表", `向${academyLife.homeroomTeacher}确认首月要求`, `记住${academyLife.peers[0].name}等同班新生`];
-    if (academyLife.stage === "首月实战考核") return ["参加学院首月实战考核", `与${academyLife.peers[0].name}复盘实战分组`, academy?.fundingType === "学院奖助" ? "提交学院奖助首月月评" : "核对费用责任是否已经履行"];
+  if (academyLife && academyLife.stage !== "阶段完成") {
+    if (academyLife.stage === "入学安顿") return [academyLife.arrivalAction, `向${academyLife.teacherName}询问${academyLife.assessmentName}`, `认识${academyLife.peers[0].name}等同班学生`];
+    if (academyLife.stage === "阶段考核") return [`参加${academyLife.assessmentName}`, `与${academyLife.peers[0].name}复盘实战分组`, academy?.fundingType === "学院奖助" ? "说明近期成绩与训练情况" : "确认费用约定是否已经履行"];
     const peer = [...academyLife.peers].sort((left, right) => left.interactions - right.interactions)[0];
-    return ["参加下一堂魂师基础课程", `与${peer.name}完成一次小组练习`, academy?.fundingType === "工读抵扣" && academyLife.fundingDutyProgress < 1 ? "完成一次适龄工读排班" : "核对隐藏武魂的在校知情范围"];
+    return ["参加下一堂魂师基础课程", `与${peer.name}完成一次小组练习`, academy?.fundingType === "工读抵扣" && academyLife.fundingDutyProgress < 1 ? "完成一次适龄工读劳动" : "问清隐藏武魂会被谁知道"];
   }
   const mentor = game.view.mentorPursuit;
   if (mentor && !["已拜师", "被拒绝", "已结束"].includes(mentor.stage)) {
@@ -352,12 +353,12 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
     const era = game.view.era ?? 1;
     const openingMode = String(game.world.flags.openingMode ?? "public");
     const openingInstitution = String(game.world.flags.openingInstitutionName ?? faction ?? "当前机构");
-    const openingOfficiant = String(game.world.flags.openingOfficiant ?? "主持者");
+    const openingOfficiant = String(game.world.flags.openingOfficiant ?? "负责觉醒的人");
     const openingSoulTestFocus = String(game.world.flags.openingSoulTestFocus ?? "能力边界、消耗与收放");
     const growth = openingMode === "internal" ? `请${openingOfficiant}测试${mainSoul}的${openingSoulTestFocus}`
       : openingMode === "noble" ? `请${openingOfficiant}测试${mainSoul}的${openingSoulTestFocus}`
         : openingMode === "beast" ? `与岩叔确认${mainSoul}在人类规则中的含义`
-          : openingMode === "unbound" ? `请主持者测试${mainSoul}的${openingSoulTestFocus}`
+          : openingMode === "unbound" ? `请${openingOfficiant}测试${mainSoul}的${openingSoulTestFocus}`
             : `请${openingOfficiant}测试${mainSoul}的${openingSoulTestFocus}`;
     const guardianPlan = openingMode === "noble"
       ? guardian
@@ -375,7 +376,7 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
       4: "询问魂力测试、入学安排与档案权限",
     } as const)[era];
     const institution = unbound
-      ? "请主持者先落实临时身份和今晚住处"
+      ? `请${openingOfficiant}先安排今晚住处并说明谁愿意作保`
       : openingMode === "beast" ? "和岩叔谈清离开兽群会失去的保护"
         : openingMode === "internal" ? `问清${openingInstitution}的导师、训练场与猎魂责任`
         : openingMode === "noble" ? guardianPlan
@@ -385,7 +386,7 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
         : openingMode === "beast" ? "暂不显露第二武魂，先和岩叔单独确认"
           : "暂不显露第二武魂，回住处后单独测试"
       : character.innateSoulPower >= 7 || ["传奇", "神话"].includes(character.martialSoul.grade ?? "平凡")
-        ? "请求主持者暂缓外传武魂细节"
+        ? `请求${openingOfficiant}暂缓外传武魂细节`
         : era === 4 ? "暂缓外传异常细节，先完成魂力测试" : `回住处练习${mainSoul}的收放与魂力消耗`;
     return [growth, institution, secret];
   }
@@ -501,9 +502,9 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
     };
   });
   const authorityHolders = participants.filter((item) => /可在职责范围内|可以主持|可以影响|可以执行/.test(item.authority)).map((item) => item.name);
-  const exceptionalAwakening = Boolean(game.view.character && game.view.character.innateSoulPower >= 10 && (game.view.status === "awakening" || /觉醒|满魂力|复测|培养条件|主持者/.test(`${playerInput}${resolution.intent}${resolution.ruleSummary}`)));
+  const exceptionalAwakening = Boolean(game.view.character && game.view.character.innateSoulPower >= 10 && (game.view.status === "awakening" || /觉醒|满魂力|重新测试|复测|培养条件|负责.*觉醒/.test(`${playerInput}${resolution.intent}${resolution.ruleSummary}`)));
   const requiredImmediateReactions = exceptionalAwakening
-    ? ["现场主持者复测或核对记录", "有权限者登记并决定上报范围", "监护或所属势力讨论培养条件、安置与代价"]
+    ? ["负责觉醒的人换水晶重新测试并停下后续仪式", "真正有权安排培养的人被请到场", "同行长辈或所属势力讨论谁来教、食宿、猎魂帮助与代价"]
     : participants.length ? ["利益或职责被触及的在场人物作出具体反应"] : ["没有可用见证者时，不得凭空制造远方人物反应"];
   const requiredStateChanges = [
     resolution.minutes > 0 ? `时间推进 ${resolution.minutes} 分钟` : undefined,
@@ -519,7 +520,7 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
     game.view.combat ? `战斗状态：${game.view.combat.playerCondition}` : undefined,
     game.view.hunting ? `猎魂阶段：${game.view.hunting.stage}` : undefined,
     game.view.academyApplication ? `学院申请：${game.view.academyApplication.academyName}·${game.view.academyApplication.stage}，尚不能越过下一阶段` : undefined,
-    game.view.academyLife ? `学院首月：${game.view.academyLife.className}·${game.view.academyLife.stage}；课程${game.view.academyLife.courseProgress}、同辈互动${game.view.academyLife.peerInteractions}、费用责任${game.view.academyLife.fundingDutyProgress}` : undefined,
+    game.view.academyLife ? `${game.view.academyLife.periodLabel}：${game.view.academyLife.className}·${game.view.academyLife.stage}；${game.view.academyLife.teacherRole}${game.view.academyLife.teacherName}负责；课程${game.view.academyLife.courseProgress}、同辈互动${game.view.academyLife.peerInteractions}、费用约定${game.view.academyLife.fundingDutyProgress}` : undefined,
     game.view.mentorPursuit ? `导师关系：${game.view.mentorPursuit.mentorName}·${game.view.mentorPursuit.stage}，未到已拜师不得写成师徒` : undefined,
   ].filter((item): item is string => Boolean(item));
   return {
@@ -571,7 +572,7 @@ export function auditNarrativeLogicPacket(packet: NarrativeLogicPacket): string[
   if (packet.canonAnchor.publicMartialSouls.some((name) => packet.canonAnchor.hiddenMartialSouls.includes(name))) issues.push("公开武魂与隐藏武魂边界冲突");
   if (!packet.continuityContract.requiredStateChanges.length) issues.push("逻辑预检没有任何可追踪状态变化");
   if (/至少有(\d+)名/.test(packet.reactionChain.sceneScaleRule) && packet.reactionChain.witnesses.length < Number(packet.reactionChain.sceneScaleRule.match(/至少有(\d+)名/)?.[1] ?? 0)) issues.push("多人场景的见证者与参与者数量不一致");
-  if (packet.reactionChain.requiredImmediateReactions.some((item) => /主持者|有权限者/.test(item)) && !packet.reactionChain.authorityHolders.length) issues.push("异常事件需要制度反应，但逻辑预检找不到有权限的现场人物");
+  if (packet.reactionChain.requiredImmediateReactions.some((item) => /负责觉醒|有权安排培养/.test(item)) && !packet.reactionChain.authorityHolders.length) issues.push("异常事件需要制度反应，但逻辑预检找不到有权限的现场人物");
   return issues;
 }
 

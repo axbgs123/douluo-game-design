@@ -23,7 +23,7 @@ describe("卷级故事导演", () => {
     const game = playingGame("story-arc-causal-gates");
     expect(game.view.storyArc).toMatchObject({ arcNumber: 1, stage: "立局", stageIndex: 0 });
 
-    applyBeat(game, "请主持者说明第一魂环路线", "主持者列出三种适配方向。", "询问");
+    applyBeat(game, "请负责觉醒的魂师说明第一魂环路线", "负责觉醒的魂师列出三种适配方向。", "询问");
     expect(game.view.storyArc?.stage).toBe("主动推进");
 
     game.world.dynamicEvents.push({ id: "side-herbs", title: "失踪的采药队", kind: "地方", locationId: game.view.locationId!, participantIds: [], detail: "采药队未归。", stakes: 2, status: "可介入", createdYear: 0, createdDay: 1, expiresOrdinal: 40 });
@@ -39,14 +39,14 @@ describe("卷级故事导演", () => {
 
   it("requires resistance, reaction, payoff, and player choice before a volume can reach its turn", () => {
     const game = playingGame("story-arc-payoff-gates");
-    applyBeat(game, "请主持者复测武魂", "主持者完成复测并登记武魂形态。", "复测");
+    applyBeat(game, "请负责觉醒的魂师重新测试武魂", "负责觉醒的魂师换过水晶，再次确认武魂形态。", "重新测试");
     applyBeat(game, "申请培养条件", "学院要求监护证明并说明学费，当前只能等待复核。", "申请");
     expect(game.view.storyArc?.stage).toBe("阻力显形");
 
     applyBeat(game, "去训练场完成能力测试", "导师看完三轮训练记录，确认武魂控制稳定并向学院提交意见。", "训练");
     expect(game.view.storyArc?.stage).toBe("局势扩大");
 
-    applyBeat(game, "向学院落实培养安排", "学院完成录取，安排导师面谈、训练场时段和基础食宿。", "录取");
+    applyBeat(game, "向学院落实培养安排", "学院完成录取，说明哪位老师接手、训练场何时能用以及基础食宿。", "录取");
     expect(game.view.storyArc?.stage).toBe("阶段兑现");
     expect(game.view.storyArc?.payoffLedger.some((item) => item.status === "已兑现")).toBe(true);
 
@@ -64,7 +64,7 @@ describe("卷级故事导演", () => {
       const game = playingGame(`story-arc-npc-era-${era}`, era);
       const scene = game.view.storyArc?.npcScenes.find((item) => item.status === "等待回应");
       expect(scene?.npcName).toBeTruthy();
-      expect(scene?.motive).toMatch(/复核|食宿|费用|安全|条件|职责/);
+      expect(scene?.motive).toMatch(/谈清|食宿|费用|安全|条件|职责/);
       const suggestions = storyArcSuggestions(game);
       expect(suggestions).toHaveLength(3);
       expect(suggestions.every((item) => item.length >= 8 && item.length <= 28)).toBe(true);
@@ -84,11 +84,11 @@ describe("卷级故事导演", () => {
     expect(game.view.storyArc?.npcScenes.find((item) => item.id === initialScene.id)?.status).toBe("已错过");
     expect(game.view.storyArc!.pressure).toBeGreaterThan(pressureBefore);
 
-    game.view.academyApplication = { academyId: "test-academy", academyName: "测试学院", stage: "材料准备", route: "普通学员", fundingType: "家庭自费", fundingSource: "家庭", obligations: ["支付费用"], availableFundingOptions: ["家庭自费"], requirements: ["材料"], evidence: [], fee: 12, passScore: 38 };
+    game.view.academyApplication = { academyId: "test-academy", academyName: "测试学院", stage: "材料准备", route: "普通学员", fundingType: "家庭自费", fundingSource: "家庭", obligations: ["支付费用"], availableFundingOptions: ["家庭自费"], requirements: ["证明"], evidence: [], fee: 12, passScore: 38, admissionAssessmentName: "觉醒证明与来处查验", assessmentRequired: false };
     applyBeat(game, "申请测试学院", "测试学院登记申请与家庭费用责任，尚未录取。", "申请");
     expect(game.view.storyArc).toMatchObject({ earlyGrowthPhase: "培养路线", centralGoal: expect.stringContaining("学院、导师") });
 
-    game.view.academyLife = { academyName: "测试学院", stage: "基础课程", className: "新生班", homeroomTeacher: "严老师", dormitory: "新生宿舍", attendance: 1, courseProgress: 1, practicalProgress: 0, fundingDutyProgress: 1, peerInteractions: 0, standing: 0, discipline: 100, evidence: [], peers: [] };
+    game.view.academyLife = { academyName: "测试学院", stage: "共同学习", className: "新生班", teacherName: "严老师", teacherRole: "学院老师", periodLabel: "入学初期", arrivalAction: "跟学院老师看过宿舍和教室", arrangementName: "课程与宿舍安排", assessmentName: "基础课程与实战检查", completionName: "完成第一阶段学院生活", dormitory: "新生宿舍", attendance: 1, courseProgress: 1, practicalProgress: 0, fundingDutyProgress: 1, peerInteractions: 0, standing: 0, discipline: 100, evidence: [], peers: [] };
     game.view.relations.push({ id: "early-teacher", name: "严老师", relation: "学院猎魂带队责任人", impression: "负责课程与首环带队边界", strength: 30, category: "师友" });
     applyBeat(game, "参加新生基础课程", "完成第一堂课程并留下出勤记录。", "学院课程");
     expect(game.view.storyArc).toMatchObject({ earlyGrowthPhase: "学院师承生活", centralConflict: expect.stringContaining("同辈") });
@@ -97,7 +97,7 @@ describe("卷级故事导演", () => {
     applyBeat(game, "确认学院首环带队", "严老师登记首环责任、预算和许可边界。", "确认猎魂责任路线");
     expect(game.view.storyArc).toMatchObject({ earlyGrowthPhase: "首环筹备", centralGoal: expect.stringContaining("第一魂环") });
     expect(game.view.storyArc?.earlyGrowthEvidence?.some((item) => item.includes("首环筹备"))).toBe(true);
-    expect(game.view.storyArc?.npcScenes.find((item) => item.status === "等待回应")?.action).toContain("预算、成年同行、许可与撤退条件");
+    expect(game.view.storyArc?.npcScenes.find((item) => item.status === "等待回应")?.action).toContain("花费、成年同行、入林手令与撤退条件");
   });
 
   it("migrates old count-driven arcs to evidence gates without preserving unsupported progress", () => {
@@ -113,7 +113,7 @@ describe("卷级故事导演", () => {
     delete (legacy as Partial<typeof legacy>).arcType;
     game.schemaVersion = 33;
     const migrated = ensureGameState(structuredClone(game));
-    expect(migrated.schemaVersion).toBe(44);
+    expect(migrated.schemaVersion).toBe(45);
     expect(migrated.view.storyArc?.stage).toBe("立局");
     expect(migrated.view.storyArc?.stageGates).toHaveLength(6);
     expect(migrated.view.storyArc?.payoffLedger.length).toBeGreaterThanOrEqual(3);

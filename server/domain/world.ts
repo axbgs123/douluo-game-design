@@ -15,6 +15,7 @@ import { compileNpcPlan, ensureNpcPlans, executeNpcPlanStep } from "./npc-planne
 import { decayLocalConsequences, resolveExpiredDynamicEvent } from "./event-consequences.js";
 import { dynamicEventTemplatesForEra } from "../data/era-dynamic-events.js";
 import { CHARACTER_LIFE_STAGES, characterLifeStageAtDate } from "../data/character-life-stages.js";
+import { academyEraLifeProfile } from "../../shared/academy-life.js";
 
 const DAYS_PER_YEAR = 360;
 
@@ -564,7 +565,7 @@ export function buildMapHierarchy(game: StoredGame): MapHierarchyView {
   const buildingName = atHome ? selected?.residence?.building ?? `${settlementName}住处` : `${settlementName}临时落脚处`;
   const currentLocation = game.view.locationId ?? selected?.locationId ?? "notting-city";
   const authorityFact = selected?.originFacts.find((fact) => fact.label === "归属")?.value;
-  const authorityName = authorityFact && /宗|殿|府|院|会|队|城|村|镇|行|家族/.test(authorityFact) ? authorityFact : `${settlementName}户籍与治安处`;
+  const authorityName = authorityFact && /宗|殿|府|院|会|队|城|村|镇|行|家族/.test(authorityFact) ? authorityFact : (game.view.era ?? 1) === 1 ? `${settlementName}当地管事人` : `${settlementName}地方事务接待处`;
   const confidenceFor = (id: string) => [...game.world.intelligenceRecords].reverse().find((item) => item.subjectType === "地点" && item.subjectId === id);
   const continentNodes = game.view.map.filter((item) => item.discovered || item.current || item.objective).map((item) => {
     const intel = confidenceFor(item.id);
@@ -573,15 +574,15 @@ export function buildMapHierarchy(game: StoredGame): MapHierarchyView {
   const localNodes = [
     { id: `${currentLocation}:gate`, name: "聚居地入口", kind: "出入口", description: "通向外部道路，旅行从这里计算。", x: 12, y: 52 },
     { id: `${currentLocation}:home`, name: buildingName, kind: "住处", description: selected?.residence?.security ?? "当前可以休息和存放普通物品的地方。", x: 32, y: 34 },
-    { id: `${currentLocation}:authority`, name: authorityName, kind: "机构", description: "处理户籍、治安与本地事务。", x: 67, y: 30 },
+    { id: `${currentLocation}:authority`, name: authorityName, kind: "机构", description: (game.view.era ?? 1) === 1 ? "处理来处担保、地方纠纷和日常公共事务。" : "处理身份资料、治安与本地事务。", x: 67, y: 30 },
     { id: `${currentLocation}:market`, name: `${settlementName}集市`, kind: "交易", description: "日常补给、零工与传闻集中的区域。", x: 62, y: 70 },
-    { id: `${currentLocation}:awakening`, name: `${settlementName}觉醒点`, kind: "武魂", description: "当地儿童进行武魂觉醒或复测的地点。", x: 84, y: 49 },
+    { id: `${currentLocation}:awakening`, name: `${settlementName}觉醒点`, kind: "武魂", description: "当地儿童进行武魂觉醒，或在结果异常时重新测试的地点。", x: 84, y: 49 },
   ].map((node) => ({ ...node, level: "聚居地" as const, parentId: currentLocation, current: node.id.endsWith(":home"), confidence: node.id.endsWith(":home") ? 100 : 82, source: node.id.endsWith(":home") ? "日常生活" : "本地常识" }));
   const room = selected?.residence?.room ?? "临时卧室";
   const buildingNodes = [
     { id: `${currentLocation}:building:entrance`, name: "入口", kind: "出入口", description: "连接住处与外部道路。", x: 50, y: 88 },
     { id: `${currentLocation}:building:main`, name: "堂屋", kind: "公共空间", description: "家人或同住者日常见面、吃饭和商议事情的地方。", x: 50, y: 55 },
-    { id: `${currentLocation}:building:room`, name: room, kind: "主角房间", description: "主角当前睡眠、收纳私人物品的位置。", x: 24, y: 28 },
+    { id: `${currentLocation}:building:room`, name: room, kind: "个人房间", description: `${game.view.character?.name ?? selected?.name ?? "角色"}当前睡眠、收纳私人物品的位置。`, x: 24, y: 28 },
     { id: `${currentLocation}:building:store`, name: "储物间", kind: "储藏", description: "普通物资与家庭工具所在处，贵重物品未必放在这里。", x: 77, y: 28 },
     { id: `${currentLocation}:building:yard`, name: /宗|府|殿|堡/.test(buildingName) ? "练功小院" : "后院", kind: "训练", description: "可以进行不扰民的基础练习。", x: 78, y: 66 },
   ].map((node) => ({ ...node, level: "建筑" as const, parentId: `${currentLocation}:home`, current: node.name === room, confidence: 100, source: "日常生活" }));
@@ -937,11 +938,12 @@ function createTalentThreatEvent(game: StoredGame, cycle: number, random: () => 
   const createdYear = Math.floor((createdOrdinal - 1) / DAYS_PER_YEAR);
   const createdDay = createdOrdinal - createdYear * DAYS_PER_YEAR;
   const escalation = stage >= 2 && risk >= 4;
+  const characterName = game.view.character?.name ?? "这个孩子";
   const title = escalation ? "疑似敌对势力的袭击准备" : stage === 1 ? "住处附近出现的陌生盯梢者" : "有人私下查问觉醒名册";
   const detail = escalation
-    ? "此前的查问与盯梢没有得到可控接触，身份不明者开始核对主角的出行、护卫与猎魂安排。现有证据只能确认针对性准备，尚不能断言幕后势力；若继续放任，可能升级为绑架、途中伏击或暗杀。"
+    ? `此前的查问与盯梢没有得到可控接触，身份不明者开始打听${characterName}的出行、护卫与猎魂安排。现有证据只能确认针对性准备，尚不能断言幕后势力；若继续放任，可能升级为绑架、途中伏击或暗杀。`
     : stage === 1
-      ? "有人在住处、学院或训练场外反复确认主角的作息与同行者。对方没有公开敌意，可能是招募前观察、情报收集，也可能在寻找保护漏洞。"
+      ? `有人在住处、学院或训练场外反复打听${characterName}的作息与同行者。对方没有公开敌意，可能是招募前观察、情报收集，也可能在寻找保护漏洞。`
       : "多武魂与高魂力消息离开最初见证范围后，有陌生人通过学员家长、商户或外围人员查问姓名、住处和培养安排。消息来源尚未查清。";
   const id = `talent-threat-${stage}-${cycle}`;
   game.world.dynamicEvents.push({ id, title, kind: "人物", locationId: game.view.locationId ?? "notting-city", participantIds: [], detail, stakes: escalation ? 5 : 3 + Math.min(1, stage), status: "可介入", createdYear, createdDay, expiresOrdinal: createdOrdinal + 45 });
@@ -978,17 +980,18 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
     if (actor.knownToPlayer && playerRelation && random() < 0.11 && !game.world.dynamicEvents.some((event) => event.status === "可介入" && event.participantIds.includes(actor.id))) {
       const attitude = actor.dispositionToPlayer + (playerRelation.dimensions?.trust ?? playerRelation.strength ?? 0);
       const title = attitude >= 35 ? `${actor.name}主动送来的请求` : attitude <= -10 ? `${actor.name}发出的警告` : `${actor.name}提出的试探`;
+      const characterName = game.view.character?.name ?? "当事人";
       const detail = attitude >= 35
-        ? `${actor.name}为了“${actor.activePlan?.desire ?? actor.currentGoal}”主动联系主角，正在做“${planStep.action}”，并提出一项需要明确答复的协助。`
+        ? `${actor.name}为了“${actor.activePlan?.desire ?? actor.currentGoal}”主动联系${characterName}，正在做“${planStep.action}”，并提出一项需要明确答复的协助。`
         : attitude <= -10
-          ? `${actor.name}掌握了与主角有关的部分消息，当前责任是“${actor.activePlan?.responsibility ?? "处理自身事务"}”，要求主角停止继续触及其目标。`
-          : `${actor.name}正在推进“${planStep.action}”，没有直接说明全部目的，只提出一次交易或见面，意在判断主角是否值得合作。`;
+          ? `${actor.name}掌握了与${characterName}有关的部分消息，当前责任是“${actor.activePlan?.responsibility ?? "处理自身事务"}”，要求${characterName}停止继续触及其目标。`
+          : `${actor.name}正在推进“${planStep.action}”，没有直接说明全部目的，只提出一次交易或见面，意在判断${characterName}是否值得合作。`;
       const createdOrdinal = cycle * 30;
       const createdYear = Math.floor((createdOrdinal - 1) / DAYS_PER_YEAR);
       const createdDay = createdOrdinal - createdYear * DAYS_PER_YEAR;
       const id = `initiative-${actor.id}-${cycle}`;
       game.world.dynamicEvents.push({ id, title, kind: "人物", locationId: actor.locationId, participantIds: [actor.id], detail, stakes: Math.max(2, Math.min(5, definition?.importance ?? 2)), status: "可介入", createdYear, createdDay, expiresOrdinal: createdOrdinal + 45 });
-      game.view.tasks.push({ id, title, kind: "线索", detail: `${detail}玩家可以接受、追问或拒绝。`, status: "进行中", destinationId: actor.locationId });
+      game.view.tasks.push({ id, title, kind: "线索", detail: `${detail}可以接受、追问，也可以当面拒绝。`, status: "进行中", destinationId: actor.locationId });
       addNews(game, id, title, detail, { year: createdYear, day: createdDay });
     }
     const candidates = living.filter((npc) => npc.id !== actor.id && (npc.locationId === actor.locationId || actor.factionIds.some((id) => npc.factionIds.includes(id)) || npcHasPlayerInfluence(game, npc.id)));
@@ -1003,7 +1006,7 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
       ? `两人在${factionName ?? "同一势力"}的事务中${delta >= 0 ? `围绕“${actor.activePlan?.nextAction ?? actor.currentGoal}”有过配合` : "发生了利益分歧"}`
       : sameLocation
         ? `两人在${locationById(actor.locationId)?.name ?? "同一地点"}推进各自计划时${delta >= 0 ? "互相提供了帮助" : "因资源、权限或目标先后产生冲突"}`
-        : "玩家造成的因果链让两人的利益发生交集";
+        : `${game.view.character?.name ?? "当事人"}此前造成的变化让两人的利益发生交集`;
     updateNpcRelation(game, actor.id, other.id, delta, game.view.worldTime?.year ?? 0, game.view.worldTime?.day ?? 1, reason);
     const createdEvent = createDynamicEvent(game, cycle, random);
     if (createdEvent) messages.push(`新事件 · ${createdEvent}`);
@@ -1077,7 +1080,7 @@ function appendBranchPropagation(game: StoredGame, event: CanonEvent, branch: Hi
   game.world.canonCausalFootprints.push({
     id: `branch-cause-${branch.id}`,
     source: "历史分支结算",
-    description: "玩家此前造成的变化已经沿相关人物、势力与资源条件继续扩散",
+    description: `${game.view.character?.name ?? "当事人"}此前造成的变化已经沿相关人物、势力与资源条件继续扩散`,
     atYear: at.year,
     atDay: at.day,
     locationId: event.locationId ?? game.world.npcs[event.participantIds[0]]?.locationId ?? game.view.locationId ?? "notting-city",
@@ -1213,7 +1216,7 @@ function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentO
       if (npc && event.locationId) npc.locationId = event.locationId;
     }
     if (canonEventObservable(game, event, linkedCauses)) {
-      const detail = causalStrength > 0 ? `${event.publicSummary}玩家此前造成的影响改变了部分参与条件，但尚未越过该节点的原著惯性。` : event.publicSummary;
+      const detail = causalStrength > 0 ? `${event.publicSummary}${game.view.character?.name ?? "当事人"}此前造成的影响改变了部分参与条件，但尚未越过该节点的原著惯性。` : event.publicSummary;
       addNews(game, event.id, event.title, detail);
       messages.push(`${(event.visibility ?? "地方") === "公开" ? "消息" : event.visibility === "秘密" ? "亲历" : "传闻"} · ${event.title}`);
     }
@@ -1423,7 +1426,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 44;
+  legacy.schemaVersion = 45;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1630,7 +1633,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
         : /皇室|王府|公爵|贵族|质子/.test(originText) ? "noble"
           : game.view.affiliations.length || /少宗主|内门亲传|核心嫡系|封山支脉|外门家庭|基层职员子女|军属子女|长老之子/.test(originText) ? "internal" : "public";
     const institution = game.view.affiliations[0]?.name ?? game.view.relations.find((relation) => /觉醒|宗门|所属势力/.test(`${relation.relation}${relation.impression}`))?.faction ?? "地方武魂殿";
-    const officiant = game.view.relations.find((relation) => /觉醒主持|觉醒教习|守碑长老|觉醒执事/.test(`${relation.name}${relation.relation}`))?.name ?? (legacyMode === "internal" ? `${institution}觉醒主持者` : "地方武魂殿巡查执事");
+    const officiant = game.view.relations.find((relation) => /负责本次觉醒|觉醒主持|觉醒教习|守碑长老|觉醒执事/.test(`${relation.name}${relation.relation}`))?.name ?? (legacyMode === "internal" ? `${institution}负责觉醒的魂师` : "地方武魂殿巡查执事");
     const category = character.martialSoul.category;
     const testFocus = /本体/.test(category) ? "体征、魂力流向、收放与承载" : /兽/.test(category) ? "兽化部位、本能控制、力量与收放" : /植物/.test(category) ? "生长形态、环境反应、消耗与收放" : /食物/.test(category) ? "制造速度、魂力消耗、保存与食用安全" : /元素/.test(category) ? "影响范围、稳定性、消耗与收放" : "形态、重量、结构、魂力反应与收放";
     game.world.flags.openingMode ??= legacyMode;
@@ -1660,7 +1663,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     }
     if (legacyMode === "internal") {
       for (const entry of game.view.narrative) {
-        entry.text = entry.text.replaceAll("学院名额、第一魂环和培养责任，今天便要有人给出答复。", `${institution}内部的导师、训练场、资源额度、保密范围与第一魂环护送责任，需要逐项确认。`);
+        entry.text = entry.text.replaceAll("学院名额、第一魂环和培养责任，今天便要有人给出答复。", `${institution}里哪位老师愿意教、训练场能用多久、第一次猎魂谁肯同行，都需要当面谈清。`);
         entry.text = entry.text.replace(new RegExp(`[^。！？\\n]{0,48}心里翻过一个念头：这上面记的，恐怕不只是魂环。`, "g"), `${character.name}先记下与第一魂环有关的缺页，准备直接问清可用部分、风险和复核人。`);
         entry.text = entry.text.replaceAll("这上面记的，恐怕不只是魂环。", `他先记下与第一魂环有关的缺页，准备直接问清可用部分、风险和复核人。`);
         entry.text = entry.text.replaceAll("执事划掉重写", "记录员划掉重写");
@@ -1669,7 +1672,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
         title: `把${institution}内部觉醒变成具体培养方案`, stakes: character.originBurden, destinationId: game.view.locationId,
         steps: [
           { id: "understand", text: `请${officiant}完成${character.martialSoul.name}的${testFocus}测试`, status: "进行中" },
-          { id: "support", text: `核对${institution}能提供的导师、训练场、资源额度与猎魂护送`, status: "未开始" },
+          { id: "support", text: `问清${institution}能安排哪位导师、多少训练时间和哪些猎魂帮助`, status: "未开始" },
           { id: "path", text: "决定主修顺序、公开范围和愿意承担的内部责任", status: "未开始" },
         ],
       };
@@ -1681,7 +1684,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     } else if (oldGenericObjective || oldNobleObjective) {
       const objectiveByMode = legacyMode === "unbound" ? {
         title: "先在大陆活过觉醒后的第一天",
-        steps: [{ id: "identity", text: "取得今晚住处、现场见证和一份临时身份凭据", status: "进行中" as const }, { id: "understand", text: `请主持者测试${character.martialSoul.name}的${testFocus}`, status: "未开始" as const }, { id: "path", text: "决定登记来历、保留异界秘密或继续无籍生活", status: "未开始" as const }],
+        steps: [{ id: "identity", text: "先找到今晚住处和愿意说明来处的见证人", status: "进行中" as const }, { id: "understand", text: `请${officiant}测试${character.martialSoul.name}的${testFocus}`, status: "未开始" as const }, { id: "path", text: "决定说明多少来历、保留异界秘密或继续无籍生活", status: "未开始" as const }],
       } : legacyMode === "beast" ? {
         title: "决定觉醒后是否接触人类魂师体系",
         steps: [{ id: "understand", text: `与养育者确认${character.martialSoul.name}在人类与魂兽视角下的含义`, status: "进行中" as const }, { id: "boundary", text: "确认离开兽群领地会失去哪些保护与资源", status: "未开始" as const }, { id: "path", text: "决定留在森林、短期接触人类或正式建立人类身份", status: "未开始" as const }],
@@ -1690,12 +1693,32 @@ export function ensureGameState(game: StoredGame): StoredGame {
         steps: [{ id: "understand", text: `请${officiant}完成${character.martialSoul.name}的${testFocus}测试`, status: "进行中" as const }, { id: "support", text: "分别核对家族培养、可报学院、外部导师或交换培养的资格与代价", status: "未开始" as const }, { id: "path", text: "与监护人确定近期培养地点、费用来源和必须承担的家族责任", status: "未开始" as const }],
       } : {
         title: "把觉醒结果换成下一步真实条件",
-        steps: [{ id: "understand", text: `请主持者测试${character.martialSoul.name}的${testFocus}`, status: "进行中" as const }, { id: "support", text: "落实当前时代的入学、监护、费用与第一成长资源", status: "未开始" as const }, { id: "path", text: "在家庭、资源与年龄限制内确定近期成长路线", status: "未开始" as const }],
+        steps: [{ id: "understand", text: `请${officiant}测试${character.martialSoul.name}的${testFocus}`, status: "进行中" as const }, { id: "support", text: "落实当前时代的入学、照料、费用与第一成长资源", status: "未开始" as const }, { id: "path", text: "在家庭、资源与年龄限制内确定近期成长路线", status: "未开始" as const }],
       };
       game.view.chapterObjective = { title: objectiveByMode.title, stakes: character.originBurden, destinationId: game.view.locationId, steps: objectiveByMode.steps };
       const thread = legacyMode === "unbound" ? "取得住处、见证与临时身份" : legacyMode === "beast" ? "决定与人类魂师体系保持多远的距离" : legacyMode === "noble" ? "比较家族、学院与外部导师路线并承担相应责任" : "落实家庭能够承担的入学、费用与第一成长资源";
       game.storyMemory.openThreads = game.storyMemory.openThreads.map((item) => item === "家人与出身中尚未说清的细节" ? thread : item);
     }
+  }
+  if (previousSchemaVersion < 45) {
+    const officiant = String(game.world.flags.openingOfficiant ?? "负责本次觉醒的魂师");
+    const replaceEarlyTemplateLanguage = (text: string) => text
+      .replaceAll("请主持者", `请${officiant}`)
+      .replaceAll("觉醒主持者", "负责本次觉醒的魂师")
+      .replaceAll("多武魂天才培养权复核", "多武魂天才引发培养争议")
+      .replaceAll("多武魂觉醒已进入培养复核", "多武魂觉醒引起培养争议")
+      .replace(/回应([^。；]{1,24})的培养评估/g, "听取$1愿意给出的培养条件")
+      .replaceAll("资源额度", "具体帮助")
+      .replaceAll("导师面谈", "导师接触")
+      .replaceAll("首环责任页", "首环帮助约定")
+      .replaceAll("责任页", "约定");
+    for (const entry of game.view.narrative) entry.text = replaceEarlyTemplateLanguage(entry.text);
+    for (const task of game.view.tasks) { task.title = replaceEarlyTemplateLanguage(task.title); task.detail = replaceEarlyTemplateLanguage(task.detail); }
+    for (const step of game.view.chapterObjective?.steps ?? []) step.text = replaceEarlyTemplateLanguage(step.text);
+    game.storyMemory.summary = replaceEarlyTemplateLanguage(game.storyMemory.summary);
+    game.storyMemory.openThreads = game.storyMemory.openThreads.map(replaceEarlyTemplateLanguage);
+    for (const event of game.world.dynamicEvents.filter((item) => /awakening|talent-recruitment/.test(item.id))) { event.title = replaceEarlyTemplateLanguage(event.title); event.detail = replaceEarlyTemplateLanguage(event.detail); }
+    for (const relation of game.view.relations.filter((item) => item.relation === "觉醒主持者")) relation.relation = "负责本次觉醒的魂师";
   }
   if (previousSchemaVersion < 35) {
     const day = game.view.worldTime?.day ?? 1;
@@ -1820,21 +1843,66 @@ export function ensureGameState(game: StoredGame): StoredGame {
   game.view.storyArchive ??= { summary: game.storyMemory.summary, openThreads: game.storyMemory.openThreads, keyChoices: game.storyMemory.keyChoices, recentConsequences: [], continuity: [], localConsequences: [] };
   game.view.storyArchive.localConsequences ??= [];
   game.view.affiliations ??= [];
+  const singleClanIds: Record<string, string> = { "敏之一族": "speed-clan", "力之一族": "strength-clan", "御之一族": "defense-clan", "破之一族": "breaking-clan" };
+  for (const affiliation of game.view.affiliations) if (affiliation.id === "min-clan" && singleClanIds[affiliation.name]) affiliation.id = singleClanIds[affiliation.name];
+  game.view.inventory = game.view.inventory.map((item) => item === "地方临时身份凭据" ? "临时来处证明" : item);
   if (game.view.academyApplication) {
     const application = game.view.academyApplication as typeof game.view.academyApplication & Partial<Pick<import("../../shared/game.js").AcademyApplicationView, "fundingType" | "fundingSource" | "obligations" | "availableFundingOptions">>;
+    const academyEra = game.view.era ?? 1;
+    const academyProfile = academyEraLifeProfile(academyEra);
     application.fundingType ??= application.route === "工读生" ? "工读抵扣" : game.view.era === 3 && application.fee === 0 ? "公共义务教育" : "家庭自费";
     application.fundingSource ??= application.fundingType === "工读抵扣" ? "旧存档工读名额与在校劳动抵扣" : application.fundingType === "公共义务教育" ? "斗三适龄免费义务教育安排" : "本人及家庭支付";
     application.obligations ??= application.fundingType === "工读抵扣" ? ["按排班完成适龄校内劳动", "劳动不能替代课程与考核"] : application.fundingType === "公共义务教育" ? ["完成适龄基础课程与纪律要求", "额外培养资源仍需另算"] : ["家庭承担学费、食宿与路费", "不附带工读、宗门或奖助义务"];
     application.availableFundingOptions ??= ["家庭自费", ...(game.view.era === 1 ? ["工读抵扣" as const] : []), ...(game.view.era === 3 ? ["公共义务教育" as const] : [])];
+    application.admissionAssessmentName ??= /史莱克|皇家|日月皇家|星际学院/.test(application.academyName) ? "学院入学考核" : academyEra === 1 ? "觉醒证明与来处查验" : academyEra === 2 ? "学院入学考核" : academyEra === 3 ? "魂力测试与分班" : "入学与分班测试";
+    application.assessmentRequired ??= /史莱克|皇家|日月皇家|星际学院/.test(application.academyName) || academyEra >= 2;
+    if (previousSchemaVersion < 45 && academyEra === 1 && !application.assessmentRequired && application.stage === "入学考核") {
+      application.stage = "待报到";
+      application.evidence.push("Schema 45保留已经交过的觉醒与来处证明，不再要求普通初级学院完成无原著依据的统一入学考试");
+    }
+    if (game.view.academyLife) {
+      const life = game.view.academyLife as typeof game.view.academyLife & { homeroomTeacher?: string; monthlyScore?: number; stage: string; teacherName?: string; teacherRole?: string; periodLabel?: string; arrivalAction?: string; arrangementName?: string; assessmentName?: string; completionName?: string; assessmentScore?: number };
+      life.stage = ({ 报到安置: "入学安顿", 基础课程: "共同学习", 同辈磨合: "同辈磨合", 首月实战考核: "阶段考核", 首月结业: "阶段完成" } as Record<string, import("../../shared/academy-life.js").AcademyLifeStage>)[life.stage] ?? life.stage as import("../../shared/academy-life.js").AcademyLifeStage;
+      life.teacherName ??= life.homeroomTeacher ?? ({ 1: "严观棋", 2: "许岚川", 3: "罗闻舟", 4: "周砺星" } as const)[academyEra];
+      life.teacherRole ??= academyProfile.teacherRole;
+      life.periodLabel ??= academyProfile.periodLabel;
+      life.arrivalAction ??= academyProfile.arrivalAction;
+      life.arrangementName ??= academyProfile.arrangementName;
+      life.assessmentName ??= academyProfile.assessmentName;
+      life.completionName ??= academyProfile.completionName;
+      life.assessmentScore ??= life.monthlyScore;
+      const reviseAcademyText = (text: string) => {
+        let revised = text.replaceAll("学院首月", academyProfile.periodLabel).replaceAll("首月实战考核", academyProfile.assessmentName).replaceAll("首月考核", academyProfile.assessmentName).replaceAll("首月结业", academyProfile.completionName).replaceAll("首月", academyProfile.periodLabel);
+        if (academyEra === 1) revised = revised.replaceAll("班主任", "学院老师").replaceAll("课表", "课程与工读安排").replaceAll("学籍", "学院身份").replaceAll("正式报到", "正式入学");
+        return revised;
+      };
+      life.evidence = life.evidence.map(reviseAcademyText);
+      for (const entry of game.view.narrative) entry.text = reviseAcademyText(entry.text);
+      for (const task of game.view.tasks) { task.title = reviseAcademyText(task.title); task.detail = reviseAcademyText(task.detail); }
+      game.storyMemory.summary = reviseAcademyText(game.storyMemory.summary);
+      game.storyMemory.openThreads = game.storyMemory.openThreads.map(reviseAcademyText);
+      if (game.view.storyArc) {
+        game.view.storyArc.centralGoal = reviseAcademyText(game.view.storyArc.centralGoal);
+        game.view.storyArc.centralConflict = reviseAcademyText(game.view.storyArc.centralConflict);
+        game.view.storyArc.promisedPayoff = reviseAcademyText(game.view.storyArc.promisedPayoff);
+      }
+      for (const relation of game.view.relations.filter((item) => item.name === life.teacherName || item.name === life.homeroomTeacher)) {
+        relation.name = life.teacherName;
+        if (!/师徒|私人导师|正式导师/.test(relation.relation)) relation.relation = academyProfile.teacherRole;
+        relation.impression = reviseAcademyText(relation.impression);
+      }
+      delete life.homeroomTeacher;
+      delete life.monthlyScore;
+    }
     if (application.stage === "已入学" && !game.view.academyLife) {
       const progress = Number(game.world.flags.academyCourseProgress ?? 0);
-      const era = game.view.era ?? 1;
-      const peerSpecs = ({ 1: [["陆峥", "竞争者"], ["石禾", "务实同学"], ["苏棠", "协作同学"]], 2: [["徐铮", "竞争者"], ["安禾", "务实同学"], ["林晚照", "协作同学"]], 3: [["贺骁", "竞争者"], ["唐禾", "务实同学"], ["叶清", "协作同学"]], 4: [["穆辰星", "竞争者"], ["蓝禾", "务实同学"], ["周澄", "协作同学"]] } as const)[era];
-      game.view.academyLife = { academyName: application.academyName, stage: progress >= 2 ? "同辈磨合" : "报到安置", className: era === 1 ? "初级魂师一年级" : era === 2 ? "新生魂师基础班" : era === 3 ? "初等学院魂师班" : "初等学院魂力基础班", homeroomTeacher: `${application.academyName}新生班主任`, dormitory: application.route === "工读生" ? "工读生集体宿舍" : `${application.academyName}新生宿舍`, attendance: progress, courseProgress: progress, practicalProgress: 0, fundingDutyProgress: ["家庭自费", "公共义务教育"].includes(application.fundingType) ? 1 : 0, peerInteractions: 0, standing: 0, discipline: 100, evidence: progress ? [`旧存档保留${progress}次基础课程；同辈互动与首月考核从本次载入后补记`] : ["旧存档已有学籍；宿舍、课表与班级生活从本次载入后补记"], peers: peerSpecs.map(([name, role], index) => ({ id: `academy-peer-${era}-${name}`, name, role, background: "旧存档未记录具体家庭，只保留同班身份", motive: role === "竞争者" ? "争取首月考核名次" : role === "务实同学" ? "稳住课程与家庭开销" : "寻找可靠的小组练习同伴", attitude: index ? 4 : 0, competition: index === 0 ? 28 : index === 1 ? 12 : 6, interactions: 0, lastAction: "正在处理自己的课程、生活与首月目标" })) };
-      if (!game.view.relations.some((relation) => relation.name === game.view.academyLife!.homeroomTeacher)) game.view.relations.push({ id: `academy-teacher-${era}`, name: game.view.academyLife.homeroomTeacher, relation: "学院班主任", impression: "旧存档补建的新生课程、生活与考核责任人", strength: 12, category: "师友" });
+      const peerSpecs = ({ 1: [["陆峥", "竞争者"], ["石禾", "务实同学"], ["苏棠", "协作同学"]], 2: [["徐铮", "竞争者"], ["安禾", "务实同学"], ["林晚照", "协作同学"]], 3: [["贺骁", "竞争者"], ["唐禾", "务实同学"], ["叶清", "协作同学"]], 4: [["穆辰星", "竞争者"], ["蓝禾", "务实同学"], ["周澄", "协作同学"]] } as const)[academyEra];
+      const teacherName = ({ 1: "严观棋", 2: "许岚川", 3: "罗闻舟", 4: "周砺星" } as const)[academyEra];
+      game.view.academyLife = { academyName: application.academyName, stage: progress >= 2 ? "同辈磨合" : "入学安顿", className: academyEra === 1 ? "初级魂师一年级" : academyEra === 2 ? "新生魂师基础班" : academyEra === 3 ? "初等学院魂师班" : "初等学院魂力基础班", teacherName, ...academyProfile, dormitory: application.route === "工读生" ? "工读生集体宿舍" : `${application.academyName}新生宿舍`, attendance: progress, courseProgress: progress, practicalProgress: 0, fundingDutyProgress: ["家庭自费", "公共义务教育"].includes(application.fundingType) ? 1 : 0, peerInteractions: 0, standing: 0, discipline: 100, evidence: progress ? [`旧存档保留${progress}次基础课程；同辈互动与${academyProfile.assessmentName}从本次载入后继续`] : [`旧存档已有学院身份；${academyProfile.arrangementName}与同辈生活从本次载入后继续`], peers: peerSpecs.map(([name, role], index) => ({ id: `academy-peer-${academyEra}-${name}`, name, role, background: "旧存档未记录具体家庭，只保留同班身份", motive: role === "竞争者" ? `争取在${academyProfile.assessmentName}中表现更好` : role === "务实同学" ? "稳住课程与家庭开销" : "寻找可靠的小组练习同伴", attitude: index ? 4 : 0, competition: index === 0 ? 28 : index === 1 ? 12 : 6, interactions: 0, lastAction: `正在处理自己的课程、生活与${academyProfile.periodLabel}目标` })) };
+      if (!game.view.relations.some((relation) => relation.name === teacherName)) game.view.relations.push({ id: `academy-teacher-${academyEra}`, name: teacherName, relation: academyProfile.teacherRole, impression: `旧存档补建的${academyProfile.periodLabel}课程、生活与${academyProfile.assessmentName}负责人`, strength: 12, category: "师友" });
       for (const peer of game.view.academyLife.peers) if (!game.view.relations.some((relation) => relation.name === peer.name)) game.view.relations.push({ id: peer.id, name: peer.name, relation: "同班同学", impression: `${peer.background}；${peer.motive}`, strength: 8, category: "其他" });
       const foundationTask = game.view.tasks.find((item) => item.id === "academy-foundation");
-      if (foundationTask?.status === "完成") { foundationTask.status = "进行中"; foundationTask.detail = "旧课程次数保留；补齐宿舍、同辈互动、费用责任与首月实战考核。"; }
+      if (foundationTask?.status === "完成") { foundationTask.status = "进行中"; foundationTask.detail = `旧课程次数保留；继续完成宿舍生活、同辈互动、费用约定与${academyProfile.assessmentName}。`; }
     }
   }
   if (game.view.mentorPursuit) {

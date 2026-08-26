@@ -724,6 +724,8 @@ export interface AcademyApplicationView {
   requirements: string[];
   evidence: string[];
   fee: number;
+  admissionAssessmentName: string;
+  assessmentRequired: boolean;
   guardianName?: string;
   examScore?: number;
   passScore: number;
@@ -743,9 +745,15 @@ export interface AcademyPeerView {
 
 export interface AcademyLifeView {
   academyName: string;
-  stage: "报到安置" | "基础课程" | "同辈磨合" | "首月实战考核" | "首月结业";
+  stage: import("./academy-life.js").AcademyLifeStage;
   className: string;
-  homeroomTeacher: string;
+  teacherName: string;
+  teacherRole: string;
+  periodLabel: string;
+  arrivalAction: string;
+  arrangementName: string;
+  assessmentName: string;
+  completionName: string;
   dormitory: string;
   attendance: number;
   courseProgress: number;
@@ -754,7 +762,7 @@ export interface AcademyLifeView {
   peerInteractions: number;
   standing: number;
   discipline: number;
-  monthlyScore?: number;
+  assessmentScore?: number;
   evidence: string[];
   peers: AcademyPeerView[];
 }

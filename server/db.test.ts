@@ -249,7 +249,7 @@ describe("存档数据库", () => {
   it("retrieves separate world reaction logic for public talent, resource tilt, and hostile escalation", () => {
     const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "world-logic-vector" });
     const logic = database.retrieveWorldLogic(game, "觉醒仪式公开双生武魂和先天满魂力后，老师争取收徒，敌对势力评估监视绑架暗杀", 16);
-    const resourceLogic = database.retrieveWorldLogic(game, "罕见高天赋完成复核后，机构怎样优先安排导师面谈、训练场、猎魂名额和资源额度", 8);
+    const resourceLogic = database.retrieveWorldLogic(game, "罕见高天赋经过可靠测试后，谁愿意教、训练场能用多久、猎魂队是否愿意带人和能给多少材料", 8);
     expect(logic.some((item) => item.metadata.ruleId === "public-dual-martial-souls")).toBe(true);
     expect(resourceLogic.some((item) => item.metadata.ruleId === "talent-resource-priority")).toBe(true);
     expect(logic.some((item) => ["hostile-threat-assessment", "assassination-escalation"].includes(String(item.metadata.ruleId)))).toBe(true);

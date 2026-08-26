@@ -1589,7 +1589,7 @@ export function finalizeCharacterShaping(game: StoredGame, input: { personalityI
   game.view.narrative = [createEntry("narration", buildAwakeningPrelude(candidate, profile))];
   const scores = profile.scores;
   game.view.suggestions = [
-    scores.patience >= 2 ? "留意觉醒魂师检查阵法的顺序" : scores.courage >= 2 ? "走近阵法观察六块黑石" : "站在家人身边等主持者叫到名字",
+    scores.patience >= 2 ? "留意觉醒魂师检查阵法的顺序" : scores.courage >= 2 ? "走近阵法观察六块黑石" : "站在家人身边，等觉醒魂师示意自己上前",
     scores.empathy >= 2 ? "安慰前一个觉醒失败的孩子" : scores.ambition >= 2 ? "打听今天有没有先天高魂力的孩子" : "听一听门外家长的议论",
     scores.independence >= 2 ? "直接询问觉醒时该注意什么" : "把家人临行前的话再想一遍",
   ];
@@ -1627,11 +1627,11 @@ export function selectLifeGoal(game: StoredGame, lifeGoal: string, options?: { a
       game.world.flags.talentThreatStage = 0;
       game.world.flags.publicTalentWitness = context.officiant;
       const existing = game.view.tasks.find((task) => task.id === "awakening-recruitment");
-      if (existing) existing.detail = `${context.officiant}已经亲眼确认${publicIndices.length}个武魂；所属势力会立即复核培养、保密与魂环路线，并优先安排导师面谈、基础食宿、训练场时段和第一魂环评估。公开不等于必须效忠，资源也会附带考核与归属谈判。`;
-      else game.view.tasks.push({ id: "awakening-recruitment", title: `回应${context.factionName}的多武魂培养复核`, kind: "线索", detail: `${context.officiant}已经亲眼确认${publicIndices.length}个武魂；可优先获得导师面谈、基础食宿、训练场时段和第一魂环评估，但需要谈清保密、考核、资源额度和归属。`, status: "进行中", destinationId: game.view.locationId, deadline: "觉醒当日" });
+      if (existing) existing.detail = `${context.officiant}已经亲眼确认${publicIndices.length}个武魂；所属势力会立刻讨论由谁教、食宿由谁承担、训练场能用多久、第一次猎魂能帮到哪一步，以及消息要告诉哪些人。公开不等于必须效忠，接受帮助也会带来考察与归属谈判。`;
+      else game.view.tasks.push({ id: "awakening-recruitment", title: `听取${context.factionName}对多武魂的培养条件`, kind: "线索", detail: `${context.officiant}已经亲眼确认${publicIndices.length}个武魂；接下来要具体问清谁愿意教、食宿由谁承担、训练场能用多久、第一次猎魂能帮到哪一步，以及武魂细节会告诉哪些人。`, status: "进行中", destinationId: game.view.locationId, deadline: "觉醒当日" });
       const currentOrdinal = (game.view.worldTime?.year ?? candidate.public.birthYearOffset ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
-      if (!game.world.dynamicEvents.some((event) => event.id === "talent-recruitment-competition")) game.world.dynamicEvents.push({ id: "talent-recruitment-competition", title: "多武魂天才培养权复核", kind: "势力", locationId: game.view.locationId ?? candidate.public.locationId, participantIds: [], detail: `${context.factionName}内部将围绕导师、资源、保密和未来归属形成不同意见；有权限者会先复测和谈条件，不会仅凭惊叹定案。`, stakes: 4, status: "可介入", createdYear: game.view.worldTime?.year ?? candidate.public.birthYearOffset ?? 0, createdDay: game.view.worldTime?.day ?? 1, expiresOrdinal: currentOrdinal + 30 });
-      recordIntelligence(game, { subjectType: "事件", subjectId: "talent-recruitment-competition", title: "多武魂觉醒已进入培养复核", detail: `${context.officiant}亲眼确认并暂停普通流程；首轮资源会倾斜，但导师、额度、保密和归属仍需谈判。`, source: `${context.officiant}现场说明`, confidence: 100, status: "确定" });
+      if (!game.world.dynamicEvents.some((event) => event.id === "talent-recruitment-competition")) game.world.dynamicEvents.push({ id: "talent-recruitment-competition", title: "多武魂天才引发培养争议", kind: "势力", locationId: game.view.locationId ?? candidate.public.locationId, participantIds: [], detail: `${context.factionName}内部会围绕由谁教、能给多少帮助、如何保密和未来归属产生不同意见；有权作主的人会先重新测试和谈条件，不会仅凭惊叹定案。`, stakes: 4, status: "可介入", createdYear: game.view.worldTime?.year ?? candidate.public.birthYearOffset ?? 0, createdDay: game.view.worldTime?.day ?? 1, expiresOrdinal: currentOrdinal + 30 });
+      recordIntelligence(game, { subjectType: "事件", subjectId: "talent-recruitment-competition", title: "多武魂觉醒引起培养争议", detail: `${context.officiant}亲眼确认并暂停后续觉醒；最先得到的会是老师接触、食宿和训练机会，具体帮助、保密与归属仍要谈。`, source: `${context.officiant}现场说明`, confidence: 100, status: "确定" });
       game.view.character.reputation = `${context.factionName}最高优先记录的多武魂天才`;
     }
   }
@@ -1687,14 +1687,14 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 44,
+    schemaVersion: 45,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
     actionIndex: 0,
     world,
     storyMemory: {
-      summary: "六岁的主角即将参加武魂觉醒，人生尚未真正开始。",
+      summary: "六岁的孩子即将参加武魂觉醒，眼前最重要的仍是看清自己的武魂与魂力。",
       openThreads: ["武魂觉醒结果", "家人与出身中尚未说清的细节"],
       keyChoices: [],
       npcNotes: {},
@@ -1741,7 +1741,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       activeEvents: [],
       canonInfluences: [],
       storyArchive: {
-        summary: "六岁的主角即将参加武魂觉醒，人生尚未真正开始。",
+        summary: "六岁的孩子即将参加武魂觉醒，眼前最重要的仍是看清自己的武魂与魂力。",
         openThreads: ["武魂觉醒结果", "家人与出身中尚未说清的细节"],
         keyChoices: [],
         recentConsequences: [],
@@ -1751,7 +1751,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       knownFigures: [],
       intelligence: [],
       affiliations: [],
-      chapter: { number: 1, title: "觉醒之日", summary: "六岁的主角正等着武魂觉醒。" },
+      chapter: { number: 1, title: "觉醒之日", summary: "六岁的孩子正等着武魂觉醒。" },
       runProgress: {
         lifeGoal: input.lifeGoal?.trim() || "尚未决定",
         highestSoulRank: 0,
@@ -1933,7 +1933,7 @@ export function selectCandidate(game: StoredGame, candidateId: string, customNam
   game.world = createHiddenWorld(candidate.public.birthYearOffset ?? 0, game.view.locationId);
   game.view.worldTime = { era: candidate.public.eraRelation, year: candidate.public.birthYearOffset ?? 0, day: 1, time: "08:00", season: "春" };
   game.view.map = buildMapView(game);
-  recordIntelligence(game, { subjectType: "地点", subjectId: candidate.public.locationId, title: candidate.public.location, detail: `${candidate.public.residence.district}；住处为${candidate.public.residence.building}，主角日常使用${candidate.public.residence.room}。`, source: "六年日常生活", confidence: 100, status: "确定" });
+  recordIntelligence(game, { subjectType: "地点", subjectId: candidate.public.locationId, title: candidate.public.location, detail: `${candidate.public.residence.district}；住处为${candidate.public.residence.building}，${candidate.public.name}日常使用${candidate.public.residence.room}。`, source: "六年日常生活", confidence: 100, status: "确定" });
   game.view.mapHierarchy = buildMapHierarchy(game);
   game.view.candidates = game.hiddenCandidates.map((item) => item.public);
   game.view.shaping = buildShaping(game, 0, 0, [false, false, false], undefined, false);
@@ -2026,12 +2026,12 @@ function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityP
   ] : [
     `天刚亮，${candidate.public.location}的石路还带着夜里的凉气。今天轮到六岁的孩子参加公共觉醒，门外已经挤了不少人。`,
     `队伍一点点往前挪。地方武魂殿巡查执事翻着名册，村里或街区的监护人在旁等候。${candidate.public.name}${reaction}。`,
-    `六块黑石摆在地上，边角磨得发亮。前一个孩子走出阵外，地方武魂殿巡查执事念出了${candidate.public.name}的名字。`,
+    `六块黑石摆在地上，边角磨得发亮。前一个孩子走出阵外，地方武魂殿巡查执事朝${candidate.public.name}抬了抬手，示意下一个进阵。`,
   ]);
   return [scene[0], identityLine, scene[1], scene[2]].join("\n\n");
 }
 
-interface AwakeningContext {
+export interface AwakeningContext {
   factionId: string;
   factionName: string;
   officiant: string;
@@ -2039,17 +2039,17 @@ interface AwakeningContext {
   notableNpc?: { id: string; name: string };
 }
 
-const SECT_AWAKENING_CONTEXTS: Record<string, AwakeningContext> = {
+export const SECT_AWAKENING_CONTEXTS: Record<string, AwakeningContext> = {
   "elephant-sect-direct": { factionId: "elephant-sect", factionName: "象甲宗", officiant: "象甲宗内门觉醒教习", venue: "岩甲觉醒场" },
   "wind-sword-disciple": { factionId: "wind-sword-sect", factionName: "风剑宗", officiant: "风剑宗传功执事", venue: "风剑关试剑台" },
   "fire-leopard-heir": { factionId: "fire-leopard-sect", factionName: "火豹宗", officiant: "火豹宗执法堂教习", venue: "火豹宗演武场" },
   "holy-dragon-outer": { factionId: "holy-dragon-sect", factionName: "圣龙宗", officiant: "圣龙宗外门教习", venue: "白甲山门觉醒台" },
   "rock-sect-disciple": { factionId: "rock-sect", factionName: "岩羚宗", officiant: "岩羚宗采石堂教习", venue: "石寨觉醒场" },
   "river-spirit-sect": { factionId: "river-spirit-sect", factionName: "清河水宗", officiant: "清河水宗圣泉教习", venue: "圣泉外院" },
-  "speed-clan-child": { factionId: "min-clan", factionName: "敏之一族", officiant: "敏之一族觉醒长辈", venue: "侦查堂练功场" },
-  "strength-clan-child": { factionId: "min-clan", factionName: "力之一族", officiant: "力之一族觉醒长辈", venue: "锻造堂练功场" },
-  "defense-clan-child": { factionId: "min-clan", factionName: "御之一族", officiant: "御之一族觉醒长辈", venue: "堡寨练功场" },
-  "breaking-clan-child": { factionId: "min-clan", factionName: "破之一族", officiant: "破之一族觉醒长辈", venue: "药庄练功场" },
+  "speed-clan-child": { factionId: "speed-clan", factionName: "敏之一族", officiant: "敏之一族觉醒长辈", venue: "侦查堂练功场" },
+  "strength-clan-child": { factionId: "strength-clan", factionName: "力之一族", officiant: "力之一族觉醒长辈", venue: "锻造堂练功场" },
+  "defense-clan-child": { factionId: "defense-clan", factionName: "御之一族", officiant: "御之一族觉醒长辈", venue: "堡寨练功场" },
+  "breaking-clan-child": { factionId: "breaking-clan", factionName: "破之一族", officiant: "破之一族觉醒长辈", venue: "药庄练功场" },
   "hidden-sect-heir": { factionId: "taixuan-sword", factionName: "太玄剑宗", officiant: "太玄剑宗守碑长老", venue: "剑谷内门觉醒台" },
   "hidden-tide-gate": { factionId: "hidden-tide-gate", factionName: "归潮门", officiant: "归潮门守潮师", venue: "听潮屿潮纹石台" },
   "hidden-dream-valley": { factionId: "hidden-dream-valley", factionName: "眠云谷", officiant: "眠云谷守梦师", venue: "雾隐山坳静室" },
@@ -2077,15 +2077,15 @@ function awakeningContext(selected: HiddenCandidate): AwakeningContext {
   if (/天斗|王府/.test(text)) return { factionId: "heaven-dou", factionName: "天斗帝国", officiant: "宫廷觉醒魂师", venue: "王府觉醒厅" };
   if (/武魂殿|教皇殿|长老殿/.test(text)) return { factionId: "spirit-hall", factionName: "武魂殿", officiant: "武魂殿觉醒执事", venue: "武魂殿觉醒厅" };
   const year = selected.public.birthYearOffset ?? 0;
-  if (/传灵塔/.test(text)) return { factionId: "spirit-pagoda", factionName: "传灵塔", officiant: "传灵塔职员觉醒复核员", venue: "传灵塔职员区觉醒室" };
+  if (/传灵塔/.test(text)) return { factionId: "spirit-pagoda", factionName: "传灵塔", officiant: "传灵塔传灵师", venue: "传灵塔职员区觉醒室" };
   if (/两万年唐门|唐门外务堂/.test(text)) return { factionId: "d3-tang-sect", factionName: "两万年唐门", officiant: "唐门外务堂觉醒教习", venue: "唐门外务堂觉醒室" };
   if (/联邦舰队/.test(text)) return { factionId: "d4-federal-fleet", factionName: "斗罗联邦舰队", officiant: "舰队军属觉醒中心教师", venue: "舰队军属区觉醒中心" };
   if (year >= 25000) return { factionId: "douluo-federation", factionName: "斗罗联邦", officiant: "当地儿童觉醒中心工作人员", venue: "当地儿童觉醒中心" };
   if (year >= 15000) return { factionId: "douluo-federation", factionName: "斗罗联邦", officiant: "当地初等学院觉醒教师", venue: "初等学院觉醒室" };
   if (year >= 5000) {
-    if (/明都|日月/.test(text)) return { factionId: "sun-moon-empire", factionName: "日月帝国", officiant: "地方魂师与魂导师登记员", venue: "地方儿童觉醒室" };
-    if (/星罗/.test(text)) return { factionId: "star-luo", factionName: "星罗帝国", officiant: "地方魂师登记员", venue: "地方儿童觉醒室" };
-    return { factionId: "heavenly-soul-empire", factionName: "天魂帝国", officiant: "地方魂师登记员", venue: "地方儿童觉醒室" };
+    if (/明都|日月/.test(text)) return { factionId: "sun-moon-empire", factionName: "日月帝国", officiant: "负责当地儿童觉醒的魂导师", venue: "地方儿童觉醒室" };
+    if (/星罗/.test(text)) return { factionId: "star-luo", factionName: "星罗帝国", officiant: "负责当地儿童觉醒的魂师", venue: "地方儿童觉醒室" };
+    return { factionId: "heavenly-soul-empire", factionName: "天魂帝国", officiant: "负责当地儿童觉醒的魂师", venue: "地方儿童觉醒室" };
   }
   return { factionId: "spirit-hall", factionName: "武魂殿", officiant: "地方武魂殿巡查执事", venue: "地方公共觉醒点" };
 }
@@ -2100,19 +2100,19 @@ function openingMode(game: StoredGame, selected: HiddenCandidate, awakening: Awa
   return "public";
 }
 
-function bodyAwakeningText(name: string, pronoun: string, soul: MartialSoulTemplate): string {
+function bodyAwakeningText(name: string, pronoun: string, soul: MartialSoulTemplate, officiant: string): string {
   const text = `${soul.name}${soul.description}${(soul.affinityTags ?? []).join("")}`;
   if (/眼|眸|瞳|视觉/.test(text)) return `${name}眼前的远近忽然被拉得分明，连阵石表面的细纹都一根根浮了出来。${pronoun}的瞳色短暂改变，${soul.name}并没有出现在手里，而是直接作用在双眼与感知上。`;
   if (/声音|心音|嗓|喉|呼吸/.test(text)) return `${name}胸腔里的呼吸忽然变得有节律，下一口气吐出时，觉醒阵中的金色光点随声音轻轻震动。${soul.name}显现在${pronoun}的声音与呼吸里。`;
   if (/骨|体|皮肤|双臂|手臂|身体|道体/.test(text)) return `${name}体内先是一热，随后骨骼、肌肉与皮肤同时传来清晰的魂力回响。${pronoun}仍两手空空，${soul.name}显现的是身体本身的变化。`;
-  return `${name}的身体某处传来持续而清晰的魂力共鸣。${soul.name}没有凝成外物，主持者只能从体征、魂力流向与${pronoun}的实际感受判断它的形态。`;
+  return `${name}的身体某处传来持续而清晰的魂力共鸣。${soul.name}没有凝成外物，${officiant}只能从体征、魂力流向与${pronoun}的实际感受判断它的形态。`;
 }
 
 export function awakeningManifestation(name: string, pronoun: string, soul: MartialSoulTemplate, officiant: string): { onset: string; manifestation: string } {
   const category = soul.category;
   if (/本体/.test(category)) return {
     onset: `${name}踩进六角阵。金色光点贴着小腿往上钻，麻痒一路爬进骨骼和呼吸，${pronoun}本能地站稳了些。`,
-    manifestation: `${bodyAwakeningText(name, pronoun, soul)}${officiant}没有去看${pronoun}的掌心，而是先核对体征、动作和魂力流向，再让记录员写下变化位置。`,
+    manifestation: `${bodyAwakeningText(name, pronoun, soul, officiant)}${officiant}没有去看${pronoun}的掌心，而是观察体征、动作和魂力流向，再让记录员写下变化位置。`,
   };
   if (/兽/.test(category)) return {
     onset: `${name}踩进六角阵。金色光点没入身体，肩背、牙齿与视野同时传来陌生变化，野兽般的本能从血液里猛地抬头。`,
@@ -2150,7 +2150,7 @@ function hiddenSoulSensation(name: string, pronoun: string, souls: MartialSoulTe
   const hidden = souls.slice(1);
   const bodyLike = hidden.some((soul) => /本体|兽/.test(soul.category));
   const sensation = bodyLike ? "身体深处又顶起一股完全不同的本能与魂力回响" : "意识深处又浮出一组与眼前武魂不同的轮廓";
-  return `就在阵光将散未散的一瞬，${name}${sensation}。${pronoun}放慢呼吸，没有继续催动那股力量。${officiant}正在核对第一武魂与水晶球，没有看到第二次显形。`;
+  return `就在阵光将散未散的一瞬，${name}${sensation}。${pronoun}放慢呼吸，没有继续催动那股力量。${officiant}仍在查看第一武魂与水晶球，没有看到第二次显形。`;
 }
 
 function openingObjective(game: StoredGame, selected: HiddenCandidate, awakening: AwakeningContext): ChapterObjectiveView {
@@ -2159,26 +2159,26 @@ function openingObjective(game: StoredGame, selected: HiddenCandidate, awakening
   const soulName = selected.martialSoul.name;
   const common = { destinationId: selected.public.locationId, stakes: selected.originStart?.burden ?? selected.public.originBurden };
   if (!hasPower) {
-    const alternate = mode === "internal" ? `核对${awakening.factionName}内部是否有体魄、学术或职业培养路线` : mode === "unbound" ? "先取得住处、见证和临时身份，再寻找非魂师生存路线" : "查找体魄、知识或职业技能的替代成长路线";
+    const alternate = mode === "internal" ? `询问${awakening.factionName}内部是否有体魄、学术或职业培养路线` : mode === "unbound" ? "先找到住处和愿意作保的人，再寻找非魂师生存路线" : "查找体魄、知识或职业技能的替代成长路线";
     return { ...common, title: "确认无魂力之后仍能掌握什么", steps: [
-      { id: "recheck", text: "复核觉醒阵、水晶球与身体状态", status: "进行中" },
+      { id: "recheck", text: "请觉醒魂师换手再测，并检查阵石与身体状态", status: "进行中" },
       { id: "alternate", text: alternate, status: "未开始" },
       { id: "commit", text: "选定下一阶段愿意持续付出代价的生活与成长方式", status: "未开始" },
     ] };
   }
   if (mode === "internal") return { ...common, title: `把${awakening.factionName}内部觉醒变成具体培养方案`, steps: [
     { id: "understand", text: `请${awakening.officiant}完成${soulName}的${awakeningTestFocus(selected.martialSoul)}测试`, status: "进行中" },
-    { id: "support", text: `核对${awakening.factionName}能提供的导师、训练场、资源额度与猎魂护送`, status: "未开始" },
+    { id: "support", text: `问清${awakening.factionName}能安排哪位导师、多少训练时间和哪些猎魂帮助`, status: "未开始" },
     { id: "path", text: "决定主修顺序、公开范围和愿意承担的内部责任", status: "未开始" },
   ] };
   if (mode === "noble") return { ...common, title: "比较贵族身份能够打开的培养路线", steps: [
     { id: "understand", text: `请${awakening.officiant}完成${soulName}的${awakeningTestFocus(selected.martialSoul)}测试`, status: "进行中" },
-    { id: "support", text: "分别核对家族培养、可报学院、外部导师或交换培养的资格与代价", status: "未开始" },
+    { id: "support", text: "比较家族培养、可报学院、外部导师或交换培养的资格与代价", status: "未开始" },
     { id: "path", text: "与监护人确定近期培养地点、费用来源和必须承担的家族责任", status: "未开始" },
   ] };
   if (mode === "unbound") return { ...common, title: "先在大陆活过觉醒后的第一天", steps: [
-    { id: "identity", text: "取得今晚住处、现场见证和一份临时身份凭据", status: "进行中" },
-    { id: "understand", text: `请主持者测试${soulName}的${awakeningTestFocus(selected.martialSoul)}`, status: "未开始" },
+    { id: "identity", text: "先找到今晚住处和愿意说明来处的见证人", status: "进行中" },
+    { id: "understand", text: `请${awakening.officiant}测试${soulName}的${awakeningTestFocus(selected.martialSoul)}`, status: "未开始" },
     { id: "path", text: "决定登记来历、保留异界秘密或继续无籍生活", status: "未开始" },
   ] };
   if (mode === "beast") return { ...common, title: "决定觉醒后是否接触人类魂师体系", steps: [
@@ -2188,7 +2188,7 @@ function openingObjective(game: StoredGame, selected: HiddenCandidate, awakening
   ] };
   const eraSupport = ({ 1: "落实学院名额、路费、监护人与第一魂环协助", 2: "落实学院报名、食宿、费用与第一魂环帮助", 3: "确认魂师班、家庭费用与合法魂灵路线", 4: "完成魂力记录、初等学院与家庭照料安排" } as const)[game.view.era ?? 1];
   return { ...common, title: "把觉醒结果换成下一步真实条件", steps: [
-    { id: "understand", text: `请主持者测试${soulName}的${awakeningTestFocus(selected.martialSoul)}`, status: "进行中" },
+    { id: "understand", text: `请${awakening.officiant}测试${soulName}的${awakeningTestFocus(selected.martialSoul)}`, status: "进行中" },
     { id: "support", text: eraSupport, status: "未开始" },
     { id: "path", text: "在现有家庭、资源和年龄限制内确定近期成长路线", status: "未开始" },
   ] };
@@ -2255,7 +2255,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     character.revealedGift = "前世修行记忆完整保留，修为归零，功法尚未适配魂力";
     character.specialSystem = { name: "前世剑修传承", stage: "斗罗适配 · 未入门", progress: "0%", abilities: ["剑理记忆", "经脉辨识"], resourceHint: "需要结合武魂、魂环与当地材料逐步验证" };
   } else if (selected.originId === "modern-transmigrator") {
-    character.revealedGift = "知道原作主要时间线；越受玩家影响，记忆越不可靠";
+    character.revealedGift = "知道原作主要时间线；亲手改变得越多，旧记忆越不可靠";
   } else if (selected.originId === "void-arrival-unbound") {
     character.revealedGift = "完整保留异界记忆，但没有系统、当地身份或任何预设关系";
   } else if (selected.originId === "fierce-beast-raised") {
@@ -2354,23 +2354,23 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     game.world.flags.publicTalentWitness = awakening.officiant;
     let awakeningRelation = game.view.relations.find((relation) => relation.faction === awakening.factionName || /觉醒/.test(`${relation.relation}${relation.name}`));
     if (!awakeningRelation) {
-      awakeningRelation = { name: awakening.officiant, relation: "觉醒主持者", impression: "已按所属势力流程封存觉醒记录", faction: awakening.factionName, strength: 18, category: "势力", dimensions: { closeness: 0, trust: 12, respect: 18, sharedInterest: 15, vigilance: 5, hostility: 0, favorDebt: 0, identityKnowledge: 70 }, history: [] };
+      awakeningRelation = { name: awakening.officiant, relation: "负责本次觉醒的魂师", impression: "亲眼见过公开武魂与魂力结果，并按所属势力的办法留下记录", faction: awakening.factionName, strength: 18, category: "势力", dimensions: { closeness: 0, trust: 12, respect: 18, sharedInterest: 15, vigilance: 5, hostility: 0, favorDebt: 0, identityKnowledge: 70 }, history: [] };
       game.view.relations.push(awakeningRelation);
     }
     if (awakeningRelation) {
-      awakeningRelation.impression = beastAwakening ? "确认孩子已经具备离开领地或继续留在兽群修炼的选择资格" : `将觉醒结果列入${awakening.factionName}内部培养评估`;
+      awakeningRelation.impression = beastAwakening ? "确认孩子已经具备离开领地或继续留在兽群修炼的选择资格" : `已经把觉醒结果报给${awakening.factionName}里能决定培养安排的人`;
       awakeningRelation.history = [...(awakeningRelation.history ?? []), { date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `${selected.innateSoulPower}级先天魂力与公开显露的${publicSoulViews[0].name}引起注意`, changes: `${awakening.factionName}关注提升至${attentionLevel}` }];
     }
-    game.view.tasks.push({ id: "awakening-recruitment", title: beastAwakening ? "与养育者商量觉醒后的去向" : `回应${awakening.factionName}的培养评估`, kind: "线索", detail: beastAwakening ? "兽群能提供森林生存与魂兽知识，却没有人类学院、户籍或公开导师资格；是否离开必须由角色自己决定。" : `${awakening.officiant}会先向${awakening.factionName}内部上报。所属势力会优先评估导师面谈、训练场时段、学院推荐、基础食宿和第一魂环协助；资源额度、考核、保密与未来归属需要逐项谈判。其他势力若得到可靠消息，也可能拉拢、监视或针对。`, status: "进行中", destinationId: selected.public.locationId, deadline: beastAwakening ? "没有强制期限" : selected.innateSoulPower === 10 ? "今日内会有高层过问" : "约十日内会有正式答复" });
+    game.view.tasks.push({ id: "awakening-recruitment", title: beastAwakening ? "与养育者商量觉醒后的去向" : `听取${awakening.factionName}愿意给出的培养条件`, kind: "线索", detail: beastAwakening ? "兽群能提供森林生存与魂兽知识，却没有人类学院、户籍或公开导师资格；是否离开必须由角色自己决定。" : `${awakening.officiant}会把结果报给${awakening.factionName}里真正能作主的人。接下来要具体问清：谁愿意教、训练场能用多久、食宿由谁负担、第一次猎魂能帮到哪一步，以及武魂细节会告诉哪些人。其他势力若得到可靠消息，也可能拉拢、监视或针对。`, status: "进行中", destinationId: selected.public.locationId, deadline: beastAwakening ? "没有强制期限" : selected.innateSoulPower === 10 ? "今日内会有高层过问" : "约十日内会有正式答复" });
     const year = game.view.worldTime?.year ?? 0;
     const day = game.view.worldTime?.day ?? 1;
     const participantIds = awakening.notableNpc ? [awakening.notableNpc.id] : [];
-    game.world.dynamicEvents.push({ id: `awakening-attention-${game.view.id}`, title: beastAwakening ? "兽群讨论人类幼崽的去向" : `${awakening.factionName}内部培养评估`, kind: "势力", locationId: selected.public.locationId, participantIds, detail: beastAwakening ? "觉醒结果让兽群内部出现分歧：继续藏在核心区最安全，接触人类则可能获得完整魂师训练，也可能暴露整个领地。" : awakening.notableNpc ? `${awakening.notableNpc.name}因相同或直接相关的武魂传承被列为第一过问人；是否收徒、亲近或投入资源仍取决于后续观察。` : `觉醒记录已进入${awakening.factionName}内部渠道，培养条件将按天赋、武魂路线与身份共同核定。`, stakes: attentionLevel === "最高优先" ? 5 : 3, status: "可介入", createdYear: year, createdDay: day, expiresOrdinal: year * 360 + day + 10 });
+    game.world.dynamicEvents.push({ id: `awakening-attention-${game.view.id}`, title: beastAwakening ? "兽群讨论人类幼崽的去向" : `${awakening.factionName}内部商议培养安排`, kind: "势力", locationId: selected.public.locationId, participantIds, detail: beastAwakening ? "觉醒结果让兽群内部出现分歧：继续藏在核心区最安全，接触人类则可能获得完整魂师训练，也可能暴露整个领地。" : awakening.notableNpc ? `${awakening.notableNpc.name}因相同或直接相关的武魂传承被列为第一过问人；是否收徒、亲近或投入资源仍取决于后续观察。` : `${awakening.factionName}里能决定导师、食宿、训练场和猎魂帮助的人正在商量具体条件。`, stakes: attentionLevel === "最高优先" ? 5 : 3, status: "可介入", createdYear: year, createdDay: day, expiresOrdinal: year * 360 + day + 10 });
     if (awakening.notableNpc) {
       revealNpc(game, awakening.notableNpc.id);
       const npc = game.world.npcs[awakening.notableNpc.id];
       if (npc) npc.memoryOfPlayer.push(`因公开显露的${publicSoulViews.map((soul) => soul.name).join("、")}与${selected.innateSoulPower}级先天魂力，收到觉醒堂的优先报告`);
-      game.view.tasks.push({ id: "lineage-notable-attention", title: `接受${awakening.notableNpc.name}的亲自复核`, kind: "线索", detail: `相同武魂会引起直接关注，但不自动等于收徒、血亲或无条件庇护。`, status: "进行中", destinationId: selected.public.locationId, deadline: selected.innateSoulPower === 10 ? "觉醒当日" : "三日内" });
+      game.view.tasks.push({ id: "lineage-notable-attention", title: `与${awakening.notableNpc.name}当面谈一次武魂`, kind: "线索", detail: `相同武魂会引起直接关注，但不自动等于收徒、血亲或无条件庇护。`, status: "进行中", destinationId: selected.public.locationId, deadline: selected.innateSoulPower === 10 ? "觉醒当日" : "三日内" });
     }
     character.reputation = selected.innateSoulPower === 10 ? `${awakening.factionName}最高优先记录的先天满魂力` : `${awakening.factionName}记录的${selected.innateSoulPower}级先天魂力新秀`;
   }
@@ -2420,14 +2420,14 @@ function buildAwakeningResult(game: StoredGame, candidate: HiddenCandidate, awak
       ? `岩叔蹲下来检查阵石，又朝林中发出一声短促低吼。几道强横气息很快逼近古树，却没有谁替${name}决定去留。第一次争论已经开始：把这个孩子继续藏在核心区，还是送去接触人类的修炼方法。`
       : unbound
         ? `执事啪地合上名册，叫助手拦住正要收阵石的人。\n\n“队伍晚走半个时辰。”他扫了一眼门外，又看回${name}，“先给这孩子拿水和吃的。小刘，你骑马回分殿报信，再找里正来作见证。”\n\n他没有立刻许诺收留，只把自己那张临时通行条压在桌上：“今晚以前，你至少不会再睡荒地。至于身份和培养条件，分殿的人来了再谈。”`
-        : `${awakening.officiant}当场暂停了后续流程，无关人员被请到门外。备用水晶、觉醒记录和身份凭证被依次复核。${awakening.notableNpc ? `一封写给${awakening.notableNpc.name}的急报已经送出。` : mode === "internal" ? `${awakening.factionName}负责传承、资源与安全的人被要求今日到场。` : `负责培养的人被要求今日到场。`}新的条件必须由真正有权限的人在这里谈清楚。`
+        : `${awakening.officiant}当场停下后面的觉醒，把无关人员请到门外，又换了一颗水晶重测。${awakening.notableNpc ? `一封写给${awakening.notableNpc.name}的急报已经送出。` : mode === "internal" ? `${awakening.factionName}负责传承、训练与安全的人被要求今日到场。` : `真正能决定培养安排的人被要求今日到场。`}谁愿意教、能给多少帮助、要承担什么，都得由有权作主的人当面说清。`
     : candidate.innateSoulPower >= 7
       ? beastRaised
         ? `岩叔把数字重复了一遍，随后叫来两名熟悉人类道路的长者。是否离开森林仍由${name}决定，但从这一刻起，去向已经成了必须商量的事。`
         : unbound
           ? `执事把${name}叫到桌边，先给了半块饼，又让助手去请村长作证。天赋足够让分殿认真接手这件事，来历不明却仍要一项项核实。`
           : mode === "internal"
-            ? `${awakening.officiant}在魂力数字下面画了两道线，当场启动${awakening.factionName}内部复核。导师、训练场、资源额度、保密范围与第一魂环护送责任，都要重新排进培养表。`
+            ? `${awakening.officiant}在魂力数字下面画了两道线，立刻去请能决定培养安排的长辈。哪位老师愿意接手、每周能用多久训练场、第一次猎魂谁肯同行，都得重新商量。`
             : mode === "noble"
               ? `${awakening.officiant}把结果交给家族见证人。留在家中培养、报名合适的学院，或争取外部导师与交换培养，都会重新评议；同辈排序和家族责任也会随之变化，但身份不能替${name}免去考核。`
               : `${awakening.officiant}在魂力数字下面画了两道线，当场留下${name}与监护人。学院名额、路费、食宿与第一魂环协助，需要逐项确认由谁承担。`

@@ -292,7 +292,7 @@ export async function narrateWithDeepSeek(
     playerInput, resolution.intent, resolution.ruleSummary, game.view.location,
     publicSoulNames.length ? `已公开${publicSoulNames.length}个武魂：${publicSoulNames.join("、")}；先天魂力${game.view.character?.innateSoulPower ?? "未知"}；社会评价${game.view.character?.reputation ?? "尚未形成"}` : "",
     game.view.storyArc ? `当前故事卷：${game.view.storyArc.title}；阶段${game.view.storyArc.stage}；目标${game.view.storyArc.centralGoal}；冲突${game.view.storyArc.centralConflict}；对抗压力${game.view.storyArc.opposingForce}` : "",
-    game.view.academyLife ? `学院首月：${game.view.academyLife.className}；${game.view.academyLife.stage}；班主任${game.view.academyLife.homeroomTeacher}；同辈${game.view.academyLife.peers.map((peer) => `${peer.name}/${peer.motive}`).join("、")}` : "",
+    game.view.academyLife ? `${game.view.academyLife.periodLabel}：${game.view.academyLife.className}；${game.view.academyLife.stage}；${game.view.academyLife.teacherRole}${game.view.academyLife.teacherName}；当前安排${game.view.academyLife.arrangementName}；同辈${game.view.academyLife.peers.map((peer) => `${peer.name}/${peer.motive}`).join("、")}` : "",
     ...game.view.tasks.filter((task) => task.status !== "完成").slice(0, 6).map((task) => `${task.title} ${task.detail}`),
     ...game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === game.view.locationId).map((item) => `持续后果：${item.summary}`),
     ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => `${npc.name}：${npc.activePlan?.nextAction ?? npc.currentGoal}；责任${npc.activePlan?.responsibility ?? "个人事务"}`),

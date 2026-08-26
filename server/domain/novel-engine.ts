@@ -113,7 +113,7 @@ export function auditNovelEngineNarrative(game: StoredGame, text: string, pack: 
   if (!pack.enabled) return [];
   const issues: string[] = [];
   const outside = narrationOutsideDialogue(text);
-  if (/(玩家|程序判定|固定结果|规则包|小说引擎|写作模块|语言模型|AI|技能)/i.test(outside)) issues.push("正文泄露后台叙事机制");
+  if (/(玩家|主角|程序判定|固定结果|规则包|小说引擎|写作模块|语言模型|系统替|AI|技能)/i.test(outside)) issues.push("正文泄露后台叙事机制");
   if (/[✦✨◆●▪★◇❖➤]/.test(text)) issues.push("正文含有装饰符号");
   if (/(他|她|\S{1,4})(感到|感觉到|内心充满|心中涌起)(非常|无比|极其|十分)?(愤怒|悲伤|痛苦|震惊|失望|委屈|喜悦)/.test(outside)) issues.push("正文直接喊出情绪而没有外显");
   if (/生活总是|人生就是|命运总会|这是一个.{0,12}的时代/.test(outside)) issues.push("正文出现空泛升华");

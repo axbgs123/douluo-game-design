@@ -11,6 +11,7 @@ import { createSpecialSystemView, goldFingerByName, isGoldFinger } from "../data
 import { heirloomByName } from "../../shared/heirlooms.js";
 import { updateStoryArc } from "./story-director.js";
 import { resolveExpiredDynamicEvent } from "./event-consequences.js";
+import { academyEraLifeProfile } from "../../shared/academy-life.js";
 
 interface DifficultyRules {
   training: number;
@@ -171,7 +172,7 @@ function relationshipResolution(game: StoredGame, action: string): ActionResolut
     if (dimensions.trust < 60 || dimensions.closeness < 60 || sharedHistory.length < 4) return impossible(`讨论长期伴侣关系需要至少四段真实共同经历，且亲近与信任均达到 60；当前共同经历 ${sharedHistory.length} 段、亲近 ${dimensions.closeness}、信任 ${dimensions.trust}。`, [`与${relation.name}共同完成重要经历`, `继续了解${relation.name}的边界`, "不要急于作出承诺"]);
     relation.partnerDiscussedAtOrdinal = now;
     relation.consentEvidence ??= [];
-    relation.consentEvidence.push(`${relationshipDate(game)}：主角表达长期关系意向；${relation.name}同意在冷静期后再次明确确认`);
+    relation.consentEvidence.push(`${relationshipDate(game)}：${game.view.character!.name}表达长期关系意向；${relation.name}同意在冷静期后再次明确确认`);
     return { intent: "讨论伴侣关系", minutes: 60, ruleSummary: `${relation.name}只同意进入讨论与冷静期，尚未建立伴侣关系。`, fallbackNarrative: `我把自己的想法说清楚，也把拒绝的余地留给${relation.name}。对方没有被一句话替代回答，只说愿意认真想一段时间，再给我明确答复。`, suggestions: ["等待至少七天", `询问${relation.name}是否愿意成为伴侣`, "继续维持正常相处"], systemMessages: [`关系意向 · ${relation.name} · 等待再次确认`] };
   }
 
@@ -549,7 +550,7 @@ function travelResolution(game: StoredGame, action: string): ActionResolution {
     game.world.discoveredLocations.push(target.id);
     game.world.metrics.discoveries += 1;
   }
-  recordIntelligence(game, { subjectType: "地点", subjectId: target.id, title: target.name, detail: `主角亲自抵达${target.name}，确认了入口、道路与当前治安状况。`, source: "亲历", confidence: 100, status: "确定" });
+  recordIntelligence(game, { subjectType: "地点", subjectId: target.id, title: target.name, detail: `${game.view.character!.name}亲自抵达${target.name}，确认了入口、道路与当前治安状况。`, source: "亲历", confidence: 100, status: "确定" });
   game.world.fatiguePoints += Math.min(35, Math.ceil(minutes / 240));
   const danger = locationById(target.id)?.danger;
   const encounter = ["高", "禁区"].includes(danger ?? "") && random() < 0.28;
@@ -601,12 +602,22 @@ function buildHuntSupport(game: StoredGame, route: HuntSupportView["route"]): Hu
   if (route === "导师指导" && !mentor) return "当前没有已经成立的师徒关系，试学或普通请教不能替代猎魂责任";
   if (route === "导师指导" && game.world.flags.mentorRingAssessment !== mentor?.mentorName) return `必须先请${mentor?.mentorName}完成武魂与魂环方向评估，再谈是否承担指导`;
   if (route === "独行筹备" && (game.view.character?.age ?? 0) < 12) return `${game.view.character?.age ?? 0}岁的孩子不能选择没有成年责任人的独行猎魂路线`;
-  const responsibleParty = route === "家庭筹备" ? guardian!.name : route === "学院带队" ? game.view.academyLife?.homeroomTeacher ?? `${academy!.name}猎魂带队教师` : route === "宗门护送" ? `${sect!.name}外勤护送负责人` : route === "导师指导" ? mentor!.mentorName : game.view.character!.name;
-  const fundingSource = route === "家庭筹备" ? "玩家与家庭现有魂币" : route === "学院带队" ? `${academy!.name}首环补助与玩家自付差额` : route === "宗门护送" ? `${sect!.name}培养额度` : route === "导师指导" ? `${mentor!.mentorName}有限材料帮助与玩家自付差额` : "玩家个人魂币";
+  const responsibleParty = route === "家庭筹备" ? guardian!.name : route === "学院带队" ? game.view.academyLife?.teacherName ?? `${academy!.name}猎魂带队教师` : route === "宗门护送" ? `${sect!.name}外勤护送负责人` : route === "导师指导" ? mentor!.mentorName : game.view.character!.name;
+  const fundingSource = route === "家庭筹备" ? "本人和家里现有的魂币" : route === "学院带队" ? `${academy!.name}首环补助，不足部分由本人承担` : route === "宗门护送" ? `${sect!.name}明确答应承担的费用` : route === "导师指导" ? `${mentor!.mentorName}愿意提供的少量材料，不足部分由本人承担` : "本人现有的魂币";
   const sponsorBudget = route === "学院带队" ? 6 : route === "宗门护送" ? 12 : route === "导师指导" ? 4 : 0;
-  const authorization = route === "家庭筹备" ? "家庭只负责费用和监护，仍需另找有权限魂师与入林凭证" : route === "学院带队" ? `${academy!.name}只在正式带队教师签字后办理许可` : route === "宗门护送" ? `${sect!.name}按内部外勤名册和目的地规则办理许可` : route === "导师指导" ? `${mentor!.mentorName}只以个人实际权限签字，不能替其他机构盖章` : "独行者自行承担公开路线与许可，不能绕过管控区域";
-  const obligations = route === "家庭筹备" ? ["向监护人说明预算、路线与撤退条件", "另行邀请成年魂师同行"] : route === "学院带队" ? ["完成队前安全课与集合人员核验", "接受学院确定的集合时间和带队边界"] : route === "宗门护送" ? [`向${sect!.name}提交魂兽选择与损耗记录`, "护送不等于替玩家完成最后一击与吸收"] : route === "导师指导" ? [`遵守${mentor!.mentorName}的训练禁忌与撤退判断`, "导师建议不保证找到目标或吸收成功"] : ["自行承担全部费用、情报误差与撤退风险", "受管控区域仍需合法凭证"];
-  return { route, responsibleParty, fundingSource, authorization, sponsorBudget, sponsorSpent: 0, obligations, evidence: [`玩家明确选择${route}；${responsibleParty}只承担已写明范围`], status: "已确认" };
+  const authorization = (game.view.era ?? 1) === 1
+    ? route === "家庭筹备" ? "家里只能出钱和找人，仍要请持有武魂殿猎魂手令的成年魂师带路"
+      : route === "学院带队" ? `${academy!.name}必须安排持有或能够合法使用猎魂手令的带队魂师；学员身份本身不能入林`
+        : route === "宗门护送" ? `${sect!.name}必须由持有猎魂手令的成年魂师带队，并服从猎魂森林检查`
+          : route === "导师指导" ? `${mentor!.mentorName}只能使用本人确实持有的手令与权限，师徒名义不能替代手令`
+            : "独行者仍要持有能够通过检查的猎魂手令，不能凭年龄或实力闯入圈养森林"
+    : route === "家庭筹备" ? "家庭只负责费用和照料，仍需另找符合当代规定的魂师与入场凭证"
+      : route === "学院带队" ? `${academy!.name}只有安排正式带队教师后才会办理当代许可`
+        : route === "宗门护送" ? `${sect!.name}按内部外勤安排和目的地规则办理许可`
+          : route === "导师指导" ? `${mentor!.mentorName}只能使用本人实际拥有的权限，不能替其他机构作主`
+            : "独行者自行承担公开路线与许可，不能绕过管控区域";
+  const obligations = route === "家庭筹备" ? ["向家里说明要花多少钱、去哪里以及何时撤退", "另行邀请成年魂师同行"] : route === "学院带队" ? ["听完出发前的安全要求并确认同行者", "接受学院确定的集合时间和带队边界"] : route === "宗门护送" ? [`向${sect!.name}说明目标魂兽与可能损耗`, "护送不等于替本人完成最后一击与吸收"] : route === "导师指导" ? [`遵守${mentor!.mentorName}的训练禁忌与撤退判断`, "导师建议不保证找到目标或吸收成功"] : ["自行承担全部费用、情报误差与撤退风险", "受管控区域仍需合法凭证"];
+  return { route, responsibleParty, fundingSource, authorization, sponsorBudget, sponsorSpent: 0, obligations, evidence: [`本人明确选择${route}；${responsibleParty}只承担已经说清的部分`], status: "已确认" };
 }
 
 function ensureHuntSupportRelation(game: StoredGame, support: HuntSupportView): void {
@@ -749,7 +760,7 @@ function huntResolution(game: StoredGame, action: string): ActionResolution {
       hunting.support = support;
       ensureHuntSupportRelation(game, support);
       hunting.trailProgress = `${support.route}责任已确认，尚未调查魂兽`;
-      return { intent: "确认猎魂责任路线", minutes: 60, ruleSummary: `确定${support.route}：责任人${support.responsibleParty}；费用来源${support.fundingSource}；许可边界${support.authorization}；责任${support.obligations.join("；")}。尚未生成魂兽推荐。`, fallbackNarrative: `责任页上终于有了具体名字。能出多少钱、能不能带队、哪一步必须撤退，各自写在不同的栏里。签字并没有让魂环从纸上冒出来，只让接下来的调查知道该向谁问、哪些承诺真正存在。`, suggestions: ["开始调查适合当前武魂的魂兽", `请${support.responsibleParty}核对首环预算`, support.route === "导师指导" ? "核对导师能否亲自同行" : "核对成年魂师同行名单"], systemMessages: [`猎魂责任 · ${support.route} · ${support.responsibleParty}`] };
+      return { intent: "确认猎魂责任路线", minutes: 60, ruleSummary: `确定${support.route}：${support.responsibleParty}承担已经说清的带队或帮助；费用来自${support.fundingSource}；${support.authorization}。现在只确定由谁帮助，还没有开始寻找魂兽。`, fallbackNarrative: `${support.responsibleParty}把能出多少钱、能不能亲自带队、遇到危险时什么时候撤退都说清了。这个答复不会让魂环凭空出现，却让接下来的调查知道该向谁问，也知道哪些话不能当成承诺。`, suggestions: ["开始调查适合当前武魂的魂兽", `和${support.responsibleParty}算清首环花费`, support.route === "导师指导" ? "问导师能否亲自同行" : "确认成年魂师同行者"], systemMessages: [`猎魂帮助 · ${support.route} · ${support.responsibleParty}`] };
     }
     if (requestedRoute && requestedRoute !== hunting.support.route) {
       const support = buildHuntSupport(game, requestedRoute);
@@ -757,7 +768,7 @@ function huntResolution(game: StoredGame, action: string): ActionResolution {
       const previous = hunting.support.route;
       hunting.support = support;
       ensureHuntSupportRelation(game, support);
-      return { intent: "变更猎魂责任路线", minutes: 45, ruleSummary: `在魂兽调查前将责任路线由${previous}改为${support.route}；旧路线未产生补助、手令或同行承诺。`, fallbackNarrative: `旧责任页被划线作废，新一页重新写上负责人与费用来源。没有人把尚未花出去的钱算成损失，也没有把原先口头提过的人继续留在队伍里。`, suggestions: ["开始调查适合当前武魂的魂兽", `请${support.responsibleParty}确认责任`, "保留新路线并核对许可"] };
+      return { intent: "变更猎魂责任路线", minutes: 45, ruleSummary: `在魂兽调查前由${previous}改走${support.route}；旧路线没有花钱，也没有形成手令或同行承诺。`, fallbackNarrative: `原先说过的人没有被继续算进队伍，新答应帮忙的${support.responsibleParty}重新说明了自己能做到哪一步。没人把尚未花出去的钱算成损失，也没人把一句口头提议当成已经出发。`, suggestions: ["开始调查适合当前武魂的魂兽", `请${support.responsibleParty}确认能帮到哪一步`, "问清入林需要的手令或许可"] };
     }
     generateRecommendations(game);
     return {
@@ -828,7 +839,7 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
     const personalCost = cost - sponsorPaid;
     if (character.coins < personalCost) return impossible(`基础伤药、绳索和干粮共需${formatSoulCoins(cost)}；${support ? `${support.route}可承担${formatSoulCoins(sponsorPaid)}` : "没有已确认补助"}，个人仍缺${formatSoulCoins(personalCost - character.coins)}。`, ["向责任人申请追加且有记录的预算", "先工作或出售普通物品", "更换能够承担费用的猎魂路线"]);
     character.coins -= personalCost;
-    if (support) { support.sponsorSpent += sponsorPaid; support.evidence.push(`购买基础补给：责任方支付${formatSoulCoins(sponsorPaid)}，玩家支付${formatSoulCoins(personalCost)}`); }
+    if (support) { support.sponsorSpent += sponsorPaid; support.evidence.push(`购买基础补给：帮助方支付${formatSoulCoins(sponsorPaid)}，本人支付${formatSoulCoins(personalCost)}`); }
     if (!game.view.inventory.includes("外敷伤药")) game.view.inventory.push("外敷伤药");
     if (!game.view.inventory.includes("猎魂绳")) game.view.inventory.push("猎魂绳");
     additions.push("外敷伤药", "猎魂绳", `补给账：责任方${formatSoulCoins(sponsorPaid)}／个人${formatSoulCoins(personalCost)}`);
@@ -871,7 +882,7 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
   return {
     intent: "猎魂准备",
     minutes: speedMinutes(game, 120, 720),
-    ruleSummary: `新增准备：${additions.join("、")}。准备度 ${hunting.preparation.length} 项。${ready ? "已经具备出发条件，是否继续补充人员和物资仍由玩家决定。" : "仍建议补充准备。"}`,
+    ruleSummary: `新增准备：${additions.join("、")}。当前已经完成 ${hunting.preparation.length} 项准备。${ready ? "已经具备出发条件，是否继续补充人员和物资仍由本人决定。" : "仍建议补充准备。"}`,
     fallbackNarrative: `东西一样样摆在桌上。我把绳结重新打过，药包塞进最顺手的位置。钱花得有点心疼，真进了森林，少一件都可能要命。`,
     suggestions: ready ? ["出发猎魂", "再找一名同行者", "最后检查补给"] : ["购买猎魂补给", "寻找同行者", "研究目标习性"],
   };
@@ -1212,7 +1223,7 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   return {
     intent: "战斗",
     minutes: 10,
-    ruleSummary: `第 ${combat.round} 回合，${combat.allies.length ? "玩家与同行者" : "玩家"}造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。${comboPreparing ? `已准备连携“${combat.comboPreparation!.name}”${comboMastery ? `（熟练度${comboMastery}%${comboBranch ? `·${comboBranch}` : ""}）` : ""}，最迟在第 ${combat.comboPreparation!.expiresAfterRound} 回合发动。` : ""}${comboActive ? `发动连携“${comboActive.name}”${comboMastery ? `（熟练度${comboMastery}%${comboBranch ? `·${comboBranch}` : ""}）` : ""}，冷却至第 ${combat.comboCooldownUntilRound} 回合。` : ""}${healed ? `${healer ? healer.name : comboActive?.name}治疗恢复${healed}点状态。` : ""}${controlAttempt ? `控制结果：${combat.controlStatus}；当前控制抗性 ${combat.controlResistance}%。` : ""}${combat.allies.length ? `同行者：${combat.allies.map((ally) => `${ally.name}（${ally.role}·协同${ally.readiness}·${ally.condition}）`).join("、")}。` : ""}${activeBattleArmor ? `${activeBattleArmor.title}提供增幅与减伤。` : ""}${activeMecha ? `${activeMecha.model}消耗 6% 能源参战。` : ""}敌方状态 ${combat.enemyCondition}，玩家状态 ${combat.playerCondition}。`,
+    ruleSummary: `第 ${combat.round} 回合，${combat.allies.length ? `${game.view.character!.name}与同行者` : game.view.character!.name}造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。${comboPreparing ? `已准备连携“${combat.comboPreparation!.name}”${comboMastery ? `（熟练度${comboMastery}%${comboBranch ? `·${comboBranch}` : ""}）` : ""}，最迟在第 ${combat.comboPreparation!.expiresAfterRound} 回合发动。` : ""}${comboActive ? `发动连携“${comboActive.name}”${comboMastery ? `（熟练度${comboMastery}%${comboBranch ? `·${comboBranch}` : ""}）` : ""}，冷却至第 ${combat.comboCooldownUntilRound} 回合。` : ""}${healed ? `${healer ? healer.name : comboActive?.name}治疗恢复${healed}点状态。` : ""}${controlAttempt ? `控制结果：${combat.controlStatus}；当前控制抗性 ${combat.controlResistance}%。` : ""}${combat.allies.length ? `同行者：${combat.allies.map((ally) => `${ally.name}（${ally.role}·协同${ally.readiness}·${ally.condition}）`).join("、")}。` : ""}${activeBattleArmor ? `${activeBattleArmor.title}提供增幅与减伤。` : ""}${activeMecha ? `${activeMecha.model}消耗 6% 能源参战。` : ""}敌方状态 ${combat.enemyCondition}，${game.view.character!.name}状态 ${combat.playerCondition}。`,
     fallbackNarrative: enemyHp <= 0
       ? `我抓住它转身的空当，把最后一下送了进去。${combat.enemyName}撞断一根矮树，挣了几下，不再起来。魂环从尸身上浮出时，我的手还在抖。`
       : flee
@@ -1344,11 +1355,11 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
   let detail = "对方只回答了愿意说的部分。";
   const systemMessages: string[] = [];
   const localTargets = game.view.relations.filter((relation) => action.includes(relation.name));
-  if (!mentioned && localTargets.length > 1) return impossible("这句话同时指向多名已认识的人，不能替玩家决定由谁回答。", localTargets.slice(0, 3).map((item) => `明确询问${item.name}`));
+  if (!mentioned && localTargets.length > 1) return impossible("这句话同时指向多名已认识的人，不能擅自决定由谁回答。", localTargets.slice(0, 3).map((item) => `明确询问${item.name}`));
   if (!mentioned && localTargets.length === 1) {
     const relation = localTargets[0];
     recordPlayerRelation(game, relation, `围绕“${action.slice(0, 40)}”完成一次当面交谈`, { trust: 1, identityKnowledge: 2 });
-    relation.impression = relation.category === "敌对" ? relation.impression : "记得主角曾就具体事情当面交谈，仍保留自己的立场";
+    relation.impression = relation.category === "敌对" ? relation.impression : `记得${game.view.character!.name}曾就具体事情当面交谈，仍保留自己的立场`;
     return { intent: "与已知人物交谈", minutes: 30, ruleSummary: `与${relation.name}当面交谈；对方只使用自己知道的信息，并按${relation.relation}立场回答。关系只留下交谈记录，没有自动好感或承诺。`, fallbackNarrative: `${relation.name}先把手里的事做完，才抬头听问题。能说的部分没有绕弯，涉及别人职责和自己没见过的事，他也没有装作知道。话谈完了，双方的立场并没有因此变成一样。`, suggestions: [`追问${relation.name}的信息来源`, `向${relation.name}提出一项具体交换`, "结束交谈并处理眼前行动"], systemMessages: [`交谈记录 · ${relation.name}`] };
   }
   if (mentioned) {
@@ -1357,18 +1368,18 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
     if (npc?.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId && discoverable) {
       revealNpc(game, mentioned.id);
       npc.dispositionToPlayer += 2;
-      rememberNpcInteraction(game, npc, `${game.view.worldTime?.year ?? 0}年在${game.view.location ?? "此地"}与玩家交谈`);
+      rememberNpcInteraction(game, npc, `${game.view.worldTime?.year ?? 0}年在${game.view.location ?? "此地"}与${game.view.character!.name}交谈`);
       if (!game.view.relations.some((relation) => relation.id === npc.id)) {
         const factionName = FACTIONS.find((faction) => npc.factionIds.includes(faction.id))?.name;
-        game.view.relations.push({ id: npc.id, name: npc.name, relation: "初识", impression: "仍在观察主角", faction: factionName, lastSeen: game.view.location, strength: 10, category: "师友", dimensions: relationDimensions(10), history: [{ date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `在${game.view.location ?? "此地"}第一次当面交谈`, changes: "建立初识" }] });
+        game.view.relations.push({ id: npc.id, name: npc.name, relation: "初识", impression: `仍在观察${game.view.character!.name}`, faction: factionName, lastSeen: game.view.location, strength: 10, category: "师友", dimensions: relationDimensions(10), history: [{ date: `原作 ${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`, reason: `在${game.view.location ?? "此地"}第一次当面交谈`, changes: "建立初识" }] });
         game.world.metrics.relationshipsBuilt += 1;
       } else {
         const relation = game.view.relations.find((item) => item.id === npc.id)!;
-        relation.impression = npc.dispositionToPlayer >= 20 ? "愿意信任主角处理一些私事" : npc.dispositionToPlayer >= 10 ? "记得主角，也愿意多说几句" : "仍在观察主角";
+        relation.impression = npc.dispositionToPlayer >= 20 ? `愿意信任${game.view.character!.name}处理一些私事` : npc.dispositionToPlayer >= 10 ? `记得${game.view.character!.name}，也愿意多说几句` : `仍在观察${game.view.character!.name}`;
         relation.relation = npc.dispositionToPlayer >= 20 ? "信任" : npc.dispositionToPlayer >= 10 ? "熟识" : relation.relation;
         relation.lastSeen = game.view.location;
         relation.strength = Math.min(100, (relation.strength ?? 8) + 8);
-        recordPlayerRelation(game, relation, `${npc.name}与主角当面交谈，依据对话内容继续判断`, { trust: 3, closeness: 2, identityKnowledge: 4, vigilance: -1 });
+        recordPlayerRelation(game, relation, `${npc.name}与${game.view.character!.name}当面交谈，依据对话内容继续判断`, { trust: 3, closeness: 2, identityKnowledge: 4, vigilance: -1 });
       }
       game.world.deviation += Math.max(1, Math.floor(mentioned.importance / 2));
       detail = `与 ${npc.name} 当面交谈，建立初步关系。`;
@@ -2004,7 +2015,7 @@ function academyAvailableFunding(game: StoredGame): AcademyApplicationView["avai
   return [...new Set(options)];
 }
 
-function academyApplicationProfile(game: StoredGame, academyName: string, fundingType: AcademyApplicationView["fundingType"], action = ""): Pick<AcademyApplicationView, "route" | "fundingType" | "fundingSource" | "obligations" | "availableFundingOptions" | "requirements" | "fee" | "passScore"> {
+function academyApplicationProfile(game: StoredGame, academyName: string, fundingType: AcademyApplicationView["fundingType"], action = ""): Pick<AcademyApplicationView, "route" | "fundingType" | "fundingSource" | "obligations" | "availableFundingOptions" | "requirements" | "fee" | "passScore" | "admissionAssessmentName" | "assessmentRequired"> {
   const era = game.view.era ?? 1;
   const elite = /史莱克|皇家|日月皇家|星际学院/.test(academyName);
   const route: AcademyApplicationView["route"] = fundingType === "工读抵扣" ? "工读生" : elite ? "选拔生" : fundingType === "公共义务教育" ? "义务教育生" : era >= 3 ? "魂师班" : "普通学员";
@@ -2027,13 +2038,17 @@ function academyApplicationProfile(game: StoredGame, academyName: string, fundin
       : fundingType === "宗门委培" ? `取得${sect}书面委培责任`
         : fundingType === "公共义务教育" ? "完成斗三适龄入学登记"
           : fundingType === "家族资助" ? "由家族监护人确认费用与责任" : "确认学费、食宿与路费";
+  const admissionAssessmentName = elite ? "学院入学考核" : era === 1 ? "觉醒证明与来处查验" : era === 2 ? "学院入学考核" : era === 3 ? "魂力测试与分班" : "入学与分班测试";
+  const assessmentRequired = elite || era >= 2 || fundingType === "学院奖助";
   const requirements = elite
-    ? ["核验年龄、觉醒档案与公开武魂", "取得监护人或原机构签字", specialRequirement, "通过学院独立入学考核"]
-    : ["提交觉醒档案与身份记录", "取得监护人或地方担保", specialRequirement, "通过基础能力与纪律评估"];
+    ? ["说明年龄、公开武魂与已有修为", "由监护人或原机构说明来处", specialRequirement, `通过${admissionAssessmentName}`]
+    : era === 1
+      ? ["带上武魂觉醒证明或地方工读证明", "由家人、村中长者或其他担保人说明来处", specialRequirement]
+      : ["带上觉醒记录与身份资料", "由家人或原学校说明来处", specialRequirement, `完成${admissionAssessmentName}`];
   const baseFee = elite ? 30 : era === 2 ? 15 : 12;
   const fee = ["工读抵扣", "学院奖助", "宗门委培", "公共义务教育"].includes(fundingType) ? 0 : baseFee;
   const passScore = elite ? 72 : fundingType === "学院奖助" ? 62 : 38;
-  return { route, fundingType, fundingSource, obligations, availableFundingOptions: academyAvailableFunding(game), requirements, fee, passScore };
+  return { route, fundingType, fundingSource, obligations, availableFundingOptions: academyAvailableFunding(game), requirements, fee, passScore, admissionAssessmentName, assessmentRequired };
 }
 
 function academyFundingProblem(game: StoredGame, fundingType: AcademyApplicationView["fundingType"], action = ""): string | undefined {
@@ -2053,36 +2068,39 @@ function academyFundingProblem(game: StoredGame, fundingType: AcademyApplication
 function createAcademyLife(game: StoredGame, application: AcademyApplicationView): AcademyLifeView {
   const era = game.view.era ?? 1;
   const random = actionRandom(game);
+  const profile = academyEraLifeProfile(era);
   const teacherPool = ({ 1: ["严观棋", "沈砚秋", "陆长庚"], 2: ["许岚川", "孟知衡", "韩素衣"], 3: ["罗闻舟", "乔映雪", "贺景川"], 4: ["周砺星", "林岚序", "顾清舷"] } as const)[era];
   const peerPool = ({
-    1: [["陆峥", "城中魂师家庭", "想在第一次实战考核中拿到班级首位"], ["石禾", "普通手艺人家庭", "先学会能保护家人的本事"], ["苏棠", "药铺家庭", "希望找到稳定的小队和辅助位置"]],
+    1: [["陆峥", "城中魂师家庭", "想在第一次同场练习中证明自己最强"], ["石禾", "普通手艺人家庭", "先学会能保护家人的本事"], ["苏棠", "药铺家庭", "希望找到稳定的小队和辅助位置"]],
     2: [["徐铮", "没落魂师家庭", "争取核心班资源与魂导课程名额"], ["安禾", "商户家庭", "把学费和魂导材料钱花得值得"], ["林晚照", "学院职员家庭", "找到能长期共同训练的同伴"]],
     3: [["贺骁", "职业魂师家庭", "进入零班或同级重点培养名单"], ["唐禾", "普通联邦家庭", "稳住义务教育成绩并减少家庭额外支出"], ["叶清", "传灵塔基层职员家庭", "寻找魂灵路线相容的固定队友"]],
     4: [["穆辰星", "星际运输家庭", "争取少年班与星际课程推荐"], ["蓝禾", "普通科研家庭", "完成基础课程后再决定魂师或技术方向"], ["周澄", "学院教职家庭", "建立可信的小组训练记录"]],
   } as const)[era];
-  const homeroomTeacher = pick(random, [...teacherPool]);
+  const teacherName = pick(random, [...teacherPool]);
   const roles: AcademyPeerView["role"][] = ["竞争者", "务实同学", "协作同学"];
-  const peers = peerPool.map(([name, background, motive], index) => ({ id: `academy-peer-${era}-${name}`, name, role: roles[index], background, motive, attitude: index === 0 ? 0 : 4, competition: index === 0 ? 28 : index === 1 ? 12 : 6, interactions: 0, lastAction: index === 0 ? "正在核对新生魂力与考核分组" : index === 1 ? "正在计算课本、食宿和训练用品" : "正在寻找第一组共同练习的同学" }));
+  const peers = peerPool.map(([name, background, motive], index) => ({ id: `academy-peer-${era}-${name}`, name, role: roles[index], background, motive, attitude: index === 0 ? 0 : 4, competition: index === 0 ? 28 : index === 1 ? 12 : 6, interactions: 0, lastAction: index === 0 ? "正在比较新生魂力与练习分组" : index === 1 ? "正在计算课本、食宿和训练用品" : "正在寻找第一组共同练习的同学" }));
   const life: AcademyLifeView = {
     academyName: application.academyName,
-    stage: "报到安置",
+    stage: "入学安顿",
     className: era === 1 ? "初级魂师一年级" : era === 2 ? "新生魂师基础班" : era === 3 ? "初等学院魂师班" : "初等学院魂力基础班",
-    homeroomTeacher,
+    teacherName,
+    ...profile,
     dormitory: application.route === "工读生" ? "工读生集体宿舍" : `${application.academyName}新生宿舍`,
     attendance: 0, courseProgress: 0, practicalProgress: 0, fundingDutyProgress: ["家庭自费", "公共义务教育"].includes(application.fundingType) ? 1 : 0,
-    peerInteractions: 0, standing: 0, discipline: 100, evidence: [`凭${application.route}学籍和${application.fundingType}费用档案完成报到`], peers,
+    peerInteractions: 0, standing: 0, discipline: 100, evidence: [`学院已经接收${application.route}身份，食宿与费用来源也已说清`], peers,
   };
-  if (!game.view.relations.some((relation) => relation.name === homeroomTeacher)) game.view.relations.push({ id: `academy-teacher-${homeroomTeacher}`, name: homeroomTeacher, relation: "学院班主任", impression: "负责新生课程、纪律与首月考核，不承担无条件私人授业", strength: 12, category: "师友", dimensions: relationDimensions(12), history: [{ date: relationshipDate(game), reason: "正式报到后进入班主任责任范围", changes: "建立师生认识" }] });
+  if (!game.view.relations.some((relation) => relation.name === teacherName)) game.view.relations.push({ id: `academy-teacher-${teacherName}`, name: teacherName, relation: profile.teacherRole, impression: `负责${profile.periodLabel}的课程、生活要求与${profile.assessmentName}，不承担无条件私人授业`, strength: 12, category: "师友", dimensions: relationDimensions(12), history: [{ date: relationshipDate(game), reason: `进入${profile.teacherRole}负责的学习范围`, changes: "建立师生认识" }] });
   for (const peer of peers) if (!game.view.relations.some((relation) => relation.name === peer.name)) game.view.relations.push({ id: peer.id, name: peer.name, relation: "同班同学", impression: `${peer.background}；${peer.motive}`, strength: 8, category: "其他", dimensions: relationDimensions(8), history: [{ date: relationshipDate(game), reason: "在新生名册与教室中互相认识", changes: "成为同班同学" }] });
   return life;
 }
 
 function academyResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
+  const era = game.view.era ?? 1;
   if (character.innateSoulPower <= 0) return impossible("学院要求至少能够稳定感应魂力。", ["申请重新检测", "寻找其他修行道路", "打听理论研究者"]);
   const target = academyAtCurrentLocation(game, action);
   const academyName = target.name;
-  if (!target.local) return impossible(`${academyName}不在当前位置，不能用一句“报名”跳过路程、监护和到校核验。`, [`调查前往${academyName}的路线`, "比较当前位置可报学院", "请监护人核对跨城食宿条件"]);
+  if (!target.local) return impossible(`${academyName}不在当前位置，不能用一句“报名”跳过路程、同行长辈和真实到校。`, [`调查前往${academyName}的路线`, "比较当前位置可报学院", "和家里商量跨城食宿"]);
   if (game.view.affiliations.some((item) => item.name === academyName)) return impossible(`我已经是${academyName}的学员。`, ["参加课程", "寻找导师", "认识同学"]);
   let application = game.view.academyApplication;
   if (!application || application.academyName !== academyName || ["未通过", "已入学", "已撤回"].includes(application.stage)) {
@@ -2094,13 +2112,13 @@ function academyResolution(game: StoredGame, action: string): ActionResolution {
     if (/史莱克/.test(academyName) && (game.view.era ?? 1) === 1 && (character.age > 12 || character.soulRank < 21)) return impossible("当前史莱克学院的选拔门槛不是普通初级学院报名：年龄不得超过十二岁，魂力至少二十一级；现在只能先走其他学院或继续修炼。", ["申请当地初级魂师学院", "继续修炼到二十一级", "核对其他学院条件"]);
     application = game.view.academyApplication = { academyId: target.id, academyName, stage: "材料准备", ...profile, evidence: [`已领取${academyName}报名条件；暂选${profile.fundingType}`] };
     ensureTask(game, { id: `academy-application-${target.id}`, title: `申请${academyName}`, kind: "计划", detail: `${profile.requirements.join("；")}。尚未录取。`, status: "进行中" });
-    return { intent: "核对学院入学条件", minutes: 60, ruleSummary: `${academyName}只登记申请意向；学籍方向为${profile.route}，费用暂按${profile.fundingType}处理，来源登记为${profile.fundingSource}。当前没有录取、宿舍钥匙或学员身份。`, fallbackNarrative: `接待老师没有先拿名册。他把觉醒证明翻到有印章的那一页，又问监护人是谁、住校的钱从哪里出。工读、家里付钱、学院奖助和宗门委培被写在不同的栏里，谁也不能因为孩子口袋里钱少就替他勾上第一项。`, suggestions: [`准备${academyName}报名材料`, `比较${profile.availableFundingOptions.slice(0, 3).join("、")}`, "暂缓申请并保留选择权"], systemMessages: [`入学申请 · ${academyName} · ${profile.route} · ${profile.fundingType}`] };
+    return { intent: "询问学院入学条件", minutes: 60, ruleSummary: `${academyName}说明了${profile.route}的入学办法；${profile.fundingType}由${profile.fundingSource}承担。当前只是问清条件，还没有取得住处或学员身份。`, fallbackNarrative: `接待老师先看觉醒证明，又问是谁带孩子来的、住校的钱准备从哪里出。工读、家里付钱、学院帮助和宗门出钱不是一回事，他逐项说清，没有因为孩子口袋里钱少就替人做决定。`, suggestions: [`准备${academyName}需要的证明`, `比较${profile.availableFundingOptions.slice(0, 3).join("、")}`, "暂缓申请并保留选择权"], systemMessages: [`入学申请 · ${academyName} · ${profile.route} · ${profile.fundingType}`] };
   }
   if (/放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action)) {
     application.stage = "已撤回";
-    application.evidence.push("玩家主动撤回本次申请；既有材料和考核记录保留");
+    application.evidence.push("本人主动撤回本次申请；已经交过的证明与考察结果保留");
     const task = game.view.tasks.find((item) => item.id === `academy-application-${application!.academyId}`); if (task) task.status = "失败";
-    return { intent: "撤回学院申请", minutes: 30, ruleSummary: `撤回${academyName}本次申请；没有取得学员身份，已经形成的材料与考核记录不会被改写成录取。`, fallbackNarrative: `他把申请页从待办格里取回来，接待老师在右下角写明“本人撤回”。印章和成绩没有被撕掉，只是不再通向这次报到。`, suggestions: ["比较其他学院的公开条件", "继续当前训练路线", "保留记录等待下次申请"], systemMessages: [`入学申请 · ${academyName} · 已撤回`] };
+    return { intent: "撤回学院申请", minutes: 30, ruleSummary: `撤回${academyName}本次申请；没有取得学员身份，已经交过的证明与考察结果仍按原样保留。`, fallbackNarrative: `他把自己的申请取了回来。接待老师在原来的记录旁写明是本人放弃，没有撕掉已经交过的证明，也没有把这次申请说成从未发生。`, suggestions: ["比较其他学院的公开条件", "继续当前训练路线", "以后重新申请"], systemMessages: [`入学申请 · ${academyName} · 已撤回`] };
   }
   const requestedFunding = academyFundingFromAction(action);
   if (application.stage === "材料准备" && requestedFunding && requestedFunding !== application.fundingType && /改走|改为|选择|申请|切换/.test(action)) {
@@ -2114,45 +2132,54 @@ function academyResolution(game: StoredGame, action: string): ActionResolution {
   }
   if (application.stage === "材料准备") {
     const guardian = game.view.relations.find((item) => item.category === "亲属" || /监护|父|母|祖|村长|里正/.test(`${item.relation}${item.name}`));
-    if (character.age < 12 && !guardian && !game.view.inventory.includes("地方临时身份凭据")) return impossible("未满十二岁且没有监护人、地方担保或临时身份凭据，学院不能替来历空白的孩子自行签字。", ["寻找地方担保人", "办理临时身份凭据", "请觉醒主持机构说明情况"]);
+    if (character.age < 12 && !guardian && !game.view.inventory.some((item) => /临时来处证明|地方临时身份凭据/.test(item))) return impossible("孩子还没有能说明来处的长辈或担保人，学院不能替他编造家庭。", ["寻找愿意作保的当地人", "请负责觉醒的魂师说明经过", "先解决住处和照料人"]);
     const fundingProblem = academyFundingProblem(game, application.fundingType, action);
     if (fundingProblem) return impossible(`${fundingProblem}。`, application.availableFundingOptions.filter((item) => item !== application!.fundingType).slice(0, 3).map((item) => `改走${item}路线`));
     if (application.fee > 0 && character.coins < application.fee) return impossible(`${academyName}预计需要${formatSoulCoins(application.fee)}处理入学与首期食宿，当前资金不足；学院没有因为天赋自动免除费用。`, ["申请有凭据的资助", "准备学费与食宿费", "比较工读或其他学院"]);
     application.guardianName = guardian?.name ?? "临时身份见证人";
-    application.evidence.push(`觉醒档案、身份记录与${application.guardianName}签字已核对；${application.fundingSource}责任已登记`);
-    application.stage = "入学考核";
-    return { intent: "提交学院报名材料", minutes: 120, ruleSummary: `${academyName}收下觉醒档案、身份记录、监护/担保证据和${application.fundingType}责任页；尚未扣费，也尚未录取。`, fallbackNarrative: `监护人的名字签在最后一栏，费用页上又多了一处责任人的印章。材料被麻绳穿成一册，放进“待考核”的木格里。工读排班、奖助复核或委培回报都写在各自的纸上，没有藏进一句“学院会安排”。`, suggestions: [`参加${academyName}入学考核`, "询问考核项目和失败后的去向", "核对费用路线附带的长期责任"], systemMessages: [`入学申请 · ${academyName} · ${application.fundingType}材料通过`] };
+    application.evidence.push(`${application.guardianName}已经说明来处，学院看过觉醒证明，并听清${application.fundingSource}能够承担到哪一步`);
+    application.stage = application.assessmentRequired ? "入学考核" : "待报到";
+    if (!application.assessmentRequired) return { intent: "完成学院来处查验", minutes: 120, ruleSummary: `${academyName}已经看过觉醒证明、来处说明与${application.fundingType}安排；普通初级学院不再额外虚构统一入学考试，下一步由本人和同行长辈决定是否入学。`, fallbackNarrative: `学院老师看完觉醒证明，又和带孩子来的人把工读、住处和吃饭的办法问了一遍。该说的都能对上，他便把证明还回来，指了指里面的教务处：“愿意留下，就进去把住处和上课的地方问清。”`, suggestions: [`与${application.guardianName}商量后进入${academyName}`, "先看宿舍和上课去处", "放弃这次入学机会"], systemMessages: [`入学申请 · ${academyName} · 来处已说明`] };
+    return { intent: "提交学院入学证明", minutes: 120, ruleSummary: `${academyName}已经收下觉醒记录、来处说明和${application.fundingType}安排；还要完成${application.admissionAssessmentName}，现在尚未录取。`, fallbackNarrative: `带孩子来的人把名字和来处说清，接待老师又看过觉醒记录，最后才说明下一场测试在哪里。谁出钱、住哪里、考不过怎么办，也都当面讲明白了。`, suggestions: [`参加${academyName}${application.admissionAssessmentName}`, "询问测试内容和失败后的去向", "问清费用安排会带来什么义务"], systemMessages: [`入学申请 · ${academyName} · 等待${application.admissionAssessmentName}`] };
   }
   if (application.stage === "入学考核") {
     const talent = character.innateSoulPower * 5 + Math.min(25, character.soulRank) + Math.min(10, Math.floor(game.world.trainingPoints / 10));
     const score = Math.min(100, talent + integer(actionRandom(game), -6, 8));
     application.examScore = score;
-    application.evidence.push(`入学考核${score}分：魂力控制、基础体能与指令执行均有记录`);
-    if (score < application.passScore) {
+    application.evidence.push(`${application.admissionAssessmentName}${score}分：魂力控制、基础体能与现场指令完成情况均有记录`);
+    if (score < application.passScore && application.fundingType !== "公共义务教育") {
       if (application.fundingType === "学院奖助" && score >= 38) {
         application.stage = "材料准备";
-        application.evidence.push(`普通录取能力线已达到，但学院奖助评审未达到${application.passScore}分；是否改走其他费用路线由玩家决定`);
-        return { intent: "学院奖助评审未通过", minutes: 240, ruleSummary: `${academyName}考核${score}分，达到普通培养参考线但未达到${application.passScore}分奖助线；没有自动改成工读生，也没有替玩家接受自费。`, fallbackNarrative: `成绩纸上有两条线。下面那条已经过了，上面的奖助线还差一点。老师把几种还能继续的办法摊开，却没有伸手替他勾选：“读不读、谁出钱，你们回去自己定。”`, suggestions: ["改走家庭自费路线", "申请有来源的家族或宗门资助", "撤回申请并继续训练"], systemMessages: [`学院奖助 · ${academyName} · 未通过但保留普通申请资格`] };
+        application.evidence.push(`普通录取能力线已达到，但学院奖助要求未达到${application.passScore}分；是否改走其他费用路线由本人决定`);
+        return { intent: "学院奖助评审未通过", minutes: 240, ruleSummary: `${academyName}${application.admissionAssessmentName}${score}分，达到普通培养参考线但未达到${application.passScore}分奖助线；没有自动改成工读生，也没有替本人接受自费。`, fallbackNarrative: `成绩纸上有两条线。下面那条已经过了，上面的奖助线还差一点。老师把几种还能继续的办法摊开，却没有伸手替他勾选：“读不读、谁出钱，你们回去自己定。”`, suggestions: ["改走家庭自费路线", "申请有来源的家族或宗门资助", "撤回申请并继续训练"], systemMessages: [`学院奖助 · ${academyName} · 未通过但保留普通申请资格`] };
       }
       application.stage = "未通过";
       const task = game.view.tasks.find((item) => item.id === `academy-application-${application!.academyId}`); if (task) task.status = "失败";
-      return { intent: "学院入学考核未通过", minutes: 240, ruleSummary: `${academyName}考核${score}分，低于${application.passScore}分门槛；材料保留，但本次不录取。`, fallbackNarrative: `最后一项收放做完，老师没有当场训斥，只把前两项失误圈了出来。成绩纸上写的是“本次未通过”，不是“没有前途”。他可以回去补短板，也可以拿着已经核验过的材料去问别处。`, suggestions: ["按考核记录补练薄弱项目", "申请当地普通学院", "等待下一次招生再考"], systemMessages: [`入学考核 · ${academyName} · 未通过`] };
+      return { intent: "学院入学考核未通过", minutes: 240, ruleSummary: `${academyName}${application.admissionAssessmentName}${score}分，低于${application.passScore}分门槛；已经交过的证明保留，但本次不录取。`, fallbackNarrative: `最后一项收放做完，老师没有当场训斥，只把前两项失误圈给他看。纸上写的是“本次未通过”，不是“没有前途”。他可以回去补短板，也可以拿着原来的证明去问别处。`, suggestions: ["按失误项目补练", "申请当地普通学院", "等待下一次招生再考"], systemMessages: [`${application.admissionAssessmentName} · ${academyName} · 未通过`] };
     }
     application.stage = "待报到";
-    return { intent: "通过学院入学考核", minutes: 240, ruleSummary: `${academyName}考核${score}分，达到${application.passScore}分门槛；获得有期限的录取资格，仍需本人和监护人确认费用、食宿与校规后报到。`, fallbackNarrative: `成绩纸从窗口递回来时，右上角多了一枚录取章。接待老师没有替他欢呼，只把报到期限、宿舍规矩和要交的钱逐条念完，又让监护人重新听了一遍。这个名额是真的，随它一起落下来的约束也是真的。`, suggestions: [`与${application.guardianName}确认后办理入学报到`, "先看宿舍和课程安排再决定", "放弃本次资格并选择其他路线"], systemMessages: [`录取资格 · ${academyName} · 待报到`] };
+    return { intent: "通过学院入学考核", minutes: 240, ruleSummary: application.fundingType === "公共义务教育" ? `${academyName}${application.admissionAssessmentName}${score}分；结果用于安排班级与课程，不会把适龄基础教育错误写成付费淘汰。` : `${academyName}${application.admissionAssessmentName}${score}分，达到${application.passScore}分门槛；学院愿意接收，仍需本人和同行长辈确认食宿、费用与校规。`, fallbackNarrative: application.fundingType === "公共义务教育" ? `老师看完最后一个动作，把孩子分到合适的班级，又把需要补练的地方说给家里听。这个分数决定从哪里学起，却不会把一次分班测试变成赶人出校。` : `老师把结果递回来，又把什么时候到校、住哪里、要交多少钱说了一遍。学院愿意收人，但要不要留下，仍得由孩子和带他来的人一起决定。`, suggestions: [`与${application.guardianName}商量后进入${academyName}`, "先看宿舍和课程安排再决定", "放弃本次资格并选择其他路线"], systemMessages: [`录取资格 · ${academyName} · 待入学`] };
   }
   if (application.stage !== "待报到") return impossible("当前入学申请没有可继续办理的有效阶段。", ["重新核对学院条件", "查看申请记录", "比较其他培养路线"]);
-  if (!/报到|确认录取|接受录取|办理入学/.test(action)) return impossible("已经通过考核，但本人和监护人尚未确认报到，不能自动写成学院学员。", [`办理${academyName}入学报到`, "核对费用与宿舍", "放弃本次录取资格"]);
+  if (!/报到|确认录取|接受录取|办理入学|接受.*入学|进入学院/.test(action)) return impossible("学院已经愿意接收，但本人和同行长辈还没有明确答应留下，不能自动写成学院学员。", [`接受${academyName}入学安排`, "先看费用与宿舍", "放弃本次录取资格"]);
   if (application.fee > 0) character.coins -= application.fee;
   const joinedAt = `${game.view.worldTime?.year ?? 0} 年第 ${game.view.worldTime?.day ?? 1} 日`;
   game.view.affiliations.push({ id: application.academyId, name: academyName, role: application.route, reputation: "新入学", joinedAt, contribution: 0, completedAssignments: 0, rankEvidence: [...application.evidence, `费用：${application.fundingType}；${application.fundingSource}`, `责任：${application.obligations.join("；")}`] });
-  game.view.relations.push({ id: application.academyId, name: academyName, relation: "所属学院", impression: "通过材料核验与入学考核后正式报到", strength: 12, category: "势力" });
+  game.view.relations.push({ id: application.academyId, name: academyName, relation: "所属学院", impression: `已经按${application.route}进入学院，食宿与费用来源明确`, strength: 12, category: "势力" });
   ensureTask(game, { id: "academy-foundation", title: "完成学院基础课程", kind: "计划", detail: "学习魂兽、魂环、冥想和实战基础。", status: "进行中" });
   const applicationTask = game.view.tasks.find((item) => item.id === `academy-application-${application!.academyId}`); if (applicationTask) applicationTask.status = "完成";
   application.stage = "已入学";
   game.view.academyLife = createAcademyLife(game, application);
   game.world.deviation += 1;
-  return { intent: "加入学院", minutes: 180, ruleSummary: `完成报到，费用来源登记为${application.fundingSource}，本次结算${formatSoulCoins(application.fee)}；成为${academyName}${application.route}，进入${game.view.academyLife.className}，班主任${game.view.academyLife.homeroomTeacher}负责首月课程与考核。`, fallbackNarrative: `费用回执和录取册分开放着，谁出的钱、往后要不要排工、交成绩或向宗门回报，都写得清清楚楚。登记老师这才把宿舍钥匙推过来，班主任的名字和第一周课表压在钥匙下面。身份落定了，接下来是真正要过的学院日子。`, suggestions: ["去宿舍安置并领取课表", `向${game.view.academyLife.homeroomTeacher}确认首月要求`, "查看同班新生和宿舍安排"], systemMessages: [`身份 · ${academyName} · ${application.route} · ${application.fundingType}`, `学院首月 · ${game.view.academyLife.className} · 报到安置`] };
+  const life = game.view.academyLife;
+  const arrivalNarrative = era === 1
+    ? `${life.teacherName}先领他看宿舍床位，又指明平日上课和工读要去的地方。学费由谁出、每天吃什么、工读要做哪些活，也都当面说清。从这一刻起，他才真正成了学院里的一名学员。`
+    : era === 2
+      ? `${life.teacherName}把宿舍位置和新生要求说完，又提醒所有人，进了学院也不等于能一直留下。眼前先要解决的是住处、课程和同学，往后的考核得靠自己。`
+      : era === 3
+        ? `接待老师安排好宿舍和班级，${life.teacherName}随后接过这名新生。家里不用为适龄基础教育另交学费，但饭钱、魂灵和额外训练仍要自己打算。`
+        : `${life.teacherName}确认班级和住处，把课程表交到他手里。上面的课程、体能训练和班级实战都有具体时间；今天只是入学，后面的表现还得一项项做出来。`;
+  return { intent: "加入学院", minutes: 180, ruleSummary: `成为${academyName}${application.route}，支付${formatSoulCoins(application.fee)}，由${life.teacherRole}${life.teacherName}负责${life.periodLabel}的课程与生活安排。`, fallbackNarrative: arrivalNarrative, suggestions: [life.arrivalAction, `向${life.teacherName}询问${life.assessmentName}`, "认识同班学生和宿舍同伴"], systemMessages: [`身份 · ${academyName} · ${application.route} · ${application.fundingType}`, `${life.periodLabel} · ${life.className} · 入学安顿`] };
 }
 
 function factionResolution(game: StoredGame, action: string): ActionResolution {
@@ -2509,7 +2536,7 @@ function mentorTeachingProfile(game: StoredGame, mentorName: string, important: 
             : "器武魂结构、收放精度与发力路线";
   const teachingStyle = pick(actionRandom(game), ["逐次记录型：先复现失败，再改一个动作", "实战纠错型：先设安全边界，再在对抗中暴露问题", "理论拆解型：先说明判断依据，再要求学生自行验证", "生活训练型：把基础控制放进每日劳动与固定作息"]);
   const taboo = /食物/.test(soul.category) ? "禁止把未完成安全测试的制造物交给他人食用" : /本体|兽/.test(soul.category) ? "禁止以伤害幼年身体换取短期魂力表现" : "禁止把偶然成功冒充稳定能力，也不替学生隐瞒会伤及旁人的失控";
-  const resourceOffer = important ? `${mentorName}只在本人权限和行程允许时提供训练场、复核或一次猎魂建议，不承诺包办资源` : `${mentorName}可提供固定时段的基础指导、训练记录复核和能力范围内的本地介绍`;
+  const resourceOffer = important ? `${mentorName}只在本人有空且确实能作主时提供训练场、查看练习结果或给一次猎魂建议，不承诺包办资源` : `${mentorName}可在固定时段指导基础动作、查看练习结果，并介绍自己真正认识的本地人`;
   const reciprocalDuty = important ? "遵守约定、如实记录失败，不借师名索取超出权限的资源" : "按时完成训练记录，尊重导师仍有职业、生计与其他学生责任";
   const trialFocus = `${specialty}中的一项可重复基础动作`;
   return { specialty, teachingStyle, taboo, resourceOffer, reciprocalDuty, trialFocus, lessonsCompleted: 0 };
@@ -2529,7 +2556,7 @@ function mentorResolution(game: StoredGame, action: string): ActionResolution {
     const qualification = npc ? `${npc.powerTier}；公开履历与当前位置已经核实` : knownLocalTeacher ? `${knownLocalTeacher.relation}；只能先验证其实际教学能力` : "地方机构登记在册；尚未证明适合当前武魂";
     const motive = npc?.activePlan?.responsibility ?? (knownLocalTeacher ? "需要评估学生是否适合自己负责的培养方向" : "愿意接触有培养可能的孩子，但不承担无条件收徒责任");
     const teachingProfile = mentorTeachingProfile(game, mentorName, Boolean(mentioned && (mentioned.importance ?? 0) >= 7));
-    pursuit = game.view.mentorPursuit = { mentorId: mentioned?.id ?? knownLocalTeacher?.id, mentorName, stage: "候选接触", source: mentioned ? "当前已知人物" : knownLocalTeacher ? "现有关系" : "地方魂师登记与口碑", qualification, motive, requirements: ["核对导师身份与擅长方向", "让对方评估公开武魂和现有基础", "完成至少两次可复核的试学要求", "双方谈清授业、资源、保密与退出责任"], evidence: [], ...teachingProfile };
+    pursuit = game.view.mentorPursuit = { mentorId: mentioned?.id ?? knownLocalTeacher?.id, mentorName, stage: "候选接触", source: mentioned ? "当前已知人物" : knownLocalTeacher ? "现有关系" : "地方魂师口碑与熟人介绍", qualification, motive, requirements: ["确认导师身份与真正擅长的方向", "让对方看过公开武魂和现有基础", "完成至少两次能够比较前后变化的试学", "双方谈清授业、资源、保密与退出责任"], evidence: [], ...teachingProfile };
     if (!game.view.relations.some((item) => item.name === mentorName)) game.view.relations.push({ id: pursuit.mentorId ?? `mentor-candidate-${game.actionIndex}`, name: mentorName, relation: "导师候选", impression: "只完成第一次接触，尚未建立师徒关系", strength: 8, category: "师友", dimensions: relationDimensions(8), history: [{ date: relationshipDate(game), reason: "通过地方登记或现有关系取得接触机会", changes: "成为导师候选" }] });
     ensureTask(game, { id: `mentor-pursuit-${pursuit.mentorId ?? mentorName}`, title: `确认${mentorName}是否适合授业`, kind: "计划", detail: pursuit.requirements.join("；"), status: "进行中", ownerId: pursuit.mentorId });
     return { intent: "寻找导师候选", minutes: 180, ruleSummary: `只取得与${mentorName}当面接触的机会；已知擅长${pursuit.specialty}，教学方式为${pursuit.teachingStyle}，当前仍是导师候选而非师徒。`, fallbackNarrative: `介绍人只把他领到门口，没有替任何人答应。${mentorName}先问了觉醒记录，又看了一眼孩子站立时的重心，随后把今天原本要做的事说清楚：“我可以先看你练，但收不收、教什么，我们都别现在把话说满。”`, suggestions: [`请${mentorName}评估${pursuit.trialFocus}`, `询问${mentorName}授业资源与禁忌`, "继续比较其他导师候选"], systemMessages: [`导师候选 · ${mentorName} · ${pursuit.specialty} · 尚未收徒`] };
@@ -2538,18 +2565,18 @@ function mentorResolution(game: StoredGame, action: string): ActionResolution {
   const trust = npc?.dispositionToPlayer ?? relation?.dimensions?.trust ?? relation?.strength ?? 0;
   if (/放弃.*导师|结束试学|拒绝.*拜师|不再.*拜师|选择其他.*导师/.test(action)) {
     pursuit.stage = "已结束";
-    pursuit.evidence.push("玩家主动结束考察，双方未建立师徒关系");
+    pursuit.evidence.push("本人主动结束考察，双方未建立师徒关系");
     if (relation && relation.relation === "导师候选") relation.impression = "完成过接触或试学，但双方没有建立师徒关系";
     const task = game.view.tasks.find((item) => item.id === `mentor-pursuit-${pursuit!.mentorId ?? mentorName}`); if (task) task.status = "失败";
     return { intent: "结束导师考察", minutes: 20, ruleSummary: `结束与${mentorName}的导师考察；试学记录保留，但不存在授业承诺、师徒身份或关系惩罚。`, fallbackNarrative: `话说清以后，${mentorName}把试学纸还给了他，没有扣下，也没有冷脸。两人只是没把这段接触继续变成师徒，已经练过的东西仍然算数。`, suggestions: ["带着试学记录比较其他导师", "选择学院培养路线", "暂时独立训练公开武魂"], systemMessages: [`导师考察 · ${mentorName} · 已结束`] };
   }
   if (pursuit.stage === "候选接触") {
     pursuit.stage = "能力评估";
-    pursuit.evidence.push(`${mentorName}核对公开武魂、魂力控制与当前训练记录；试学重点为${pursuit.trialFocus}`);
+    pursuit.evidence.push(`${mentorName}看过公开武魂、魂力控制与当前训练情况；试学重点为${pursuit.trialFocus}`);
     return { intent: "接受导师能力评估", minutes: 120, ruleSummary: `${mentorName}只完成公开信息范围内的能力评估，确定两次${pursuit.trialFocus}试学；禁忌为${pursuit.taboo}。没有探知隐藏武魂，也没有承诺收徒。`, fallbackNarrative: `他没有先讲大道理，而是让孩子把同一个基础动作做了三次，再把每天练过什么说清楚。第二次失控时，他抬手止住了继续尝试，只在纸上圈出一个问题：“先把这个改掉。你真能连着做到两次，我们再谈后面的事。”`, suggestions: [`完成${mentorName}第一次专项试学`, `追问${mentorName}为何选择这项考察`, "暂缓试学并接触其他导师"], systemMessages: [`导师评估 · ${mentorName} · ${pursuit.trialFocus}`] };
   }
   if (["能力评估", "试学考察"].includes(pursuit.stage)) {
-    if (!/试学|考察|考验|训练|练习|提交.*记录|展示.*成果/.test(action)) return impossible(`${mentorName}正在等可复核的试学行动，重复请求拜师不会替代训练证据。`, [`完成${mentorName}试学训练`, "询问具体考察标准", "放弃当前导师候选"]);
+    if (!/试学|考察|考验|训练|练习|提交.*记录|展示.*成果/.test(action)) return impossible(`${mentorName}还没有看到足够的试学表现，重复请求拜师不能替代真正练过的过程。`, [`完成${mentorName}试学训练`, "询问具体考察标准", "放弃当前导师候选"]);
     game.world.trainingPoints += 3;
     game.world.fatiguePoints += 10;
     pursuit.evidence.push(`第${pursuit.evidence.filter((item) => item.includes("次试学")).length + 1}次试学：围绕${pursuit.trialFocus}完成训练并留下失败修正记录`);
@@ -2573,21 +2600,21 @@ function mentorResolution(game: StoredGame, action: string): ActionResolution {
   if (mentioned && npc) recordCanonInfluence(game, { source: "建立师徒关系", description: `拜${npc.name}为师`, affectedNpcIds: [mentioned.id], strength: mentioned.importance * 5, domains: ["relationship", "goal", "power"] });
   ensureTask(game, { id: `mentor-${mentioned?.id ?? "local"}`, title: `完成${mentorName}布置的修行`, kind: "承诺", detail: "按要求练习，并在下次见面时交代结果。", status: "进行中", ownerId: mentioned?.id });
   const pursuitTask = game.view.tasks.find((item) => item.id === `mentor-pursuit-${pursuit!.mentorId ?? mentorName}`); if (pursuitTask) pursuitTask.status = "完成";
-  return { intent: "拜师", minutes: 120, ruleSummary: `${mentorName}依据身份核验、能力评估与${pursuit.evidence.filter((item) => item.includes("次试学")).length}次试学记录接受师徒关系；主教${pursuit.specialty}，可提供${pursuit.resourceOffer}，学生承担${pursuit.reciprocalDuty}。`, fallbackNarrative: `桌上摆着的不是一杯凭空改口的拜师茶，而是两次试学留下的纸。${mentorName}把自己能教的、不能替他承担的，还有第一次猎魂时最多能做到哪一步都说清楚，这才伸手接过那杯茶。`, suggestions: [`完成${mentorName}第一节正式课程`, "谈清第一次猎魂的护送边界", "把师徒关系告知监护人与所属机构"], systemMessages: [`关系 · ${mentorName} · 师徒 · ${pursuit.specialty}`] };
+  return { intent: "拜师", minutes: 120, ruleSummary: `${mentorName}在确认来处、看过能力并完成${pursuit.evidence.filter((item) => item.includes("次试学")).length}次试学后接受师徒关系；主教${pursuit.specialty}，可提供${pursuit.resourceOffer}，学生承担${pursuit.reciprocalDuty}。`, fallbackNarrative: `桌上摆着的不是一杯凭空改口的拜师茶，而是两次试学留下的纸。${mentorName}把自己能教的、不能替他承担的，还有第一次猎魂时最多能做到哪一步都说清楚，这才伸手接过那杯茶。`, suggestions: [`完成${mentorName}第一节正式课程`, "谈清第一次猎魂的护送边界", "把师徒关系告知家里与所属学院"], systemMessages: [`关系 · ${mentorName} · 师徒 · ${pursuit.specialty}`] };
 }
 
 function mentorLessonResolution(game: StoredGame, action: string): ActionResolution {
   const pursuit = game.view.mentorPursuit;
   if (!pursuit || pursuit.stage !== "已拜师") return impossible("当前没有已经成立且能承担授业责任的导师关系。", ["寻找导师候选", "选择学院课程", "独立训练基础控制"]);
   const relation = game.view.relations.find((item) => item.name === pursuit.mentorName && item.relation === "师徒");
-  if (!relation) return impossible("师徒档案与当前关系不一致，需要先核对记录。", ["查看关系档案", "联系导师核对", "暂缓使用导师资源"]);
+  if (!relation) return impossible("当前关系里没有已经成立的师徒身份，不能直接使用导师资源。", ["查看与导师的相处记录", "联系导师确认关系", "暂缓使用导师资源"]);
   if (/魂环|猎魂/.test(action) && /询问|评估|请教|谈清|路线/.test(action)) {
     game.world.flags.mentorRingAssessment = pursuit.mentorName;
     pursuit.evidence.push(`${pursuit.mentorName}按${pursuit.specialty}评估第一魂环方向；只形成建议，不代表护送、手令或费用已经落实`);
     return { intent: "导师评估魂环路线", minutes: 90, ruleSummary: `${pursuit.mentorName}依据${pursuit.specialty}给出魂环适配判断；${pursuit.resourceOffer}。本次没有自动获得魂兽、手令、护送或费用。`, fallbackNarrative: `导师把几种魂兽的名字写在纸上，又逐个划掉与武魂发力不合的部分。最后留下的仍不是“最佳答案”，而是三条需要实地核对的方向。至于谁带队、钱从哪里出，他没有替学院或家里答应。`, suggestions: ["比较家庭、学院与导师猎魂责任", "调查导师建议的魂兽栖息地", "核对入林凭证和补给费用"], systemMessages: [`导师建议 · ${pursuit.mentorName} · 魂环方向待调查`] };
   }
   if (/资源|训练场|时间|授业条件|禁忌|规矩/.test(action) && /询问|追问|核对|说明/.test(action)) {
-    return { intent: "核对导师授业边界", minutes: 45, ruleSummary: `${pursuit.mentorName}明确教学方向为${pursuit.specialty}，方式为${pursuit.teachingStyle}；可用资源：${pursuit.resourceOffer}；学生责任：${pursuit.reciprocalDuty}；禁忌：${pursuit.taboo}。`, fallbackNarrative: `导师没有把“跟着我学”说成一张空头支票。他把每周能见几次、训练场什么时候空着、哪些事得去找学院或监护人，一项项说清楚。说到不能碰的那条规矩时，他又让孩子自己复述了一遍。`, suggestions: [`完成${pursuit.mentorName}下一节专项课程`, "把授业时间告诉监护人", "核对导师与学院课程是否冲突"], systemMessages: [`授业边界 · ${pursuit.mentorName} · 已说明`] };
+    return { intent: "问清导师授业边界", minutes: 45, ruleSummary: `${pursuit.mentorName}说明教学方向为${pursuit.specialty}，方式为${pursuit.teachingStyle}；能提供：${pursuit.resourceOffer}；学生要做到：${pursuit.reciprocalDuty}；不能触碰：${pursuit.taboo}。`, fallbackNarrative: `导师没有把“跟着我学”说成一张空头支票。他把每周能见几次、训练场什么时候空着、哪些事得去找学院或家里，一项项说清楚。说到不能碰的那条规矩时，他又让孩子自己复述了一遍。`, suggestions: [`完成${pursuit.mentorName}下一节专项课程`, "把授业时间告诉家里", "比较导师课程与学院上课时间"], systemMessages: [`授业边界 · ${pursuit.mentorName} · 已说明`] };
   }
   if (/课程|训练|练习|授业|修行/.test(action)) {
     if (pursuit.lessonsCompleted > 0 && game.world.flags.mentorIndependentPracticeReady !== true) return impossible("上一节导师课程之后还没有独立复练与失败记录，连续听课不能替代学生自己掌握。", ["按导师课程记录独立复练", `向${pursuit.mentorName}复盘上次偏差`, "暂缓新课并完成学院训练"]);
@@ -2600,7 +2627,7 @@ function mentorLessonResolution(game: StoredGame, action: string): ActionResolut
     recordPlayerRelation(game, relation, `完成第${pursuit.lessonsCompleted}节有记录的正式课程`, { trust: 2, respect: 2 });
     return { intent: "导师正式课程", minutes: 240, ruleSummary: `完成${pursuit.mentorName}第${pursuit.lessonsCompleted}节正式课程，训练点+${gain}、疲劳+12；训练围绕${pursuit.specialty}，没有越过${pursuit.taboo}。`, fallbackNarrative: `这节课没有突然多出一门绝技。导师让他把同一个动作从快到慢做了几遍，最后只改了一处发力。成功的那次和失误的那次都留在纸上，等下次再对照。`, suggestions: ["按课程记录独立复练", `向${pursuit.mentorName}复盘本次偏差`, pursuit.lessonsCompleted >= 2 ? "请导师评估第一魂环方向" : "完成下一节正式课程"], systemMessages: [`导师课程 · ${pursuit.mentorName} · ${pursuit.lessonsCompleted}`] };
   }
-  return impossible("这句话没有说明要向导师请教、训练还是核对资源边界。", [`完成${pursuit.mentorName}正式课程`, "询问导师授业条件", "请导师评估第一魂环路线"]);
+  return impossible("这句话没有说明要向导师请教、训练，还是问清他能帮到哪一步。", [`完成${pursuit.mentorName}正式课程`, "询问导师授业条件", "请导师评估第一魂环路线"]);
 }
 
 function promiseResolution(game: StoredGame, action: string): ActionResolution {
@@ -2636,77 +2663,84 @@ function academyStudyResolution(game: StoredGame, action: string): ActionResolut
   const life = game.view.academyLife;
   const application = game.view.academyApplication;
   if (life && application) {
-    if (life.stage === "报到安置") {
-      if (!/宿舍|课表|安置|报到|校服|新生安排/.test(action)) return impossible("已经取得学籍，但还没有完成宿舍、课表和班主任确认新生安排，不能把第一天直接跳成长期上课。", ["去宿舍安置并领取课表", `向${life.homeroomTeacher}报到`, "查看同班新生名册"]);
-      if (!game.view.inventory.includes("学院新生课表")) game.view.inventory.push("学院新生课表");
-      life.stage = "基础课程";
-      life.evidence.push(`完成${life.dormitory}安置、领取课表并与${life.homeroomTeacher}当面确认新生安排`);
-      return { intent: "学院新生安置", minutes: 120, ruleSummary: `完成${life.dormitory}安置，领取${life.className}课表，并由班主任${life.homeroomTeacher}当面确认课程与生活安排；尚未完成任何课程或同辈关系。`, fallbackNarrative: `床位、柜门和课表上的名字一一对过，负责新生的老师才在登记页上确认。宿舍里还有别人留下的说话声，教室座位也没有围着他空出一圈。这里从今天起是日常，不是一句“入学成功”就能跳过去的背景。`, suggestions: ["参加第一堂魂师基础课程", `向${life.homeroomTeacher}询问首月考核`, `和${life.peers[0].name}核对座位与课程安排`], systemMessages: [`学院首月 · ${life.className} · 安置完成`] };
+    if (life.stage === "入学安顿") {
+      if (!/宿舍|安顿|安置|报到|课程表|上课去处|新生安排|工读安排|分班/.test(action)) return impossible(`已经进入学院，但还没有跟${life.teacherRole}${life.teacherName}看过${life.arrangementName}，不能把第一天直接跳成长期上课。`, [life.arrivalAction, `向${life.teacherName}询问上课和住宿安排`, "认识同班学生"]);
+      if ((game.view.era ?? 1) === 4 && !game.view.inventory.includes("学院课程表")) game.view.inventory.push("学院课程表");
+      life.stage = "共同学习";
+      life.evidence.push(`已经安顿${life.dormitory}，并与${life.teacherName}当面说清${life.arrangementName}`);
+      const arrivalNarrative = (game.view.era ?? 1) === 1
+        ? `${life.teacherName}领他进宿舍看过床位，又指了教室和工读要去的地方。屋里早有孩子在收拾东西，没人因为新生进门就停下自己的事。`
+        : (game.view.era ?? 1) === 4
+          ? `${life.teacherName}把课程表交给他，又领他认过宿舍和教室。表上的体能课和班级训练都有具体时间，今天还没有哪一项算作完成。`
+          : `${life.teacherName}领他看过宿舍和教室，把近期课程、吃饭时间和学院规矩一件件讲明。屋里还有其他新生在忙自己的行李，这里从今天起才真正成为日常。`;
+      return { intent: "学院入学安顿", minutes: 120, ruleSummary: `已经安顿${life.dormitory}，由${life.teacherRole}${life.teacherName}说明${life.arrangementName}；尚未完成课程或同辈磨合。`, fallbackNarrative: arrivalNarrative, suggestions: ["参加第一堂魂师基础课程", `向${life.teacherName}询问${life.assessmentName}`, `和${life.peers[0].name}商量座位与练习安排`], systemMessages: [`${life.periodLabel} · ${life.className} · 安顿完成`] };
     }
     const dutyPattern = application.fundingType === "工读抵扣" ? /工读|排班|校内劳动|打扫/
-      : application.fundingType === "学院奖助" ? /奖助|月评|成绩复核/
-        : application.fundingType === "宗门委培" ? /宗门|委培|培养记录|阶段汇报/
+      : application.fundingType === "学院奖助" ? /奖助|成绩要求|资助要求/
+        : application.fundingType === "宗门委培" ? /宗门|委培|培养情况|阶段汇报/
           : application.fundingType === "家族资助" ? /家族|费用用途|家里|监护人.*账/
             : undefined;
     if (dutyPattern?.test(action)) {
       life.fundingDutyProgress += 1;
       const fatigue = application.fundingType === "工读抵扣" ? 8 : 2;
       game.world.fatiguePoints += fatigue;
-      life.evidence.push(`完成${application.fundingType}第${life.fundingDutyProgress}次责任记录：${application.obligations[0]}`);
-      return { intent: "履行学院费用责任", minutes: application.fundingType === "工读抵扣" ? 120 : 45, ruleSummary: `完成${application.fundingType}责任记录 ${life.fundingDutyProgress} 次；${application.obligations.join("；")}。疲劳+${fatigue}，没有额外冒充课程或好感。`, fallbackNarrative: application.fundingType === "工读抵扣" ? `排班纸上写的是适合孩子做的活。桌面擦完、教具归位，负责老师检查后才在名字旁画了一笔。劳动换的是费用减免，不是让其他同学欠他人情。` : `费用页没有因为钱已经到位便收进柜底。责任人核过这一个月的用途和记录，能继续承担的部分盖了章，不能承诺的部分仍旧空着。`, suggestions: ["参加下一堂基础课程", "核对费用责任是否影响训练时间", "把本次责任记录交给班主任"], systemMessages: [`学院费用责任 · ${application.fundingType} · ${life.fundingDutyProgress}`] };
+      life.evidence.push(`第${life.fundingDutyProgress}次履行${application.fundingType}约定：${application.obligations[0]}`);
+      return { intent: "履行学院费用约定", minutes: application.fundingType === "工读抵扣" ? 120 : 45, ruleSummary: `已经第${life.fundingDutyProgress}次履行${application.fundingType}约定；${application.obligations.join("；")}。疲劳+${fatigue}，这不会额外算作课程或好感。`, fallbackNarrative: application.fundingType === "工读抵扣" ? `分给孩子的活不重，却得老老实实做完。桌面擦净、教具归位，负责老师看过后才让他离开。劳动换的是学费和住宿减免，不是让其他同学欠他人情。` : `出钱的人没有只问一句“够不够”。这段时间花了多少、以后还能承担什么，双方当面说清。能继续出的部分有人应下，不能答应的也没有含糊过去。`, suggestions: ["参加下一堂基础课程", "问清费用安排会不会占用训练时间", `把这次情况告诉${life.teacherName}`], systemMessages: [`学院费用 · ${application.fundingType} · ${life.fundingDutyProgress}`] };
     }
     const peerAction = /同学|同桌|舍友|认识|交谈|切磋|共同训练|小组练习|一起吃饭/.test(action) || life.peers.some((peer) => action.includes(peer.name));
     if (peerAction) {
-      if (life.stage === "基础课程" && life.courseProgress < 2) return impossible("刚完成报到，至少先经历两次共同课程，才能让同辈互动建立在真实共同场景上。", ["参加魂师基础课程", "参加体能课程", "记住同班新生姓名"]);
+      if (life.stage === "共同学习" && life.courseProgress < 2) return impossible("刚进入学院，至少先和同班学生经历两次共同课程，彼此才有真实的相处基础。", ["参加魂师基础课程", "参加体能课程", "记住同班学生姓名"]);
       const peer = life.peers.find((item) => action.includes(item.name)) ?? [...life.peers].sort((left, right) => left.interactions - right.interactions)[0];
       const sparring = /切磋|共同训练|小组练习|实战/.test(action);
       peer.interactions += 1;
       peer.attitude = Math.min(100, peer.attitude + (sparring ? 2 : 4));
       peer.competition = Math.min(100, peer.competition + (sparring ? (peer.role === "竞争者" ? 8 : 3) : peer.role === "竞争者" ? 2 : 0));
-      peer.lastAction = sparring ? `与主角完成一次有老师规则约束的练习，正在复盘${peer.motive}` : `与主角谈到自己的目标：${peer.motive}`;
+      peer.lastAction = sparring ? `与${game.view.character!.name}完成一次由老师看护的练习，正在回想${peer.motive}` : `与${game.view.character!.name}谈到自己的目标：${peer.motive}`;
       life.peerInteractions += 1;
       if (sparring) life.practicalProgress += 1;
       life.evidence.push(`与${peer.name}第${peer.interactions}次互动：${peer.lastAction}`);
       const relation = game.view.relations.find((item) => item.name === peer.name);
       if (relation) recordPlayerRelation(game, relation, sparring ? "共同训练后形成尊重与竞争" : "在课程和生活中交换具体信息", { trust: sparring ? 1 : 2, respect: sparring ? 3 : 1, sharedInterest: 1 });
-      if (life.courseProgress >= 3 && life.peerInteractions >= 2) life.stage = "首月实战考核";
+      if (life.courseProgress >= 3 && life.peerInteractions >= 2) life.stage = "阶段考核";
       else if (life.courseProgress >= 2) life.stage = "同辈磨合";
-      return { intent: sparring ? "学院同辈训练" : "学院同辈交往", minutes: sparring ? 180 : 60, ruleSummary: `${peer.name}因“${peer.motive}”参与本次${sparring ? "训练" : "交往"}；态度${peer.attitude}、竞争${peer.competition}、互动${peer.interactions}。没有自动成为朋友、追随者或恋爱对象。`, fallbackNarrative: sparring ? `${peer.name}没有因为一次输赢便服气或翻脸。他把自己吃亏的那一步重做了一遍，又盯着主角成功的动作看了几眼。下课铃响时，两个人记住的是下一次该怎么赢，而不是系统替他们宣布了关系。` : `${peer.name}说的不是围着主角转的客套话。他先讲了自己最在意的名额和家里的安排，又问了一件眼前能回答的事。话没有一下说透，至少下次在教室里不会再把彼此当成名字。`, suggestions: [sparring ? `和${peer.name}复盘训练差距` : `在下一堂课观察${peer.name}的选择`, `与${life.peers.find((item) => item.id !== peer.id)?.name ?? "另一名同学"}完成一次具体互动`, life.courseProgress >= 3 ? "报名首月实战考核" : "参加下一堂基础课程"], systemMessages: [`同辈 · ${peer.name} · 态度${peer.attitude} · 竞争${peer.competition}`] };
+      return { intent: sparring ? "学院同辈训练" : "学院同辈交往", minutes: sparring ? 180 : 60, ruleSummary: `${peer.name}为了“${peer.motive}”参与这次${sparring ? "训练" : "交往"}；态度${peer.attitude}、竞争${peer.competition}、互动${peer.interactions}。一次相处不会自动变成朋友、追随者或恋爱对象。`, fallbackNarrative: sparring ? `${peer.name}没有因为一次输赢便服气或翻脸。他把自己吃亏的那一步重做了一遍，又盯着${game.view.character!.name}成功的动作看了几眼。下课时，两个人记住的是下一次该怎么赢。` : `${peer.name}没有只说客套话。他先讲了自己最在意的事，又问了一件眼前能回答的问题。话没有一下说透，至少下次在教室里不会再把彼此当成陌生人。`, suggestions: [sparring ? `和${peer.name}复盘训练差距` : `在下一堂课观察${peer.name}的选择`, `与${life.peers.find((item) => item.id !== peer.id)?.name ?? "另一名同学"}完成一次具体互动`, life.courseProgress >= 3 ? `参加${life.assessmentName}` : "参加下一堂基础课程"], systemMessages: [`同辈 · ${peer.name} · 态度${peer.attitude} · 竞争${peer.competition}`] };
     }
-    if (/首月|月度|实战考核|班级考核/.test(action)) {
-      if (life.courseProgress < 3 || life.peerInteractions < 2) return impossible(`首月考核要求至少3次课程与2次真实同辈互动；当前${life.courseProgress}/3、${life.peerInteractions}/2。`, ["参加下一堂基础课程", "与同班同学完成小组练习", "查看首月要求"]);
-      if (life.fundingDutyProgress < 1) return impossible(`${application.fundingType}附带责任尚未留下首月记录，不能把资助、委培或工读条件当成不存在。`, [application.fundingType === "工读抵扣" ? "完成一次工读排班" : `完成${application.fundingType}责任复核`, "申请变更费用路线", "向班主任说明延期原因"]);
+    if (action.includes(life.assessmentName) || /阶段考核|新生考核|班级实战|基础课程与实战检查|补考|重考/.test(action)) {
+      if (life.courseProgress < 3 || life.peerInteractions < 2) return impossible(`${life.assessmentName}前至少要经历3次课程和2次真实同辈互动；当前${life.courseProgress}/3、${life.peerInteractions}/2。`, ["参加下一堂基础课程", "与同班同学完成小组练习", `询问${life.assessmentName}还缺什么`]);
+      if (life.fundingDutyProgress < 1) return impossible(`${application.fundingType}附带的约定还没有实际履行，不能当作不存在。`, [application.fundingType === "工读抵扣" ? "完成一次工读劳动" : `完成一次${application.fundingType}约定`, "申请变更费用办法", `向${life.teacherName}说明困难`]);
       const score = Math.min(100, 35 + life.courseProgress * 8 + life.practicalProgress * 6 + Math.min(15, game.view.character!.innateSoulPower) + integer(actionRandom(game), -5, 8));
-      life.monthlyScore = score;
+      const eraOneAssessment = (game.view.era ?? 1) === 1;
+      const assessmentResult = eraOneAssessment ? (score >= 85 ? "表现突出" : score >= 60 ? "达到老师要求" : "还没有达到老师要求") : `${score}分`;
+      life.assessmentScore = score;
       life.practicalProgress += 1;
-      life.evidence.push(`首月考核${score}分：课程${life.courseProgress}、同辈互动${life.peerInteractions}、实践${life.practicalProgress}`);
+      life.evidence.push(`${life.assessmentName}${assessmentResult}：课程${life.courseProgress}、同辈互动${life.peerInteractions}、实践${life.practicalProgress}`);
       if (score < 60) {
         life.standing = Math.max(-20, life.standing - 5);
-        academy.reputation = "首月考核待补测";
-        return { intent: "学院首月考核未通过", minutes: 240, ruleSummary: `首月考核${score}分，低于60分；学籍保留，进入补练，不会因一次失败自动退学或获得同情奖励。`, fallbackNarrative: `成绩贴出来时，他的名字还在班里，只是后面多了“补测”两个字。班主任把失分最多的动作圈给他看，没有当众替他找借口。同学各自看了一眼，便又忙自己的名次去了。`, suggestions: ["按失分项目补练", `向${life.homeroomTeacher}申请补测`, "找同学完成针对性练习"], systemMessages: [`学院首月 · ${score}分 · 待补测`] };
+        academy.reputation = `${life.assessmentName}需要重考`;
+        return { intent: "学院阶段考核未通过", minutes: 240, ruleSummary: eraOneAssessment ? `${life.assessmentName}还没有达到${life.teacherName}的要求；学院身份保留，需要补练后重新接受检查，不会因一次失败自动退学或获得同情奖励。` : `${life.assessmentName}${score}分，低于60分；学院身份保留，需要补练后重考，不会因一次失败自动退学或获得同情奖励。`, fallbackNarrative: `${life.teacherName}把失误最多的动作重新示范了一遍，没有当众替他找借口，也没有说一次失败就必须离开学院。同学们看过结果，又各自忙自己的训练去了。`, suggestions: ["按失误项目补练", `向${life.teacherName}询问再次检查的时间`, "找同学完成针对性练习"], systemMessages: [`${life.periodLabel} · ${life.assessmentName} · 待重试`] };
       }
-      life.stage = "首月结业";
+      life.stage = "阶段完成";
       life.standing = Math.min(100, score - 50);
-      academy.reputation = score >= 85 ? "首月表现突出" : "首月合格";
+      academy.reputation = score >= 85 ? `${life.periodLabel}表现突出` : `${life.periodLabel}表现合格`;
       const task = game.view.tasks.find((item) => item.id === "academy-foundation"); if (task) { task.status = "完成"; task.progressEvidence = [...(task.progressEvidence ?? []), ...life.evidence.slice(-5)]; }
-      return { intent: "完成学院首月考核", minutes: 240, ruleSummary: `首月考核${score}分并完成结业；课程${life.courseProgress}次、同辈互动${life.peerInteractions}次、费用责任${life.fundingDutyProgress}次均有记录。班级位置${life.standing}，不会自动获得核心名额。`, fallbackNarrative: `班主任把成绩、出勤、训练记录和费用责任页叠在一起，确认没有缺页后才盖下首月合格章。教室里的座位没有因此改变，竞争者也没来道贺。真正改变的是，他从一个刚报到的名字，变成了班里每个人都见过他怎么上课、怎么失误、怎么补回来的同学。`, suggestions: ["参加下一阶段实战课", "和同学组建固定训练小组", "请导师评估第一魂环路线"], systemMessages: [`学院首月 · ${score}分 · 结业`] };
+      return { intent: "完成学院阶段考核", minutes: 240, ruleSummary: `${life.assessmentName}${assessmentResult}，${life.completionName}；课程${life.courseProgress}次、同辈互动${life.peerInteractions}次、费用约定履行${life.fundingDutyProgress}次。班级位置${life.standing}，不会自动获得核心名额。`, fallbackNarrative: `${life.teacherName}当着他的面说完长处和失误，又把下一阶段该练什么讲清。教室里的座位没有因此改变，竞争者也没来道贺。真正改变的是，他已经让班里的人见过自己怎么上课、怎么失误，又怎么把错误补回来。`, suggestions: ["参加下一阶段实战课", "和同学组建固定训练小组", "请导师评估第一魂环路线"], systemMessages: [`${life.periodLabel} · ${life.assessmentName} · 已通过`] };
     }
     if (/上课|课程|学院学习|体能课|魂师基础/.test(action)) {
-      if (life.courseProgress >= 3 && life.peerInteractions < 2) return impossible("首月基础课记录已经足够，当前缺的是与真实同学共同练习和处理分组；继续刷同一课程不能替代班级生活。", [`与${life.peers[0].name}完成一次小组练习`, `与${life.peers[1].name}核对训练分组`, "查看首月实战考核缺项"]);
+      if (life.courseProgress >= 3 && life.peerInteractions < 2) return impossible("基础课程已经上过几次，当前缺的是与真实同学共同练习和处理分组；继续重复同一课程不能替代班级生活。", [`与${life.peers[0].name}完成一次小组练习`, `与${life.peers[1].name}商量训练分组`, `询问${life.assessmentName}还缺什么`]);
       life.attendance += 1;
       life.courseProgress += 1;
       const gain = 8 + Math.min(8, life.courseProgress * 2);
       game.world.trainingPoints += gain;
       game.world.fatiguePoints += 10;
       const activePeer = life.peers[life.courseProgress % life.peers.length];
-      activePeer.lastAction = activePeer.role === "竞争者" ? "记录主角课堂表现并调整自己的首月名次目标" : activePeer.role === "务实同学" ? "核对课程用品、食堂花费和自己的学习进度" : "观察哪些同学适合参加小组练习";
+      activePeer.lastAction = activePeer.role === "竞争者" ? `留意${game.view.character!.name}的课堂表现，并调整自己的竞争目标` : activePeer.role === "务实同学" ? "计算课程用品、食堂花费和自己的学习进度" : "观察哪些同学适合参加小组练习";
       if (activePeer.role === "竞争者") activePeer.competition = Math.min(100, activePeer.competition + 3);
       life.evidence.push(`第${life.courseProgress}次课程：出勤、课堂内容与${activePeer.name}的独立行动均有记录`);
-      if (life.courseProgress >= 3 && life.peerInteractions >= 2) life.stage = "首月实战考核";
+      if (life.courseProgress >= 3 && life.peerInteractions >= 2) life.stage = "阶段考核";
       else if (life.courseProgress >= 2) life.stage = "同辈磨合";
-      return { intent: "学院课程", minutes: 240, ruleSummary: `完成${life.className}第${life.courseProgress}次基础课程，训练点+${gain}、疲劳+10；${activePeer.name}${activePeer.lastAction}。`, fallbackNarrative: `班主任讲完今天的内容，又抽了几个人当场重做。有人记得快，有人只顾着别在同学面前出丑。主角把错的那一处重新抄在课表背面，下课时教室里已经有人在比较下一次分组。`, suggestions: life.courseProgress >= 2 ? [`与${activePeer.name}完成一次具体互动`, "参加小组基础训练", life.courseProgress >= 3 ? "核对首月实战考核条件" : "参加下一堂课程"] : ["复习课堂笔记", "参加下一堂基础课程", `观察${activePeer.name}的课堂选择`], systemMessages: [`学院课程 · ${life.courseProgress} · ${life.stage}`] };
+      return { intent: "学院课程", minutes: 240, ruleSummary: `完成${life.className}第${life.courseProgress}次基础课程，训练点+${gain}、疲劳+10；${activePeer.name}${activePeer.lastAction}。`, fallbackNarrative: `${life.teacherRole}${life.teacherName}讲完今天的内容，又让几个人当场重做。有人记得快，有人只顾着别在同学面前出丑。${game.view.character!.name}把错的地方重新练了一遍，下课时已经有人在商量下一次怎么分组。`, suggestions: life.courseProgress >= 2 ? [`与${activePeer.name}完成一次具体互动`, "参加小组基础训练", life.courseProgress >= 3 ? `询问${life.assessmentName}的要求` : "参加下一堂课程"] : ["复习课堂内容", "参加下一堂基础课程", `观察${activePeer.name}的课堂选择`], systemMessages: [`学院课程 · ${life.courseProgress} · ${life.stage}`] };
     }
-    return impossible("当前学院行动需要说明是安置、上课、同辈互动、费用责任还是首月考核。", ["参加下一堂基础课程", `与${life.peers[0].name}完成一次具体互动`, "查看首月考核要求"]);
+    return impossible(`当前学院行动需要说明是安顿生活、上课、同辈互动、履行费用约定还是参加${life.assessmentName}。`, ["参加下一堂基础课程", `与${life.peers[0].name}完成一次具体互动`, `询问${life.assessmentName}的要求`]);
   }
   const key = "academyCourseProgress";
   const progress = Number(game.world.flags[key] ?? 0) + 1;
@@ -3032,13 +3066,13 @@ function economyResolution(game: StoredGame, action: string): ActionResolution {
     const reward = Number(task.detail.match(/报酬(\d+)金魂币/)?.[1] ?? 20);
     character.coins += reward; task.status = "完成";
     recordEconomyTransaction(game, "收入", reward, "悬赏委托人", `交付${task.title}`);
-    return { intent: "交付悬赏", minutes: 60, ruleSummary: `凭行动记录和证据交付${task.title}，获得${formatSoulCoins(reward)}。`, fallbackNarrative: `委托人没有只听主角描述。他把证物、日期和两名见证人的口供都核过，才解开钱袋的绳结。`, suggestions: ["核对报酬", "处理悬赏后果", "寻找下一项工作"] };
+    return { intent: "交付悬赏", minutes: 60, ruleSummary: `凭行动记录和证据交付${task.title}，获得${formatSoulCoins(reward)}。`, fallbackNarrative: `委托人没有只听${game.view.character!.name}口头描述。他看过证物，又问清日期和两名见证人的说法，才解开钱袋的绳结。`, suggestions: ["确认报酬", "处理悬赏后果", "寻找下一项工作"] };
   }
   if (/接受.*悬赏|领取.*悬赏/.test(action)) {
     const reward = 15 + game.view.character!.soulRank * 2;
     const title = `完成${game.view.location ?? "当地"}公开悬赏`;
     ensureTask(game, { id: `bounty-${game.actionIndex}`, title, kind: "悬赏", detail: `调查并解决当地公告中的目标；报酬${reward}金魂币，只有完成任务本身才支付。`, status: "进行中", destinationId: game.view.locationId });
-    return { intent: "接受悬赏", minutes: 20, ruleSummary: `记录悬赏条件与${formatSoulCoins(reward)}报酬，尚未获得奖励。`, fallbackNarrative: `主角把告示从头读到尾，尤其看了失败责任和验收凭证。接下这件事只多了一份义务，钱要等真的做完才有。`, suggestions: ["调查悬赏目标", "准备所需物资", "确认验收方式"] };
+    return { intent: "接受悬赏", minutes: 20, ruleSummary: `记录悬赏条件与${formatSoulCoins(reward)}报酬，尚未获得奖励。`, fallbackNarrative: `${game.view.character!.name}把告示从头读到尾，尤其看了失败后要承担什么、做完以后找谁领钱。接下这件事只多了一份义务，报酬要等真的做完才有。`, suggestions: ["调查悬赏目标", "准备所需物资", "确认交付方式"] };
   }
   if (/发布.*悬赏/.test(action)) {
     const reward = Math.min(character.coins, Math.max(10, Number(action.match(/\d+/)?.[0] ?? 20)));
@@ -3079,7 +3113,7 @@ function economyResolution(game: StoredGame, action: string): ActionResolution {
   }
   if (/黑市/.test(action)) {
     const known = game.view.relations.some((item) => /黑市|地下|掮客/.test(`${item.name}${item.faction ?? ""}`)) || /黑市|地下/.test(game.view.character!.originName);
-    if (!known) return impossible("主角没有可靠引路人，贸然寻找黑市只会先暴露自己的意图。", ["打听地下掮客", "调查不记名交易", "先建立本地关系"]);
+    if (!known) return impossible(`${game.view.character!.name}没有可靠引路人，贸然寻找黑市只会先暴露自己的意图。`, ["打听地下掮客", "调查不记名交易", "先建立本地关系"]);
     economy.blackMarketAccess = true;
     return { intent: "黑市交易", minutes: 120, ruleSummary: "通过可信引路人确认一处不记名交易入口；价格更高，赃物与钓鱼风险并存。", fallbackNarrative: `引路人换了两次方向，最后只指了一扇没有招牌的门。里面没人问真名，桌上的东西也没有一件写着来路。`, suggestions: ["只询价不购买", "调查货物来源", "使用化名交易"] };
   }
@@ -3205,7 +3239,7 @@ function eraThreeCareerResolution(game: StoredGame, action: string): ActionResol
     return { intent: "第二职业认证", minutes: speedMinutes(game, 360, 1_440), ruleSummary: `作品尺寸、负载、武魂适配与失败记录通过复核，取得${route.role} ${target}级认证。`, fallbackNarrative: "考官没有只看最好的一张图。他把失败页、修改痕迹和成品测试记录并排摊开，逐项追问为什么改；最后一个问题答完，认证章才落在档案上。", suggestions: [`承接${route.id}委托`, `继续准备${target + 1}级认证`, "查看职业档案"], systemMessages: [`职业认证 · ${route.role} · ${target}级`] };
   }
   if (/委托|订单|接单/.test(action)) {
-    if (certified < 1) return impossible(`没有${route.role}认证，正规客户不会把可追责的产业订单交给玩家。`, [`申请${route.role}认证`, `继续学习${route.id}`, "整理训练作品"]);
+    if (certified < 1) return impossible(`没有${route.role}认证，正规客户不会把需要承担后果的产业订单交给本人。`, [`申请${route.role}认证`, `继续学习${route.id}`, "整理训练作品"]);
     const materialIndex = game.view.inventory.findIndex((item) => item.includes(route.material));
     if (materialIndex < 0) return impossible(`${route.id}委托需要可登记的${route.material}，不能只交口头方案。`, [`购买${route.material}`, "核对订单材料标准", "暂缓接单"]);
     game.view.inventory.splice(materialIndex, 1);
@@ -3381,8 +3415,8 @@ function spiritAscensionResolution(game: StoredGame, action: string): ActionReso
     const uprisingEntryYears = current?.uprisingEntryYears ?? [];
     const currentYear = game.view.worldTime?.year ?? 0;
     if (violent && uprisingEntryYears.filter((year) => year === currentYear).length >= 2) return impossible("本年度两次暴动期进入记录已经用完，传灵塔不会再签发第三次同年名额。", ["等待下一原作年", "申请常规初级名额", "复盘已有暴动期记录"]);
-    if (violent && (companions.length < 2 || companions.length > 6)) return impossible("暴动期团队申请必须明确写出二至六名同伴，加上玩家后不得超过七人。", ["写出全部同行者姓名", "缩减到七人以内", "改申请常规初级名额"]);
-    if (requestedTier === "中级" && companions.length > 6) return impossible("中级升灵台同行者加玩家后不得超过七人。", ["缩减同行者", "分批使用入门卡", "核对团队名单"]);
+    if (violent && (companions.length < 2 || companions.length > 6)) return impossible("暴动期团队申请必须明确写出二至六名同伴，连本人在内不得超过七人。", ["写出全部同行者姓名", "缩减到七人以内", "改申请常规初级名额"]);
+    if (requestedTier === "中级" && companions.length > 6) return impossible("中级升灵台同行者连本人在内不得超过七人。", ["缩减同行者", "分批使用入门卡", "确认团队名单"]);
     for (const companion of companions) {
       const trust = companion.dimensions?.trust ?? companion.strength ?? 0;
       const npc = companion.id ? game.world.npcs[companion.id] : undefined;
@@ -3851,7 +3885,7 @@ function factionManagementResolution(game: StoredGame, action: string): ActionRe
     game.view.managedFactions.push(faction);
     return { intent: "建立势力", minutes: speedMinutes(game, 1440, 4320), ruleSummary: `建立${faction.name}，初始${faction.members}人、驻地为${faction.territory[0]}；内部问题已记录。`, fallbackNarrative: `名字写到纸上不算成立。三个人把能拿出的东西摆在一起，才勉强凑成第一份名册和一处能关门说话的地方。`, suggestions: ["明确组织规矩", "寻找稳定收入", "分配第一批职责"] };
   }
-  if (!faction) return impossible("主角目前没有实际掌管的势力。", ["建立组织", "提升现有势力职位", "招募可信同伴"]);
+  if (!faction) return impossible(`${game.view.character!.name}目前没有实际掌管的势力。`, ["建立组织", "提升现有势力职位", "招募可信同伴"]);
   const cost = /扩建|领地|驻地/.test(action) ? 30 : 10;
   if (character.coins < cost) return impossible(`这项事务至少需要${formatSoulCoins(cost)}作为公开支出。`, ["筹措资金", "缩小计划", "寻找支持者"]);
   character.coins -= cost; faction.resources += Math.round(cost * .6);
@@ -3945,7 +3979,7 @@ function waitResolution(game: StoredGame, action: string): ActionResolution {
 function openingFollowupResolution(game: StoredGame, action: string): ActionResolution | undefined {
   const step = game.view.chapterObjective?.steps.find((item) => item.status === "进行中");
   if (!step) return undefined;
-  const officiant = String(game.world.flags.openingOfficiant ?? "觉醒主持者");
+  const officiant = String(game.world.flags.openingOfficiant ?? "负责本次觉醒的魂师");
   const institution = String(game.world.flags.openingInstitutionName ?? "当前机构");
   const mode = String(game.world.flags.openingMode ?? "public");
   const focus = String(game.world.flags.openingSoulTestFocus ?? "能力边界、消耗与收放");
@@ -3953,22 +3987,23 @@ function openingFollowupResolution(game: StoredGame, action: string): ActionReso
   const next = game.view.chapterObjective?.steps.find((item) => item.status === "未开始")?.text ?? "按已经确认的条件选择近期路线";
   const openingTestRelevant = action.includes(soul) || action.includes(officiant) || /觉醒|武魂|魂力|水晶球|收放|承载|体征|兽化|显形/.test(action);
   if (step.id === "understand" && openingTestRelevant && /测试|复测|确认|说明|询问|了解|请.*(?:测试|复核|说明)/.test(action)) return {
-    intent: "觉醒后能力复核", minutes: 60,
+    intent: "确认觉醒后的能力", minutes: 60,
     ruleSummary: `${officiant}完成${soul}的${focus}测试；只确认当前六岁身体和现有魂力能够稳定做到的部分，结果写入${institution}当前档案。`,
     fallbackNarrative: `这次没有再靠猜。${officiant}让他连续做了三次收放，又分别记录身体反应、魂力消耗和失控征兆。做不到的部分照样留在纸上，没有被一句“天赋很好”抹过去。`,
-    suggestions: [next, "问清第一次长期训练的每日要求", "核对测试记录会被哪些人看到"], systemMessages: [`觉醒复核 · ${soul} · ${focus}`],
+    suggestions: [next, "问清第一次长期训练的每日要求", "问清测试结果会被哪些人看到"], systemMessages: [`觉醒测试 · ${soul} · ${focus}`],
   };
   if (step.id === "identity" && /住处|见证|身份|登记|担保|临时凭据/.test(action)) {
-    if (!game.view.inventory.includes("地方临时身份凭据")) game.view.inventory.push("地方临时身份凭据");
-    game.view.character!.reputation = "有现场见证、身份仍待长期核验的异界孩子";
-    return { intent: "建立临时大陆身份", minutes: 120, ruleSummary: `${officiant}登记现场见证、临时住处与短期身份凭据；这只解决眼前食宿和行动证明，不自动补出亲属、户籍历史或势力归属。`, fallbackNarrative: `名字、发现地点、见证人和今晚住处一项项写完，纸上仍有大片空白。主持者没有替他编父母，只在有效期限下面盖了章。至少今天进城时，他不再只有一句自己是谁。`, suggestions: [next, "问清临时凭据的期限与活动范围", "保留异界来历，只登记可核实事实"], systemMessages: ["身份 · 地方临时凭据 · 待长期核验"] };
+    if (!game.view.inventory.includes("临时来处证明")) game.view.inventory.push("临时来处证明");
+    game.view.character!.reputation = "有人见过觉醒经过、来处仍不完整的异界孩子";
+    const guarantor = (game.view.era ?? 1) === 1 ? "当地村长与武魂殿分殿" : (game.view.era ?? 1) === 2 ? "当地接引人和负责觉醒的魂师" : "当地儿童照料机构与负责觉醒的人";
+    return { intent: "取得临时来处证明", minutes: 120, ruleSummary: `${officiant}写明发现地点、现场见证与今晚住处，由${guarantor}暂时作保；这只能解决眼前食宿和行动证明，不会凭空补出父母、旧住址或势力归属。`, fallbackNarrative: `${officiant}只写亲眼见过的事：孩子在哪里出现、谁看见了觉醒、今晚住在哪里。没人替他编一对父母，也没人说这张纸能管一辈子。至少今天进城或投宿时，他不必再只靠一句自报来历。`, suggestions: [next, "问清谁愿意继续照料或作保", "保留异界来历，只说能够证实的部分"], systemMessages: ["来处 · 临时作保 · 身世仍待自证"] };
   }
   const openingSupportRelevant = action.includes(institution) || /开局培养|家族培养|导师|训练场|猎魂|路费|食宿|监护|学院|报名|交换培养|魂灵费用|第一魂环安排/.test(action);
   if (step.id === "support" && openingSupportRelevant && /家族培养|学院|报名|外部导师|交换培养|导师|训练场|资源|猎魂|路费|食宿|监护|魂灵|费用|安排|核对|条件|资格|代价/.test(action)) return {
-    intent: "核对开局培养条件", minutes: 90,
-    ruleSummary: mode === "noble" ? "监护人与见证人分别列明家族培养、可报学院、外部导师或交换培养的资格、费用与责任；学院名额和导师认可都需另行考核，不因贵族身份自动取得。" : `${institution}列明当前可申请的导师面谈、训练场时段、资源额度、费用与第一成长资源；这些是可谈条件，不等于已经无条件发放。`,
-    fallbackNarrative: mode === "noble" ? `桌上摊开的不是一份已经替他写好的安排。留在家中能用哪些训练场，哪几所学院接受报名，外部导师愿不愿见面，各自的费用、考核和家族责任被分栏写清。同辈能争的是名额，不能把“出身”当成录取书。` : `对方把能给的、要考的和暂时不能给的分成三栏。训练场排到哪一天，药浴谁签字，第一次猎魂谁负责带队，都写得比“宗门会培养你”具体得多。`,
-    suggestions: [next, "挑一项最急需的资源询问交换条件", "让监护人与复核人核对责任签字"], systemMessages: [`培养条件 · ${institution} · 已列明未发放`],
+    intent: "问清开局培养条件", minutes: 90,
+    ruleSummary: mode === "noble" ? "家里说明了可以留在族中培养、报名学院、寻找外部导师或交换培养；每条路分别需要多少钱、谁愿意教和家里要求承担什么。贵族身份不会自动换来录取或拜师。" : `${institution}说明了谁愿意先见一面、训练场什么时候能用、食宿由谁承担，以及第一次成长资源能帮到哪一步；这些只是具体条件，不等于已经无条件送出。`,
+    fallbackNarrative: mode === "noble" ? `家里没有替他直接定下去处。留在族中由谁教、哪几所学院能去、外面的导师愿不愿见，各自要花多少钱、家里又想换回什么，都被当面说清。同辈能争的是机会，不能把“出身”当成录取书。` : `对方没有只说一句“宗门会培养你”。哪位老师愿意见面、训练场哪天有空、吃住由谁管、第一次猎魂谁能带队，都一件件说到人和时间上。`,
+    suggestions: [next, "挑一项最急需的帮助问清代价", "和监护人确认愿意承担哪条路线"], systemMessages: [`培养条件 · ${institution} · 已说清未发放`],
   };
   if (step.id === "boundary" && /离开|保护|领地|人类|兽群|边界/.test(action)) return {
     intent: "确认兽群与人类边界", minutes: 90,
@@ -3988,7 +4023,7 @@ function openingFollowupResolution(game: StoredGame, action: string): ActionReso
     character.publiclyKnownMartialSoulIndices ??= [0];
     const publicIndices = character.publiclyKnownMartialSoulIndices;
     const publicNames = character.martialSouls.filter((_soul, index) => publicIndices.includes(index)).map((soul) => soul.name);
-    return { intent: "确定开局成长路线", minutes: 30, ruleSummary: `当前主修确定为${character.martialSoul.name}；现场公开范围为${publicNames.join("、")}。身份、资源和机构责任仍按已经谈明的条件执行。`, fallbackNarrative: `这一次不是让长辈替他选。主修哪一个武魂，哪些细节写进公开记录，哪些责任暂时接下，都由他当面说清。记录员照着原话修改，没有把沉默补成同意。`, suggestions: ["按新路线开始第一次训练", "把公开范围告诉监护人与主持者", "检查第一魂环或第一成长资源的准备条件"], systemMessages: [`成长路线 · 主修${character.martialSoul.name} · 公开${publicNames.join("、")}`] };
+    return { intent: "确定开局成长路线", minutes: 30, ruleSummary: `当前主修确定为${character.martialSoul.name}；现场公开范围为${publicNames.join("、")}。身份、资源和机构责任仍按已经谈明的条件执行。`, fallbackNarrative: `这一次不是让长辈替他选。主修哪一个武魂，哪些细节可以告诉别人，哪些条件暂时接受，都由他当面说清。负责记录的人照着原话修改，没有把沉默补成同意。`, suggestions: ["按新路线开始第一次训练", `把公开范围告诉监护人与${officiant}`, "检查第一魂环或第一成长资源的准备条件"], systemMessages: [`成长路线 · 主修${character.martialSoul.name} · 公开${publicNames.join("、")}`] };
   }
   return undefined;
 }
@@ -4163,7 +4198,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/参悟|修炼传承|修行剑|炼丹|炼器|特殊体系|异界功法/.test(action)) resolution = specialSystemResolution(game, action);
   else if (/处理|介入|参与|帮助处理|阻止.*恶化|查看新事件|拒绝|不接受|回绝/.test(action) && game.world.dynamicEvents.some((item) => item.status === "可介入" && (action.includes(item.title) || item.participantIds.some((id) => action.includes(game.world.npcs[id]?.name ?? "")) || /查看新事件/.test(action)))) resolution = dynamicEventResolution(game, action);
   else if (/完成承诺|履行承诺/.test(action)) resolution = fulfillPromiseResolution(game, action);
-  else if (game.view.academyApplication && !["已入学", "未通过", "已撤回"].includes(game.view.academyApplication.stage) && /学院|报名|材料|监护|担保|工读|家族资助|家族承担|学院奖助|奖学|宗门委培|宗门资助|义务教育|家庭自费|普通自费|入学考核|录取|报到|食宿|放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action)) resolution = academyResolution(game, action);
+  else if (game.view.academyApplication && !["已入学", "未通过", "已撤回"].includes(game.view.academyApplication.stage) && /学院|报名|材料|证明|来处|监护|担保|工读|家族资助|家族承担|学院奖助|奖学|宗门委培|宗门资助|义务教育|家庭自费|普通自费|入学考核|分班测试|录取|报到|进入学院|接受.*入学|食宿|放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action)) resolution = academyResolution(game, action);
   else if (academyLifeFollowup) resolution = academyStudyResolution(game, action);
   else if (/上课|课程|学院学习|参加实战课/.test(action)) resolution = academyStudyResolution(game, action);
   else if (/入学|报名.*学院|申请.*学院|成为工读生/.test(action)) resolution = academyResolution(game, action);

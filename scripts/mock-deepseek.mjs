@@ -42,7 +42,7 @@ const server = createServer((request, response) => {
     } catch {
       // Narration prompts are not required to contain the semantic payload.
     }
-    const narrativeRuleResult = fixedRuleResult.replaceAll("玩家", "当事人").replaceAll("程序判定", "现场结果").replaceAll("固定结果", "既定结果").replaceAll("规则包", "现有记录");
+    const narrativeRuleResult = fixedRuleResult.replaceAll("玩家", "当事人").replaceAll("主角", "当事人").replaceAll("系统替", "擅自替").replaceAll("程序判定", "现场结果").replaceAll("固定结果", "既定结果").replaceAll("规则包", "现有记录");
     const accountableHistory = /旧世|档案|年表|历史权益|听证|旧址线索|当前产权/.test(playerInput);
     const accountableMedia = /媒体联盟|核验联盟|共享核验|优先议题|共同核验|修复计划|恢复复核|观察期核验|补充.*核验资源|第三家.*媒体|三方.*准入|退出.*联盟|联盟.*退出|替补.*(?:媒体|机构|成员|加入|准入|来源|记录)/.test(playerInput);
     const historyNarrative = /听证/.test(playerInput)

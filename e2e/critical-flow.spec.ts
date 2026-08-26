@@ -566,14 +566,14 @@ test("宗门本体武魂开局使用专属显形、目标与资源路线", async
   await expect(save).toBeVisible();
   await save.locator("button").first().click();
   await expect(page.locator(".chapter-objective")).toContainText("太玄剑宗内部觉醒");
-  await expect(page.locator(".chapter-objective")).toContainText("导师、训练场、资源额度与猎魂护送");
+  await expect(page.locator(".chapter-objective")).toContainText("安排哪位导师、多少训练时间和哪些猎魂帮助");
   await expect(page.locator(".narrative-stream")).toContainText("两手空空");
   await expect(page.locator(".narrative-stream")).toContainText("身体本身的变化");
   await expect(page.locator(".narrative-stream")).not.toContainText("先天道体托在掌心");
   await expect(page.locator(".chapter-objective")).not.toContainText("加入宗门");
 });
 
-test("学院入学与拜师必须经过材料、考核和试学，不会一句话送身份", async ({ page }) => {
+test("斗一普通学院按原著来处证明入学，拜师仍需评估和试学", async ({ page }) => {
   test.setTimeout(90_000);
   await seedEarlyGrowthGame();
   await page.goto("/");
@@ -587,14 +587,14 @@ test("学院入学与拜师必须经过材料、考核和试学，不会一句�
   await submitAction(page, "改走学院奖助路线");
   await expect(page.locator(".growth-application-panel")).toContainText("普通学员 · 学院奖助");
   await submitAction(page, "改走家庭自费路线");
-  await submitAction(page, "准备诺丁初级魂师学院报名材料和监护签字");
-  await expect(page.locator(".growth-application-panel")).toContainText("入学考核");
-  await submitAction(page, "参加诺丁初级魂师学院入学考核");
+  await submitAction(page, "准备诺丁初级魂师学院需要的证明");
   await expect(page.locator(".growth-application-panel")).toContainText("待报到");
-  await submitAction(page, "办理诺丁初级魂师学院入学报到");
+  await expect(page.locator(".growth-application-panel")).toContainText("觉醒证明与来处查验");
+  await submitAction(page, "接受诺丁初级魂师学院入学安排");
   await expect(page.locator(".growth-application-panel")).toContainText("已入学");
-  await expect(page.locator(".growth-application-panel")).toContainText("学院首月 · 报到安置");
-  await submitAction(page, "去宿舍安置并领取课表");
+  await expect(page.locator(".growth-application-panel")).toContainText("入学初期 · 入学安顿");
+  await expect(page.locator(".growth-application-panel")).toContainText("负责一年级课程的学院老师");
+  await submitAction(page, "跟学院老师看过宿舍、教室和工读安排");
   await submitAction(page, "参加第一堂魂师基础课程");
   await submitAction(page, "参加第二堂魂师基础课程");
   const peerNames = await page.locator(".academy-peer-list section > strong").allTextContents();
@@ -604,9 +604,10 @@ test("学院入学与拜师必须经过材料、考核和试学，不会一句�
   await submitAction(page, `与${firstPeer}完成一次小组练习`);
   await submitAction(page, "参加第三堂魂师基础课程");
   await submitAction(page, `与${secondPeer}完成一次小组练习`);
-  await expect(page.locator(".growth-application-panel")).toContainText("首月实战考核");
-  await submitAction(page, "参加学院首月实战考核");
-  await expect(page.locator(".growth-application-panel")).toContainText("学院首月 · 首月结业");
+  await expect(page.locator(".growth-application-panel")).toContainText("阶段考核");
+  await submitAction(page, "参加基础课程与实战检查");
+  await expect(page.locator(".growth-application-panel")).toContainText("入学初期 · 阶段完成");
+  await expect(page.locator(".growth-application-panel")).not.toContainText(/班主任|课表|学籍|首月|结业/);
 
   await submitAction(page, "寻找适合当前武魂的导师");
   await expect(page.locator(".growth-application-panel")).toContainText("候选接触");
@@ -639,7 +640,7 @@ test("学院入学与拜师必须经过材料、考核和试学，不会一句�
   await expect(page.locator(".story-arc-card")).toContainText("首环筹备");
   await expect(page.locator(".story-arc-card")).toContainText("责任、费用、许可和成年同行");
   await expect(page.locator(".npc-initiative-card")).toContainText(mentorName);
-  await expect(page.locator(".npc-initiative-card")).toContainText("预算、成年同行、许可与撤退条件");
+  await expect(page.locator(".npc-initiative-card")).toContainText("花费、成年同行、入林手令与撤退条件");
 });
 
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {

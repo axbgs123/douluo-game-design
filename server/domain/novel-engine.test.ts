@@ -40,9 +40,9 @@ describe("增强小说引擎", () => {
   it("compiles a hard causality and continuity contract before narration", () => {
     const game = awakened("logic-preflight");
     const knowledge = buildSceneKnowledgePack(game, "调查觉醒记录");
-    const packet = buildNarrativeLogicPacket(game, "调查觉醒记录", { ...ordinaryResolution, minutes: 45, ruleSummary: "核对了主持者签名，但没有取得封存原件。" }, knowledge);
+    const packet = buildNarrativeLogicPacket(game, "调查觉醒记录", { ...ordinaryResolution, minutes: 45, ruleSummary: "看过负责觉醒的魂师留下的姓名，但没有取得原件。" }, knowledge);
     expect(packet.version).toBe("narrative-logic.v1");
-    expect(packet.protagonistContract).toMatchObject({ desire: "调查觉醒记录", action: "调查", fixedConsequence: "核对了主持者签名，但没有取得封存原件。" });
+    expect(packet.protagonistContract).toMatchObject({ desire: "调查觉醒记录", action: "调查", fixedConsequence: "看过负责觉醒的魂师留下的姓名，但没有取得原件。" });
     expect(packet.continuityContract.requiredStateChanges).toContain("时间推进 45 分钟");
     expect(packet.continuityContract.forbiddenInventions).toContain("让 NPC 知道隐藏武魂、系统、未来事件或未公开身份");
     expect(packet.reactionChain.requiredTraces.at(-1)).toContain("不强制制造谜题");
@@ -110,6 +110,7 @@ describe("增强小说引擎", () => {
     game.view.character!.specialSystem = { name: "因果印记", stage: "未激活", progress: "0%", abilities: [], resourceHint: "未知" };
     const pack = buildNovelEnginePack(game, "尝试激活金手指", { ...ordinaryResolution, intent: "参悟特殊体系" });
     expect(auditNovelEngineNarrative(game, "程序判定已经完成，玩家获得胜利。", pack)).toContain("正文泄露后台叙事机制");
+    expect(auditNovelEngineNarrative(game, "主角赢下训练后，系统替两人宣布成为朋友。", pack)).toContain("正文泄露后台叙事机制");
     expect(auditNovelEngineNarrative(game, "他感到无比愤怒。", pack)).toContain("正文直接喊出情绪而没有外显");
     expect(auditNovelEngineNarrative(game, "印记从此可以毫无代价无限使用。", pack)).toContain("特殊体系被写成无代价万能能力");
     expect(auditNovelEngineNarrative(game, "印记目前不能无限使用，每次都会留下头痛。", pack)).not.toContain("特殊体系被写成无代价万能能力");
