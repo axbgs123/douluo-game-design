@@ -76,7 +76,7 @@ describe("卷级故事导演", () => {
 
   it("keeps the first volume on a causal awakening-to-first-ring arc and makes ignored NPC initiatives leave pressure", () => {
     const game = playingGame("early-growth-directed-arc");
-    expect(game.view.storyArc).toMatchObject({ earlyGrowthPhase: "觉醒落地", centralGoal: expect.stringContaining("培养条件") });
+    expect(game.view.storyArc).toMatchObject({ earlyGrowthPhase: "觉醒落地", centralGoal: "让觉醒后的第一步真正落到人和事上" });
     const initialScene = game.view.storyArc!.npcScenes.find((item) => item.status === "等待回应")!;
     const pressureBefore = game.view.storyArc!.pressure;
     game.view.worldTime!.day += 10;
@@ -113,7 +113,7 @@ describe("卷级故事导演", () => {
     delete (legacy as Partial<typeof legacy>).arcType;
     game.schemaVersion = 33;
     const migrated = ensureGameState(structuredClone(game));
-    expect(migrated.schemaVersion).toBe(46);
+    expect(migrated.schemaVersion).toBe(47);
     expect(migrated.view.storyArc?.stage).toBe("立局");
     expect(migrated.view.storyArc?.stageGates).toHaveLength(6);
     expect(migrated.view.storyArc?.payoffLedger.length).toBeGreaterThanOrEqual(3);

@@ -55,12 +55,12 @@ function createPayoffLedger(game: StoredGame): StoryArcPayoffView[] {
   const profile = ERA_OPENING[era];
   const mode = String(game.world.flags.openingMode ?? "public");
   const institution = String(game.world.flags.openingInstitutionName ?? game.view.affiliations[0]?.name ?? "当前机构");
-  const route = mode === "internal" ? `确认武魂方向与${institution}内部培养方案`
+  const route = mode === "internal" ? `弄清${institution}准备怎样教，并定下第一步`
     : mode === "noble" ? "比较家族、学院与外部导师三类培养路线"
       : mode === "unbound" ? "在无户籍状态下取得合法训练与生存条件"
         : mode === "beast" ? "确认留在兽群或接触人类修炼体系的边界"
           : profile.route;
-  const living = mode === "internal" ? `问清${institution}能安排哪位导师、多少训练时间和哪些猎魂帮助`
+  const living = mode === "internal" ? "问清先跟谁练、每天在哪里练、第一次猎魂谁同行"
     : mode === "noble" ? "落实培养地点、费用来源、监护与家族责任"
       : mode === "unbound" ? "落实今晚住处、现场见证与临时身份凭据"
         : mode === "beast" ? "落实离开兽群领地后的身份、语言、钱币与安全准备"
@@ -223,7 +223,7 @@ function earlyGrowthPhase(game: StoredGame): NonNullable<StoryArcView["earlyGrow
 }
 
 const EARLY_GROWTH_DIRECTION: Record<NonNullable<StoryArcView["earlyGrowthPhase"]>, { goal: string; conflict: string; payoff: string; turn: string }> = {
-  觉醒落地: { goal: "把觉醒结果变成能执行的培养条件", conflict: "天赋、身份与家庭现实尚未形成同一条可走路线", payoff: "拿到一条由具体责任人承认的培养方案", turn: "决定公开范围与第一条培养路线" },
+  觉醒落地: { goal: "让觉醒后的第一步真正落到人和事上", conflict: "天赋、身份与家庭现实尚未形成同一条可走路线", payoff: "有人真正答应教、给出住处或承担第一次猎魂中的一件事", turn: "决定公开范围与第一条培养路线" },
   培养路线: { goal: "在学院、导师、家族或宗门之间选出近期培养路线", conflict: "每条路线提供的资源、考核、费用与责任并不相同", payoff: "取得真实学籍、师承或明确拒绝后的替代路线", turn: "亲自接受或拒绝一项长期培养责任" },
   学院师承生活: { goal: "用课程、同辈互动或导师训练证明路线能够持续", conflict: "同辈有自己的名次与家庭目标，导师和学院也有独立规则", payoff: "完成当前时代的入学阶段生活或导师正式课程", turn: "决定固定训练关系与首环准备方式" },
   首环筹备: { goal: "在责任、费用、许可和成年同行闭合后取得第一魂环", conflict: "合适魂兽、带队权限、补给、路程与吸收风险必须同时成立", payoff: "完成一次不跳步的调查、准备、战斗与吸收", turn: "在安全建议、魂兽适配与个人选择之间确定目标" },
@@ -375,7 +375,7 @@ export function storyArcSuggestions(game: StoredGame): string[] {
   const focus = String(game.world.flags.openingSoulTestFocus ?? "能力边界、消耗与收放");
   const mainSoul = game.view.character?.martialSoul.name ?? "武魂";
   const openingGrowth = mode === "internal" ? `请${officiant}测试${mainSoul}的${focus}` : mode === "noble" ? `请${officiant}测试${mainSoul}的${focus}` : mode === "beast" ? `与养育者确认${mainSoul}的人兽差异` : `请${officiant}测试${mainSoul}的${focus}`;
-  const payoffAction = mode === "internal" ? `向${institution}落实导师、训练场与猎魂责任` : mode === "noble" ? "落实选定路线的名额、费用、导师与家族责任" : mode === "unbound" ? "落实住处、临时身份与基础训练条件" : mode === "beast" ? "落实离开兽群后的身份与安全准备" : ({ 1: "向负责人落实导师、训练与猎魂帮助", 2: "向学院落实食宿、培养与魂环帮助", 3: "落实魂师班安排与后续魂灵条件", 4: "落实魂力测试结果与学院基础课程" } as const)[era];
+  const payoffAction = mode === "internal" ? `请${institution}说定先由谁教、在哪儿练、谁陪同猎魂` : mode === "noble" ? "说定近期去处、费用、老师与家里要求" : mode === "unbound" ? "说定今晚住处、临时身份与基础训练去处" : mode === "beast" ? "备好离开兽群后的身份与安全条件" : ({ 1: "请负责人说定谁教、在哪里练、谁陪同猎魂", 2: "向学院问清食宿、训练与魂环帮助", 3: "问清魂师班去处与后续魂灵费用", 4: "确认魂力结果与初等学院安排" } as const)[era];
   const growth = nextGate?.stage === "阶段兑现" ? payoffAction : openingGrowth;
   const relation = pendingNpc?.action ?? (game.view.relations[0] ? `向${game.view.relations[0].name}追问能提供的帮助与条件` : "向当前机构追问负责人、条件与答复期限");
   const risk = (game.view.character?.martialSouls.length ?? 0) > (game.view.character?.publiclyKnownMartialSoulIndices?.length ?? 1) ? "暂不公开隐藏武魂，先问清谁会知道" : profile.riskAction;

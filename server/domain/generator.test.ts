@@ -280,17 +280,19 @@ describe("candidate generation", () => {
   it("binds sect identity, body soul, objective, and choices into one internal awakening", () => {
     const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "sect-body-opening-matrix" });
     game.hiddenCandidates = generateCandidates(game.view.seed, 0, "男", undefined, 0, 1, [], "hidden-sect-heir");
+    game.hiddenCandidates[0].innateSoulPower = 10;
     game.view.candidates = game.hiddenCandidates.map((candidate) => candidate.public);
     selectCandidate(game, game.view.candidates[0].id, undefined, metaSoulById("rainbow-dao-body"));
     finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
     awakenCharacter(game);
     const prose = game.view.narrative.map((entry) => entry.text).join("\n");
-    expect(game.view.chapterObjective?.title).toContain("太玄剑宗内部觉醒");
+    expect(game.view.chapterObjective?.title).toBe("听清太玄剑宗愿意怎么培养他");
     expect(JSON.stringify(game.view.chapterObjective)).not.toMatch(/加入宗门|学院名额|选择宗门/);
     expect(prose).toContain("先天道体显现的是身体本身的变化");
-    expect(prose).not.toMatch(/先天道体托在掌心|学院名额|地方武魂殿/);
-    expect(game.view.suggestions).toEqual(expect.arrayContaining([expect.stringContaining("太玄剑宗守碑长老"), expect.stringContaining("太玄剑宗的导师") ]));
-    expect(game.storyMemory.openThreads).toContain("谈清太玄剑宗内部培养条件与责任");
+    expect(prose).not.toMatch(/先天道体托在掌心|学院名额|地方武魂殿|宗门没有敲钟|没有念少宗主|无关人员|记录员|又换了一颗水晶重测|培养方案/);
+    expect(prose.match(/备用的一颗复测/g)).toHaveLength(1);
+    expect(game.view.suggestions).toEqual(expect.arrayContaining([expect.stringContaining("太玄剑宗守碑长老"), "问清先跟谁练、每天在哪里练、第一次猎魂谁同行"]));
+    expect(game.storyMemory.openThreads).toContain("弄清太玄剑宗愿意怎么教、又要什么");
     selectLifeGoal(game, "在十八岁前完善太玄剑胎与先天道体的协同修炼");
     const testAction = "请太玄剑宗守碑长老测试先天道体的体征与魂力流向";
     const testResult = resolveAction(game, testAction);
@@ -365,7 +367,7 @@ describe("candidate generation", () => {
       ],
     };
     const upgradedNoble = ensureGameState(migratedNoble);
-    expect(upgradedNoble.schemaVersion).toBe(46);
+    expect(upgradedNoble.schemaVersion).toBe(47);
     expect(JSON.stringify(upgradedNoble.view.chapterObjective)).toMatch(/家族培养.*学院.*外部导师/);
 
     const firstStep = resolveAction(noble, `请${noble.world.flags.openingOfficiant}完成武魂复核测试`);
@@ -546,7 +548,7 @@ describe("candidate generation", () => {
     expect(game.view.character?.martialSouls).toHaveLength(2);
     expect(game.view.character?.publiclyKnownMartialSoulIndices).toEqual([0]);
     expect(game.view.narrative.at(-1)?.text).not.toContain("双生武魂");
-    expect(game.view.narrative.at(-1)?.text).toContain("仍在查看第一武魂与水晶球，没有看到第二次显形");
+    expect(game.view.narrative.at(-1)?.text).toContain("注意力仍在第一武魂上，没有看到第二次显形");
     expect(game.view.suggestions).toContain("暂不显露第二武魂，回住处后单独测试");
     expect(game.view.suggestions.every((suggestion) => !suggestion.includes("测试副武魂"))).toBe(true);
     selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0], { activeMartialSoulIndex: 1, publiclyKnownMartialSoulIndices: [0] });
@@ -594,7 +596,7 @@ describe("candidate generation", () => {
     expect(game.world.flags.awakeningAttention).toBe("最高优先");
     expect(game.view.tasks.some((task) => task.id === "awakening-recruitment")).toBe(true);
     expect(game.world.dynamicEvents.some((event) => /商议培养安排/.test(event.title) && event.status === "可介入")).toBe(true);
-    expect(game.view.narrative.at(-1)?.text).toMatch(/停下后面的觉醒|队伍晚走半个时辰/);
+    expect(game.view.narrative.at(-1)?.text).toMatch(/把两次结果单独记下|队伍晚走半个时辰/);
     expect(game.view.suggestions.some((suggestion) => suggestion.includes(game.view.character!.martialSoul.name) && /测试|确认/.test(suggestion))).toBe(true);
     expect(game.view.suggestions.every((suggestion) => !/查看地图|查看新事件|观察周围|继续行动/.test(suggestion))).toBe(true);
   });
@@ -638,7 +640,7 @@ describe("candidate generation", () => {
 
   it("uses each later era's actual awakening follow-up instead of recycling the era-one buttons", () => {
     const originIds = { 2: "d2-shrek-craft-child", 3: "d3-east-sea-worker", 4: "d4-space-technician" } as const;
-    const expectedOfficiants = { 2: /负责当地儿童觉醒的魂师/, 3: /初等学院觉醒教师/, 4: /儿童觉醒中心工作人员/ } as const;
+    const expectedOfficiants = { 2: /负责当地儿童觉醒的魂师/, 3: /传灵塔传灵师/, 4: /负责儿童觉醒室的工作人员/ } as const;
     for (const era of [2, 3, 4] as const) {
       const game = createGame({ era, gender: "女", difficulty: "标准", seed: `era-awakening-choice-${era}` });
       game.hiddenCandidates = generateCandidates(game.view.seed, 0, "女", undefined, 0, era, [], originIds[era]);
@@ -652,6 +654,34 @@ describe("candidate generation", () => {
       expect(game.view.narrative.map((entry) => entry.text).join("\n")).not.toContain("武魂殿巡查执事");
       expect(game.view.suggestions.every((item) => !/把眼前|正在等的人|指出第一处缺陷/.test(item))).toBe(true);
     }
+  });
+
+  it("uses each era's own awakening room and soul-power test instead of copying the era-one stone array", () => {
+    for (const era of [2, 3, 4] as const) {
+      const game = createGame({ era, gender: "男", difficulty: "标准", seed: `era-${era}-awakening-room` });
+      game.hiddenCandidates[0].innateSoulPower = 10;
+      selectCandidate(game, game.view.candidates[0].id);
+      finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+      awakenCharacter(game);
+      const prose = game.view.narrative.map((entry) => entry.text).join("\n");
+      expect(prose).not.toMatch(/六块黑石|六角阵|水晶球/);
+      expect(prose).toContain("觉醒室");
+      if (era === 3) {
+        expect(prose).toMatch(/地面、墙壁和穹顶的纹路|重新引动觉醒室的纹路/);
+        expect(prose).toContain("传灵师");
+        expect(prose).not.toContain("所属家族觉醒教官");
+      }
+      if (era === 4) expect(prose).toMatch(/六边形觉醒室|魂力测试仪/);
+    }
+    const overseas = createGame({ era: 3, gender: "男", difficulty: "标准", seed: "d3-overseas-awakening-authority" });
+    overseas.hiddenCandidates = generateCandidates(overseas.view.seed, 0, "男", undefined, 0, 3, [], "d3-overseas-exchange");
+    overseas.view.candidates = overseas.hiddenCandidates.map((candidate) => candidate.public);
+    selectCandidate(overseas, overseas.view.candidates[0].id);
+    finalizeCharacterShaping(overseas, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(overseas);
+    const overseasProse = overseas.view.narrative.map((entry) => entry.text).join("\n");
+    expect(overseasProse).toContain("受邀到学院的传灵塔传灵师");
+    expect(overseasProse).not.toMatch(/所属家族觉醒教官|星罗帝国家族觉醒场/);
   });
 
   it("audits a full-soul-power awakening that produces no social or institutional reaction", () => {

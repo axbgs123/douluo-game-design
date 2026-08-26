@@ -766,7 +766,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(46);
+    expect(migrated.schemaVersion).toBe(47);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -873,7 +873,7 @@ describe("完整游玩规则", () => {
     legacyAcademy.view.academyLife = undefined;
     legacyAcademy.world.flags.academyCourseProgress = 3;
     const migratedAcademy = ensureGameState(legacyAcademy);
-    expect(migratedAcademy.schemaVersion).toBe(46);
+    expect(migratedAcademy.schemaVersion).toBe(47);
     expect(migratedAcademy.view.academyLife).toMatchObject({ stage: "同辈磨合", courseProgress: 3, peerInteractions: 0 });
     expect(migratedAcademy.view.academyLife?.peers).toHaveLength(3);
     expect(migratedAcademy.view.tasks.find((task) => task.id === "academy-foundation")?.status).toBe("进行中");
@@ -917,7 +917,7 @@ describe("完整游玩规则", () => {
     delete oldApplication.obligations;
     delete oldApplication.availableFundingOptions;
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(46);
+    expect(migrated.schemaVersion).toBe(47);
     expect(migrated.view.academyApplication).toMatchObject({ fundingType: "家庭自费", fundingSource: "本人及家庭支付" });
 
     const legacyD1Exam = prepare(1, "academy-legacy-fake-exam");
@@ -1202,7 +1202,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.summary = "主角在东海学院见到了古月娜。";
     game.view.relations.push({ id: "gu-yue-na", name: "古月娜", relation: "同学", impression: "旧存档提前使用了后期姓名", strength: 10, category: "师友" });
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(46);
+    expect(migrated.schemaVersion).toBe(47);
     expect(migrated.world.npcs["gu-yue-na"].name).toBe("古月");
     expect(migrated.view.relations.find((item) => item.id === "gu-yue-na")?.name).toBe("古月");
     expect(migrated.storyMemory.summary).not.toContain("古月娜");
@@ -1228,9 +1228,9 @@ describe("完整游玩规则", () => {
     game.storyMemory.openThreads = ["家人与出身中尚未说清的细节"];
     delete game.world.flags.openingMode; delete game.world.flags.openingInstitutionName; delete game.world.flags.openingOfficiant; delete game.world.flags.openingSoulTestFocus;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(46);
+    expect(migrated.schemaVersion).toBe(47);
     expect(migrated.view.narrative.at(-1)?.text).not.toMatch(/先天道体托在掌心|学院名额|恐怕不只是魂环/);
-    expect(migrated.view.chapterObjective?.title).toContain("太玄剑宗内部觉醒");
+    expect(migrated.view.chapterObjective?.title).toBe("听清太玄剑宗愿意怎么培养他");
     expect(JSON.stringify(migrated.view.chapterObjective)).not.toMatch(/加入宗门|学院名额/);
     expect(migrated.storyMemory.openThreads).toContain("获得第一魂环");
     expect(migrated.storyMemory.openThreads).not.toContain("谈清太玄剑宗内部培养条件与责任");
@@ -1247,7 +1247,7 @@ describe("完整游玩规则", () => {
     game.world.npcs["tang-san"].episodicMemory.push({ id: "ai-note", text: "模型虚构的NPC记忆", year: 0, day: 1, actionIndex: 1, significance: 3, source: "叙事提取", witnessed: true });
     game.world.npcs["tang-san"].memoryOfPlayer.push("模型虚构的NPC记忆");
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(46);
+    expect(migrated.schemaVersion).toBe(47);
     expect(migrated.storyMemory.summary).toContain("独自测试武魂；程序结果：只确认武魂能够短暂显形");
     expect(migrated.storyMemory.summary).not.toMatch(/齐长老|三个时辰|两名执事/);
     expect(migrated.storyMemory.openThreads).toEqual(migrated.view.tasks.filter((task) => task.status !== "完成").map((task) => task.title));
@@ -1268,6 +1268,54 @@ describe("完整游玩规则", () => {
     expect(migrated.world.actionLedger[0].result).toContain("需由玩家重新行动");
     expect(migrated.storyMemory.summary).not.toContain("长老完成第一武魂测试");
     expect(migrated.view.character!.martialSouls[1].privateTested).not.toBe(true);
+  });
+
+  it("Schema 47为全部旧存档清理开局模板的重复复测与策划案口吻", () => {
+    const game = awakened("schema-47-opening-prose");
+    game.schemaVersion = 46;
+    game.view.character!.reputation = "太玄剑宗最高优先记录的先天满魂力";
+    game.view.lifeGoal = "带领太玄剑宗公开入世，迫使上三宗承认它的席位";
+    game.view.runProgress.lifeGoal = game.view.lifeGoal;
+    game.view.chapterObjective = {
+      title: "把太玄剑宗内部觉醒变成具体培养方案",
+      stakes: "宗门封山",
+      steps: [
+        { id: "support", text: "问清太玄剑宗能安排哪位导师、多少训练时间和哪些猎魂帮助", status: "进行中" },
+        { id: "path", text: "决定主修顺序、公开范围和愿意承担的内部责任", status: "未开始" },
+      ],
+    };
+    game.view.narrative.push({
+      id: "legacy-opening-prose",
+      kind: "narration",
+      text: "晨雾压在太玄剑谷里，宗门没有敲钟。觉醒堂只来了宗主夫妇、守碑长老和两名负责封阵的弟子。\n\n顾玄一亲手关上堂门。闻九没有念少宗主的尊称，只叫了顾安的名字。\n\n太玄剑宗守碑长老没有去看他的掌心，而是观察体征、动作和魂力流向，再让记录员写下变化位置。\n\n太玄剑宗守碑长老当场停下后面的觉醒，把无关人员请到门外，又换了一颗水晶重测。太玄剑宗负责传承、训练与安全的人被要求今日到场。谁愿意教、能给多少帮助、要承担什么，都得由有权作主的人当面说清。\n\n原本只需几分钟的觉醒仪式，就这样改变了屋里每个人接下来的安排。顾安站在仍未熄灭的阵纹中央，听见门栓落下，也知道自己再不可能像来时那样无人过问。",
+      createdAt: new Date().toISOString(),
+    });
+    const migrated = ensureGameState(game);
+    const prose = migrated.view.narrative.at(-1)?.text ?? "";
+    expect(migrated.schemaVersion).toBe(47);
+    expect(prose).not.toMatch(/宗门没有敲钟|没有念少宗主|记录员|无关人员|又换了一颗水晶重测|再不可能像来时那样无人过问|太玄剑宗守碑长老/);
+    expect(prose).toContain("闻九朝阵中抬了抬手：“顾安，进阵。”");
+    expect(migrated.view.chapterObjective?.title).toBe("听清太玄剑宗愿意怎么培养他");
+    expect(migrated.view.chapterObjective?.steps.map((step) => step.text).join(" ")).not.toMatch(/培养方案|多少训练时间|内部责任/);
+    expect(migrated.view.lifeGoal).toContain("让大陆强宗平等相待");
+    expect(migrated.view.runProgress.lifeGoal).toContain("让大陆强宗平等相待");
+    expect(migrated.view.character!.reputation).toBe("在太玄剑宗内部引起高层关注的先天满魂力");
+  });
+
+  it("Schema 47把斗三旧档的斗一黑石与水晶球觉醒改回当代觉醒室", () => {
+    const game = awakenedInEra(3, "schema-47-era-three-awakening");
+    game.schemaVersion = 46;
+    const name = game.view.character!.name;
+    game.view.narrative.push({
+      id: "legacy-era-one-ritual",
+      kind: "narration",
+      text: `${name}踩进六角阵。金色光点贴着小腿往上钻，右手随即一沉。\n\n手掌贴上水晶球，白光猛地冲到顶端。负责当地儿童觉醒的魂师立刻取走水晶，又换上备用的一颗复测。第二次，光仍旧一分不少。\n\n第二颗水晶的白光慢慢暗下去。`,
+      createdAt: new Date().toISOString(),
+    });
+    const migrated = ensureGameState(game);
+    const prose = migrated.view.narrative.at(-1)?.text ?? "";
+    expect(prose).not.toMatch(/六角阵|水晶球/);
+    expect(prose).toMatch(/觉醒室中央|重新引动觉醒室的纹路|第二次亮起的纹路/);
   });
 
   it("事实型AI选项必须通过程序门禁和专用路由", () => {
@@ -1385,7 +1433,7 @@ describe("第一部世界资料", () => {
     legacy.view.locationId = "mother-ship-port";
     legacy.view.location = "联邦母舰港";
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(46);
+    expect(migrated.schemaVersion).toBe(47);
     expect(migrated.view.location).toBe("联邦舰队集结基地");
   });
 

@@ -1360,7 +1360,7 @@ const ORIGIN_GOALS: Record<string, string[]> = {
   "hidden-sect-heir": [
     "破解太玄剑宗封山旧誓，让宗门能在不依赖护山阵势的情况下立足大陆",
     "在十五岁前走完祖师剑碑九层，并用斗罗世界的魂环重建旧剑道",
-    "带领太玄剑宗公开入世，迫使上三宗承认它的席位",
+    "带领太玄剑宗公开入世，用足够的战绩与信誉让大陆强宗平等相待",
   ],
   "blue-lightning-heir": [
     "在十二岁前取得雷池第一席，压过同辈嫡系并获得宗门核心传承",
@@ -1614,7 +1614,7 @@ export function selectLifeGoal(game: StoredGame, lifeGoal: string, options?: { a
     const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId)!;
     const context = awakeningContext(candidate);
     const pronoun = game.view.character.gender === "女" ? "她" : "他";
-    const additionalManifestations = publicIndices.slice(1).map((index) => awakeningManifestation(game.view.character!.name, pronoun, candidate.martialSouls[index], context.officiant).manifestation).join("\n\n");
+    const additionalManifestations = publicIndices.slice(1).map((index) => awakeningManifestation(game.view.character!.name, pronoun, candidate.martialSouls[index], context.officiant, game.view.era ?? 1).manifestation).join("\n\n");
     game.view.narrative.push(createEntry("narration", hiddenNames.length
       ? `${game.view.character.name}没有继续催动另外的魂力回响。${hiddenNames.join("、")}仍停在只有本人能够感觉到的状态，现场只确认了${exposedNames.join("、")}。${context.officiant}按已见结果落笔，${game.view.character.name}决定先从${souls[activeIndex].name}练起。`
       : `${additionalManifestations}\n\n${exposedNames.join("、")}已经先后完成显形。${context.officiant}划掉旧记录，重新复测魂力与每个武魂的收放状态；在场者确认的是多武魂事实，不是自动成立的收徒、忠诚或资源承诺。${game.view.character.name}先选定${souls[activeIndex].name}作为眼下的修炼起点。`));
@@ -1632,7 +1632,7 @@ export function selectLifeGoal(game: StoredGame, lifeGoal: string, options?: { a
       const currentOrdinal = (game.view.worldTime?.year ?? candidate.public.birthYearOffset ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
       if (!game.world.dynamicEvents.some((event) => event.id === "talent-recruitment-competition")) game.world.dynamicEvents.push({ id: "talent-recruitment-competition", title: "多武魂天才引发培养争议", kind: "势力", locationId: game.view.locationId ?? candidate.public.locationId, participantIds: [], detail: `${context.factionName}内部会围绕由谁教、能给多少帮助、如何保密和未来归属产生不同意见；有权作主的人会先重新测试和谈条件，不会仅凭惊叹定案。`, stakes: 4, status: "可介入", createdYear: game.view.worldTime?.year ?? candidate.public.birthYearOffset ?? 0, createdDay: game.view.worldTime?.day ?? 1, expiresOrdinal: currentOrdinal + 30 });
       recordIntelligence(game, { subjectType: "事件", subjectId: "talent-recruitment-competition", title: "多武魂觉醒引起培养争议", detail: `${context.officiant}亲眼确认并暂停后续觉醒；最先得到的会是老师接触、食宿和训练机会，具体帮助、保密与归属仍要谈。`, source: `${context.officiant}现场说明`, confidence: 100, status: "确定" });
-      game.view.character.reputation = `${context.factionName}最高优先记录的多武魂天才`;
+      game.view.character.reputation = `已由${context.factionName}亲眼确认的多武魂天才`;
     }
   }
   game.view.lifeGoal = goal;
@@ -1687,7 +1687,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 46,
+    schemaVersion: 47,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1956,6 +1956,8 @@ function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityP
     ? `${candidate.public.name}低头看过自己的手。身体只有六岁，记忆却仍属于另一个世界；昨夜一起落在荒地上的，除了一身旧衣，再没有别的东西。`
       : `${specialIdentity ? `${candidate.public.name}的身份是${candidate.public.originName}` : `${candidate.public.name}生在${candidate.public.originName}`}。${thirdPersonOrigin}`;
   const context = awakeningContext(candidate);
+  const birthYear = candidate.public.birthYearOffset ?? 0;
+  const era: GameEra = birthYear >= 25_000 ? 4 : birthYear >= 15_000 ? 3 : birthYear >= 5_000 ? 2 : 1;
   const scenes: Record<string, [string, string, string]> = {
     "seven-treasure-core": [
       "七宝城堡的内院刚开门，觉醒厅外已经站着宗门教习和几名同龄孩子。宁风致没有坐主位，只在屏风后留了一盏茶。",
@@ -1968,9 +1970,9 @@ function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityP
       `觉醒阵旁摆着两颗备用水晶球。主持仪式的红衣主教核对完家徽，叫${candidate.public.name}入阵。`,
     ],
     "hidden-sect-heir": [
-      "晨雾压在太玄剑谷里，宗门没有敲钟。觉醒堂只来了宗主夫妇、守碑长老和两名负责封阵的弟子。",
+      "晨雾还压在太玄剑谷里。觉醒堂的门窗已经闭好，堂内只有宗主夫妇、守碑长老和两名负责封阵的弟子。",
       `守碑长老闻九把六块黑石逐一擦净。${candidate.public.name}${reaction}，谷外的剑鸣隔着山壁传进来，很轻。`,
-      `顾玄一亲手关上堂门。闻九没有念少宗主的尊称，只叫了${candidate.public.name}的名字。`,
+      `顾玄一亲手关上堂门。闻九朝阵中抬了抬手：“${candidate.public.name}，进阵。”`,
     ],
     "blue-lightning-heir": [
       "雷霆山门上空压着低云，雷池教习把觉醒阵搬到露天石台。嫡系长老坐了半圈，谁也没谈亲情。",
@@ -2019,15 +2021,27 @@ function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityP
     ],
   };
   const internalVenue = context.officiant !== "地方武魂殿巡查执事";
-  const scene = scenes[candidate.originId] ?? (internalVenue ? [
-    `天刚亮，${context.venue}已经收拾妥当。仪式由当代真正负责儿童觉醒与登记的人主持，没有借用其他时代或其他势力的流程。`,
-    `${context.officiant}核对阵石与内部名册。${candidate.public.name}${reaction}，家人或所属势力见证人留在规定的位置。`,
-    `六块黑石依次亮起。${context.officiant}按${context.factionName}的记录叫出${candidate.public.name}，等待仪式开始。`,
-  ] : [
-    `天刚亮，${candidate.public.location}的石路还带着夜里的凉气。今天轮到六岁的孩子参加公共觉醒，门外已经挤了不少人。`,
-    `队伍一点点往前挪。地方武魂殿巡查执事翻着名册，村里或街区的监护人在旁等候。${candidate.public.name}${reaction}。`,
-    `六块黑石摆在地上，边角磨得发亮。前一个孩子走出阵外，地方武魂殿巡查执事朝${candidate.public.name}抬了抬手，示意下一个进阵。`,
-  ]);
+  const laterEraInternalScenes: Partial<Record<GameEra, [string, string, string]>> = {
+    2: [`天刚亮，${context.venue}已经收拾妥当。负责觉醒的魂师正在检查室内阵纹和名册。`, `${context.officiant}核对完孩子的身份。${candidate.public.name}${reaction}，家人或所属势力的见证人留在门外等候。`, `${context.officiant}让${candidate.public.name}站到觉醒室中央，等四周安静下来才抬起手。`],
+    3: [`觉醒日一早，${context.venue}的地面、墙壁和穹顶纹路已经逐一检查过。`, `${context.officiant}核对完孩子的身份。${candidate.public.name}${reaction}，监护人在觉醒室外等候。`, `${context.officiant}让${candidate.public.name}站到房间中央，随后抬手引动室内纹路。`],
+    4: [`天刚亮，${context.venue}已经开始接待适龄孩子。六边形觉醒室里的感应装置刚完成自检。`, `${context.officiant}核对完孩子的身份和监护信息。${candidate.public.name}${reaction}，家人在观察窗外等候。`, `${context.officiant}让${candidate.public.name}站到觉醒室中央，四周的感应光随即一盏盏亮起。`],
+  };
+  const laterEraPublicScenes: Partial<Record<GameEra, [string, string, string]>> = {
+    2: [`天刚亮，${candidate.public.location}负责儿童觉醒的房间已经开门，适龄孩子和监护人在外面等候。`, `${context.officiant}核对名册，队伍一点点往前挪。${candidate.public.name}${reaction}。`, `前一个孩子走出觉醒室，${context.officiant}朝${candidate.public.name}抬了抬手，示意下一个进去。`],
+    3: [`觉醒日一早，${candidate.public.location}初等学院的圆形觉醒楼已经开门，家长都等在楼外。`, `学院老师核对孩子身份后，把${candidate.public.name}带到传灵师所在的觉醒室。${candidate.public.name}${reaction}。`, `地面、墙壁和穹顶的纹路还没有亮。传灵师让${candidate.public.name}站到房间中央。`],
+    4: [`天刚亮，${candidate.public.location}的儿童觉醒室已经开始接待适龄孩子，监护人在外面等候。`, `工作人员核对身份和监护信息后，把${candidate.public.name}带进六边形的房间。${candidate.public.name}${reaction}。`, `四周的感应光还没有亮。工作人员让${candidate.public.name}站到房间中央，不要乱动。`],
+  };
+  const scene = scenes[candidate.originId] ?? (era > 1
+    ? (internalVenue ? laterEraInternalScenes[era]! : laterEraPublicScenes[era]!)
+    : internalVenue ? [
+      `天刚亮，${context.venue}已经收拾妥当。仪式由所属势力负责儿童觉醒的人主持。`,
+      `${context.officiant}核对阵石与内部名册。${candidate.public.name}${reaction}，家人或所属势力见证人留在规定的位置。`,
+      `六块黑石依次摆好。${context.officiant}叫${candidate.public.name}走进阵中。`,
+    ] : [
+      `天刚亮，${candidate.public.location}的石路还带着夜里的凉气。今天轮到六岁的孩子参加公共觉醒，门外已经挤了不少人。`,
+      `队伍一点点往前挪。地方武魂殿巡查执事翻着名册，村里或街区的监护人在旁等候。${candidate.public.name}${reaction}。`,
+      `六块黑石摆在地上，边角磨得发亮。前一个孩子走出阵外，地方武魂殿巡查执事朝${candidate.public.name}抬了抬手，示意下一个进阵。`,
+    ]);
   return [scene[0], identityLine, scene[1], scene[2]].join("\n\n");
 }
 
@@ -2067,21 +2081,22 @@ function awakeningContext(selected: HiddenCandidate): AwakeningContext {
   const text = `${selected.originId}${selected.public.originName}${selected.roleTags.join("")}`;
   const souls = selected.martialSouls?.length ? selected.martialSouls : [selected.martialSoul];
   const soulNames = souls.map((soul) => soul.name);
+  const year = selected.public.birthYearOffset ?? 0;
   if (selected.originId === "fierce-beast-raised") return { factionId: "star-dou-beasts", factionName: "星斗核心区兽群", officiant: "凶兽养育者岩叔", venue: "古树根间的临时觉醒阵" };
   const sectContext = SECT_AWAKENING_CONTEXTS[selected.originId];
   if (sectContext) return sectContext;
   if (/七宝/.test(text)) return { factionId: "seven-treasure", factionName: "七宝琉璃宗", officiant: "七宝琉璃宗觉醒教习", venue: "宗门觉醒堂", notableNpc: soulNames.includes("七杀剑") ? { id: "chen-xin", name: "尘心" } : soulNames.includes("骨龙") ? { id: "gu-rong", name: "古榕" } : soulNames.some((name) => /七宝琉璃塔|九宝琉璃塔/.test(name)) ? { id: "ning-fengzhi", name: "宁风致" } : undefined };
   if (/蓝电/.test(text)) return { factionId: "blue-lightning", factionName: "蓝电霸王龙宗", officiant: "蓝电霸王龙宗雷池教习", venue: "宗门觉醒石台" };
   if (/昊天/.test(text)) return { factionId: "clear-sky", factionName: "昊天宗", officiant: "昊天宗支脉长老", venue: "支脉觉醒堂", notableNpc: soulNames.includes("昊天锤") ? { id: "tang-xiao", name: "唐啸" } : undefined };
-  if (/星罗|朱氏/.test(text)) return { factionId: "star-luo", factionName: "星罗帝国", officiant: "所属家族觉醒教官", venue: "家族觉醒场" };
+  if (/星罗|朱氏/.test(text) && year < 15_000) return { factionId: "star-luo", factionName: "星罗帝国", officiant: "所属家族觉醒教官", venue: "家族觉醒场" };
   if (/天斗|王府/.test(text)) return { factionId: "heaven-dou", factionName: "天斗帝国", officiant: "宫廷觉醒魂师", venue: "王府觉醒厅" };
   if (/武魂殿|教皇殿|长老殿/.test(text)) return { factionId: "spirit-hall", factionName: "武魂殿", officiant: "武魂殿觉醒执事", venue: "武魂殿觉醒厅" };
-  const year = selected.public.birthYearOffset ?? 0;
   if (/传灵塔/.test(text)) return { factionId: "spirit-pagoda", factionName: "传灵塔", officiant: "传灵塔传灵师", venue: "传灵塔职员区觉醒室" };
   if (/两万年唐门|唐门外务堂/.test(text)) return { factionId: "d3-tang-sect", factionName: "两万年唐门", officiant: "唐门外务堂觉醒教习", venue: "唐门外务堂觉醒室" };
   if (/联邦舰队/.test(text)) return { factionId: "d4-federal-fleet", factionName: "斗罗联邦舰队", officiant: "舰队军属觉醒中心教师", venue: "舰队军属区觉醒中心" };
-  if (year >= 25000) return { factionId: "douluo-federation", factionName: "斗罗联邦", officiant: "当地儿童觉醒中心工作人员", venue: "当地儿童觉醒中心" };
-  if (year >= 15000) return { factionId: "douluo-federation", factionName: "斗罗联邦", officiant: "当地初等学院觉醒教师", venue: "初等学院觉醒室" };
+  if (year >= 25000 && /古魂兽研究所/.test(text)) return { factionId: "douluo-federation", factionName: "联邦古魂兽研究所", officiant: "研究所觉醒室工作人员", venue: "古魂兽研究所内部觉醒室" };
+  if (year >= 25000) return { factionId: "douluo-federation", factionName: "斗罗联邦", officiant: "负责儿童觉醒室的工作人员", venue: "当地儿童觉醒室" };
+  if (year >= 15000) return { factionId: "spirit-pagoda", factionName: "传灵塔与当地初等学院", officiant: "受邀到学院的传灵塔传灵师", venue: "当地初等学院觉醒室" };
   if (year >= 5000) {
     if (/明都|日月/.test(text)) return { factionId: "sun-moon-empire", factionName: "日月帝国", officiant: "负责当地儿童觉醒的魂导师", venue: "地方儿童觉醒室" };
     if (/星罗/.test(text)) return { factionId: "star-luo", factionName: "星罗帝国", officiant: "负责当地儿童觉醒的魂师", venue: "地方儿童觉醒室" };
@@ -2108,31 +2123,39 @@ function bodyAwakeningText(name: string, pronoun: string, soul: MartialSoulTempl
   return `${name}的身体某处传来持续而清晰的魂力共鸣。${soul.name}没有凝成外物，${officiant}只能从体征、魂力流向与${pronoun}的实际感受判断它的形态。`;
 }
 
-export function awakeningManifestation(name: string, pronoun: string, soul: MartialSoulTemplate, officiant: string): { onset: string; manifestation: string } {
+export function awakeningManifestation(name: string, pronoun: string, soul: MartialSoulTemplate, officiant: string, era: GameEra = 1): { onset: string; manifestation: string } {
   const category = soul.category;
+  const categorySensation = /兽/.test(category) ? "肩背、牙齿与视野同时传来陌生变化，野兽般的本能从血液里猛地抬头。"
+    : /植物|食物|器/.test(category) ? `暖意沿着手臂汇向掌纹，${pronoun}的手掌随即传来清晰的重量与触感。`
+      : "身体各处同时传来细微的魂力回响，呼吸和感知也跟着变了。";
+  const onset = era === 1
+    ? /兽/.test(category) ? `${name}踩进六角阵。金色光点没入身体，${categorySensation}` : `${name}踩进六角阵。金色光点贴着小腿往上钻，${categorySensation}`
+    : era === 3 ? `${name}站到觉醒室中央。地面、墙壁和穹顶的纹路依次亮起，温暖酥麻的力量从脚下涌入身体。${categorySensation}`
+      : era === 4 ? `${name}站在六边形觉醒室中央。四周的感应光逐一亮起，暖意裹住身体。${categorySensation}`
+        : `${name}站到觉醒室中央。负责觉醒的魂师引动室内阵纹，温暖酥麻的力量从脚下涌入身体。${categorySensation}`;
   if (/本体/.test(category)) return {
-    onset: `${name}踩进六角阵。金色光点贴着小腿往上钻，麻痒一路爬进骨骼和呼吸，${pronoun}本能地站稳了些。`,
-    manifestation: `${bodyAwakeningText(name, pronoun, soul, officiant)}${officiant}没有去看${pronoun}的掌心，而是观察体征、动作和魂力流向，再让记录员写下变化位置。`,
+    onset,
+    manifestation: `${bodyAwakeningText(name, pronoun, soul, officiant)}${officiant}没有去看${pronoun}的掌心，而是逐项核对体征、动作和魂力流向，把变化记在手边的纸上。`,
   };
   if (/兽/.test(category)) return {
-    onset: `${name}踩进六角阵。金色光点没入身体，肩背、牙齿与视野同时传来陌生变化，野兽般的本能从血液里猛地抬头。`,
+    onset,
     manifestation: `${soul.name}的虚影在${name}身后凝出轮廓，随后贴回${pronoun}的身体。瞳孔、姿态或局部兽化特征随之显现。${officiant}先让${pronoun}收住本能，再逐项记录力量、感知与身体变化。`,
   };
   if (/植物/.test(category)) return {
-    onset: `${name}踩进六角阵。金色光点沿着手臂汇向掌纹，一点细嫩的根芽从魂力里钻了出来。`,
-    manifestation: `${soul.name}在${name}掌中生长成形，叶、藤、花或根须随着呼吸轻轻伸展。${officiant}检查它对光、水和魂力的反应，又让记录员画下完整形态。`,
+    onset,
+    manifestation: `${soul.name}在${name}掌中生长成形，叶、藤、花或根须随着呼吸轻轻伸展。${officiant}检查它对光、水和魂力的反应，又把完整形态画在纸上。`,
   };
   if (/食物/.test(category)) return {
-    onset: `${name}踩进六角阵。金色光点在掌心聚拢，先出现的是气味和温度，随后才有一小份食物凝成。`,
+    onset,
     manifestation: `${soul.name}完成了第一次制造。${officiant}没有当场让人食用，只记录成形速度、魂力消耗、保存状态与可能作用，等待后续安全测试。`,
   };
   if (/元素/.test(category)) return {
-    onset: `${name}踩进六角阵。金色光点没有凝成实体，而是在${pronoun}周围化作一圈不断变化的气流、光影或元素波动。`,
+    onset,
     manifestation: `${soul.name}以元素形态围绕${name}显现。${officiant}先测范围、温度与稳定性，再让${pronoun}尝试收回，避免波及阵外的人。`,
   };
   return {
-    onset: `${name}踩进六角阵。金色光点贴着小腿往上钻，右手随即一沉，${pronoun}险些没握稳突然凝成的东西。`,
-    manifestation: `${pronoun}摊开手，${soul.name}作为器物在掌中完整成形。${officiant}检查重量、结构与魂力反应，又让记录员把形态一笔笔画下来。`,
+    onset,
+    manifestation: `${pronoun}摊开手，${soul.name}作为器物在掌中完整成形。${officiant}检查重量、结构与魂力反应，又把形态一笔笔画在纸上。`,
   };
 }
 
@@ -2150,7 +2173,7 @@ function hiddenSoulSensation(name: string, pronoun: string, souls: MartialSoulTe
   const hidden = souls.slice(1);
   const bodyLike = hidden.some((soul) => /本体|兽/.test(soul.category));
   const sensation = bodyLike ? "身体深处又顶起一股完全不同的本能与魂力回响" : "意识深处又浮出一组与眼前武魂不同的轮廓";
-  return `就在阵光将散未散的一瞬，${name}${sensation}。${pronoun}放慢呼吸，没有继续催动那股力量。${officiant}仍在查看第一武魂与水晶球，没有看到第二次显形。`;
+  return `就在觉醒光芒将散未散的一瞬，${name}${sensation}。${pronoun}放慢呼吸，没有继续催动那股力量。${officiant}的注意力仍在第一武魂上，没有看到第二次显形。`;
 }
 
 function openingObjective(game: StoredGame, selected: HiddenCandidate, awakening: AwakeningContext): ChapterObjectiveView {
@@ -2166,10 +2189,10 @@ function openingObjective(game: StoredGame, selected: HiddenCandidate, awakening
       { id: "commit", text: "选定下一阶段愿意持续付出代价的生活与成长方式", status: "未开始" },
     ] };
   }
-  if (mode === "internal") return { ...common, title: `把${awakening.factionName}内部觉醒变成具体培养方案`, steps: [
+  if (mode === "internal") return { ...common, title: `听清${awakening.factionName}愿意怎么培养他`, steps: [
     { id: "understand", text: `请${awakening.officiant}完成${soulName}的${awakeningTestFocus(selected.martialSoul)}测试`, status: "进行中" },
-    { id: "support", text: `问清${awakening.factionName}能安排哪位导师、多少训练时间和哪些猎魂帮助`, status: "未开始" },
-    { id: "path", text: "决定主修顺序、公开范围和愿意承担的内部责任", status: "未开始" },
+    { id: "support", text: `问清先跟谁练、每天在哪里练、第一次猎魂谁同行`, status: "未开始" },
+    { id: "path", text: "决定先练哪个武魂、秘密告诉谁、接受哪些条件", status: "未开始" },
   ] };
   if (mode === "noble") return { ...common, title: "比较贵族身份能够打开的培养路线", steps: [
     { id: "understand", text: `请${awakening.officiant}完成${soulName}的${awakeningTestFocus(selected.martialSoul)}测试`, status: "进行中" },
@@ -2372,7 +2395,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
       if (npc) npc.memoryOfPlayer.push(`因公开显露的${publicSoulViews.map((soul) => soul.name).join("、")}与${selected.innateSoulPower}级先天魂力，收到觉醒堂的优先报告`);
       game.view.tasks.push({ id: "lineage-notable-attention", title: `与${awakening.notableNpc.name}当面谈一次武魂`, kind: "线索", detail: `相同武魂会引起直接关注，但不自动等于收徒、血亲或无条件庇护。`, status: "进行中", destinationId: selected.public.locationId, deadline: selected.innateSoulPower === 10 ? "觉醒当日" : "三日内" });
     }
-    character.reputation = selected.innateSoulPower === 10 ? `${awakening.factionName}最高优先记录的先天满魂力` : `${awakening.factionName}记录的${selected.innateSoulPower}级先天魂力新秀`;
+    character.reputation = selected.innateSoulPower === 10 ? `在${awakening.factionName}内部引起高层关注的先天满魂力` : `${awakening.factionName}已经登记的${selected.innateSoulPower}级先天魂力新秀`;
   }
   const mode = openingMode(game, selected, awakening);
   game.world.flags.openingMode = mode;
@@ -2382,7 +2405,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   game.view.chapterObjective = openingObjective(game, selected, awakening);
   const originThread = mode === "unbound" ? "取得住处、见证与临时身份"
     : mode === "beast" ? "决定与人类魂师体系保持多远的距离"
-      : mode === "internal" ? `谈清${awakening.factionName}内部培养条件与责任`
+      : mode === "internal" ? `弄清${awakening.factionName}愿意怎么教、又要什么`
         : mode === "noble" ? "处理家族培养、同辈竞争与个人选择的冲突"
           : "落实家庭能够承担的学院、路费与猎魂条件";
   game.storyMemory.openThreads = selected.innateSoulPower > 0
@@ -2407,41 +2430,81 @@ function buildAwakeningResult(game: StoredGame, candidate: HiddenCandidate, awak
   const souls = candidate.martialSouls?.length ? candidate.martialSouls : [candidate.martialSoul];
   const firstSoul = souls[0];
   const mode = openingMode(game, candidate, awakening);
-  const manifestation = awakeningManifestation(name, pronoun, firstSoul, awakening.officiant);
-  const hiddenPulse = hiddenSoulSensation(name, pronoun, souls, awakening.officiant);
-  const audience = mode === "internal" ? "堂内负责记录与见证的人" : mode === "noble" ? "家族长辈、教官与见证人" : "门口等候的家长与孩子";
+  const sceneOfficiant = candidate.originId === "hidden-sect-heir" ? "闻九" : awakening.officiant;
+  const era = game.view.era ?? 1;
+  const manifestation = awakeningManifestation(name, pronoun, firstSoul, sceneOfficiant, era);
+  const hiddenPulse = hiddenSoulSensation(name, pronoun, souls, sceneOfficiant);
+  const audience = mode === "beast" ? "古树周围的几道气息" : candidate.originId === "hidden-sect-heir" ? "顾玄一、商青蘅与两名封阵弟子" : mode === "internal" ? "在场长辈与弟子" : mode === "noble" ? "家族长辈、教官与见证人" : "门口等候的家长与孩子";
+  const fullPowerTest = era === 1
+    ? `手掌贴上水晶球，白光猛地冲到顶端。${sceneOfficiant}立刻取走水晶，又换上备用的一颗复测。第二次，光仍旧一分不少。`
+    : era === 3
+      ? `${sceneOfficiant}在觉醒结束时探到十级魂力，没有急着下结论。他收回魂力，重新引动觉醒室的纹路又测了一遍；第二次仍是十级。`
+      : era === 4
+        ? `${name}握住魂力测试仪两侧的握柄，屏幕上的读数直接升到十级。${sceneOfficiant}检查仪器后又换了一台同规格设备；第二次仍是十级。`
+        : `第一次魂力测试已经到了十级上限。${sceneOfficiant}检查测试器后重新测了一遍，第二次仍是十级。`;
+  const ordinaryPowerTest = era === 1
+    ? `水晶球从${pronoun}掌下亮起来，光停在第 ${candidate.innateSoulPower} 道刻度。${sceneOfficiant}念出数字，随手记在${awakening.factionName}的名册上。`
+    : era === 3
+      ? `觉醒结束时，${sceneOfficiant}又以魂力感知了一遍${pronoun}体内的波动，确认先天魂力为${candidate.innateSoulPower}级，随后把结果记在学院的觉醒记录上。`
+      : era === 4
+        ? `${name}握住魂力测试仪两侧的握柄，屏幕上的读数停在${candidate.innateSoulPower}级。${sceneOfficiant}核对姓名后，把结果录入本次觉醒记录。`
+        : `魂力测试的结果停在${candidate.innateSoulPower}级。${sceneOfficiant}又核对了一遍姓名，才把数字记进${awakening.factionName}的觉醒记录。`;
+  const noPowerTest = era === 1
+    ? `水晶球没有亮。${sceneOfficiant}等了两息，又让${pronoun}换手测了一次，确认阵石、体征与水晶状态后才收起水晶。`
+    : era === 3
+      ? `${sceneOfficiant}没有感知到伴生魂力。他停下觉醒室纹路，稍等片刻又重新测了一次，确认不是仪式中断才把结果记下。`
+      : era === 4
+        ? `魂力测试仪没有显示伴生魂力。${sceneOfficiant}检查设备状态，又让${name}重新握住两侧把手测了一次，结果没有变化。`
+        : `魂力测试没有显示伴生魂力。${sceneOfficiant}检查测试器和身体状态后又测了一次，结果没有变化。`;
   const powerText = candidate.innateSoulPower === 10
-    ? `手掌贴上水晶球，白光猛地冲到顶端。${awakening.officiant}立刻取走水晶，又换上备用的一颗复测。第二次，光仍旧一分不少。\n\n“先天满魂力。”这五个字落下，${audience}先静了一瞬，随后才有人压低声音确认自己是否看错。`
+    ? `${fullPowerTest}\n\n“先天满魂力。”这五个字落下，${audience}先静了一瞬，随后才有人压低声音确认自己是否看错。`
     : candidate.innateSoulPower > 0
-      ? `水晶球从${pronoun}掌下亮起来，光停在第 ${candidate.innateSoulPower} 道刻度。${awakening.officiant}念出数字，记录员当场写进${awakening.factionName}使用的觉醒档案。`
-      : `水晶球没有亮。${awakening.officiant}等了两息，又让${pronoun}换手测了一次，确认阵石、体征与水晶状态后才收回记录。`;
+      ? mode === "beast"
+        ? `水晶球从${pronoun}掌下亮起来，光停在第 ${candidate.innateSoulPower} 道刻度。岩叔把数字念了一遍，又低头去对那张残破卷册上的说明。`
+        : ordinaryPowerTest
+      : noPowerTest;
   const attentionText = candidate.innateSoulPower === 10
     ? beastRaised
       ? `岩叔蹲下来检查阵石，又朝林中发出一声短促低吼。几道强横气息很快逼近古树，却没有谁替${name}决定去留。第一次争论已经开始：把这个孩子继续藏在核心区，还是送去接触人类的修炼方法。`
       : unbound
         ? `执事啪地合上名册，叫助手拦住正要收阵石的人。\n\n“队伍晚走半个时辰。”他扫了一眼门外，又看回${name}，“先给这孩子拿水和吃的。小刘，你骑马回分殿报信，再找里正来作见证。”\n\n他没有立刻许诺收留，只把自己那张临时通行条压在桌上：“今晚以前，你至少不会再睡荒地。至于身份和培养条件，分殿的人来了再谈。”`
-        : `${awakening.officiant}当场停下后面的觉醒，把无关人员请到门外，又换了一颗水晶重测。${awakening.notableNpc ? `一封写给${awakening.notableNpc.name}的急报已经送出。` : mode === "internal" ? `${awakening.factionName}负责传承、训练与安全的人被要求今日到场。` : `真正能决定培养安排的人被要求今日到场。`}谁愿意教、能给多少帮助、要承担什么，都得由有权作主的人当面说清。`
+        : mode === "internal"
+          ? `${sceneOfficiant}把两次结果并排写下，随即收起名册。${awakening.notableNpc ? `他叫人把消息送给${awakening.notableNpc.name}，请对方亲自来看。` : `${awakening.factionName}里负责传承和护卫的几位长辈今日会被请来。`}等人到齐以后，先由谁带${name}修炼、宗门愿意拿出什么、这份结果先告诉哪些人，都要一件件谈。`
+          : mode === "noble"
+            ? `${sceneOfficiant}把两次结果交给在场长辈核对，家里随即留下${name}。留在族中、报名学院还是请外面的魂师来看，都有了重新商量的理由；但谁肯教、要花多少、家里想让${name}承担什么，还没有当场定死。`
+            : `${sceneOfficiant}把两次结果单独记下，又留下${name}和监护人。分殿会派能作主的人过来谈学院、训练与第一魂环的帮助；在那之前，没有人能只凭一句“天才”替${name}许下全部条件。`
     : candidate.innateSoulPower >= 7
       ? beastRaised
         ? `岩叔把数字重复了一遍，随后叫来两名熟悉人类道路的长者。是否离开森林仍由${name}决定，但从这一刻起，去向已经成了必须商量的事。`
         : unbound
           ? `执事把${name}叫到桌边，先给了半块饼，又让助手去请村长作证。天赋足够让分殿认真接手这件事，来历不明却仍要一项项核实。`
           : mode === "internal"
-            ? `${awakening.officiant}在魂力数字下面画了两道线，立刻去请能决定培养安排的长辈。哪位老师愿意接手、每周能用多久训练场、第一次猎魂谁肯同行，都得重新商量。`
+            ? `${sceneOfficiant}在魂力数字下面画了两道线，随即请在场长辈先别离开。先由谁带${name}修炼、每天能用哪处练功场、第一次猎魂谁肯同行，都得重新商量。`
             : mode === "noble"
-              ? `${awakening.officiant}把结果交给家族见证人。留在家中培养、报名合适的学院，或争取外部导师与交换培养，都会重新评议；同辈排序和家族责任也会随之变化，但身份不能替${name}免去考核。`
-              : `${awakening.officiant}在魂力数字下面画了两道线，当场留下${name}与监护人。学院名额、路费、食宿与第一魂环协助，需要逐项确认由谁承担。`
+              ? `${sceneOfficiant}把结果交给家族见证人。留在家中培养、报名合适的学院，还是去见外面的老师，都要重新商量；同辈会争，家里也会提条件，但身份不能替${name}免去考核。`
+              : `${sceneOfficiant}在魂力数字下面画了两道线，当场留下${name}与监护人。学院名额、路费、食宿与第一魂环协助，都要问到具体由谁承担。`
       : "";
   const confirmationTarget = mode === "unbound" ? name : mode === "beast" ? `${name}和岩叔` : `${name}与监护人`;
+  const secondTestEnding = era === 1 ? "第二颗水晶的白光慢慢暗下去" : era === 2 ? "魂力测试器的读数再次归零" : era === 3 ? "觉醒室第二次亮起的纹路慢慢暗下去" : "第二台魂力测试仪的读数重新归零";
+  const fullPowerEnding = mode === "internal"
+    ? `${secondTestEnding}。${name}还没离开原地，${sceneOfficiant}已经把两次结果压在案上等人。今日之内，${awakening.factionName}愿意给什么、又想从${name}这里得到什么，都会摆到${pronoun}和监护人面前。`
+    : mode === "noble"
+      ? `${secondTestEnding}。${name}离开觉醒位置时，在场长辈看${pronoun}的目光已经不同；接下来先走家族、学院还是外部导师的路，却还得真正谈过条件再定。`
+      : `${secondTestEnding}。${name}离开觉醒位置时，${sceneOfficiant}已经把监护人留在桌边。消息会继续报给${awakening.factionName}里能作主的人，能落到手里的学院名额、训练与猎魂帮助，却仍要一项项问清。`;
+  const ordinaryEnding = mode === "internal"
+    ? `${sceneOfficiant}把写好的结果交给在场长辈看了一遍。${name}的武魂和魂力已经确认，接下来先由谁带着练、能用哪些地方、什么时候准备第一魂环，还要继续商量。`
+    : mode === "noble"
+      ? `${sceneOfficiant}把结果交给家里确认。觉醒已经结束，${name}接下来是在家中练、去学院，还是先见一位外面的老师，要看家里拿得出什么，也看${pronoun}愿意接受什么。`
+      : `${sceneOfficiant}让${confirmationTarget}看过名册上的结果。觉醒已经结束，接下来要问的是学院、路费、照料和第一魂环由谁帮忙，而不是只听一句天赋好坏。`;
   return [
     manifestation.onset,
     manifestation.manifestation,
     hiddenPulse,
     powerText,
     attentionText,
-    candidate.innateSoulPower === 10 ? `原本只需几分钟的觉醒仪式，就这样改变了屋里每个人接下来的安排。${name}站在仍未熄灭的阵纹中央，听见门栓落下，也知道自己再不可能像来时那样无人过问。`
+    candidate.innateSoulPower === 10 ? (beastRaised ? `林间没有掌声，只有远近不同的兽瞳。${name}第一次意识到，觉醒以后最先要决定的，也许不是怎么变强，而是往哪里去。` : unbound ? `门外的车队暂时走不了了。${name}捧着刚拿到的水和食物，先等分殿来人核对身份；天赋让人愿意管这件事，却没有替${pronoun}凭空补出一个来处。` : fullPowerEnding)
       : beastRaised ? `林间没有掌声，只有远近不同的兽瞳。${name}第一次意识到，觉醒以后最先要决定的，也许不是怎么变强，而是往哪里去。`
-        : `${awakening.officiant}把记录转给${confirmationTarget}确认。觉醒结果已经落在纸上，接下来要处理的是谁负责训练、资源与安全，而不是凭一句天赋好坏替${pronoun}决定人生。`,
+        : ordinaryEnding,
   ].filter(Boolean).join("\n\n");
 }
 

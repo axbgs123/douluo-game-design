@@ -1370,7 +1370,7 @@ function repairLegacyUnboundAwakening(game: StoredGame): void {
   if (!awakening) return;
   const souls = character.martialSouls?.length ? character.martialSouls : [character.martialSoul];
   const soulReveal = souls.map((soul, index) => index === 0
-    ? `${pronoun}摊开手，${soul.name}托在掌心。执事俯身察看形态，让记录员把轮廓一笔笔画下来。`
+    ? `${pronoun}摊开手，${soul.name}托在掌心。执事俯身察看形态，把轮廓一笔笔画在名册的空白处。`
     : `阵光本该散去，${soul.name}却紧跟着显形。执事猛地抬头，刚写下的一行字被当场划掉。`).join("\n\n");
   awakening.text = [
     `${character.name}踩进六角阵。金色光点贴着小腿往上钻，麻痒一路爬到肩头。右手骤然一沉，${pronoun}险些把胳膊甩出阵外。`,
@@ -1426,7 +1426,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 46;
+  legacy.schemaVersion = 47;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1659,27 +1659,27 @@ export function ensureGameState(game: StoredGame): StoredGame {
     }
     for (const bodySoul of character.martialSouls.filter((soul) => /本体/.test(soul.category))) {
       const escapedSoul = bodySoul.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      for (const entry of game.view.narrative) entry.text = entry.text.replace(new RegExp(`[^。！？\\n]{0,16}摊开手。${escapedSoul}托在掌心，本体武魂特有的气息沿着指缝散开。[^。！？\\n]{0,100}记录员把形态一笔笔画下来。`, "g"), `${character.name}体内先是一热，随后身体本身传来清晰的魂力回响。${officiant}没有检查掌心中的外物，而是核对体征、动作和魂力流向，再让记录员写下变化位置。`);
+      for (const entry of game.view.narrative) entry.text = entry.text.replace(new RegExp(`[^。！？\\n]{0,16}摊开手。${escapedSoul}托在掌心，本体武魂特有的气息沿着指缝散开。[^。！？\\n]{0,100}记录员把形态一笔笔画下来。`, "g"), `${character.name}体内先是一热，随后身体本身传来清晰的魂力回响。${officiant}没有检查掌心中的外物，而是核对体征、动作和魂力流向，把变化记在手边的纸上。`);
     }
     if (legacyMode === "internal") {
       for (const entry of game.view.narrative) {
         entry.text = entry.text.replaceAll("学院名额、第一魂环和培养责任，今天便要有人给出答复。", `${institution}里哪位老师愿意教、训练场能用多久、第一次猎魂谁肯同行，都需要当面谈清。`);
         entry.text = entry.text.replace(new RegExp(`[^。！？\\n]{0,48}心里翻过一个念头：这上面记的，恐怕不只是魂环。`, "g"), `${character.name}先记下与第一魂环有关的缺页，准备直接问清可用部分、风险和复核人。`);
         entry.text = entry.text.replaceAll("这上面记的，恐怕不只是魂环。", `他先记下与第一魂环有关的缺页，准备直接问清可用部分、风险和复核人。`);
-        entry.text = entry.text.replaceAll("执事划掉重写", "记录员划掉重写");
+        entry.text = entry.text.replaceAll("执事划掉重写", `${officiant}划掉重写`);
       }
       if (oldGenericObjective) game.view.chapterObjective = {
-        title: `把${institution}内部觉醒变成具体培养方案`, stakes: character.originBurden, destinationId: game.view.locationId,
+        title: `听清${institution}愿意怎么培养他`, stakes: character.originBurden, destinationId: game.view.locationId,
         steps: [
           { id: "understand", text: `请${officiant}完成${character.martialSoul.name}的${testFocus}测试`, status: "进行中" },
-          { id: "support", text: `问清${institution}能安排哪位导师、多少训练时间和哪些猎魂帮助`, status: "未开始" },
-          { id: "path", text: "决定主修顺序、公开范围和愿意承担的内部责任", status: "未开始" },
+          { id: "support", text: "问清先跟谁练、每天在哪里练、第一次猎魂谁同行", status: "未开始" },
+          { id: "path", text: "决定先练哪个武魂、秘密告诉谁、接受哪些条件", status: "未开始" },
         ],
       };
-      game.storyMemory.openThreads = game.storyMemory.openThreads.map((thread) => thread === "家人与出身中尚未说清的细节" ? `谈清${institution}内部培养条件与责任` : thread);
+      game.storyMemory.openThreads = game.storyMemory.openThreads.map((thread) => thread === "家人与出身中尚未说清的细节" ? `弄清${institution}愿意怎么教、又要什么` : thread);
       if (game.view.storyArc?.arcNumber === 1) {
         game.view.storyArc.centralGoal = game.view.chapterObjective?.title ?? game.view.storyArc.centralGoal;
-        game.view.storyArc.irreversibleTurn = `决定愿意承担哪些${institution}内部培养责任，以及武魂公开到什么范围`;
+        game.view.storyArc.irreversibleTurn = `决定接受${institution}的哪些条件，以及武魂秘密告诉哪些人`;
       }
     } else if (oldGenericObjective || oldNobleObjective) {
       const objectiveByMode = legacyMode === "unbound" ? {
@@ -1750,6 +1750,78 @@ export function ensureGameState(game: StoredGame): StoredGame {
     }
     if (game.view.chapter) game.view.chapter.summary = game.storyMemory.summary.slice(-260);
     game.world.flags.schema46MemoryRebuilt = true;
+  }
+  if (previousSchemaVersion < 47) {
+    const storedOpeningOfficiant = String(game.world.flags.openingOfficiant ?? "负责觉醒的人");
+    const sceneOfficiant = storedOpeningOfficiant === "太玄剑宗守碑长老" ? "闻九" : storedOpeningOfficiant;
+    const awakeningEra = game.view.era ?? 1;
+    const awakeningName = game.view.character?.name ?? "孩子";
+    const naturalizeOpeningLanguage = (text: string): string => text
+      .replaceAll("晨雾压在太玄剑谷里，宗门没有敲钟。觉醒堂只来了宗主夫妇、守碑长老和两名负责封阵的弟子。", "晨雾还压在太玄剑谷里。觉醒堂的门窗已经闭好，堂内只有宗主夫妇、守碑长老和两名负责封阵的弟子。")
+      .replace(/顾玄一亲手关上堂门。闻九没有念少宗主的尊称，只叫了([^。！？\n]{1,16})的名字。/g, "顾玄一亲手关上堂门。闻九朝阵中抬了抬手：“$1，进阵。”")
+      .replace(/([^。！？\n]{2,40})没有去看(他|她)的掌心，而是观察体征、动作和魂力流向，再让记录员写下变化位置。/g, "$1没有去看$2的掌心，而是逐项核对体征、动作和魂力流向，把变化记在手边的纸上。")
+      .replace(/就在阵光将散未散的一瞬/g, "就在觉醒光芒将散未散的一瞬")
+      .replace(/([^。！？\n]{2,40})仍在查看第一武魂与水晶球，没有看到第二次显形。/g, "$1的注意力仍在第一武魂上，没有看到第二次显形。")
+      .replace(/又让记录员画下完整形态/g, "又把完整形态画在纸上")
+      .replace(/又让记录员把形态一笔笔画下来/g, "又把形态一笔笔画在纸上")
+      .replace(/([^。！？\n]{2,40})当场停下后面的觉醒，把无关人员请到门外，又换了一颗水晶重测。/g, "$1把两次结果并排写下，随即收起名册。")
+      .replaceAll("太玄剑宗负责传承、训练与安全的人被要求今日到场。", "太玄剑宗里负责传承和护卫的几位长辈今日会被请来。")
+      .replaceAll("堂内负责记录与见证的人先静了一瞬", "顾玄一、商青蘅与两名封阵弟子先静了一瞬")
+      .replace(/谁愿意教、能给多少帮助、要承担什么，都得由有权作主的人当面说清。/g, "等人到齐以后，先由谁教、愿意拿出什么、又要承担什么，都得一件件谈。")
+      .replace(/原本只需几分钟的觉醒仪式，就这样改变了屋里每个人接下来的安排。([^。！？\n]{1,16})站在仍未熄灭的阵纹中央，听见门栓落下，也知道自己再不可能像来时那样无人过问。/g, `第二颗水晶的白光慢慢暗下去。$1还没离开阵心，${sceneOfficiant}已经把两次结果压在案上等人；接下来谁愿意教、能给什么、又想换回什么，都要真正谈过才算数。`)
+      .replace(/把([^。！？\n]{1,32})内部觉醒变成具体培养方案/g, "听清$1愿意怎么培养他")
+      .replace(/确认武魂方向与([^。！？\n]{1,32})内部培养方案/g, "弄清$1准备怎样教，并定下第一步")
+      .replace(/问清[^。！？\n]{1,32}能安排哪位导师、多少训练时间和哪些猎魂帮助/g, "问清先跟谁练、每天在哪里练、第一次猎魂谁同行")
+      .replace(/谈清([^。！？\n]{1,32})内部培养条件与责任/g, "弄清$1愿意怎么教、又要什么")
+      .replaceAll("决定主修顺序、公开范围和愿意承担的内部责任", "决定先练哪个武魂、秘密告诉谁、接受哪些条件")
+      .replaceAll("拿到一条由具体责任人承认的培养方案", "有人真正答应教、给出住处或承担第一次猎魂中的一件事")
+      .replaceAll("带领太玄剑宗公开入世，迫使上三宗承认它的席位", "带领太玄剑宗公开入世，用足够的战绩与信誉让大陆强宗平等相待")
+      .replace(/([^。！？\n]{1,32})最高优先记录的先天满魂力/g, "在$1内部引起高层关注的先天满魂力")
+      .replace(/([^。！？\n]{1,32})最高优先记录的多武魂天才/g, "已由$1亲眼确认的多武魂天才")
+      .replaceAll("太玄剑宗守碑长老", "闻九");
+    const naturalizeLaterEraAwakening = (text: string): string => {
+      if (awakeningEra === 1) return text;
+      const roomStart = awakeningEra === 3
+        ? `${awakeningName}站到觉醒室中央。地面、墙壁和穹顶的纹路依次亮起，温暖酥麻的力量从脚下涌入身体。`
+        : awakeningEra === 4
+          ? `${awakeningName}站在六边形觉醒室中央。四周的感应光逐一亮起，暖意裹住身体。`
+          : `${awakeningName}站到觉醒室中央。负责觉醒的魂师引动室内阵纹，温暖酥麻的力量从脚下涌入身体。`;
+      const fullTest = awakeningEra === 3
+        ? `${sceneOfficiant}在觉醒结束时探到十级魂力，没有急着下结论。他收回魂力，重新引动觉醒室的纹路又测了一遍；第二次仍是十级。`
+        : awakeningEra === 4
+          ? `${awakeningName}握住魂力测试仪两侧的握柄，屏幕上的读数直接升到十级。${sceneOfficiant}检查仪器后又换了一台同规格设备；第二次仍是十级。`
+          : `第一次魂力测试已经到了十级上限。${sceneOfficiant}检查测试器后重新测了一遍，第二次仍是十级。`;
+      const secondTestEnding = awakeningEra === 2 ? "魂力测试器的读数再次归零" : awakeningEra === 3 ? "觉醒室第二次亮起的纹路慢慢暗下去" : "第二台魂力测试仪的读数重新归零";
+      return text
+        .replaceAll("核对阵石与内部名册", "核对觉醒室与内部名册")
+        .replace(/六块黑石依次亮起。[^。！？\n]{1,80}等待仪式开始。/g, `${sceneOfficiant}让${awakeningName}站到觉醒室中央，等四周安静下来才抬起手。`)
+        .replace(/六块黑石摆在地上，边角磨得发亮。前一个孩子走出阵外，[^。！？\n]{1,80}示意下一个进阵。/g, `前一个孩子走出觉醒室，${sceneOfficiant}朝${awakeningName}抬了抬手，示意下一个进去。`)
+        .replace(new RegExp(`${awakeningName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}踩进六角阵。金色光点[^。！？\\n]*。`, "g"), roomStart)
+        .replace(/手掌贴上水晶球，白光猛地冲到顶端。[^。！？\n]{1,60}又换上备用的一颗复测。第二次，光仍旧一分不少。/g, fullTest)
+        .replace(/第二颗水晶的白光慢慢暗下去/g, secondTestEnding)
+        .replace(/水晶球从(他|她)掌下亮起来，光停在第 (\d+) 道刻度。[^。！？\n]{1,80}觉醒档案。/g, awakeningEra === 3 ? `${sceneOfficiant}在觉醒结束时感知到$1体内的波动，确认先天魂力为$2级，随后把结果记在学院的觉醒记录上。` : awakeningEra === 4 ? `${awakeningName}握住魂力测试仪两侧的握柄，屏幕上的读数停在$2级。${sceneOfficiant}核对姓名后，把结果录入本次觉醒记录。` : `魂力测试的结果停在$2级。${sceneOfficiant}又核对了一遍姓名，才把数字记进当前觉醒记录。`)
+        .replace(/水晶球没有亮。[^。！？\n]{1,100}才收回记录。/g, awakeningEra === 3 ? `${sceneOfficiant}没有感知到伴生魂力。他停下觉醒室纹路，稍等片刻又重新测了一次，确认不是仪式中断才把结果记下。` : awakeningEra === 4 ? `魂力测试仪没有显示伴生魂力。${sceneOfficiant}检查设备状态，又让${awakeningName}重新握住两侧把手测了一次，结果没有变化。` : `魂力测试没有显示伴生魂力。${sceneOfficiant}检查测试器和身体状态后又测了一次，结果没有变化。`);
+    };
+    for (const entry of game.view.narrative) entry.text = naturalizeLaterEraAwakening(naturalizeOpeningLanguage(entry.text));
+    for (const task of game.view.tasks) { task.title = naturalizeOpeningLanguage(task.title); task.detail = naturalizeOpeningLanguage(task.detail); }
+    if (game.view.lifeGoal) game.view.lifeGoal = naturalizeOpeningLanguage(game.view.lifeGoal);
+    if (game.view.runProgress.lifeGoal) game.view.runProgress.lifeGoal = naturalizeOpeningLanguage(game.view.runProgress.lifeGoal);
+    if (game.view.character) game.view.character.reputation = naturalizeOpeningLanguage(game.view.character.reputation);
+    for (const reputation of game.view.reputations) reputation.reputation = naturalizeOpeningLanguage(reputation.reputation);
+    if (game.view.chapterObjective) {
+      game.view.chapterObjective.title = naturalizeOpeningLanguage(game.view.chapterObjective.title);
+      for (const step of game.view.chapterObjective.steps) step.text = naturalizeOpeningLanguage(step.text);
+    }
+    if (game.view.storyArc) {
+      game.view.storyArc.centralGoal = naturalizeOpeningLanguage(game.view.storyArc.centralGoal);
+      game.view.storyArc.promisedPayoff = naturalizeOpeningLanguage(game.view.storyArc.promisedPayoff);
+      game.view.storyArc.irreversibleTurn = naturalizeOpeningLanguage(game.view.storyArc.irreversibleTurn);
+      for (const payoff of game.view.storyArc.payoffLedger ?? []) payoff.label = naturalizeOpeningLanguage(payoff.label);
+      for (const scene of game.view.storyArc.npcScenes ?? []) scene.action = naturalizeOpeningLanguage(scene.action);
+    }
+    for (const event of game.world.dynamicEvents.filter((item) => /awakening|talent-recruitment/.test(item.id))) event.detail = naturalizeOpeningLanguage(event.detail);
+    game.storyMemory.openThreads = game.storyMemory.openThreads.map(naturalizeOpeningLanguage);
+    game.world.flags.schema47OpeningProseNaturalized = true;
   }
   if (previousSchemaVersion < 35) {
     const day = game.view.worldTime?.day ?? 1;

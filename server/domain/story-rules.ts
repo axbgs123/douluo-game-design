@@ -423,7 +423,7 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
     const institution = unbound
       ? `请${openingOfficiant}先安排今晚住处并说明谁愿意作保`
       : openingMode === "beast" ? "和岩叔谈清离开兽群会失去的保护"
-        : openingMode === "internal" ? `问清${openingInstitution}的导师、训练场与猎魂责任`
+        : openingMode === "internal" ? "问清先跟谁练、每天在哪里练、第一次猎魂谁同行"
         : openingMode === "noble" ? guardianPlan
           : guardianPlan;
     const secret = hiddenNames.length

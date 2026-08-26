@@ -4029,8 +4029,8 @@ function openingFollowupResolution(game: StoredGame, action: string): ActionReso
   const openingTestRelevant = action.includes(soul) || action.includes(officiant) || /觉醒|武魂|魂力|水晶球|收放|承载|体征|兽化|显形/.test(action);
   if (step.id === "understand" && openingTestRelevant && /测试|复测|确认|说明|询问|了解|请.*(?:测试|复核|说明)/.test(action)) return {
     intent: "确认觉醒后的能力", minutes: 60,
-    ruleSummary: `${officiant}完成${soul}的${focus}测试；只确认当前六岁身体和现有魂力能够稳定做到的部分，结果写入${institution}当前档案。`,
-    fallbackNarrative: `这次没有再靠猜。${officiant}让他连续做了三次收放，又分别记录身体反应、魂力消耗和失控征兆。做不到的部分照样留在纸上，没有被一句“天赋很好”抹过去。`,
+    ruleSummary: `${officiant}完成${soul}的${focus}测试；只确认当前六岁身体和现有魂力能够稳定做到的部分，并将结果写入${institution}现用的觉醒记录。`,
+    fallbackNarrative: `${officiant}让他把武魂收起再放出，连续试了三次。每一次的身体反应、魂力消耗和失控征兆都被记了下来；暂时做不到的部分也照实写着，没有被一句“天赋很好”含糊过去。`,
     suggestions: [next, "问清第一次长期训练的每日要求", "问清测试结果会被哪些人看到"], systemMessages: [`觉醒测试 · ${soul} · ${focus}`],
   };
   if (step.id === "identity" && /住处|见证|身份|登记|担保|临时凭据/.test(action)) {
@@ -4064,7 +4064,7 @@ function openingFollowupResolution(game: StoredGame, action: string): ActionReso
     character.publiclyKnownMartialSoulIndices ??= [0];
     const publicIndices = character.publiclyKnownMartialSoulIndices;
     const publicNames = character.martialSouls.filter((_soul, index) => publicIndices.includes(index)).map((soul) => soul.name);
-    return { intent: "确定开局成长路线", minutes: 30, ruleSummary: `当前主修确定为${character.martialSoul.name}；现场公开范围为${publicNames.join("、")}。身份、资源和机构责任仍按已经谈明的条件执行。`, fallbackNarrative: `这一次不是让长辈替他选。主修哪一个武魂，哪些细节可以告诉别人，哪些条件暂时接受，都由他当面说清。负责记录的人照着原话修改，没有把沉默补成同意。`, suggestions: ["按新路线开始第一次训练", `把公开范围告诉监护人与${officiant}`, "检查第一魂环或第一成长资源的准备条件"], systemMessages: [`成长路线 · 主修${character.martialSoul.name} · 公开${publicNames.join("、")}`] };
+    return { intent: "确定开局成长路线", minutes: 30, ruleSummary: `当前主修确定为${character.martialSoul.name}；现场公开范围为${publicNames.join("、")}。身份、资源和机构责任仍按已经谈明的条件执行。`, fallbackNarrative: `他把话一件件说清：眼下先练哪个武魂，哪些细节可以告诉别人，哪些条件暂时接受。${officiant}照着他的原话改了记录，没有把沉默当成同意。`, suggestions: ["按新路线开始第一次训练", `把公开范围告诉监护人与${officiant}`, "检查第一魂环或第一成长资源的准备条件"], systemMessages: [`成长路线 · 主修${character.martialSoul.name} · 公开${publicNames.join("、")}`] };
   }
   return undefined;
 }

@@ -584,8 +584,8 @@ test("宗门本体武魂开局使用专属显形、目标与资源路线", async
   const save = page.locator(".save-shelf article").filter({ hasText: "开局矩阵验收" });
   await expect(save).toBeVisible();
   await save.locator("button").first().click();
-  await expect(page.locator(".chapter-objective")).toContainText("太玄剑宗内部觉醒");
-  await expect(page.locator(".chapter-objective")).toContainText("安排哪位导师、多少训练时间和哪些猎魂帮助");
+  await expect(page.locator(".chapter-objective")).toContainText("听清太玄剑宗愿意怎么培养他");
+  await expect(page.locator(".chapter-objective")).toContainText("先跟谁练、每天在哪里练、第一次猎魂谁同行");
   await expect(page.locator(".narrative-stream")).toContainText("两手空空");
   await expect(page.locator(".narrative-stream")).toContainText("身体本身的变化");
   await expect(page.locator(".narrative-stream")).not.toContainText("先天道体托在掌心");
