@@ -46,8 +46,12 @@ import {
   favoriteCodexOrigin,
   deleteCodexOrigin,
   saveGameAndClaimEquippedLoadout,
+  ensureSceneArchiveBackfill,
+  getNarrativeDiagnostics,
+  getTurnTraceReplaySource,
+  saveNarrativeRewrite,
 } from "./db.js";
-import { applyNarrativeMemory, interpretActionWithDeepSeek, narrateWithAuditRetries, validateInterpretedAction } from "./services/deepseek.js";
+import { applyNarrativeMemory, auditArchivedNarrative, interpretActionWithDeepSeek, narrateWithAuditRetries, narrateWithDeepSeek, replayStoredNarratorPrompt, validateInterpretedAction } from "./services/deepseek.js";
 import { readDeepSeekSettings, settingsView, writeDeepSeekSettings } from "./services/settings.js";
 import { settleRun } from "./domain/endings.js";
 import { guardActionByStoryRules } from "./domain/story-rules.js";
@@ -370,7 +374,7 @@ app.post("/api/games/:id/action", async (request, response) => {
     applyActionResult(working, input.input, resolution, generated?.narrative ?? resolution.fallbackNarrative, generated?.suggestions.length === 3 ? generated.suggestions : resolution.suggestions, requestId);
     if (generated) applyNarrativeMemory(working, generated);
     const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
-    if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString() };
+    if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString(), traceGroupId: generated?.traceGroupId };
     const settlement = settleIfNeeded(working);
     commitResolvedAction(game, working, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds }, settlement);
     return response.json(publicView(working));
@@ -440,7 +444,7 @@ app.post("/api/games/:id/action/stream", async (request, response) => {
     applyActionResult(working, input.input, resolution, generated.narrative, generated.suggestions.length === 3 ? generated.suggestions : resolution.suggestions, requestId);
     if ("memory" in generated) applyNarrativeMemory(working, generated);
     const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
-    if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString() };
+    if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString(), traceGroupId: "traceGroupId" in generated ? generated.traceGroupId : undefined };
     const settlement = settleIfNeeded(working);
     if (cancelled) return;
     commitResolvedAction(game, working, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds }, settlement);
@@ -462,7 +466,7 @@ app.post("/api/games/:id/action/rewrite", async (request, response) => {
   const previous = game.lastCommittedAction;
   if (!previous) return response.status(409).json({ error: "没有可以重写的上一段正文" });
   const working = structuredClone(game);
-  const generated = await narrateWithAuditRetries(working, previous.playerInput, previous.resolution);
+  const generated = await narrateWithAuditRetries(working, previous.playerInput, previous.resolution, undefined, undefined, narrateWithDeepSeek, "rewrite");
   if (!generated) throw new Error("AI 没有返回可用正文，原存档未修改");
   const narrativeEntry = working.view.narrative.find((entry) => entry.id === previous.narrativeEntryId);
   if (!narrativeEntry) return response.status(409).json({ error: "上一段正文已不在当前存档中" });
@@ -470,8 +474,31 @@ app.post("/api/games/:id/action/rewrite", async (request, response) => {
   working.view.suggestions = generated.suggestions.length === 3 ? generated.suggestions : previous.resolution.suggestions;
   applyNarrativeMemory(working, generated);
   working.view.updatedAt = new Date().toISOString();
-  saveGame(working, "action.prose_rewritten", { actionIndex: working.actionIndex, ruleAction: previous.ruleAction });
+  saveNarrativeRewrite(working, generated.narrative, working.view.suggestions, generated.traceGroupId);
   return response.json(publicView(working));
+});
+
+app.get("/api/games/:id/narrative-diagnostics", (request, response) => {
+  const game = loadGame(request.params.id);
+  if (!game) return response.status(404).json({ error: "没有找到这个存档" });
+  ensureSceneArchiveBackfill(game);
+  return response.json(getNarrativeDiagnostics(game.view.id));
+});
+
+app.post("/api/games/:id/turn-traces/:traceId/audit-replay", (request, response) => {
+  const source = getTurnTraceReplaySource(request.params.id, request.params.traceId);
+  if (!source) return response.status(404).json({ error: "没有找到这次回合轨迹" });
+  const issues = auditArchivedNarrative(source.game, source.playerInput, source.resolution, source.finalNarrative);
+  return response.json({ traceGroupId: source.id, passed: issues.length === 0, issues, narrativeHashUnchanged: true });
+});
+
+app.post("/api/games/:id/turn-traces/:traceId/model-replay", async (request, response) => {
+  if (!requireAi(response)) return;
+  const source = getTurnTraceReplaySource(request.params.id, request.params.traceId);
+  if (!source) return response.status(404).json({ error: "没有找到这次回合轨迹" });
+  if (!source.acceptedPrompt) return response.status(409).json({ error: "这次旧回合没有保存可重放的完整提示词" });
+  const replay = await replayStoredNarratorPrompt(source.game, source.playerInput, source.resolution, source.acceptedPrompt);
+  return response.json({ traceGroupId: source.id, replayTraceGroupId: replay.traceGroupId, originalNarrative: source.finalNarrative, replayNarrative: replay.generated.narrative, identical: source.finalNarrative === replay.generated.narrative, originalLength: source.finalNarrative.length, replayLength: replay.generated.narrative.length, auditIssues: replay.auditIssues });
 });
 
 app.post("/api/games/:id/speed", (request, response) => {

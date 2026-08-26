@@ -6,12 +6,14 @@ import { readDeepSeekSettings } from "./settings.js";
 import { auditNovelEngineNarrative, auditResolutionAlignment, buildNovelEnginePack } from "../domain/novel-engine.js";
 import { rememberNpcInteraction } from "../domain/world.js";
 import { buildSceneKnowledgePack } from "../domain/scene-knowledge.js";
+import { randomUUID } from "node:crypto";
 
 export { violatesCanonChronology } from "../domain/story-rules.js";
 
 export interface NarrationResult {
   narrative: string;
   suggestions: string[];
+  traceGroupId?: string;
   memory?: {
     summary?: string;
     openThreads?: string[];
@@ -60,6 +62,17 @@ export function auditCanonNarrativeVoice(text: string, profile: CanonNarrativePr
   const forcedMystery = /恐怕不只是|这上面记的.{0,12}不只是|背后隐藏着什么|新的谜团|必须调查清楚|一切都没有那么简单|一定还藏着/.test(text);
   const mysteryHits = ["神秘的旧物", "来历不明的线索", "故意留下的空白", "欲言又止", "必须追查"].filter((phrase) => text.includes(phrase));
   return forcedMystery || mysteryHits.length >= 2 ? ["非调查场景被写成了解密或谜团推进"] : [];
+}
+
+export function auditArchivedNarrative(game: StoredGame, playerInput: string, resolution: ActionResolution, narrative: string): string[] {
+  const issues = [
+    ...(violatesCanonChronology(narrative, game.view.worldTime?.year ?? 0) ? ["正文违反冻结回合的原作时间线"] : []),
+    ...auditNarrative(game, narrative),
+    ...auditNovelEngineNarrative(game, narrative, buildNovelEnginePack(game, playerInput, resolution, readDeepSeekSettings().novelEngineEnabled)),
+    ...auditCanonNarrativeVoice(narrative, buildCanonNarrativeProfile(game, playerInput, resolution)),
+    ...auditResolutionAlignment(narrative, resolution, playerInput),
+  ];
+  return [...new Set(issues)];
 }
 
 export function observableCanonEventsForNarration(game: StoredGame) {
@@ -170,6 +183,29 @@ interface ChatCompletionPayload {
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
+interface TurnTraceContext {
+  groupId: string;
+  attempt: number;
+  operation: "action" | "rewrite" | "model-replay";
+}
+
+async function safeStartTurnTrace(groupId: string, game: StoredGame, playerInput: string, resolution: ActionResolution, operation: TurnTraceContext["operation"]): Promise<void> {
+  try { const { startTurnTraceGroup } = await import("../db.js"); startTurnTraceGroup({ id: groupId, game, playerInput, resolution, operation }); } catch { /* Diagnostics cannot stop play. */ }
+}
+
+async function safeRecordTraceModelAttempt(context: TurnTraceContext | undefined, prompt: unknown, response: unknown | undefined, status: "model-returned" | "model-error"): Promise<void> {
+  if (!context) return;
+  try { const { recordTurnTraceModelAttempt } = await import("../db.js"); recordTurnTraceModelAttempt({ traceGroupId: context.groupId, attempt: context.attempt, prompt, response, status }); } catch { /* Diagnostics cannot stop play. */ }
+}
+
+async function safeCompleteTraceAttempt(context: TurnTraceContext, status: "accepted" | "audit-failed" | "model-error", auditIssues: string[] = []): Promise<void> {
+  try { const { completeTurnTraceAttempt } = await import("../db.js"); completeTurnTraceAttempt({ traceGroupId: context.groupId, attempt: context.attempt, status, auditIssues }); } catch { /* Diagnostics cannot stop play. */ }
+}
+
+async function safeCompleteTraceGroup(groupId: string, status: "accepted" | "failed", narrative?: string, auditIssues: string[] = []): Promise<void> {
+  try { const { completeTurnTraceGroup } = await import("../db.js"); completeTurnTraceGroup({ traceGroupId: groupId, status, narrative, auditIssues }); } catch { /* Diagnostics cannot stop play. */ }
+}
+
 let smokeRequestCount = 0;
 
 function positiveEnvironmentInteger(name: string): number | undefined {
@@ -203,7 +239,7 @@ async function retrieveWorldLogicContext(game: StoredGame, query: string) {
   return retrieveWorldLogic(game, query, 8).map(({ category, trigger, logic, importance, similarity, metadata }) => ({ category, trigger, logic, importance, similarity, metadata }));
 }
 
-async function safeRecordContextRetrieval(game: StoredGame, role: "intent" | "narrator", contexts: { memory: Array<{ kind: string; actionIndex: number; metadata: Record<string, unknown> }>; canon: Array<{ kind: string; subjectName: string }>; logic: Array<{ category: string }> }): Promise<void> {
+async function safeRecordContextRetrieval(game: StoredGame, role: "intent" | "narrator", contexts: { memory: Array<{ text: string; kind: string; actionIndex: number; similarity: number; metadata: Record<string, unknown> }>; canon: Array<{ text: string; kind: string; subjectName: string; similarity: number; metadata: Record<string, unknown> }>; logic: Array<{ logic: string; trigger: string; category: string; similarity: number; metadata: Record<string, unknown> }> }): Promise<void> {
   try {
     const { recordContextRetrieval } = await import("../db.js");
     const chapterLabels = [...new Set(contexts.memory.map((item) => typeof item.metadata.chapterTitle === "string" ? `第${item.metadata.chapterNumber ?? "?"}章 ${item.metadata.chapterTitle}` : "").filter(Boolean))];
@@ -212,13 +248,16 @@ async function safeRecordContextRetrieval(game: StoredGame, role: "intent" | "na
       memory: contexts.memory.length, canon: contexts.canon.length, logic: contexts.logic.length, chapters: chapterLabels.length,
       memoryLabels: contexts.memory.map((item) => `${item.kind}#${item.actionIndex}${typeof item.metadata.chapterTitle === "string" ? ` · ${item.metadata.chapterTitle}` : ""}`),
       canonLabels: contexts.canon.map((item) => `${item.kind} · ${item.subjectName}`), logicLabels: contexts.logic.map((item) => item.category),
+      memoryDetails: contexts.memory.map((item) => ({ label: `${item.kind}#${item.actionIndex}${typeof item.metadata.chapterTitle === "string" ? ` · ${item.metadata.chapterTitle}` : ""}`, snippet: item.text, similarity: item.similarity, source: String(item.metadata.source ?? item.metadata.retrievalPhase ?? "本地剧情记忆"), reason: typeof item.metadata.chapterTitle === "string" ? `先命中第${item.metadata.chapterNumber ?? "?"}章“${item.metadata.chapterTitle}”，再按场景相似度入选` : "NPC记忆或玩家已知情报允许跨章节直接入选" })),
+      canonDetails: contexts.canon.map((item) => ({ label: `${item.kind} · ${item.subjectName}`, snippet: item.text, similarity: item.similarity, source: String(item.metadata.provenance ?? item.metadata.sourceType ?? "结构化斗罗知识"), reason: "通过当前时代、日期和玩家已知范围过滤后按相似度入选" })),
+      logicDetails: contexts.logic.map((item) => ({ label: item.category, snippet: item.logic, similarity: item.similarity, source: String(item.metadata.type ?? "世界基本逻辑"), reason: `当前行动与触发条件“${item.trigger}”相关` })),
     });
   } catch {
     // Retrieval has already succeeded; diagnostics must not invalidate it.
   }
 }
 
-async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", settings: { apiKey: string; baseUrl: string; model: string }, body: unknown, timeout: number, signal?: AbortSignal): Promise<ChatCompletionPayload> {
+async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", settings: { apiKey: string; baseUrl: string; model: string }, body: unknown, timeout: number, signal?: AbortSignal, traceContext?: TurnTraceContext): Promise<ChatCompletionPayload> {
   const started = performance.now();
   const serialized = JSON.stringify(body);
   let recorded = false;
@@ -243,8 +282,10 @@ async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", s
     const content = payload.choices?.[0]?.message?.content ?? "";
     await safeRecordModelCall({ gameId: game.view.id, role, model: settings.model, status: "success", latencyMs: performance.now() - started, promptChars: serialized.length, outputChars: content.length, promptTokens: payload.usage?.prompt_tokens, completionTokens: payload.usage?.completion_tokens, totalTokens: payload.usage?.total_tokens });
     recorded = true;
+    await safeRecordTraceModelAttempt(traceContext, body, payload, "model-returned");
     return payload;
   } catch (error) {
+    await safeRecordTraceModelAttempt(traceContext, body, error instanceof Error ? { error: error.message } : { error: "unknown" }, "model-error");
     if (!recorded) await safeRecordModelCall({ gameId: game.view.id, role, model: settings.model, status: "failure", latencyMs: performance.now() - started, promptChars: serialized.length, outputChars: 0, errorCode: error instanceof DOMException ? error.name : error instanceof Error ? error.constructor.name : "unknown" });
     throw error;
   }
@@ -286,6 +327,7 @@ export async function narrateWithDeepSeek(
   resolution: ActionResolution,
   signal?: AbortSignal,
   retryGuidance: string[] = [],
+  traceContext?: TurnTraceContext,
 ): Promise<NarrationResult | null> {
   const settings = readDeepSeekSettings();
   if (!settings.apiKey) return null;
@@ -421,7 +463,7 @@ export async function narrateWithDeepSeek(
           }),
         },
       ],
-    }, 45_000, signal);
+    }, 45_000, signal, traceContext);
   const content = payload.choices?.[0]?.message?.content;
   if (!content) throw new Error("DeepSeek 返回了空内容");
   const parsed = extractJson(content) as Partial<NarrationResult>;
@@ -444,6 +486,31 @@ export async function narrateWithDeepSeek(
   };
 }
 
+export async function replayStoredNarratorPrompt(game: StoredGame, playerInput: string, resolution: ActionResolution, promptBody: unknown, signal?: AbortSignal): Promise<{ generated: NarrationResult; auditIssues: string[]; traceGroupId: string }> {
+  const settings = readDeepSeekSettings();
+  if (!settings.apiKey) throw new Error("尚未连接 AI，不能重放原始提示词");
+  const traceGroupId = randomUUID();
+  const context: TurnTraceContext = { groupId: traceGroupId, attempt: 1, operation: "model-replay" };
+  await safeStartTurnTrace(traceGroupId, game, playerInput, resolution, "model-replay");
+  try {
+    const payload = await tracedCompletion(game, "narrator", settings, promptBody, 45_000, signal, context);
+    const content = payload.choices?.[0]?.message?.content;
+    if (!content) throw new Error("模型重放返回了空内容");
+    const parsed = extractJson(content) as Partial<NarrationResult>;
+    if (typeof parsed.narrative !== "string" || !Array.isArray(parsed.suggestions)) throw new Error("模型重放返回结构不合法");
+    const generated: NarrationResult = { narrative: parsed.narrative, suggestions: sanitizeNarrativeSuggestions(game, parsed.suggestions.filter((item): item is string => typeof item === "string"), resolution.suggestions), memory: parsed.memory && typeof parsed.memory === "object" ? parsed.memory : undefined, traceGroupId };
+    const auditIssues = auditArchivedNarrative(game, playerInput, resolution, generated.narrative);
+    await safeCompleteTraceAttempt(context, auditIssues.length ? "audit-failed" : "accepted", auditIssues);
+    await safeCompleteTraceGroup(traceGroupId, auditIssues.length ? "failed" : "accepted", generated.narrative, auditIssues);
+    return { generated, auditIssues, traceGroupId };
+  } catch (error) {
+    const issues = [error instanceof Error ? error.message : "模型重放失败"];
+    await safeCompleteTraceAttempt(context, "model-error", issues);
+    await safeCompleteTraceGroup(traceGroupId, "failed", undefined, issues);
+    throw error;
+  }
+}
+
 export async function narrateWithAuditRetries(
   game: StoredGame,
   playerInput: string,
@@ -451,19 +518,34 @@ export async function narrateWithAuditRetries(
   signal?: AbortSignal,
   onRetry?: (attempt: number, reason: string) => void,
   narrator: typeof narrateWithDeepSeek = narrateWithDeepSeek,
+  operation: TurnTraceContext["operation"] = "action",
 ): Promise<NarrationResult | null> {
   let lastError: unknown;
   let retryGuidance: string[] = [];
+  const traceGroupId = randomUUID();
+  await safeStartTurnTrace(traceGroupId, game, playerInput, resolution, operation);
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    try { return await narrator(game, playerInput, resolution, signal, retryGuidance); }
+    const traceContext: TurnTraceContext = { groupId: traceGroupId, attempt: attempt + 1, operation };
+    try {
+      const generated = await narrator(game, playerInput, resolution, signal, retryGuidance, traceContext);
+      if (generated) {
+        await safeCompleteTraceAttempt(traceContext, "accepted");
+        await safeCompleteTraceGroup(traceGroupId, "accepted", generated.narrative);
+        return { ...generated, traceGroupId };
+      }
+      return null;
+    }
     catch (error) {
       if (signal?.aborted) throw error;
-      if (error instanceof NarrativeLogicPreflightError) throw error;
+      const issues = error instanceof NarrativeAuditError ? error.issues : [error instanceof Error ? error.message : "模型调用失败"];
+      await safeCompleteTraceAttempt(traceContext, error instanceof NarrativeAuditError ? "audit-failed" : "model-error", issues);
+      if (error instanceof NarrativeLogicPreflightError) { await safeCompleteTraceGroup(traceGroupId, "failed", undefined, issues); throw error; }
       lastError = error;
       retryGuidance = error instanceof NarrativeAuditError ? error.issues : ["上一稿没有完整返回，请重新生成完整且合法的 JSON 正文"];
       if (attempt < 3) onRetry?.(attempt + 2, retryGuidance.join("、"));
     }
   }
+  await safeCompleteTraceGroup(traceGroupId, "failed", undefined, retryGuidance);
   throw lastError instanceof Error ? lastError : new Error("AI 连续多次未通过设定审校");
 }
 

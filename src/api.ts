@@ -7,6 +7,9 @@ import type {
   MetaProgressionView,
   MetaSummonResultView,
   ModelUsageView,
+  NarrativeDiagnosticsView,
+  AuditReplayView,
+  ModelReplayView,
   PersonalitySetup,
   SaveSummary,
   WorldCatalogStatsView,
@@ -234,6 +237,18 @@ export function getDeepSeekSettings(): Promise<DeepSeekSettingsView> {
 
 export function getModelUsage(gameId?: string): Promise<ModelUsageView> {
   return request(`/api/settings/deepseek/usage${gameId ? `?gameId=${encodeURIComponent(gameId)}` : ""}`);
+}
+
+export function getNarrativeDiagnostics(gameId: string): Promise<NarrativeDiagnosticsView> {
+  return request(`/api/games/${encodeURIComponent(gameId)}/narrative-diagnostics`);
+}
+
+export function replayTurnAudit(gameId: string, traceId: string): Promise<AuditReplayView> {
+  return request(`/api/games/${encodeURIComponent(gameId)}/turn-traces/${encodeURIComponent(traceId)}/audit-replay`, { method: "POST" });
+}
+
+export function replayTurnModel(gameId: string, traceId: string): Promise<ModelReplayView> {
+  return request(`/api/games/${encodeURIComponent(gameId)}/turn-traces/${encodeURIComponent(traceId)}/model-replay`, { method: "POST" });
 }
 
 export function saveDeepSeekSettings(input: {

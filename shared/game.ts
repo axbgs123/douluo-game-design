@@ -1170,6 +1170,23 @@ export interface ModelUsageView {
   lastContextRetrievalAt?: string;
 }
 
+export interface RetrievalDiagnosticView {
+  label: string;
+  snippet: string;
+  similarity?: number;
+  source: string;
+  reason: string;
+}
+
+export interface NarrativeDiagnosticsView {
+  retrieval?: { actionIndex: number; chapterCount: number; memory: RetrievalDiagnosticView[]; canon: RetrievalDiagnosticView[]; logic: RetrievalDiagnosticView[]; createdAt: string };
+  scenes: Array<{ id: string; actionIndex: number; version: number; archiveKind: string; chapterNumber: number; chapterTitle: string; playerInput: string; intent: string; fixedResult: string; narrative: string; contentHash: string; traceGroupId?: string; createdAt: string }>;
+  traces: Array<{ id: string; actionIndex: number; operation: string; playerInput: string; status: string; attempts: number; finalNarrative?: string; finalAuditIssues: string[]; createdAt: string }>;
+}
+
+export interface AuditReplayView { traceGroupId: string; passed: boolean; issues: string[]; narrativeHashUnchanged: boolean }
+export interface ModelReplayView { traceGroupId: string; replayTraceGroupId?: string; originalNarrative: string; replayNarrative: string; identical: boolean; originalLength: number; replayLength: number; auditIssues: string[] }
+
 export interface MetaProgressionView {
   legacyPoints: number;
   completedRuns: number;

@@ -285,6 +285,7 @@ export interface StoredGame {
     resolution: ActionResolution;
     narrativeEntryId: string;
     committedAt: string;
+    traceGroupId?: string;
   };
   legacy: {
     upgrades: Record<string, number>;

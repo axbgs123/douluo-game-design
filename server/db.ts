@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, MetaSummonResultView, ModelUsageView, OriginCodexEntryView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
 import type { MartialSoulTemplate } from "./domain/model.js";
 import { META_MARTIAL_SOULS, META_MARTIAL_SOUL_POOL_SIZE, metaSoulById } from "./data/meta-martial-souls.js";
@@ -145,6 +145,67 @@ database.exec(`
   CREATE INDEX IF NOT EXISTS idx_memory_chapters_game_range
   ON memory_chapters(game_id, start_action_index, end_action_index);
 
+  CREATE TABLE IF NOT EXISTS scene_archives (
+    id TEXT PRIMARY KEY,
+    game_id TEXT NOT NULL,
+    action_index INTEGER NOT NULL,
+    request_id TEXT,
+    version INTEGER NOT NULL,
+    archive_kind TEXT NOT NULL,
+    chapter_number INTEGER NOT NULL,
+    chapter_title TEXT NOT NULL,
+    player_input TEXT NOT NULL,
+    rule_action TEXT NOT NULL,
+    intent TEXT NOT NULL,
+    fixed_result TEXT NOT NULL,
+    narrative TEXT NOT NULL,
+    suggestions_json TEXT NOT NULL,
+    trace_group_id TEXT,
+    content_hash TEXT NOT NULL,
+    metadata_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_scene_archives_game_action_version
+  ON scene_archives(game_id, action_index, version);
+
+  CREATE INDEX IF NOT EXISTS idx_scene_archives_game_chapter
+  ON scene_archives(game_id, chapter_number, action_index);
+
+  CREATE TABLE IF NOT EXISTS turn_trace_groups (
+    id TEXT PRIMARY KEY,
+    game_id TEXT NOT NULL,
+    action_index INTEGER NOT NULL,
+    operation TEXT NOT NULL,
+    player_input TEXT NOT NULL,
+    resolution_json TEXT NOT NULL,
+    game_snapshot_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    final_narrative TEXT,
+    final_audit_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_turn_trace_groups_game_created
+  ON turn_trace_groups(game_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS turn_trace_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trace_group_id TEXT NOT NULL,
+    attempt INTEGER NOT NULL,
+    prompt_json TEXT NOT NULL,
+    response_json TEXT,
+    status TEXT NOT NULL,
+    audit_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    UNIQUE(trace_group_id, attempt),
+    FOREIGN KEY (trace_group_id) REFERENCES turn_trace_groups(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS canon_knowledge_vectors (
     id TEXT PRIMARY KEY,
     source_key TEXT NOT NULL UNIQUE,
@@ -218,6 +279,9 @@ if (!contextRetrievalColumns.some((column) => column.name === "chapter_count")) 
 if (!contextRetrievalColumns.some((column) => column.name === "memory_keys_json")) database.exec("ALTER TABLE context_retrievals ADD COLUMN memory_keys_json TEXT NOT NULL DEFAULT '[]'");
 if (!contextRetrievalColumns.some((column) => column.name === "canon_keys_json")) database.exec("ALTER TABLE context_retrievals ADD COLUMN canon_keys_json TEXT NOT NULL DEFAULT '[]'");
 if (!contextRetrievalColumns.some((column) => column.name === "logic_keys_json")) database.exec("ALTER TABLE context_retrievals ADD COLUMN logic_keys_json TEXT NOT NULL DEFAULT '[]'");
+if (!contextRetrievalColumns.some((column) => column.name === "memory_details_json")) database.exec("ALTER TABLE context_retrievals ADD COLUMN memory_details_json TEXT NOT NULL DEFAULT '[]'");
+if (!contextRetrievalColumns.some((column) => column.name === "canon_details_json")) database.exec("ALTER TABLE context_retrievals ADD COLUMN canon_details_json TEXT NOT NULL DEFAULT '[]'");
+if (!contextRetrievalColumns.some((column) => column.name === "logic_details_json")) database.exec("ALTER TABLE context_retrievals ADD COLUMN logic_details_json TEXT NOT NULL DEFAULT '[]'");
 
 export interface RetrievedVectorMemory {
   id: string;
@@ -262,6 +326,23 @@ export interface RetrievedMemoryChapter {
   summary: string;
   importance: number;
   similarity: number;
+}
+
+export interface SceneArchiveInput {
+  gameId: string;
+  actionIndex: number;
+  requestId?: string;
+  archiveKind: "committed" | "rewrite" | "legacy-backfill";
+  chapterNumber: number;
+  chapterTitle: string;
+  playerInput: string;
+  ruleAction: string;
+  intent: string;
+  fixedResult: string;
+  narrative: string;
+  suggestions?: string[];
+  traceGroupId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 const upsertVectorMemoryStatement = database.prepare(`
@@ -363,6 +444,66 @@ export function retrieveMemoryChapters(game: StoredGame, query: string, limit = 
     const score = similarity * .78 + row.importance * .15 + recency * .07;
     return { chapterNumber: row.chapter_number, title: row.title, startActionIndex: row.start_action_index, endActionIndex: Math.min(row.end_action_index, game.actionIndex), summary: row.summary, importance: row.importance, similarity: Number(score.toFixed(4)) };
   }).filter((item) => item.similarity > .08).sort((left, right) => right.similarity - left.similarity || right.endActionIndex - left.endActionIndex).slice(0, Math.max(1, Math.min(6, limit)));
+}
+
+export function appendSceneArchive(input: SceneArchiveInput): string {
+  const narrative = input.narrative.trim();
+  if (!narrative) return "";
+  const versionRow = database.prepare("SELECT COALESCE(MAX(version), 0) AS version FROM scene_archives WHERE game_id = ? AND action_index = ?").get(input.gameId, input.actionIndex) as { version: number };
+  const version = Number(versionRow.version) + 1;
+  const id = randomUUID();
+  const contentHash = createHash("sha256").update(narrative).digest("hex");
+  database.prepare(`INSERT INTO scene_archives (id, game_id, action_index, request_id, version, archive_kind, chapter_number, chapter_title, player_input, rule_action, intent, fixed_result, narrative, suggestions_json, trace_group_id, content_hash, metadata_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      id, input.gameId, Math.max(0, input.actionIndex), input.requestId ?? null, version, input.archiveKind,
+      Math.max(1, input.chapterNumber), input.chapterTitle.slice(0, 40), input.playerInput.slice(0, 1_200), input.ruleAction.slice(0, 1_200),
+      input.intent.slice(0, 160), input.fixedResult.slice(0, 4_000), narrative, JSON.stringify((input.suggestions ?? []).slice(0, 8)),
+      input.traceGroupId ?? null, contentHash, JSON.stringify(input.metadata ?? {}), new Date().toISOString(),
+    );
+  return id;
+}
+
+export function ensureSceneArchiveBackfill(game: StoredGame): void {
+  const count = database.prepare("SELECT COUNT(*) AS count FROM scene_archives WHERE game_id = ?").get(game.view.id) as { count: number };
+  if (Number(count.count) > 0 || !game.world.actionLedger.length) return;
+  const narrations = game.view.narrative.filter((entry) => entry.kind === "narration");
+  const aligned = narrations.slice(-game.world.actionLedger.length);
+  game.world.actionLedger.forEach((entry, index) => {
+    const narrative = aligned[index]?.text;
+    if (!narrative) return;
+    appendSceneArchive({
+      gameId: game.view.id, actionIndex: entry.index, requestId: entry.requestId, archiveKind: "legacy-backfill",
+      chapterNumber: game.storyMemory.chapterNumber, chapterTitle: game.storyMemory.chapterTitle,
+      playerInput: entry.action, ruleAction: entry.action, intent: entry.intent, fixedResult: entry.result,
+      narrative, metadata: { alignment: "tail-order", playerKnownOnly: true },
+    });
+  });
+}
+
+function archiveCommittedScene(game: StoredGame): void {
+  const committed = game.lastCommittedAction;
+  if (!committed) return;
+  const narrative = game.view.narrative.find((entry) => entry.id === committed.narrativeEntryId)?.text;
+  if (!narrative) return;
+  appendSceneArchive({
+    gameId: game.view.id, actionIndex: game.actionIndex, requestId: committed.requestId, archiveKind: "committed",
+    chapterNumber: game.storyMemory.chapterNumber, chapterTitle: game.storyMemory.chapterTitle,
+    playerInput: committed.playerInput, ruleAction: committed.ruleAction, intent: committed.resolution.intent,
+    fixedResult: committed.resolution.ruleSummary, narrative, suggestions: game.view.suggestions,
+    traceGroupId: committed.traceGroupId, metadata: { narrativeEntryId: committed.narrativeEntryId, revision: game.revision + 1, playerKnownOnly: true },
+  });
+}
+
+export function archiveRewrittenScene(game: StoredGame, narrative: string, suggestions: string[], traceGroupId?: string): string {
+  const committed = game.lastCommittedAction;
+  if (!committed) return "";
+  return appendSceneArchive({
+    gameId: game.view.id, actionIndex: game.actionIndex, requestId: committed.requestId, archiveKind: "rewrite",
+    chapterNumber: game.storyMemory.chapterNumber, chapterTitle: game.storyMemory.chapterTitle,
+    playerInput: committed.playerInput, ruleAction: committed.ruleAction, intent: committed.resolution.intent,
+    fixedResult: committed.resolution.ruleSummary, narrative, suggestions, traceGroupId,
+    metadata: { replacesNarrativeEntryId: committed.narrativeEntryId, revision: game.revision + 1, playerKnownOnly: true },
+  });
 }
 
 function ensureVectorMemoryBackfill(game: StoredGame): void {
@@ -640,10 +781,54 @@ export function recordModelCall(input: { gameId: string; role: "intent" | "narra
   database.prepare("INSERT INTO model_calls (game_id, role, model, status, latency_ms, prompt_chars, output_chars, prompt_tokens, completion_tokens, total_tokens, error_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.model.slice(0, 120), input.status, Math.max(0, Math.round(input.latencyMs)), Math.max(0, input.promptChars), Math.max(0, input.outputChars), Math.max(0, input.promptTokens ?? 0), Math.max(0, input.completionTokens ?? 0), Math.max(0, input.totalTokens ?? 0), input.errorCode?.slice(0, 80) ?? null, new Date().toISOString());
 }
 
-export function recordContextRetrieval(input: { gameId: string; role: "intent" | "narrator"; actionIndex: number; memory: number; canon: number; logic: number; chapters?: number; memoryLabels?: string[]; canonLabels?: string[]; logicLabels?: string[] }): void {
+export interface RetrievalDiagnosticDetail {
+  label: string;
+  snippet: string;
+  similarity?: number;
+  source: string;
+  reason: string;
+}
+
+export function recordContextRetrieval(input: { gameId: string; role: "intent" | "narrator"; actionIndex: number; memory: number; canon: number; logic: number; chapters?: number; memoryLabels?: string[]; canonLabels?: string[]; logicLabels?: string[]; memoryDetails?: RetrievalDiagnosticDetail[]; canonDetails?: RetrievalDiagnosticDetail[]; logicDetails?: RetrievalDiagnosticDetail[] }): void {
   const labels = (items: string[] | undefined) => JSON.stringify((items ?? []).map((item) => item.replace(/\s+/g, " ").trim().slice(0, 80)).filter(Boolean).slice(0, 12));
-  database.prepare("INSERT INTO context_retrievals (game_id, role, action_index, memory_count, canon_count, logic_count, chapter_count, memory_keys_json, canon_keys_json, logic_keys_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.actionIndex, input.memory, input.canon, input.logic, input.chapters ?? 0, labels(input.memoryLabels), labels(input.canonLabels), labels(input.logicLabels), new Date().toISOString());
+  const details = (items: RetrievalDiagnosticDetail[] | undefined) => JSON.stringify((items ?? []).map((item) => ({ ...item, label: item.label.slice(0, 120), snippet: item.snippet.replace(/\s+/g, " ").trim().slice(0, 800), source: item.source.slice(0, 120), reason: item.reason.slice(0, 240) })).slice(0, 12));
+  database.prepare("INSERT INTO context_retrievals (game_id, role, action_index, memory_count, canon_count, logic_count, chapter_count, memory_keys_json, canon_keys_json, logic_keys_json, memory_details_json, canon_details_json, logic_details_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.actionIndex, input.memory, input.canon, input.logic, input.chapters ?? 0, labels(input.memoryLabels), labels(input.canonLabels), labels(input.logicLabels), details(input.memoryDetails), details(input.canonDetails), details(input.logicDetails), new Date().toISOString());
   database.prepare("DELETE FROM context_retrievals WHERE game_id = ? AND id NOT IN (SELECT id FROM context_retrievals WHERE game_id = ? ORDER BY id DESC LIMIT 500)").run(input.gameId, input.gameId);
+}
+
+export function startTurnTraceGroup(input: { id: string; game: StoredGame; playerInput: string; resolution: unknown; operation: "action" | "rewrite" | "model-replay" }): void {
+  database.prepare(`INSERT INTO turn_trace_groups (id, game_id, action_index, operation, player_input, resolution_json, game_snapshot_json, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?)`).run(input.id, input.game.view.id, input.game.actionIndex, input.operation, input.playerInput.slice(0, 1_200), JSON.stringify(input.resolution), JSON.stringify(input.game), new Date().toISOString());
+}
+
+export function recordTurnTraceModelAttempt(input: { traceGroupId: string; attempt: number; prompt: unknown; response?: unknown; status: "model-returned" | "model-error" }): void {
+  database.prepare(`INSERT INTO turn_trace_attempts (trace_group_id, attempt, prompt_json, response_json, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(trace_group_id, attempt) DO UPDATE SET prompt_json=excluded.prompt_json, response_json=excluded.response_json, status=excluded.status`).run(
+      input.traceGroupId, input.attempt, JSON.stringify(input.prompt), input.response === undefined ? null : JSON.stringify(input.response), input.status, new Date().toISOString(),
+    );
+}
+
+export function completeTurnTraceAttempt(input: { traceGroupId: string; attempt: number; status: "accepted" | "audit-failed" | "model-error"; auditIssues?: string[] }): void {
+  database.prepare("UPDATE turn_trace_attempts SET status = ?, audit_json = ?, completed_at = ? WHERE trace_group_id = ? AND attempt = ?").run(input.status, JSON.stringify((input.auditIssues ?? []).slice(0, 40)), new Date().toISOString(), input.traceGroupId, input.attempt);
+}
+
+export function completeTurnTraceGroup(input: { traceGroupId: string; status: "accepted" | "failed"; narrative?: string; auditIssues?: string[] }): void {
+  database.prepare("UPDATE turn_trace_groups SET status = ?, final_narrative = ?, final_audit_json = ?, completed_at = ? WHERE id = ?").run(input.status, input.narrative ?? null, JSON.stringify((input.auditIssues ?? []).slice(0, 40)), new Date().toISOString(), input.traceGroupId);
+}
+
+export function getTurnTraceReplaySource(gameId: string, traceGroupId: string): { id: string; game: StoredGame; playerInput: string; resolution: import("./domain/model.js").ActionResolution; finalNarrative: string; operation: string; acceptedPrompt?: unknown } | undefined {
+  const row = database.prepare("SELECT id, player_input, resolution_json, game_snapshot_json, final_narrative, operation FROM turn_trace_groups WHERE id = ? AND game_id = ?").get(traceGroupId, gameId) as { id: string; player_input: string; resolution_json: string; game_snapshot_json: string; final_narrative?: string; operation: string } | undefined;
+  if (!row) return undefined;
+  const attempt = database.prepare("SELECT prompt_json FROM turn_trace_attempts WHERE trace_group_id = ? AND status = 'accepted' ORDER BY attempt DESC LIMIT 1").get(row.id) as { prompt_json: string } | undefined;
+  return { id: row.id, game: ensureGameState(JSON.parse(row.game_snapshot_json) as StoredGame), playerInput: row.player_input, resolution: JSON.parse(row.resolution_json) as import("./domain/model.js").ActionResolution, finalNarrative: row.final_narrative ?? "", operation: row.operation, acceptedPrompt: attempt ? JSON.parse(attempt.prompt_json) : undefined };
+}
+
+export function getNarrativeDiagnostics(gameId: string) {
+  const retrieval = database.prepare(`SELECT action_index, chapter_count, memory_details_json, canon_details_json, logic_details_json, created_at FROM context_retrievals WHERE game_id = ? AND role = 'narrator' ORDER BY id DESC LIMIT 1`).get(gameId) as { action_index: number; chapter_count: number; memory_details_json: string; canon_details_json: string; logic_details_json: string; created_at: string } | undefined;
+  const parse = <T>(value?: string): T[] => { try { const data = JSON.parse(value ?? "[]"); return Array.isArray(data) ? data as T[] : []; } catch { return []; } };
+  const scenes = (database.prepare(`SELECT id, action_index, version, archive_kind, chapter_number, chapter_title, player_input, intent, fixed_result, narrative, content_hash, trace_group_id, created_at FROM scene_archives WHERE game_id = ? ORDER BY action_index DESC, version DESC LIMIT 20`).all(gameId) as Array<Record<string, unknown>>).map((row) => ({ id: row.id, actionIndex: Number(row.action_index), version: Number(row.version), archiveKind: row.archive_kind, chapterNumber: Number(row.chapter_number), chapterTitle: row.chapter_title, playerInput: row.player_input, intent: row.intent, fixedResult: row.fixed_result, narrative: row.narrative, contentHash: row.content_hash, traceGroupId: row.trace_group_id || undefined, createdAt: row.created_at }));
+  const traces = (database.prepare(`SELECT g.id, g.action_index, g.operation, g.player_input, g.status, g.final_narrative, g.final_audit_json, g.created_at, COUNT(a.id) attempts FROM turn_trace_groups g LEFT JOIN turn_trace_attempts a ON a.trace_group_id = g.id WHERE g.game_id = ? GROUP BY g.id ORDER BY g.created_at DESC LIMIT 20`).all(gameId) as Array<Record<string, unknown>>).map((row) => ({ id: row.id, actionIndex: Number(row.action_index), operation: row.operation, playerInput: row.player_input, status: row.status, attempts: Number(row.attempts), finalNarrative: row.final_narrative || undefined, finalAuditIssues: parse<string>(String(row.final_audit_json)), createdAt: row.created_at }));
+  return { retrieval: retrieval ? { actionIndex: retrieval.action_index, chapterCount: retrieval.chapter_count, memory: parse<RetrievalDiagnosticDetail>(retrieval.memory_details_json), canon: parse<RetrievalDiagnosticDetail>(retrieval.canon_details_json), logic: parse<RetrievalDiagnosticDetail>(retrieval.logic_details_json), createdAt: retrieval.created_at } : undefined, scenes, traces };
 }
 
 export function getModelUsage(gameId?: string): ModelUsageView {
@@ -784,6 +969,18 @@ export function saveGame(game: StoredGame, eventType: string, payload: unknown =
   database.exec("BEGIN IMMEDIATE");
   try {
     writeGameAndEvent(game, eventType, payload);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function saveNarrativeRewrite(game: StoredGame, narrative: string, suggestions: string[], traceGroupId?: string): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    archiveRewrittenScene(game, narrative, suggestions, traceGroupId);
+    writeGameAndEvent(game, "action.prose_rewritten", { actionIndex: game.actionIndex, ruleAction: game.lastCommittedAction?.ruleAction, traceGroupId });
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
@@ -1273,6 +1470,7 @@ export function commitResolvedAction(previous: StoredGame, resolved: StoredGame,
   database.exec("BEGIN IMMEDIATE");
   try {
     writeCheckpoint(previous, checkpointLabel);
+    ensureSceneArchiveBackfill(previous);
     if (settlement) applyRunReward(resolved, settlement);
     const committed = resolved.lastCommittedAction;
     if (committed) {
@@ -1290,6 +1488,7 @@ export function commitResolvedAction(previous: StoredGame, resolved: StoredGame,
         metadata: { requestId: committed.requestId, intent: committed.resolution.intent, locationId: resolved.view.locationId },
       });
       storeCurrentMemoryChapter(resolved);
+      archiveCommittedScene(resolved);
     }
     writeGameAndEvent(resolved, eventType, payload);
     database.exec("COMMIT");

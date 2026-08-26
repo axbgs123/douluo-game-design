@@ -160,9 +160,32 @@ describe("存档数据库", () => {
     database.recordModelCall({ gameId: "telemetry-game", role: "intent", model: "test-model", status: "failure", latencyMs: 80, promptChars: 200, outputChars: 0, errorCode: "timeout" });
 
     expect(database.getModelUsage("telemetry-game")).toMatchObject({ calls: 2, failures: 1, promptTokens: 120, completionTokens: 45, totalTokens: 165, totalLatencyMs: 401, narratorContextRetrievals: 0, contextRetrievalReady: false, contextRetrievalStatus: "未产生升级后正文样本" });
-    database.recordContextRetrieval({ gameId: "telemetry-game", role: "narrator", actionIndex: 1, memory: 1, canon: 4, logic: 3, chapters: 1, memoryLabels: ["action#1 · 觉醒之日"], canonLabels: ["character · 唐三"], logicLabels: ["秘密传播"] });
+    database.recordContextRetrieval({ gameId: "telemetry-game", role: "narrator", actionIndex: 1, memory: 1, canon: 4, logic: 3, chapters: 1, memoryLabels: ["action#1 · 觉醒之日"], canonLabels: ["character · 唐三"], logicLabels: ["秘密传播"], memoryDetails: [{ label: "action#1", snippet: "完整剧情片段", similarity: .8123, source: "actionLedger", reason: "章节命中后入选" }] });
     expect(database.getModelUsage("telemetry-game")).toMatchObject({ narratorContextRetrievals: 1, contextRetrievalReady: true, contextRetrievalStatus: "最近正文已完成三层检索", lastRetrievedMemoryCount: 1, lastRetrievedChapterCount: 1, lastRetrievedCanonCount: 4, lastRetrievedLogicCount: 3, lastRetrievedMemoryLabels: ["action#1 · 觉醒之日"], lastRetrievedCanonLabels: ["character · 唐三"], lastRetrievedLogicLabels: ["秘密传播"] });
+    expect(database.getNarrativeDiagnostics("telemetry-game").retrieval?.memory[0]).toMatchObject({ snippet: "完整剧情片段", similarity: .8123, reason: "章节命中后入选" });
     database.deleteGame("telemetry-game");
+  });
+
+  it("keeps lossless append-only scene versions and exact replay inputs", () => {
+    const game = createGame({ gender: "女", difficulty: "标准", seed: "lossless-scene-archive" });
+    database.saveGame(game, "test.lossless-scene-archive");
+    const longNarrative = `开场。${"完整正文不会因向量长度限制而被截断。".repeat(220)}`;
+    database.appendSceneArchive({ gameId: game.view.id, actionIndex: 1, archiveKind: "committed", chapterNumber: 1, chapterTitle: "觉醒之日", playerInput: "测试武魂", ruleAction: "测试武魂", intent: "测试", fixedResult: "完成一次测试", narrative: longNarrative, suggestions: ["继续测试"] });
+    database.appendSceneArchive({ gameId: game.view.id, actionIndex: 1, archiveKind: "rewrite", chapterNumber: 1, chapterTitle: "觉醒之日", playerInput: "测试武魂", ruleAction: "测试武魂", intent: "测试", fixedResult: "完成一次测试", narrative: "重写后的完整正文", suggestions: ["停止测试"] });
+    const traceId = "trace-lossless-replay";
+    const resolution = { intent: "测试", minutes: 5, ruleSummary: "完成一次测试", fallbackNarrative: "", suggestions: ["继续测试"] };
+    database.startTurnTraceGroup({ id: traceId, game, playerInput: "测试武魂", resolution, operation: "action" });
+    const exactPrompt = { model: "test-model", messages: [{ role: "system", content: "完整提示词" }, { role: "user", content: "冻结输入" }] };
+    database.recordTurnTraceModelAttempt({ traceGroupId: traceId, attempt: 1, prompt: exactPrompt, response: { choices: [] }, status: "model-returned" });
+    database.completeTurnTraceAttempt({ traceGroupId: traceId, attempt: 1, status: "accepted" });
+    database.completeTurnTraceGroup({ traceGroupId: traceId, status: "accepted", narrative: longNarrative });
+    const diagnostics = database.getNarrativeDiagnostics(game.view.id);
+    expect(diagnostics.scenes).toHaveLength(2);
+    expect(diagnostics.scenes.map((scene) => scene.version)).toEqual([2, 1]);
+    expect(diagnostics.scenes.find((scene) => scene.version === 1)?.narrative).toBe(longNarrative);
+    expect(String(diagnostics.scenes.find((scene) => scene.version === 1)?.narrative).length).toBeGreaterThan(2_400);
+    expect(database.getTurnTraceReplaySource(game.view.id, traceId)?.acceptedPrompt).toEqual(exactPrompt);
+    database.deleteGame(game.view.id);
   });
 
   it("persists and retrieves relevant long-term memories without injecting future actions", () => {

@@ -535,6 +535,24 @@ test("模型设置显示本地向量记忆状态", async ({ page }) => {
   await expect(page.getByText(/正文检索验收：未产生升级后正文样本/)).toBeVisible();
 });
 
+test("模型设置可以查看无损场景、召回理由并只读重放回合", async ({ page }) => {
+  await createPlayingCharacter(page, 1);
+  await submitAction(page, "等待一天");
+  const actionCount = await page.locator("blockquote.player-entry").count();
+  await page.getByRole("button", { name: "模型设置" }).click();
+  await expect(page.getByRole("dialog", { name: "DeepSeek 设置" })).toBeVisible();
+  await expect(page.getByText("召回片段、分数与入选理由", { exact: true })).toBeVisible();
+  await page.getByText(/章节级完整场景档案/).click();
+  await expect(page.getByText(/行动1 · v1 · 等待一天/)).toBeVisible();
+  await page.getByText("回合提示词与审校重放", { exact: true }).click();
+  await page.getByRole("button", { name: "重放审校" }).click();
+  await expect(page.getByText("审校重放通过，冻结正文未改变。", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "模型重放对比" }).click();
+  await expect(page.getByText(/模型重放完成：原文\d+字，新稿\d+字/)).toBeVisible();
+  await page.getByRole("button", { name: "×" }).click();
+  await expect(page.locator("blockquote.player-entry")).toHaveCount(actionCount);
+});
+
 test("手记显示错过地方事件留下的持续后果", async ({ page }) => {
   await seedLocalConsequenceGame();
   await page.goto("/");

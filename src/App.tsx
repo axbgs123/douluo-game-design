@@ -221,6 +221,6 @@ export default function App() {
     </div>
     {deleteTarget && <div className="dialog-backdrop" role="presentation"><section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-save-title"><span>删除存档</span><h2 id="delete-save-title">{deleteTarget.characterName}</h2><p>这个人物、剧情进度和三个回溯节点都会被永久删除。</p><div><button type="button" disabled={deleting} onClick={() => setDeleteTarget(null)}>保留</button><button type="button" className="danger-button" disabled={deleting} onClick={() => void confirmDeleteSave()}>{deleting ? "删除中…" : "确认删除"}</button></div></section></div>}
     <MetaProgressionPanel open={metaOpen} onClose={() => setMetaOpen(false)} />
-    <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={setAiSettings} />
+    <SettingsPanel open={settingsOpen} gameId={game?.id} onClose={() => setSettingsOpen(false)} onSaved={setAiSettings} />
   </>;
 }
