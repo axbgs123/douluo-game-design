@@ -199,8 +199,13 @@ export function auditResolutionAlignment(text: string, resolution: ActionResolut
   if (/私下测试隐藏武魂/.test(resolution.intent)) {
     if (hasActualPrivateActionInterruption(text)) issues.push("私下测试被擅自改成NPC传唤或培养会议");
     if (/养剑木匣|剑胚/.test(text) && !/养剑木匣|剑胚/.test(resolution.ruleSummary)) issues.push("正文为私下测试凭空增加未持有物品");
-    const sentientSoulClaim = text.split(/[。！？\n]/).some((sentence) => /回应|警告|拒绝|等待|意志|灵智|自主意识/.test(sentence) && /武魂|剑胎|剑胚/.test(sentence) && !/没有|并未|不曾|不是|不像|无法确认/.test(sentence));
-    if (sentientSoulClaim && !/灵智|意识|意志|回应|警告/.test(resolution.ruleSummary)) issues.push("正文凭空赋予隐藏武魂灵智或主动意志");
+    const hiddenSoulName = resolution.ruleSummary.match(/隐藏武魂(.+?)(?:确实|能够|完成|；|，|。)/)?.[1]?.trim()
+      ?? playerInput.match(/(?:感应|测试|催动|召出)([^，。]{2,24}?)(?:的状态|状态|$)/)?.[1]?.trim();
+    const escapedHiddenSoulName = hiddenSoulName?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const soulReference = new RegExp(`武魂|${escapedHiddenSoulName || "不会命中的隐藏武魂名"}`);
+    const sentientSoulClaim = text.split(/[。！？\n]/).some((sentence) => /回应|警告|拒绝|等待|意志|灵智|自主意识/.test(sentence) && soulReference.test(sentence) && !/没有|并未|不曾|不是|不像|无法确认/.test(sentence));
+    const fixedResultConfirmsSentience = /(?:确认|拥有|具备|表现出|已经).{0,10}(?:灵智|自主意识|主动意志|主动回应)/.test(resolution.ruleSummary) && !/没有|并无|无证据|不能确认/.test(resolution.ruleSummary);
+    if (sentientSoulClaim && !fixedResultConfirmsSentience) issues.push("正文凭空赋予隐藏武魂灵智或主动意志");
     if (/备用水晶|重新?测试|再次?复测|又换.{0,8}水晶/.test(text)) issues.push("正文重复已经完成的觉醒复测");
     if (/具体数据|密密麻麻.{0,8}记录|收放.{0,6}承载.{0,10}上限/.test(text)) issues.push("正文凭空补造程序未结算的精确测试结论");
     if (text.length > 1600) issues.push("私下短测被扩写成失焦的长篇行政场景");

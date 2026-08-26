@@ -65,6 +65,33 @@ describe("完整游玩规则", () => {
     expect(game.view.character!.martialSouls[1]).toMatchObject({ privateTested: true });
     expect(result.ruleSummary).toContain("太玄剑胎");
   });
+  it("任意名称、类别和公开组合的隐藏武魂都使用同一私测规则", () => {
+    const samples = [
+      ["断潮枪", "器武魂"], ["玄鬃豹", "兽武魂"], ["霜纹藤", "植物武魂"],
+      ["流火", "元素武魂"], ["琉璃心", "本体武魂"], ["青麦糕", "食物武魂"],
+    ] as const;
+    for (const [index, [name, category]] of samples.entries()) {
+      const game = awakened(`private-soul-generic-${index}`);
+      const first = game.view.character!.martialSouls[0];
+      game.view.character!.martialSouls = [first, { ...first, name, category, sourceEra: "原创", cultivationState: "未修炼" }];
+      game.view.character!.publiclyKnownMartialSoulIndices = [0];
+      const result = resolveAction(game, `回住处独自感应${name}的状态`);
+      expect(result).toMatchObject({ intent: "私下测试隐藏武魂", routing: { selected: "private-hidden-soul-test" } });
+      expect(result.ruleSummary).toContain(`隐藏武魂${name}`);
+      expect(game.view.character!.martialSouls[1].privateTested).toBe(true);
+      expect(game.view.character!.publiclyKnownMartialSoulIndices).toEqual([0]);
+    }
+
+    const triple = awakened("private-soul-triple-public-combination");
+    const first = triple.view.character!.martialSouls[0];
+    triple.view.character!.martialSouls = [first, { ...first, name: "秘藏星盘", category: "器武魂", sourceEra: "原创", cultivationState: "未修炼" }, { ...first, name: "公开雷鹰", category: "兽武魂", sourceEra: "原创", cultivationState: "未修炼" }];
+    triple.view.character!.publiclyKnownMartialSoulIndices = [0, 2];
+    const result = resolveAction(triple, "独自感应秘藏星盘的状态");
+    expect(result.ruleSummary).toContain("秘藏星盘");
+    expect(triple.view.character!.martialSouls[1].privateTested).toBe(true);
+    expect(triple.view.character!.martialSouls[2].privateTested).not.toBe(true);
+    expect(triple.view.character!.publiclyKnownMartialSoulIndices).toEqual([0, 2]);
+  });
   it("斗一正文不会倒灌斗二以后常用的精神空间术语", () => {
     const game = awakened("era-one-mental-space-language");
     expect(auditNarrative(game, "他把注意力沉入意识深处，感应自己的武魂状态。")).not.toContain("斗一正文倒灌了后世精神空间术语");
