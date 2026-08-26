@@ -132,7 +132,7 @@ const ACTION_FULFILLMENT_FAMILIES: Array<{ input: RegExp; evidence: RegExp; labe
   { input: /购买|采购|买下|付钱/, evidence: /购买|买下|采购|付了|付款|成交/, label: "购买" },
   { input: /攻击|战斗|防御|闪避|逃跑|刺杀/, evidence: /攻击|出手|战斗|防御|挡住|闪避|躲开|逃/, label: "战斗动作" },
   { input: /猎魂|猎杀魂兽|追踪魂兽|吸收魂环/, evidence: /猎魂|魂兽|追踪|猎杀|魂环|吸收/, label: "猎魂" },
-  { input: /加入|投靠|入学|拜师|承诺|拒绝/, evidence: /加入|投靠|入学|拜师|承诺|答应|拒绝/, label: "身份或承诺选择" },
+  { input: /加入|投靠|入学|拜师|承诺|拒绝/, evidence: /加入|进入正式|准入|录取|投靠|入学|拜师|签约|登记为|承诺|答应|拒绝/, label: "身份或承诺选择" },
   { input: /等待|快进|过去.*(?:天|月|年)/, evidence: /等待|等了|过去了|过了.*(?:天|月|年|日)/, label: "等待" },
 ];
 
@@ -155,9 +155,9 @@ function auditPlayerActionOwnership(text: string, playerInput: string, resolutio
   const unauthorizedDecision = [
     { decision: /决定|答应|同意|承诺|选择|打算/, action: /拜师|认.{0,4}为师/, allowed: /拜师|认.{0,4}为师/ },
     { decision: /决定|答应|同意|选择|打算/, action: /加入.{0,8}(?:学院|宗门|势力)/, allowed: /加入|入学|投靠/ },
-    { decision: /决定|答应|同意|选择|打算/, action: /公开|说出|透露.{0,8}(?:武魂|秘密|身份)/, allowed: /公开|说出|透露/ },
+    { decision: /决定|答应|同意|选择|打算/, action: /(?:公开|说出|透露).{0,8}(?:武魂|秘密|身份)/, allowed: /公开|说出|透露/ },
     { decision: /决定|答应|同意|选择|打算/, action: /(?:去往|前往|赶去).{0,10}(?:议事堂|学院|宗门|猎魂地点|魂兽森林)/, allowed: /去往|前往|赶去|出发|回住处/ },
-  ].find((item) => item.decision.test(text) && item.action.test(text) && !item.allowed.test(authorized));
+  ].find((item) => text.split(/[。！？\n]/).some((sentence) => item.decision.test(sentence) && item.action.test(sentence)) && !item.allowed.test(authorized));
   if (unauthorizedDecision) issues.push("正文替玩家作出了程序结果之后的新增重大决定");
   return issues;
 }

@@ -528,7 +528,7 @@ test("模型设置显示本地向量记忆状态", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "模型设置" }).click();
   await expect(page.getByRole("dialog", { name: "DeepSeek 设置" })).toBeVisible();
-  await expect(page.getByText(/本地向量记忆：\d+ 条 · 384 维 · 每回合最多召回 8 条/)).toBeVisible();
+  await expect(page.getByText(/本地向量记忆：\d+ 条场景 · \d+ 个章节索引 · 384 维。每回合先选最多 3 个相关章节，再从其中召回最多 8 条旧事/)).toBeVisible();
   await expect(page.getByText(/斗罗世界知识：\d+ 条 · 每回合最多召回 10 条/)).toBeVisible();
   await expect(page.getByText(/世界基本逻辑：\d+ 条 · 每回合最多召回 8 条/)).toBeVisible();
   await expect(page.getByText(/生成前检索审计：累计 \d+ 次/)).toBeVisible();

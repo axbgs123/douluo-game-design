@@ -160,8 +160,8 @@ describe("存档数据库", () => {
     database.recordModelCall({ gameId: "telemetry-game", role: "intent", model: "test-model", status: "failure", latencyMs: 80, promptChars: 200, outputChars: 0, errorCode: "timeout" });
 
     expect(database.getModelUsage("telemetry-game")).toMatchObject({ calls: 2, failures: 1, promptTokens: 120, completionTokens: 45, totalTokens: 165, totalLatencyMs: 401, narratorContextRetrievals: 0, contextRetrievalReady: false, contextRetrievalStatus: "未产生升级后正文样本" });
-    database.recordContextRetrieval({ gameId: "telemetry-game", role: "narrator", actionIndex: 1, memory: 0, canon: 4, logic: 3 });
-    expect(database.getModelUsage("telemetry-game")).toMatchObject({ narratorContextRetrievals: 1, contextRetrievalReady: true, contextRetrievalStatus: "最近正文已完成三层检索", lastRetrievedMemoryCount: 0, lastRetrievedCanonCount: 4, lastRetrievedLogicCount: 3 });
+    database.recordContextRetrieval({ gameId: "telemetry-game", role: "narrator", actionIndex: 1, memory: 1, canon: 4, logic: 3, chapters: 1, memoryLabels: ["action#1 · 觉醒之日"], canonLabels: ["character · 唐三"], logicLabels: ["秘密传播"] });
+    expect(database.getModelUsage("telemetry-game")).toMatchObject({ narratorContextRetrievals: 1, contextRetrievalReady: true, contextRetrievalStatus: "最近正文已完成三层检索", lastRetrievedMemoryCount: 1, lastRetrievedChapterCount: 1, lastRetrievedCanonCount: 4, lastRetrievedLogicCount: 3, lastRetrievedMemoryLabels: ["action#1 · 觉醒之日"], lastRetrievedCanonLabels: ["character · 唐三"], lastRetrievedLogicLabels: ["秘密传播"] });
     database.deleteGame("telemetry-game");
   });
 
@@ -175,6 +175,27 @@ describe("存档数据库", () => {
     const recalled = database.retrieveVectorMemories(game, "去森林猎魂，为自己的第一魂环选择合适魂兽", 4);
     expect(recalled[0].text).toContain("曼陀罗蛇");
     expect(recalled.some((item) => item.text.includes("十万年魂环"))).toBe(false);
+    database.deleteGame(game.view.id);
+  });
+
+  it("retrieves a relevant chapter before ranking scenes inside selected chapters", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "chapter-scene-retrieval" });
+    game.actionIndex = 8;
+    database.saveGame(game, "test.chapter-scene-retrieval");
+    const chapters = [
+      { number: 1, action: 1, title: "学院食堂", text: "在学院食堂购买晚饭，核对日常花销。" },
+      { number: 2, action: 3, title: "新生课程", text: "参加魂师基础课程，认识同班学生。" },
+      { number: 3, action: 5, title: "首环猎魂", text: "前往猎魂森林追踪曼陀罗蛇，为第一魂环做好撤退准备。" },
+      { number: 4, action: 7, title: "城内交易", text: "在城内出售普通材料并核对货款。" },
+    ];
+    for (const chapter of chapters) {
+      database.storeMemoryChapter({ gameId: game.view.id, chapterNumber: chapter.number, title: chapter.title, startActionIndex: chapter.action, endActionIndex: chapter.action + 1, summary: chapter.text });
+      database.storeVectorMemory({ gameId: game.view.id, sourceKey: `chapter-test:${chapter.number}`, actionIndex: chapter.action, kind: "action", text: chapter.text });
+    }
+    expect(database.retrieveMemoryChapters(game, "去森林猎魂，追踪适合第一魂环的蛇类魂兽", 1)[0]).toMatchObject({ chapterNumber: 3, title: "首环猎魂" });
+    const recalled = database.retrieveVectorMemories(game, "去森林猎魂，追踪适合第一魂环的蛇类魂兽", 2);
+    expect(recalled[0].text).toContain("曼陀罗蛇");
+    expect(recalled[0].metadata).toMatchObject({ retrievalPhase: "chapter-scene", chapterNumber: 3, chapterTitle: "首环猎魂" });
     database.deleteGame(game.view.id);
   });
 

@@ -126,6 +126,25 @@ database.exec(`
   CREATE INDEX IF NOT EXISTS idx_vector_memories_game_action
   ON vector_memories(game_id, action_index DESC);
 
+  CREATE TABLE IF NOT EXISTS memory_chapters (
+    id TEXT PRIMARY KEY,
+    game_id TEXT NOT NULL,
+    chapter_number INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    start_action_index INTEGER NOT NULL,
+    end_action_index INTEGER NOT NULL,
+    summary TEXT NOT NULL,
+    metadata_json TEXT NOT NULL,
+    vector_blob BLOB NOT NULL,
+    importance REAL NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(game_id, chapter_number),
+    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_memory_chapters_game_range
+  ON memory_chapters(game_id, start_action_index, end_action_index);
+
   CREATE TABLE IF NOT EXISTS canon_knowledge_vectors (
     id TEXT PRIMARY KEY,
     source_key TEXT NOT NULL UNIQUE,
@@ -194,6 +213,12 @@ database.exec(`
   );
 `);
 
+const contextRetrievalColumns = database.prepare("PRAGMA table_info(context_retrievals)").all() as Array<{ name: string }>;
+if (!contextRetrievalColumns.some((column) => column.name === "chapter_count")) database.exec("ALTER TABLE context_retrievals ADD COLUMN chapter_count INTEGER NOT NULL DEFAULT 0");
+if (!contextRetrievalColumns.some((column) => column.name === "memory_keys_json")) database.exec("ALTER TABLE context_retrievals ADD COLUMN memory_keys_json TEXT NOT NULL DEFAULT '[]'");
+if (!contextRetrievalColumns.some((column) => column.name === "canon_keys_json")) database.exec("ALTER TABLE context_retrievals ADD COLUMN canon_keys_json TEXT NOT NULL DEFAULT '[]'");
+if (!contextRetrievalColumns.some((column) => column.name === "logic_keys_json")) database.exec("ALTER TABLE context_retrievals ADD COLUMN logic_keys_json TEXT NOT NULL DEFAULT '[]'");
+
 export interface RetrievedVectorMemory {
   id: string;
   kind: string;
@@ -216,6 +241,27 @@ export interface VectorMemoryInput {
   year?: number;
   day?: number;
   metadata?: Record<string, unknown>;
+}
+
+export interface MemoryChapterInput {
+  gameId: string;
+  chapterNumber: number;
+  title: string;
+  startActionIndex: number;
+  endActionIndex: number;
+  summary: string;
+  importance?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RetrievedMemoryChapter {
+  chapterNumber: number;
+  title: string;
+  startActionIndex: number;
+  endActionIndex: number;
+  summary: string;
+  importance: number;
+  similarity: number;
 }
 
 const upsertVectorMemoryStatement = database.prepare(`
@@ -245,6 +291,78 @@ export function storeVectorMemory(input: VectorMemoryInput): void {
   database.prepare(`DELETE FROM vector_memories WHERE id IN (
     SELECT id FROM vector_memories WHERE game_id = ? ORDER BY importance DESC, action_index DESC LIMIT -1 OFFSET 2000
   )`).run(input.gameId);
+}
+
+const upsertMemoryChapterStatement = database.prepare(`
+  INSERT INTO memory_chapters (id, game_id, chapter_number, title, start_action_index, end_action_index, summary, metadata_json, vector_blob, importance, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(game_id, chapter_number) DO UPDATE SET
+    title = excluded.title,
+    start_action_index = MIN(memory_chapters.start_action_index, excluded.start_action_index),
+    end_action_index = MAX(memory_chapters.end_action_index, excluded.end_action_index),
+    summary = excluded.summary,
+    metadata_json = excluded.metadata_json,
+    vector_blob = excluded.vector_blob,
+    importance = MAX(memory_chapters.importance, excluded.importance),
+    updated_at = excluded.updated_at
+`);
+
+export function storeMemoryChapter(input: MemoryChapterInput): void {
+  const title = input.title.replace(/\s+/g, " ").trim().slice(0, 40) || `第${input.chapterNumber}章`;
+  const summary = input.summary.replace(/\s+/g, " ").trim().slice(0, 3_600);
+  if (!summary) return;
+  const start = Math.max(0, Math.min(input.startActionIndex, input.endActionIndex));
+  const end = Math.max(start, input.endActionIndex);
+  upsertMemoryChapterStatement.run(
+    randomUUID(), input.gameId, Math.max(1, input.chapterNumber), title, start, end, summary,
+    JSON.stringify(input.metadata ?? {}), vectorToBytes(embedMemoryText(`${title} ${summary}`)),
+    Math.max(0, Math.min(1, input.importance ?? .72)), new Date().toISOString(),
+  );
+}
+
+function chapterSummaryFromLedger(game: StoredGame, startActionIndex: number): string {
+  const entries = game.world.actionLedger.filter((entry) => entry.index >= startActionIndex && entry.index <= game.actionIndex).slice(-24);
+  return entries.map((entry) => `${entry.year}年${entry.day}日，${entry.action}；结果：${entry.result}`).join(" ").slice(-3_600);
+}
+
+function storeCurrentMemoryChapter(game: StoredGame): void {
+  if (game.actionIndex <= 0) return;
+  const existing = database.prepare("SELECT start_action_index FROM memory_chapters WHERE game_id = ? AND chapter_number = ?").get(game.view.id, game.storyMemory.chapterNumber) as { start_action_index: number } | undefined;
+  const start = existing?.start_action_index ?? game.actionIndex;
+  const summary = chapterSummaryFromLedger(game, start);
+  if (!summary) return;
+  storeMemoryChapter({
+    gameId: game.view.id,
+    chapterNumber: game.storyMemory.chapterNumber,
+    title: game.storyMemory.chapterTitle,
+    startActionIndex: start,
+    endActionIndex: game.actionIndex,
+    summary,
+    importance: game.storyMemory.keyChoices.length ? .84 : .72,
+    metadata: { source: "actionLedger", playerKnownOnly: true },
+  });
+}
+
+function ensureMemoryChapterBackfill(game: StoredGame): void {
+  const count = database.prepare("SELECT COUNT(*) AS count FROM memory_chapters WHERE game_id = ?").get(game.view.id) as { count: number };
+  if (Number(count.count) > 0 || game.actionIndex <= 0) return;
+  const first = game.world.actionLedger[0]?.index ?? 1;
+  const summary = chapterSummaryFromLedger(game, first);
+  if (!summary) return;
+  storeMemoryChapter({ gameId: game.view.id, chapterNumber: game.storyMemory.chapterNumber, title: game.storyMemory.chapterTitle, startActionIndex: first, endActionIndex: game.actionIndex, summary, metadata: { source: "legacy-actionLedger", playerKnownOnly: true } });
+}
+
+export function retrieveMemoryChapters(game: StoredGame, query: string, limit = 3): RetrievedMemoryChapter[] {
+  ensureMemoryChapterBackfill(game);
+  const queryVector = embedMemoryText(query);
+  const rows = database.prepare(`SELECT chapter_number, title, start_action_index, end_action_index, summary, vector_blob, importance
+    FROM memory_chapters WHERE game_id = ? AND start_action_index <= ?`).all(game.view.id, game.actionIndex) as Array<{ chapter_number: number; title: string; start_action_index: number; end_action_index: number; summary: string; vector_blob: Uint8Array; importance: number }>;
+  return rows.map((row) => {
+    const similarity = vectorSimilarity(queryVector, bytesToVector(row.vector_blob));
+    const recency = game.actionIndex > 0 ? Math.max(0, 1 - (game.actionIndex - row.end_action_index) / Math.max(24, game.actionIndex)) : 1;
+    const score = similarity * .78 + row.importance * .15 + recency * .07;
+    return { chapterNumber: row.chapter_number, title: row.title, startActionIndex: row.start_action_index, endActionIndex: Math.min(row.end_action_index, game.actionIndex), summary: row.summary, importance: row.importance, similarity: Number(score.toFixed(4)) };
+  }).filter((item) => item.similarity > .08).sort((left, right) => right.similarity - left.similarity || right.endActionIndex - left.endActionIndex).slice(0, Math.max(1, Math.min(6, limit)));
 }
 
 function ensureVectorMemoryBackfill(game: StoredGame): void {
@@ -282,18 +400,25 @@ function ensureVectorMemoryBackfill(game: StoredGame): void {
 
 export function retrieveVectorMemories(game: StoredGame, query: string, limit = 8): RetrievedVectorMemory[] {
   ensureVectorMemoryBackfill(game);
+  const chapters = retrieveMemoryChapters(game, query, 3);
   const queryVector = embedMemoryText(query);
   const rows = database.prepare(`
     SELECT id, kind, text, action_index, metadata_json, vector_blob, importance, year, day
     FROM vector_memories WHERE game_id = ? AND action_index <= ?
   `).all(game.view.id, game.actionIndex) as Array<{ id: string; kind: string; text: string; action_index: number; metadata_json: string; vector_blob: Uint8Array; importance: number; year: number; day: number }>;
-  return rows.map((row) => {
+  const scopedRows = chapters.length ? rows.filter((row) => !["action", "choice", "continuity"].includes(row.kind) || chapters.some((chapter) => row.action_index >= chapter.startActionIndex && row.action_index <= chapter.endActionIndex)) : rows;
+  return scopedRows.map((row) => {
     const similarity = vectorSimilarity(queryVector, bytesToVector(row.vector_blob));
     const recency = game.actionIndex > 0 ? Math.max(0, 1 - (game.actionIndex - row.action_index) / Math.max(20, game.actionIndex)) : 1;
     const score = similarity * 0.78 + row.importance * 0.15 + recency * 0.07;
     return {
       id: row.id, kind: row.kind, text: row.text, actionIndex: row.action_index, year: row.year, day: row.day,
-      importance: row.importance, similarity: Number(score.toFixed(4)), metadata: JSON.parse(row.metadata_json) as Record<string, unknown>,
+      importance: row.importance, similarity: Number(score.toFixed(4)), metadata: {
+        ...(JSON.parse(row.metadata_json) as Record<string, unknown>),
+        retrievalPhase: chapters.length ? "chapter-scene" : "direct-scene",
+        chapterNumber: chapters.find((chapter) => row.action_index >= chapter.startActionIndex && row.action_index <= chapter.endActionIndex)?.chapterNumber,
+        chapterTitle: chapters.find((chapter) => row.action_index >= chapter.startActionIndex && row.action_index <= chapter.endActionIndex)?.title,
+      },
     };
   }).filter((item) => item.similarity > 0.08).sort((left, right) => right.similarity - left.similarity || right.actionIndex - left.actionIndex).slice(0, Math.max(1, Math.min(16, limit)));
 }
@@ -515,8 +640,9 @@ export function recordModelCall(input: { gameId: string; role: "intent" | "narra
   database.prepare("INSERT INTO model_calls (game_id, role, model, status, latency_ms, prompt_chars, output_chars, prompt_tokens, completion_tokens, total_tokens, error_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.model.slice(0, 120), input.status, Math.max(0, Math.round(input.latencyMs)), Math.max(0, input.promptChars), Math.max(0, input.outputChars), Math.max(0, input.promptTokens ?? 0), Math.max(0, input.completionTokens ?? 0), Math.max(0, input.totalTokens ?? 0), input.errorCode?.slice(0, 80) ?? null, new Date().toISOString());
 }
 
-export function recordContextRetrieval(input: { gameId: string; role: "intent" | "narrator"; actionIndex: number; memory: number; canon: number; logic: number }): void {
-  database.prepare("INSERT INTO context_retrievals (game_id, role, action_index, memory_count, canon_count, logic_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.actionIndex, input.memory, input.canon, input.logic, new Date().toISOString());
+export function recordContextRetrieval(input: { gameId: string; role: "intent" | "narrator"; actionIndex: number; memory: number; canon: number; logic: number; chapters?: number; memoryLabels?: string[]; canonLabels?: string[]; logicLabels?: string[] }): void {
+  const labels = (items: string[] | undefined) => JSON.stringify((items ?? []).map((item) => item.replace(/\s+/g, " ").trim().slice(0, 80)).filter(Boolean).slice(0, 12));
+  database.prepare("INSERT INTO context_retrievals (game_id, role, action_index, memory_count, canon_count, logic_count, chapter_count, memory_keys_json, canon_keys_json, logic_keys_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(input.gameId, input.role, input.actionIndex, input.memory, input.canon, input.logic, input.chapters ?? 0, labels(input.memoryLabels), labels(input.canonLabels), labels(input.logicLabels), new Date().toISOString());
   database.prepare("DELETE FROM context_retrievals WHERE game_id = ? AND id NOT IN (SELECT id FROM context_retrievals WHERE game_id = ? ORDER BY id DESC LIMIT 500)").run(input.gameId, input.gameId);
 }
 
@@ -524,15 +650,17 @@ export function getModelUsage(gameId?: string): ModelUsageView {
   const where = gameId ? " WHERE game_id = ?" : "";
   const row = database.prepare(`SELECT COUNT(*) calls, SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) failures, COALESCE(SUM(prompt_tokens), 0) prompt_tokens, COALESCE(SUM(completion_tokens), 0) completion_tokens, COALESCE(SUM(total_tokens), 0) total_tokens, COALESCE(SUM(latency_ms), 0) total_latency_ms, MAX(created_at) last_call_at FROM model_calls${where}`).get(...(gameId ? [gameId] : [])) as { calls: number; failures: number; prompt_tokens: number; completion_tokens: number; total_tokens: number; total_latency_ms: number; last_call_at?: string };
   const vectorRow = database.prepare(`SELECT COUNT(*) AS count FROM vector_memories${gameId ? " WHERE game_id = ?" : ""}`).get(...(gameId ? [gameId] : [])) as { count: number };
+  const chapterRow = database.prepare(`SELECT COUNT(*) AS count FROM memory_chapters${gameId ? " WHERE game_id = ?" : ""}`).get(...(gameId ? [gameId] : [])) as { count: number };
   const canonRow = database.prepare("SELECT COUNT(*) AS count FROM canon_knowledge_vectors").get() as { count: number };
   const logicRow = database.prepare("SELECT COUNT(*) AS count FROM world_logic_vectors").get() as { count: number };
   const retrievalWhere = gameId ? " WHERE game_id = ?" : "";
   const retrievalCount = database.prepare(`SELECT COUNT(*) AS count FROM context_retrievals${retrievalWhere}`).get(...(gameId ? [gameId] : [])) as { count: number };
   const narratorRetrievalCount = database.prepare(`SELECT COUNT(*) AS count FROM context_retrievals${gameId ? " WHERE game_id = ? AND role = 'narrator'" : " WHERE role = 'narrator'"}`).get(...(gameId ? [gameId] : [])) as { count: number };
-  const lastRetrieval = database.prepare(`SELECT memory_count, canon_count, logic_count, created_at FROM context_retrievals${gameId ? " WHERE game_id = ? AND role = 'narrator'" : " WHERE role = 'narrator'"} ORDER BY id DESC LIMIT 1`).get(...(gameId ? [gameId] : [])) as { memory_count: number; canon_count: number; logic_count: number; created_at: string } | undefined;
+  const lastRetrieval = database.prepare(`SELECT memory_count, canon_count, logic_count, chapter_count, memory_keys_json, canon_keys_json, logic_keys_json, created_at FROM context_retrievals${gameId ? " WHERE game_id = ? AND role = 'narrator'" : " WHERE role = 'narrator'"} ORDER BY id DESC LIMIT 1`).get(...(gameId ? [gameId] : [])) as { memory_count: number; canon_count: number; logic_count: number; chapter_count: number; memory_keys_json: string; canon_keys_json: string; logic_keys_json: string; created_at: string } | undefined;
   const contextRetrievalReady = Boolean(lastRetrieval && lastRetrieval.canon_count > 0 && lastRetrieval.logic_count > 0);
   const contextRetrievalStatus: ModelUsageView["contextRetrievalStatus"] = !lastRetrieval ? "未产生升级后正文样本" : contextRetrievalReady ? "最近正文已完成三层检索" : "最近正文检索不完整";
-  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8, canonKnowledgeVectors: Number(canonRow.count), canonRetrievalLimit: 10, worldLogicVectors: Number(logicRow.count), worldLogicRetrievalLimit: 8, contextRetrievals: Number(retrievalCount.count), narratorContextRetrievals: Number(narratorRetrievalCount.count), contextRetrievalReady, contextRetrievalStatus, lastRetrievedMemoryCount: Number(lastRetrieval?.memory_count ?? 0), lastRetrievedCanonCount: Number(lastRetrieval?.canon_count ?? 0), lastRetrievedLogicCount: Number(lastRetrieval?.logic_count ?? 0), lastContextRetrievalAt: lastRetrieval?.created_at };
+  const parseLabels = (value?: string): string[] => { try { const parsed = JSON.parse(value ?? "[]"); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 12) : []; } catch { return []; } };
+  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), memoryChapters: Number(chapterRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8, chapterRetrievalLimit: 3, canonKnowledgeVectors: Number(canonRow.count), canonRetrievalLimit: 10, worldLogicVectors: Number(logicRow.count), worldLogicRetrievalLimit: 8, contextRetrievals: Number(retrievalCount.count), narratorContextRetrievals: Number(narratorRetrievalCount.count), contextRetrievalReady, contextRetrievalStatus, lastRetrievedMemoryCount: Number(lastRetrieval?.memory_count ?? 0), lastRetrievedChapterCount: Number(lastRetrieval?.chapter_count ?? 0), lastRetrievedCanonCount: Number(lastRetrieval?.canon_count ?? 0), lastRetrievedLogicCount: Number(lastRetrieval?.logic_count ?? 0), lastRetrievedMemoryLabels: parseLabels(lastRetrieval?.memory_keys_json), lastRetrievedCanonLabels: parseLabels(lastRetrieval?.canon_keys_json), lastRetrievedLogicLabels: parseLabels(lastRetrieval?.logic_keys_json), lastContextRetrievalAt: lastRetrieval?.created_at };
 }
 
 const gameColumns = database.prepare("PRAGMA table_info(games)").all() as Array<{ name: string }>;
@@ -1161,6 +1289,7 @@ export function commitResolvedAction(previous: StoredGame, resolved: StoredGame,
         day: date?.day,
         metadata: { requestId: committed.requestId, intent: committed.resolution.intent, locationId: resolved.view.locationId },
       });
+      storeCurrentMemoryChapter(resolved);
     }
     writeGameAndEvent(resolved, eventType, payload);
     database.exec("COMMIT");

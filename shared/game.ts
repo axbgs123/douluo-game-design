@@ -1148,8 +1148,10 @@ export interface ModelUsageView {
   totalLatencyMs: number;
   lastCallAt?: string;
   vectorMemories: number;
+  memoryChapters: number;
   vectorDimensions: number;
   vectorRetrievalLimit: number;
+  chapterRetrievalLimit: number;
   canonKnowledgeVectors: number;
   canonRetrievalLimit: number;
   worldLogicVectors: number;
@@ -1159,8 +1161,12 @@ export interface ModelUsageView {
   contextRetrievalReady: boolean;
   contextRetrievalStatus: "未产生升级后正文样本" | "最近正文已完成三层检索" | "最近正文检索不完整";
   lastRetrievedMemoryCount: number;
+  lastRetrievedChapterCount: number;
   lastRetrievedCanonCount: number;
   lastRetrievedLogicCount: number;
+  lastRetrievedMemoryLabels: string[];
+  lastRetrievedCanonLabels: string[];
+  lastRetrievedLogicLabels: string[];
   lastContextRetrievalAt?: string;
 }
 

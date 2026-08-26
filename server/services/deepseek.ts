@@ -203,10 +203,16 @@ async function retrieveWorldLogicContext(game: StoredGame, query: string) {
   return retrieveWorldLogic(game, query, 8).map(({ category, trigger, logic, importance, similarity, metadata }) => ({ category, trigger, logic, importance, similarity, metadata }));
 }
 
-async function safeRecordContextRetrieval(game: StoredGame, role: "intent" | "narrator", counts: { memory: number; canon: number; logic: number }): Promise<void> {
+async function safeRecordContextRetrieval(game: StoredGame, role: "intent" | "narrator", contexts: { memory: Array<{ kind: string; actionIndex: number; metadata: Record<string, unknown> }>; canon: Array<{ kind: string; subjectName: string }>; logic: Array<{ category: string }> }): Promise<void> {
   try {
     const { recordContextRetrieval } = await import("../db.js");
-    recordContextRetrieval({ gameId: game.view.id, role, actionIndex: game.actionIndex, ...counts });
+    const chapterLabels = [...new Set(contexts.memory.map((item) => typeof item.metadata.chapterTitle === "string" ? `第${item.metadata.chapterNumber ?? "?"}章 ${item.metadata.chapterTitle}` : "").filter(Boolean))];
+    recordContextRetrieval({
+      gameId: game.view.id, role, actionIndex: game.actionIndex,
+      memory: contexts.memory.length, canon: contexts.canon.length, logic: contexts.logic.length, chapters: chapterLabels.length,
+      memoryLabels: contexts.memory.map((item) => `${item.kind}#${item.actionIndex}${typeof item.metadata.chapterTitle === "string" ? ` · ${item.metadata.chapterTitle}` : ""}`),
+      canonLabels: contexts.canon.map((item) => `${item.kind} · ${item.subjectName}`), logicLabels: contexts.logic.map((item) => item.category),
+    });
   } catch {
     // Retrieval has already succeeded; diagnostics must not invalidate it.
   }
@@ -248,7 +254,7 @@ export async function interpretActionWithDeepSeek(game: StoredGame, playerInput:
   const settings = readDeepSeekSettings();
   if (!settings.apiKey) return null;
   const relevantPast = await retrieveVectorMemoryContext(game, `${playerInput}\n${game.view.location}\n${game.view.tasks.filter((task) => task.status !== "完成").slice(0, 4).map((task) => task.title).join("\n")}`);
-  await safeRecordContextRetrieval(game, "intent", { memory: relevantPast.length, canon: 0, logic: 0 });
+  await safeRecordContextRetrieval(game, "intent", { memory: relevantPast, canon: [], logic: [] });
   const payload = await tracedCompletion(game, "intent", settings, {
       model: settings.model,
       max_tokens: 256,
@@ -306,7 +312,7 @@ export async function narrateWithDeepSeek(
   const retrievedCanonKnowledge = await retrieveCanonKnowledgeContext(game, memoryQuery);
   const retrievedWorldLogic = await retrieveWorldLogicContext(game, memoryQuery);
   if (!retrievedWorldLogic.length) throw new Error("世界基本逻辑检索没有返回适用规则，已停止本次正文生成");
-  await safeRecordContextRetrieval(game, "narrator", { memory: retrievedLongTermMemories.length, canon: retrievedCanonKnowledge.length, logic: retrievedWorldLogic.length });
+  await safeRecordContextRetrieval(game, "narrator", { memory: retrievedLongTermMemories, canon: retrievedCanonKnowledge, logic: retrievedWorldLogic });
   const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
   const eraTitle = ({ 1: "《斗罗大陆》第一部", 2: "《绝世唐门》", 3: "《龙王传说》", 4: "《终极斗罗》" } as const)[game.view.era ?? 1];
 

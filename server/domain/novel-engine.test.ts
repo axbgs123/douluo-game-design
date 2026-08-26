@@ -134,6 +134,7 @@ describe("增强小说引擎", () => {
     expect(auditResolutionAlignment("他问清费用后，又决定前往议事堂。", ordinaryResolution, "询问本月食宿费用"))
       .toContain("正文替玩家作出了程序结果之后的新增重大决定");
     expect(auditResolutionAlignment("他问清本月食宿要花多少钱，没有替自己决定下一步。", ordinaryResolution, "询问本月食宿费用")).toEqual([]);
+    expect(auditResolutionAlignment("两家从公开议题中选择优先项，再分别核验来源。", ordinaryResolution, "让媒体联盟共同核验优先议题")).toEqual([]);
   });
 
   it("compresses minor actions while preserving space for consequential scenes", () => {
