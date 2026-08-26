@@ -122,7 +122,47 @@ export function auditNovelEngineNarrative(game: StoredGame, text: string, pack: 
   return issues;
 }
 
-export function auditResolutionAlignment(text: string, resolution: ActionResolution): string[] {
+const ACTION_FULFILLMENT_FAMILIES: Array<{ input: RegExp; evidence: RegExp; label: string }> = [
+  { input: /测试|试验|试用|召出|催动/, evidence: /测试|试了|试着|显形|浮现|召出|催动|运转|收回/, label: "测试或试用" },
+  { input: /修炼|冥想|练功|复练/, evidence: /修炼|冥想|运转魂力|练了|复练|周天/, label: "修炼" },
+  { input: /休息|睡觉|疗伤|恢复/, evidence: /休息|睡|合眼|疗伤|处理伤势|恢复/, label: "休息或恢复" },
+  { input: /前往|去往|出发|赶路|回到|回住处/, evidence: /前往|去往|出发|赶路|回到|走进|抵达|进了/, label: "移动" },
+  { input: /询问|打听|请教|交谈|告诉|问清/, evidence: /问|询问|打听|请教|交谈|告诉|回答|说/, label: "交谈或询问" },
+  { input: /调查|搜索|查找|核验|研究/, evidence: /调查|搜索|查找|核验|翻查|研究|确认/, label: "调查或核验" },
+  { input: /购买|采购|买下|付钱/, evidence: /购买|买下|采购|付了|付款|成交/, label: "购买" },
+  { input: /攻击|战斗|防御|闪避|逃跑|刺杀/, evidence: /攻击|出手|战斗|防御|挡住|闪避|躲开|逃/, label: "战斗动作" },
+  { input: /猎魂|猎杀魂兽|追踪魂兽|吸收魂环/, evidence: /猎魂|魂兽|追踪|猎杀|魂环|吸收/, label: "猎魂" },
+  { input: /加入|投靠|入学|拜师|承诺|拒绝/, evidence: /加入|投靠|入学|拜师|承诺|答应|拒绝/, label: "身份或承诺选择" },
+  { input: /等待|快进|过去.*(?:天|月|年)/, evidence: /等待|等了|过去了|过了.*(?:天|月|年|日)/, label: "等待" },
+];
+
+function auditPlayerActionOwnership(text: string, playerInput: string, resolution: ActionResolution): string[] {
+  if (!playerInput.trim() || /无法完成|规则阻止/.test(resolution.intent)) return [];
+  const issues: string[] = [];
+  const requested = `${playerInput} ${resolution.intent}`;
+  const family = ACTION_FULFILLMENT_FAMILIES.find((item) => item.input.test(requested));
+  const evidenceIndex = family ? text.search(family.evidence) : -1;
+  if (family && evidenceIndex < 0) issues.push(`正文没有出现玩家${family.label}行动的可见执行证据`);
+  else if (family && text.length >= 180 && evidenceIndex > text.length * 0.55) issues.push("玩家行动直到正文后半段才出现，前文已被其他剧情抢占");
+
+  const privateAction = /独自|单独|私下|无人旁观|回住处|闭门|不公开|暂不公开|隐藏/.test(requested);
+  const fixedAllowsInterruption = /NPC在场|长老|宗主|导师|老师|执事|弟子|传唤|会议|议事/.test(resolution.ruleSummary);
+  if (privateAction && !fixedAllowsInterruption && /敲门|传话|请.{0,8}去一趟|推门进来|走进房间|叫住.{0,8}|召集|议事堂|培养会议/.test(text)) {
+    issues.push("独处或保密行动被无依据的NPC来访、传唤或会议打断");
+  }
+
+  const authorized = `${playerInput} ${resolution.ruleSummary}`;
+  const unauthorizedDecision = [
+    { decision: /决定|答应|同意|承诺|选择|打算/, action: /拜师|认.{0,4}为师/, allowed: /拜师|认.{0,4}为师/ },
+    { decision: /决定|答应|同意|选择|打算/, action: /加入.{0,8}(?:学院|宗门|势力)/, allowed: /加入|入学|投靠/ },
+    { decision: /决定|答应|同意|选择|打算/, action: /公开|说出|透露.{0,8}(?:武魂|秘密|身份)/, allowed: /公开|说出|透露/ },
+    { decision: /决定|答应|同意|选择|打算/, action: /(?:去往|前往|赶去).{0,10}(?:议事堂|学院|宗门|猎魂地点|魂兽森林)/, allowed: /去往|前往|赶去|出发|回住处/ },
+  ].find((item) => item.decision.test(text) && item.action.test(text) && !item.allowed.test(authorized));
+  if (unauthorizedDecision) issues.push("正文替玩家作出了程序结果之后的新增重大决定");
+  return issues;
+}
+
+export function auditResolutionAlignment(text: string, resolution: ActionResolution, playerInput = ""): string[] {
   const requiredByIntent: Array<[RegExp, RegExp, string]> = [
     [/核验旧世档案/, /档案|目录|谱牒|账册|记录|证据|印记|年代/, "正文没有呈现旧世档案核验"],
     [/调查当代权属/, /登记|权属|产权|旧址|现权利|保管人/, "正文没有呈现当代权属调查"],
@@ -147,6 +187,7 @@ export function auditResolutionAlignment(text: string, resolution: ActionResolut
   ];
   const requirement = requiredByIntent.find(([intent]) => intent.test(resolution.intent));
   const issues = requirement && !requirement[1].test(text) ? [requirement[2]] : [];
+  issues.push(...auditPlayerActionOwnership(text, playerInput, resolution));
   if (/私下测试隐藏武魂/.test(resolution.intent)) {
     if (/敲门|请.{0,8}去一趟|长老|宗主|封阵弟子|传唤|议事堂|培养会议|培养方案定下来/.test(text)) issues.push("私下测试被擅自改成NPC传唤或培养会议");
     if (/养剑木匣|剑胚/.test(text) && !/养剑木匣|剑胚/.test(resolution.ruleSummary)) issues.push("正文为私下测试凭空增加未持有物品");

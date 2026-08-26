@@ -446,6 +446,8 @@ export interface NarrativeLogicPacket {
     resources: string[];
     action: string;
     fixedConsequence: string;
+    fulfillmentOrder: string;
+    completionEvidence: string;
   };
   participantContracts: Array<{
     name: string;
@@ -544,6 +546,8 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
       resources,
       action: resolution.intent,
       fixedConsequence: resolution.ruleSummary,
+      fulfillmentOrder: "正文前半段必须先让玩家行动实际发生并呈现固定后果，然后才允许写现场反应；不得拿新任务、来访、会议或转场替换",
+      completionEvidence: "正文必须留下读者能直接指出的一处执行证据和一处结果证据，不能只在旁白中说已经处理",
     },
     participantContracts: participants,
     reactionChain: {
@@ -568,6 +572,7 @@ export function auditNarrativeLogicPacket(packet: NarrativeLogicPacket): string[
   if (!packet.protagonistContract.desire.trim()) issues.push("逻辑预检缺少主角当前欲望或玩家行动");
   if (!packet.protagonistContract.action.trim()) issues.push("逻辑预检缺少程序动作");
   if (!packet.protagonistContract.fixedConsequence.trim()) issues.push("逻辑预检缺少不可改写的程序后果");
+  if (!packet.protagonistContract.fulfillmentOrder.trim() || !packet.protagonistContract.completionEvidence.trim()) issues.push("逻辑预检缺少玩家行动兑现顺序或可见证据要求");
   if (!packet.canonAnchor.location.trim() || packet.canonAnchor.location === "未知地点") issues.push("逻辑预检缺少当前地点");
   if (packet.canonAnchor.publicMartialSouls.some((name) => packet.canonAnchor.hiddenMartialSouls.includes(name))) issues.push("公开武魂与隐藏武魂边界冲突");
   if (!packet.continuityContract.requiredStateChanges.length) issues.push("逻辑预检没有任何可追踪状态变化");

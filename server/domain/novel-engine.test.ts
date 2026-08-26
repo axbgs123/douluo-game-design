@@ -125,6 +125,17 @@ describe("增强小说引擎", () => {
     expect(auditResolutionAlignment("他独自翻阅密密麻麻的记录，确认收放与承载都已达到上限。", resolution)).toContain("正文凭空补造程序未结算的精确测试结论");
   });
 
+  it("protects player action ownership across ordinary action families", () => {
+    expect(auditResolutionAlignment("门外忽然有人敲门，请他去议事堂。", ordinaryResolution, "独自在屋里测试新能力"))
+      .toEqual(expect.arrayContaining(["正文没有出现玩家测试或试用行动的可见执行证据", "独处或保密行动被无依据的NPC来访、传唤或会议打断"]));
+    expect(auditResolutionAlignment("他关好门，试着催动那股力量，确认能够收回后才停下。", ordinaryResolution, "独自在屋里测试新能力")).toEqual([]);
+    const delayed = `${"他被叫去议事堂听众人商量培养方案。".repeat(14)}回屋以后，他才试着催动那股力量。`;
+    expect(auditResolutionAlignment(delayed, ordinaryResolution, "测试新能力")).toContain("玩家行动直到正文后半段才出现，前文已被其他剧情抢占");
+    expect(auditResolutionAlignment("他问清费用后，又决定前往议事堂。", ordinaryResolution, "询问本月食宿费用"))
+      .toContain("正文替玩家作出了程序结果之后的新增重大决定");
+    expect(auditResolutionAlignment("他问清本月食宿要花多少钱，没有替自己决定下一步。", ordinaryResolution, "询问本月食宿费用")).toEqual([]);
+  });
+
   it("compresses minor actions while preserving space for consequential scenes", () => {
     const game = awakened("pacing");
     expect(narrativePacing(game, "翻找抽屉并整理旧衣", { ...ordinaryResolution, intent: "一般行动" }).kind).toBe("略写");

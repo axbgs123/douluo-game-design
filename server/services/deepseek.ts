@@ -339,6 +339,7 @@ export async function narrateWithDeepSeek(
             "suggestions必须由你根据本次刚生成的正文结尾实时创作，程序建议只作安全兜底，不要照抄或换词。三项都必须承接本次行动已经造成的现场状态，不能重复已经完成的动作。",
             "按中国男频互动网文设计选项：三项分别推进成长/资源、关系/势力、秘密/风险；写成动作+明确对象+近期目的，控制在8至28个汉字，不能用查看地图、查看新事件、观察周围或继续行动占位。",
             "playerInput是本次正文必须完整兑现的行动，不是可以替换的灵感。先写玩家所做之事及程序固定后果，再写由此产生的反应；不得用NPC来访、会议、转场或另一项任务抢走本次行动。",
+            "行动所有权是硬门禁：正文前半段必须出现玩家动作的可见执行证据和fixedRuleResult的可见结果证据。若当前行动很短，可以扩写感受、阻力与直接后果，但不能靠新增事件凑字数。",
             "若本次行动是隐藏、私下测试、独处、保密或不公开，正文不得擅自加入敲门、传唤、长老会、议事堂、培养会议或知情NPC；suggestions也必须从私下行动完成后的真实状态继续。",
             "每个重要反应都要通过欲望、信息、权限、资源、行动、后果六环。异常天赋必须引发符合目击者利益和权限的复测、上报、谈条件、争夺或戒备，不能只惊叹一句便散场。",
             "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
@@ -427,7 +428,7 @@ export async function narrateWithDeepSeek(
   const auditIssues = auditNarrative(game, parsed.narrative);
   const memoryTimelineIssues = auditNarrative(game, memoryText).filter((issue) => /提前|时间线|年份|年龄|魂力|后期姓名|势力归属/.test(issue));
   const novelEngineIssues = auditNovelEngineNarrative(game, parsed.narrative, novelEngine);
-  const allAuditIssues = [...auditIssues, ...memoryTimelineIssues, ...novelEngineIssues, ...auditCanonNarrativeVoice(parsed.narrative, canonNarrativeProfile), ...auditResolutionAlignment(parsed.narrative, resolution)];
+  const allAuditIssues = [...auditIssues, ...memoryTimelineIssues, ...novelEngineIssues, ...auditCanonNarrativeVoice(parsed.narrative, canonNarrativeProfile), ...auditResolutionAlignment(parsed.narrative, resolution, playerInput)];
   if (allAuditIssues.length) throw new NarrativeAuditError(allAuditIssues);
 
   return {
