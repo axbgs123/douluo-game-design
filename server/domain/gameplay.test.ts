@@ -55,6 +55,16 @@ describe("完整游玩规则", () => {
     expect(result.fallbackNarrative).toContain("太玄剑胎");
     expect(result.fallbackNarrative).not.toMatch(/敲门|长老|议事堂|培养会议|养剑木匣/);
   });
+  it("直接说出已隐藏武魂的名字也会进入私下测试路由", () => {
+    const game = awakened("private-hidden-soul-name-route");
+    const first = game.view.character!.martialSouls[0];
+    game.view.character!.martialSouls = [first, { ...first, name: "太玄剑胎", category: "器武魂", cultivationState: "未修炼" }];
+    game.view.character!.publiclyKnownMartialSoulIndices = [0];
+    const result = resolveAction(game, "回静室单独感应太玄剑胎的状态");
+    expect(result).toMatchObject({ intent: "私下测试隐藏武魂", routing: { selected: "private-hidden-soul-test" } });
+    expect(game.view.character!.martialSouls[1]).toMatchObject({ privateTested: true });
+    expect(result.ruleSummary).toContain("太玄剑胎");
+  });
   it("四时代学院生活不会再共用斗一首月结业模板", () => {
     const eraOne = academyEraLifeProfile(1);
     expect(`${eraOne.teacherRole}${eraOne.arrangementName}${eraOne.assessmentName}${eraOne.completionName}`).not.toMatch(/班主任|课表|学籍|首月|结业/);

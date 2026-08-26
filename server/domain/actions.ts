@@ -4203,7 +4203,13 @@ export function classifyCoreActionRoute(game: StoredGame, input: string): CoreAc
   const candidates: string[] = [];
   const huntingActive = Boolean(game.view.hunting && game.view.hunting.stage !== "完成");
   const mentor = game.view.mentorPursuit;
-  const privateHiddenSoulTest = /测试|感应|召出|尝试/.test(action) && /第二武魂|第三武魂|副武魂|隐藏武魂|回住处.*测试|单独测试|私下测试/.test(action) && (game.view.character?.martialSouls.length ?? 0) > (game.view.character?.publiclyKnownMartialSoulIndices?.length ?? 1);
+  const martialSouls = game.view.character?.martialSouls ?? [];
+  const publicSoulIndices = new Set(game.view.character?.publiclyKnownMartialSoulIndices ?? (martialSouls.length ? [0] : []));
+  const hiddenSoulNames = martialSouls.filter((_soul, index) => !publicSoulIndices.has(index)).map((soul) => soul.name);
+  const namesHiddenSoul = hiddenSoulNames.some((name) => action.includes(name));
+  const privateHiddenSoulTest = /测试|感应|召出|尝试|催动|查看.{0,6}状态/.test(action)
+    && (/第二武魂|第三武魂|副武魂|隐藏武魂|回住处.*测试|单独测试|私下测试/.test(action) || namesHiddenSoul)
+    && hiddenSoulNames.length > 0;
   const mentorIndependentPractice = mentor?.stage === "已拜师" && /独立复练|按.*课程记录.*复练|复盘.*导师.*独立/.test(action);
   const mentorHuntSupport = Boolean(huntingActive && /请求.*(?:导师|师父).*(?:指导|负责).*(?:魂环|首环)|(?:导师|师父)承担.*(?:猎魂|首环)/.test(action));
   const establishedMentor = mentor?.stage === "已拜师" && !mentorIndependentPractice && !mentorHuntSupport && (action.includes(mentor.mentorName) || /师父|导师/.test(action)) && /课程|训练|练习|授业|修行|魂环|猎魂|资源|训练场|条件|禁忌|规矩|请教|询问|评估/.test(action);

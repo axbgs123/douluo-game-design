@@ -120,6 +120,9 @@ describe("增强小说引擎", () => {
     const resolution = { ...ordinaryResolution, intent: "私下测试隐藏武魂", ruleSummary: "独自在住处测试太玄剑胎，没有NPC在场。" };
     expect(auditResolutionAlignment("他刚准备测试，门外弟子便来传话，请他去议事堂定培养方案。", resolution)).toContain("私下测试被擅自改成NPC传唤或培养会议");
     expect(auditResolutionAlignment("他关好门，独自让太玄剑胎短暂显形，记住重量后立刻收回。", resolution)).toEqual([]);
+    expect(auditResolutionAlignment("他关好门，独自感应太玄剑胎，睁眼后记起下午议事堂还有已经安排好的议事。", resolution, "回静室单独感应太玄剑胎的状态")).toEqual([]);
+    expect(auditResolutionAlignment("他完成感应后便前往议事堂，长老当场召见了他。", resolution, "回静室单独感应太玄剑胎的状态")).toEqual(expect.arrayContaining(["独处或保密行动被无依据的NPC来访、传唤或会议打断", "私下测试被擅自改成NPC传唤或培养会议"]));
+    expect(auditResolutionAlignment("他独自感应剑胎时想起长老早先说过的话，随后收回魂力。", resolution, "回静室单独感应太玄剑胎的状态")).toEqual([]);
     expect(auditResolutionAlignment("他把养剑木匣放到桌边，独自测试武魂。", resolution)).toContain("正文为私下测试凭空增加未持有物品");
     expect(auditResolutionAlignment("他独自取出备用水晶，再次复测先天魂力。", resolution)).toContain("正文重复已经完成的觉醒复测");
     expect(auditResolutionAlignment("他独自翻阅密密麻麻的记录，确认收放与承载都已达到上限。", resolution)).toContain("正文凭空补造程序未结算的精确测试结论");

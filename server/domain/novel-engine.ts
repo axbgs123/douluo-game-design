@@ -123,7 +123,7 @@ export function auditNovelEngineNarrative(game: StoredGame, text: string, pack: 
 }
 
 const ACTION_FULFILLMENT_FAMILIES: Array<{ input: RegExp; evidence: RegExp; label: string }> = [
-  { input: /测试|试验|试用|召出|催动/, evidence: /测试|试了|试着|显形|浮现|召出|催动|运转|收回/, label: "测试或试用" },
+  { input: /测试|试验|试用|感应|召出|催动/, evidence: /测试|试了|试着|感应|显形|浮现|召出|催动|运转|收回/, label: "测试或试用" },
   { input: /修炼|冥想|练功|复练/, evidence: /修炼|冥想|运转魂力|练了|复练|周天/, label: "修炼" },
   { input: /休息|睡觉|疗伤|恢复/, evidence: /休息|睡|合眼|疗伤|处理伤势|恢复/, label: "休息或恢复" },
   { input: /前往|去往|出发|赶路|回到|回住处/, evidence: /前往|去往|出发|赶路|回到|走进|抵达|进了/, label: "移动" },
@@ -136,6 +136,13 @@ const ACTION_FULFILLMENT_FAMILIES: Array<{ input: RegExp; evidence: RegExp; labe
   { input: /等待|快进|过去.*(?:天|月|年)/, evidence: /等待|等了|过去了|过了.*(?:天|月|年|日)/, label: "等待" },
 ];
 
+function hasActualPrivateActionInterruption(text: string): boolean {
+  const directIntrusion = /敲门|传话|请.{0,8}去一趟|推门进来|走进房间|叫住.{0,8}|传唤|召集/.test(text);
+  const actualMeetingTransition = /(?:前往|去了|赶到|走进|来到)(?:了)?[^。！？\n]{0,12}(?:议事堂|培养会议)|(?:议事堂|培养会议)[^。！？\n]{0,12}(?:开会|议定|召见)/.test(text);
+  const npcEnteredScene = /(?:长老|宗主|导师|老师|执事|弟子).{0,10}(?:进门|进来|到场|叫住|传唤|开口)|(?:进门|进来|到场).{0,10}(?:长老|宗主|导师|老师|执事|弟子)/.test(text);
+  return directIntrusion || actualMeetingTransition || npcEnteredScene;
+}
+
 function auditPlayerActionOwnership(text: string, playerInput: string, resolution: ActionResolution): string[] {
   if (!playerInput.trim() || /无法完成|规则阻止/.test(resolution.intent)) return [];
   const issues: string[] = [];
@@ -146,8 +153,9 @@ function auditPlayerActionOwnership(text: string, playerInput: string, resolutio
   else if (family && text.length >= 180 && evidenceIndex > text.length * 0.55) issues.push("玩家行动直到正文后半段才出现，前文已被其他剧情抢占");
 
   const privateAction = /独自|单独|私下|无人旁观|回住处|闭门|不公开|暂不公开|隐藏/.test(requested);
-  const fixedAllowsInterruption = /NPC在场|长老|宗主|导师|老师|执事|弟子|传唤|会议|议事/.test(resolution.ruleSummary);
-  if (privateAction && !fixedAllowsInterruption && /敲门|传话|请.{0,8}去一趟|推门进来|走进房间|叫住.{0,8}|召集|议事堂|培养会议/.test(text)) {
+  const fixedAllowsInterruption = /NPC在场|长老|宗主|导师|老师|执事|弟子|传唤|会议|议事/.test(resolution.ruleSummary)
+    && !/没有NPC在场|无NPC在场|无人旁观|没有.{0,8}(?:长老|宗主|导师|老师|执事|弟子)/.test(resolution.ruleSummary);
+  if (privateAction && !fixedAllowsInterruption && hasActualPrivateActionInterruption(text)) {
     issues.push("独处或保密行动被无依据的NPC来访、传唤或会议打断");
   }
 
@@ -189,7 +197,7 @@ export function auditResolutionAlignment(text: string, resolution: ActionResolut
   const issues = requirement && !requirement[1].test(text) ? [requirement[2]] : [];
   issues.push(...auditPlayerActionOwnership(text, playerInput, resolution));
   if (/私下测试隐藏武魂/.test(resolution.intent)) {
-    if (/敲门|请.{0,8}去一趟|长老|宗主|封阵弟子|传唤|议事堂|培养会议|培养方案定下来/.test(text)) issues.push("私下测试被擅自改成NPC传唤或培养会议");
+    if (hasActualPrivateActionInterruption(text)) issues.push("私下测试被擅自改成NPC传唤或培养会议");
     if (/养剑木匣|剑胚/.test(text) && !/养剑木匣|剑胚/.test(resolution.ruleSummary)) issues.push("正文为私下测试凭空增加未持有物品");
     if (/备用水晶|重新?测试|再次?复测|又换.{0,8}水晶/.test(text)) issues.push("正文重复已经完成的觉醒复测");
     if (/具体数据|密密麻麻.{0,8}记录|收放.{0,6}承载.{0,10}上限/.test(text)) issues.push("正文凭空补造程序未结算的精确测试结论");
