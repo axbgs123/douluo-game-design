@@ -320,6 +320,14 @@ describe("存档数据库", () => {
     const duguKnowledge = database.retrieveCanonKnowledge(duguGame, "独孤博实力、伤势和当前状态", 20).filter((item) => item.subjectId === "dugu-bo");
     expect(duguKnowledge.every((item) => !/剧毒反噬|家族毒患/.test(item.text))).toBe(true);
 
+    const princeGame = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "prince-private-motive" });
+    princeGame.view.worldTime = { era: "斗罗大陆", year: 7, day: 1, time: "08:00", season: "春" };
+    princeGame.world = createHiddenWorld(7, "heaven-dou-city");
+    princeGame.world.npcs["xue-beng"].knownToPlayer = true;
+    princeGame.view.knownFigures.push({ id: "xue-beng", name: "雪崩", knownPower: "实力未知", location: "天斗城", status: "已知", source: "公开身份" });
+    const princeKnowledge = database.retrieveCanonKnowledge(princeGame, "雪崩当前表现、真实动机与实力", 20).filter((item) => item.subjectId === "xue-beng");
+    expect(princeKnowledge.every((item) => !/纨绔形象自保|真实动机/.test(item.text))).toBe(true);
+
     const preEnrollment = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "pre-enrollment-power-snapshot" });
     preEnrollment.view.worldTime = { era: "史莱克入学年", year: 6, day: 1, time: "08:00", season: "春" };
     preEnrollment.world = createHiddenWorld(6, "shrek-village");

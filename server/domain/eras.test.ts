@@ -117,7 +117,7 @@ describe("multi-era foundations", () => {
   });
 
   it("gives the core Douluo-one cast non-overlapping public life stages without early team leakage", () => {
-    expect(CHARACTER_LIFE_STAGE_CHARACTER_COUNT).toBe(19);
+    expect(CHARACTER_LIFE_STAGE_CHARACTER_COUNT).toBe(50);
     expect(CANON_CHARACTERS).toHaveLength(160);
     expect(CHARACTER_LIFE_STAGES.every((stage) => !/后来|尚未形成|真实身份|真实来历|不能公开|后世|未来/.test(stage.currentGoal))).toBe(true);
     for (const characterId of new Set(CHARACTER_LIFE_STAGES.map((stage) => stage.characterId))) {
@@ -153,6 +153,21 @@ describe("multi-era foundations", () => {
 
     const beforeTournament = createHiddenWorld(8, "heaven-dou-city");
     expect(beforeTournament.npcs["xiao-wu"].soulRank).toBe(29);
+
+    const era2Opening = createHiddenWorld(10_000, "shrek-city");
+    expect(era2Opening.npcs["he-caitou"].currentGoal).not.toMatch(/皇室|身世/);
+    expect(era2Opening.npcs["tang-ya"].factionIds).toEqual(["peerless-tang-sect"]);
+    expect(era2Opening.npcs["juzi"].currentGoal).not.toMatch(/皇后|战争统帅/);
+
+    const era3Opening = createHiddenWorld(20_000, "east-sea-city");
+    expect(era3Opening.npcs["xie-xie"].factionIds).toEqual([]);
+    expect(era3Opening.npcs["xu-xiaoyan"].factionIds).toEqual([]);
+    expect(era3Opening.npcs["ye-xinglan"].factionIds).toEqual(["shrek-inner-court"]);
+    expect(era3Opening.npcs["yuanen-yehui"].currentGoal).not.toMatch(/原恩夜辉|保护.*伴侣/);
+
+    const era4Opening = createHiddenWorld(30_000, "tianluo-planet");
+    for (const id of ["qian-lei", "liu-feng", "lan-mengqin", "yuanen-huihui"]) expect(era4Opening.npcs[id].factionIds).toEqual([]);
+    expect(era4Opening.npcs["yuanen-huihui"].currentGoal).not.toMatch(/性别变化|史莱克/);
   });
 
   it("unlocks future faction memberships only when their joining event occurs", () => {

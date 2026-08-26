@@ -634,7 +634,7 @@ function seedCanonKnowledge(): void {
         const currentGoal = characterCurrentGoalAtDate(character.id, snapshot.year, snapshotDay);
         const currentFactionIds = canonicalFactionIdsAtDate(character.id, snapshot.year, snapshotDay);
         const currentFactions = currentFactionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id);
-        const confidentialPower = Boolean(character.hidden || /隐藏|保密|未公开|真实能力|真实实力|反噬|神位|神考|献祭|化形魂兽/.test(`${snapshot.tier}${snapshot.note}`));
+        const confidentialPower = Boolean(character.hidden || /隐藏|保密|未公开|真实能力|真实实力|反噬|神位|神考|献祭|化形|潜伏|自保|失忆|沉睡|受侵蚀/.test(`${snapshot.tier}${snapshot.note}`));
         const stageFact = confidentialPower
           ? "公开层面只能确认其正处于这一人生阶段；除此之外不提供未经角色可靠获知的信息。"
           : `${snapshot.tier}${snapshot.soulRank !== undefined ? `，公开魂力约${snapshot.soulRank}级` : ""}。阶段事实：${snapshot.note}。`;

@@ -126,7 +126,7 @@ export function characterCurrentGoalAtDate(characterId: string, year: number, da
   if (age !== undefined && age < 6) return "在家庭或族群照料下成长，尚未形成后来的修炼与势力目标";
   if (age !== undefined && age < 12) return "处理当前家庭生活、武魂觉醒与基础学习，不预设后来的人际和势力选择";
   const snapshot = [...definition.powerSnapshots].filter((item) => ordinal(item.year, item.day ?? 1) <= ordinal(year, day)).sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1)).at(-1);
-  if (snapshot && (definition.hidden || /隐藏|保密|未公开|真实能力|真实实力|反噬|神位|神考|献祭|化形魂兽/.test(`${snapshot.tier}${snapshot.note}`))) return "处理当前已公开的职责、修炼与现实关系";
+  if (snapshot && (definition.hidden || /隐藏|保密|未公开|真实能力|真实实力|反噬|神位|神考|献祭|化形|潜伏|自保|失忆|沉睡|受侵蚀/.test(`${snapshot.tier}${snapshot.note}`))) return "处理当前已公开的职责、修炼与现实关系";
   if (snapshot) return `处理“${snapshot.note}”阶段的修炼、职责与现实关系`;
   return "维持当前生活并处理已经发生的职责，不使用后来才形成的目标";
 }
