@@ -858,7 +858,15 @@ function martialSoulCount(random: () => number, origin: OriginTemplate): 1 | 2 |
 function chooseMartialSouls(random: () => number, origin: OriginTemplate, preferences?: WeightPreferences, era: GameEra = 1): MartialSoulTemplate[] {
   const count = martialSoulCount(random, origin);
   const selected: MartialSoulTemplate[] = [];
-  for (let index = 0; index < count; index += 1) selected.push(chooseSoul(random, origin, preferences, selected.map((soul) => soul.id), era, selected[0]?.grade));
+  for (let index = 0; index < count; index += 1) {
+    const excludedIds = selected.map((soul) => soul.id);
+    let soul = chooseSoul(random, origin, preferences, excludedIds, era, selected[0]?.grade);
+    for (let attempt = 0; attempt < 12 && selected.some((item) => normalizeMartialSoulName(item.name) === normalizeMartialSoulName(soul.name)); attempt += 1) {
+      excludedIds.push(soul.id);
+      soul = chooseSoul(random, origin, preferences, excludedIds, era, selected[0]?.grade);
+    }
+    selected.push(soul);
+  }
   return selected;
 }
 
@@ -871,7 +879,13 @@ function harmonizeMultiSoulQuality(random: () => number, candidate: HiddenCandid
   const harmonized = [candidate.martialSoul];
   for (let index = 1; index < souls.length; index += 1) {
     const soul = souls[index];
-    harmonized.push((soul.grade ?? "平凡") === targetGrade ? soul : chooseSoul(random, origin, undefined, harmonized.map((item) => item.id), era, targetGrade));
+    let replacement = (soul.grade ?? "平凡") === targetGrade ? soul : chooseSoul(random, origin, undefined, harmonized.map((item) => item.id), era, targetGrade);
+    const excludedIds = harmonized.map((item) => item.id);
+    for (let attempt = 0; attempt < 12 && harmonized.some((item) => normalizeMartialSoulName(item.name) === normalizeMartialSoulName(replacement.name)); attempt += 1) {
+      excludedIds.push(replacement.id);
+      replacement = chooseSoul(random, origin, undefined, excludedIds, era, targetGrade);
+    }
+    harmonized.push(replacement);
   }
   candidate.martialSouls = harmonized;
 }
@@ -1575,7 +1589,7 @@ export function finalizeCharacterShaping(game: StoredGame, input: { personalityI
   game.view.narrative = [createEntry("narration", buildAwakeningPrelude(candidate, profile))];
   const scores = profile.scores;
   game.view.suggestions = [
-    scores.patience >= 2 ? "留意觉醒魂师检查阵法的顺序" : scores.courage >= 2 ? "走近阵法观察六块黑石" : "站在家人身边等候点名",
+    scores.patience >= 2 ? "留意觉醒魂师检查阵法的顺序" : scores.courage >= 2 ? "走近阵法观察六块黑石" : "站在家人身边等主持者叫到名字",
     scores.empathy >= 2 ? "安慰前一个觉醒失败的孩子" : scores.ambition >= 2 ? "打听今天有没有先天高魂力的孩子" : "听一听门外家长的议论",
     scores.independence >= 2 ? "直接询问觉醒时该注意什么" : "把家人临行前的话再想一遍",
   ];
@@ -1673,7 +1687,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 43,
+    schemaVersion: 44,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,

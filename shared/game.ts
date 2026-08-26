@@ -120,6 +120,7 @@ export interface StoryArcNpcSceneView {
   stage: StoryArcStage;
   status: "等待回应" | "已回应" | "已错过";
   expiresOrdinal: number;
+  earlyGrowthPhase?: StoryArcView["earlyGrowthPhase"];
 }
 
 export interface StoryArcView {
@@ -148,6 +149,8 @@ export interface StoryArcView {
   beats: Array<{ actionIndex: number; kind: "推进" | "关系" | "受挫" | "升级" | "兑现" | "转折"; summary: string }>;
   evidence: string[];
   completedArcTitles: string[];
+  earlyGrowthPhase?: "觉醒落地" | "培养路线" | "学院师承生活" | "首环筹备" | "首环兑现";
+  earlyGrowthEvidence?: string[];
 }
 
 export interface SoulRingView {

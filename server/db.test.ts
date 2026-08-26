@@ -182,6 +182,8 @@ describe("存档数据库", () => {
     expect(knowledge.some((item) => item.subjectId === "tang-san" && item.kind === "character-timeline")).toBe(true);
     expect(knowledge.some((item) => item.kind === "relationship" && item.subjectName.includes("唐三") && item.subjectName.includes("小舞"))).toBe(true);
     expect(knowledge.some((item) => item.subjectId === "di-tian")).toBe(false);
+    const academyKnowledge = database.retrieveCanonKnowledge(game, "诺丁学院工读生和普通学员的宿舍、班主任、课程与第一魂环猎魂手令", 20);
+    expect(academyKnowledge.some((item) => item.kind === "academy-system" && item.subjectId === "d1-early-academy" && item.metadata.provenance === "原著归纳")).toBe(true);
     expect(database.getModelUsage().canonKnowledgeVectors).toBeGreaterThan(100);
   });
 

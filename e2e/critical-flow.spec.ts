@@ -454,22 +454,26 @@ async function createPlayingCharacter(page: import("@playwright/test").Page, era
 }
 
 async function submitAction(page: import("@playwright/test").Page, action: string) {
+  const before = await page.locator("blockquote.player-entry").count();
   await page.getByPlaceholder("输入行动或对话……").fill(action);
   await page.getByRole("button", { name: "行动", exact: true }).click();
+  await expect(page.locator("blockquote.player-entry")).toHaveCount(before + 1);
   await expect(page.locator("blockquote.player-entry").last()).toContainText(action);
   await expect(page.locator(".action-form textarea")).toBeEnabled();
 }
 
 async function clickEraAction(page: import("@playwright/test").Page, buttonName: string, submittedAction: string) {
+  const before = await page.locator("blockquote.player-entry").count();
   await page.getByRole("button", { name: "时代", exact: true }).click();
   await page.getByRole("button", { name: buttonName, exact: true }).click();
+  await expect(page.locator("blockquote.player-entry")).toHaveCount(before + 1);
   await expect(page.locator("blockquote.player-entry").last()).toContainText(submittedAction);
   await expect(page.locator(".action-form textarea")).toBeEnabled();
 }
 
 test.beforeEach(async ({ request }) => {
-  const games = await request.get("/api/games");
-  expect(games.ok()).toBeTruthy();
+  let games = await request.get("/api/games");
+  await expect.poll(async () => { games = await request.get("/api/games"); return games.ok(); }, { timeout: 10_000 }).toBeTruthy();
   for (const game of await games.json() as Array<{ id: string }>) {
     const deleted = await request.delete(`/api/games/${game.id}`);
     expect(deleted.ok()).toBeTruthy();
@@ -580,9 +584,9 @@ test("学院入学与拜师必须经过材料、考核和试学，不会一句�
   await expect(page.locator(".growth-application-panel")).toContainText("材料准备");
   await expect(page.locator(".growth-application-panel")).toContainText("普通学员 · 家庭自费");
   await expect(page.locator(".growth-application-panel")).not.toContainText("工读生 · 工读抵扣");
-  await page.getByRole("button", { name: "改走学院奖助", exact: true }).click();
+  await submitAction(page, "改走学院奖助路线");
   await expect(page.locator(".growth-application-panel")).toContainText("普通学员 · 学院奖助");
-  await page.getByRole("button", { name: "改走家庭自费", exact: true }).click();
+  await submitAction(page, "改走家庭自费路线");
   await submitAction(page, "准备诺丁初级魂师学院报名材料和监护签字");
   await expect(page.locator(".growth-application-panel")).toContainText("入学考核");
   await submitAction(page, "参加诺丁初级魂师学院入学考核");
@@ -625,11 +629,17 @@ test("学院入学与拜师必须经过材料、考核和试学，不会一句�
   await page.getByRole("button", { name: /^猎魂/ }).click();
   await page.getByRole("button", { name: "调查魂兽", exact: true }).click();
   await expect(page.locator(".hunt-panel")).toContainText("先确定谁承担首环责任");
-  await page.getByRole("button", { name: "导师指导", exact: true }).click();
+  await submitAction(page, "请求导师指导第一魂环");
   await expect(page.locator(".hunt-support-card")).toContainText("导师指导");
   await expect(page.locator(".hunt-support-card")).toContainText(mentorName);
-  await page.getByRole("button", { name: "开始调查", exact: true }).click();
+  await submitAction(page, "开始调查适合当前武魂的魂兽");
   await expect(page.locator(".recommendation-card")).toHaveCount(3);
+  await page.getByRole("button", { name: /^手记/ }).click();
+  await expect(page.locator(".story-arc-card")).toContainText("从觉醒到第一魂环");
+  await expect(page.locator(".story-arc-card")).toContainText("首环筹备");
+  await expect(page.locator(".story-arc-card")).toContainText("责任、费用、许可和成年同行");
+  await expect(page.locator(".npc-initiative-card")).toContainText(mentorName);
+  await expect(page.locator(".npc-initiative-card")).toContainText("预算、成年同行、许可与撤退条件");
 });
 
 test("指定签到金手指会保证出现并在觉醒后提供可用按钮", async ({ page, request }) => {
@@ -653,14 +663,18 @@ test("玩家可以完成角色创建、推进故事并管理存档", async ({ pa
   await expect(page.locator(".story-arc-card")).toBeVisible();
   await expect(page.locator(".story-arc-card")).toContainText("第 1 卷 · 成长主线");
   await expect(page.locator(".story-arc-card")).toContainText("本卷目标");
-  await page.getByPlaceholder("搜索已知档案……").fill("第一魂环");
-  await expect(page.locator(".known-record-search")).toContainText("获得第一魂环");
+  await page.getByPlaceholder("搜索已知档案……").fill("任务");
+  await expect(page.locator(".known-record-search .player-relation-ledger article").first()).toBeVisible();
   await submitAction(page, "在住处等待一天，留意附近动静");
   await expect(page.locator(".story-arc-card header > strong")).toHaveText("立局");
-  await expect(page.locator(".story-gate-card")).toContainText("可结算的主动行动");
+  await expect(page.locator(".story-gate-card").filter({ hasText: "进入下一阶段还缺什么" })).toContainText("可结算的主动行动");
   await expect(page.getByText("晨光沿着窗纸落进屋里", { exact: false })).toBeVisible();
   await page.getByText("查看判定", { exact: true }).click();
   await expect(page.locator(".action-receipt small")).toContainText("世界时间推进");
+  await submitAction(page, "先休息，然后申请学院入学");
+  await expect(page.locator(".narrative-stream")).toContainText("复合行动拆分");
+  await page.getByText("查看判定", { exact: true }).last().click();
+  await expect(page.locator(".action-receipt")).toContainText("后续“申请学院入学”尚未发生");
 
   await page.getByRole("button", { name: "返回书架" }).click();
   await expect(page.getByRole("heading", { name: "存档" })).toBeVisible();
@@ -694,7 +708,7 @@ test("剧情导演按证据门槛展示兑现债务与NPC主动场景", async ({
   await createPlayingCharacter(page, 1);
   await page.getByRole("button", { name: /^手记/ }).click();
   await expect(page.locator(".story-arc-card")).toContainText("成长主线");
-  await expect(page.locator(".story-gate-card")).toContainText("进入下一阶段还缺什么");
+  await expect(page.locator(".story-gate-card").filter({ hasText: "进入下一阶段还缺什么" })).toBeVisible();
   expect(await page.locator(".story-payoff-list article").count()).toBeGreaterThanOrEqual(3);
   await expect(page.locator(".story-payoff-list")).toContainText("待兑现");
   await expect(page.locator(".npc-initiative-card")).toContainText("主动找来");
@@ -846,7 +860,7 @@ test("责任编辑采访、独立补证与更正会形成完整浏览器责任�
   await alliance.getByRole("button", { name: "登记第三家候选" }).click();
   await expect(alliance).toContainText("大陆独立事实核验站");
   await expect(alliance).toContainText("裴真 · 候选核验");
-  await alliance.getByRole("button", { name: "批准第三家加入" }).click();
+  await submitAction(page, "批准第三家媒体加入联盟");
   await expect(alliance).toContainText("正式成员 2 家");
   await editor.getByRole("button", { name: "采访编辑" }).click();
   await secondaryEditor.getByRole("button", { name: "采访编辑" }).click();
@@ -854,7 +868,7 @@ test("责任编辑采访、独立补证与更正会形成完整浏览器责任�
   await expect(candidateEditor).toBeVisible();
   await candidateEditor.getByRole("button", { name: "采访编辑" }).click();
   await submitAction(page, "调查候选机构的独立来源记录");
-  await alliance.getByRole("button", { name: "批准第三家加入" }).click();
+  await submitAction(page, "批准第三家媒体加入联盟");
   await expect(alliance).toContainText("正式成员 3 家");
   await expect(alliance).toContainText("共享核验资源 3");
   await expect(alliance).toContainText("大陆独立事实核验站");
@@ -1199,16 +1213,16 @@ test("斗三机甲设计第二职业必须实训、认证、备料后才能完�
   await expect(page.getByPlaceholder("输入行动或对话……")).toBeVisible();
   await page.getByRole("button", { name: "时代", exact: true }).click();
   const career = page.locator(".special-system-card").filter({ hasText: "第二职业 · 机甲设计" });
-  await career.getByRole("button", { name: "承接委托" }).click();
+  await submitAction(page, "承接机甲设计师委托订单");
   await expect(career).toContainText("已验收委托 0");
-  for (let session = 0; session < 3; session += 1) await career.getByRole("button", { name: "设计实训" }).click();
+  for (let session = 0; session < 3; session += 1) await submitAction(page, "学习机甲设计师第二职业");
   await expect(career).toContainText("实训 3 · 作品 3");
-  await career.getByRole("button", { name: "职业认证" }).click();
+  await submitAction(page, "申请机甲设计师认证考核");
   await expect(career).toContainText("机甲设计师·1级");
-  await career.getByRole("button", { name: "承接委托" }).click();
+  await submitAction(page, "承接机甲设计师委托订单");
   await expect(career).toContainText("已验收委托 0");
-  await career.getByRole("button", { name: "购买图纸" }).click();
-  await career.getByRole("button", { name: "承接委托" }).click();
+  await submitAction(page, "购买魂导器空白图纸");
+  await submitAction(page, "承接机甲设计师委托订单");
   await expect(career).toContainText("已验收委托 1");
   await page.getByRole("button", { name: "人物", exact: true }).click();
   const profession = page.locator(".profession-list article").filter({ hasText: "机甲设计" });

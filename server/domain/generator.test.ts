@@ -75,6 +75,7 @@ describe("candidate generation", () => {
     const multiSoul = candidates.find((candidate) => (candidate.martialSouls?.length ?? 1) > 1);
     expect(multiSoul).toBeDefined();
     expect(new Set(multiSoul!.martialSouls!.map((soul) => soul.grade))).toEqual(new Set([multiSoul!.martialSoul.grade]));
+    expect(new Set(multiSoul!.martialSouls!.map((soul) => normalizeMartialSoulName(soul.name))).size).toBe(multiSoul!.martialSouls!.length);
   });
 
   it("keeps martial souls out of the public candidate cards", () => {
@@ -357,7 +358,7 @@ describe("candidate generation", () => {
       ],
     };
     const upgradedNoble = ensureGameState(migratedNoble);
-    expect(upgradedNoble.schemaVersion).toBe(43);
+    expect(upgradedNoble.schemaVersion).toBe(44);
     expect(JSON.stringify(upgradedNoble.view.chapterObjective)).toMatch(/家族培养.*学院.*外部导师/);
 
     const firstStep = resolveAction(noble, `请${noble.world.flags.openingOfficiant}完成武魂复核测试`);

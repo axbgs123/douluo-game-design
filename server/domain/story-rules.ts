@@ -218,7 +218,7 @@ function parseNumberToken(token: string): number {
   return digits[token] ?? Number.NaN;
 }
 
-export function auditNarrative(game: StoredGame, text: string): string[] {
+export function auditNarrative(game: StoredGame, text: string, options: { excludeStoredSelf?: boolean } = {}): string[] {
   const issues: string[] = [];
   const outside = narrationOutsideDialogue(text);
   if (/(^|[。！？\n])\s*我/.test(outside) || /我的/.test(outside)) issues.push("正文出现第一人称叙述");
@@ -251,6 +251,15 @@ export function auditNarrative(game: StoredGame, text: string): string[] {
     }
   }
   if ((text.match(/！/g)?.length ?? 0) >= 5) issues.push("正文依赖连续感叹号制造强度");
+  const recentEntries = game.view.narrative.filter((entry) => entry.kind === "narration").slice(-6);
+  if (options.excludeStoredSelf) {
+    const selfIndex = recentEntries.findLastIndex((entry) => entry.text === text);
+    if (selfIndex >= 0) recentEntries.splice(selfIndex, 1);
+  }
+  const recentNarrative = recentEntries.map((entry) => entry.text).join("\n");
+  const repeatedSentences = text.split(/[。！？\n]/).map((item) => item.replace(/\s+/g, "").trim()).filter((item) => item.length >= 16 && recentNarrative.replace(/\s+/g, "").includes(item));
+  if (new Set(repeatedSentences).size >= 2) issues.push("正文重复近期已经出现的多句完整叙述");
+  if ((game.view.academyLife || game.view.hunting?.support || game.view.mentorPursuit?.stage === "已拜师") && /(?:再次|又一次|重新).{0,8}(?:复测觉醒|登记觉醒|核对觉醒水晶)/.test(text)) issues.push("成长阶段已经推进，正文却重复觉醒复测流程");
   if (/先天满魂力|水晶球.{0,20}(?:冲到顶|完全亮起)/.test(text) && !/停笔|复测|上报|登记|招揽|议论|围观|惊|愣|僵|变色|叫停/.test(text)) {
     issues.push("异常觉醒结果没有引发主持者、监护者或围观者的具体反应");
   }

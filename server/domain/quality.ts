@@ -25,7 +25,7 @@ export function evaluateLongSession(game: StoredGame): LongSessionQualityReport 
   const blockedActions = ledger.filter((entry) => /无法完成|规则阻止/.test(entry.intent)).length;
   const playerEntries = game.view.narrative.filter((entry) => entry.kind === "player").length;
   const narrativeEntries = game.view.narrative.filter((entry) => entry.kind === "narration").slice(-actions);
-  const audits = narrativeEntries.map((entry) => auditNarrative(game, entry.text));
+  const audits = narrativeEntries.map((entry) => auditNarrative(game, entry.text, { excludeStoredSelf: true }));
   const narrativeAuditIssues = audits.reduce((sum, issues) => sum + issues.length, 0);
   const narrativeIssueCounts = Object.fromEntries([...new Set(audits.flat())].map((issue) => [issue, audits.flat().filter((item) => item === issue).length]));
   const numericStates = [game.world.healthPoints, game.world.fatiguePoints, game.world.trainingPoints, game.view.character?.coins ?? 0, game.view.inventoryLoad.used, game.view.inventoryLoad.capacity];

@@ -1423,7 +1423,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 43;
+  legacy.schemaVersion = 44;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];

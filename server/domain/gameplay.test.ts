@@ -670,7 +670,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(43);
+    expect(migrated.schemaVersion).toBe(44);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -766,7 +766,7 @@ describe("完整游玩规则", () => {
     legacyAcademy.view.academyLife = undefined;
     legacyAcademy.world.flags.academyCourseProgress = 3;
     const migratedAcademy = ensureGameState(legacyAcademy);
-    expect(migratedAcademy.schemaVersion).toBe(43);
+    expect(migratedAcademy.schemaVersion).toBe(44);
     expect(migratedAcademy.view.academyLife).toMatchObject({ stage: "同辈磨合", courseProgress: 3, peerInteractions: 0 });
     expect(migratedAcademy.view.academyLife?.peers).toHaveLength(3);
     expect(migratedAcademy.view.tasks.find((task) => task.id === "academy-foundation")?.status).toBe("进行中");
@@ -810,7 +810,7 @@ describe("完整游玩规则", () => {
     delete oldApplication.obligations;
     delete oldApplication.availableFundingOptions;
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(43);
+    expect(migrated.schemaVersion).toBe(44);
     expect(migrated.view.academyApplication).toMatchObject({ fundingType: "家庭自费", fundingSource: "本人及家庭支付" });
   });
 
@@ -829,6 +829,10 @@ describe("完整游玩规则", () => {
     expect(game.view.mentorPursuit?.specialty.length).toBeGreaterThan(4);
     expect(resolveAction(game, `完成${mentor}下一节正式课程`).intent).toBe("导师正式课程");
     expect(game.view.mentorPursuit?.lessonsCompleted).toBe(1);
+    expect(resolveAction(game, `完成${mentor}第二节正式课程`).intent).toBe("无法完成");
+    expect(resolveAction(game, "按导师课程记录独立复练").intent).toBe("修炼");
+    expect(game.world.flags.mentorIndependentPracticeReady).toBe(true);
+    expect(resolveAction(game, `完成${mentor}第二节正式课程`).intent).toBe("导师正式课程");
     expect(resolveAction(game, `请${mentor}评估第一魂环路线`).intent).toBe("导师评估魂环路线");
     expect(game.world.flags.mentorRingAssessment).toBe(mentor);
     const legacyMentor = structuredClone(game);
@@ -847,6 +851,25 @@ describe("完整游玩规则", () => {
     expect(resolveAction(game, "购买药物和猎魂绳作为补给").intent).toBe("无法完成");
     expect(game.view.inventory).not.toContain("外敷伤药");
     expect(game.view.inventory).not.toContain("猎魂绳");
+  });
+
+  it("复合口语输入只执行第一阶段，教师对象不明确时不会替玩家选人", () => {
+    const game = awakened("free-text-first-clause");
+    const fatigueBefore = game.world.fatiguePoints;
+    const result = resolveAction(game, "先休息，然后开始调查适合第一魂环的魂兽");
+    expect(result.intent).toBe("休息");
+    expect(result.ruleSummary).toContain("后续“开始调查适合第一魂环的魂兽”尚未发生");
+    expect(game.view.hunting).toBeUndefined();
+    expect(game.world.fatiguePoints).toBeLessThan(fatigueBefore + 1);
+
+    game.view.relations.push(
+      { id: "teacher-a", name: "严老师", relation: "学院班主任", impression: "负责课程", strength: 20, category: "师友" },
+      { id: "teacher-b", name: "顾导师", relation: "私人导师", impression: "负责专项训练", strength: 20, category: "师友" },
+    );
+    const ambiguous = resolveAction(game, "询问老师第一魂环意见");
+    expect(ambiguous.intent).toBe("无法完成");
+    expect(ambiguous.suggestions).toEqual(expect.arrayContaining(["明确询问严老师", "明确询问顾导师"]));
+    expect(resolveAction(game, "询问严老师第一魂环意见").intent).toBe("与已知人物交谈");
   });
 
   it("AI长期记忆补丁会更新章节、线索和NPC记忆", () => {
@@ -1052,7 +1075,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.summary = "主角在东海学院见到了古月娜。";
     game.view.relations.push({ id: "gu-yue-na", name: "古月娜", relation: "同学", impression: "旧存档提前使用了后期姓名", strength: 10, category: "师友" });
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(43);
+    expect(migrated.schemaVersion).toBe(44);
     expect(migrated.world.npcs["gu-yue-na"].name).toBe("古月");
     expect(migrated.view.relations.find((item) => item.id === "gu-yue-na")?.name).toBe("古月");
     expect(migrated.storyMemory.summary).not.toContain("古月娜");
@@ -1078,7 +1101,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.openThreads = ["家人与出身中尚未说清的细节"];
     delete game.world.flags.openingMode; delete game.world.flags.openingInstitutionName; delete game.world.flags.openingOfficiant; delete game.world.flags.openingSoulTestFocus;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(43);
+    expect(migrated.schemaVersion).toBe(44);
     expect(migrated.view.narrative.at(-1)?.text).not.toMatch(/先天道体托在掌心|学院名额|恐怕不只是魂环/);
     expect(migrated.view.chapterObjective?.title).toContain("太玄剑宗内部觉醒");
     expect(JSON.stringify(migrated.view.chapterObjective)).not.toMatch(/加入宗门|学院名额/);
@@ -1187,7 +1210,7 @@ describe("第一部世界资料", () => {
     legacy.view.locationId = "mother-ship-port";
     legacy.view.location = "联邦母舰港";
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(43);
+    expect(migrated.schemaVersion).toBe(44);
     expect(migrated.view.location).toBe("联邦舰队集结基地");
   });
 
@@ -1222,6 +1245,10 @@ describe("第一部世界资料", () => {
   it("叙事检查能拦住第一人称、模板句和时代越界", () => {
     const game = awakened("narrative-audit");
     expect(auditNarrative(game, "我首先驾驶机甲出发，这意味着未来已经改变。").length).toBeGreaterThanOrEqual(3);
+    game.view.narrative.push({ id: "repeat-source", kind: "narration", text: "负责新生的老师把课表压在桌角，让每个人按名字领取。走廊里的说话声一阵高过一阵，谁也没有围着主角停下。", createdAt: new Date().toISOString() });
+    expect(auditNarrative(game, "负责新生的老师把课表压在桌角，让每个人按名字领取。走廊里的说话声一阵高过一阵，谁也没有围着主角停下。")).toContain("正文重复近期已经出现的多句完整叙述");
+    game.view.hunting = { stage: "需求", ringIndex: 1, recommendations: [], preparation: [], trailProgress: "责任已确认", support: { route: "家庭筹备", responsibleParty: "监护人", fundingSource: "家庭", authorization: "待许可", sponsorBudget: 0, sponsorSpent: 0, obligations: [], evidence: [], status: "已确认" } };
+    expect(auditNarrative(game, "他又一次重新复测觉醒水晶，仿佛学院生活从未发生。")).toContain("成长阶段已经推进，正文却重复觉醒复测流程");
   });
 
   it("行动后会写入故事手记和连续性状态", () => {

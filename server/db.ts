@@ -324,6 +324,13 @@ function storeCanonKnowledge(input: { sourceKey: string; era: number; kind: stri
   `).run(randomUUID(), input.sourceKey, input.era, input.kind, input.subjectId ?? null, input.subjectName, input.validFromYear ?? -100_000, input.validUntilYear ?? 100_000, text, JSON.stringify(input.metadata ?? {}), vectorToBytes(embedMemoryText(text)), Math.max(0, Math.min(1, input.importance)), new Date().toISOString());
 }
 
+const EARLY_ACADEMY_CANON = [
+  { era: 1, subjectId: "d1-early-academy", subjectName: "斗一初级学院与首环", from: -100_000, until: 4_999, text: "斗一基层工读名额由具体村庄或地方责任人提供，减免学费住宿通常伴随适龄校内劳动；普通付费学员与工读生不是同一身份。初级学院生活包括注册、宿舍、课程、同辈关系与现实生活费用。第一魂环还需要有知识与权限的魂师、受管控猎魂区凭证、市场补给、路程、目标习性和撤退判断。" },
+  { era: 2, subjectId: "d2-shrek-freshman", subjectName: "斗二史莱克新生制度", from: 5_000, until: 14_999, text: "斗二史莱克新生存在真实报名、学费、宿舍、校服或徽章、班主任与周期考核。获得面试或推荐资格不等于能够长期留校，新生仍要通过后续考核。武魂系、魂导系和不同班主任的课程责任不能写成同一种通用学院流程。" },
+  { era: 3, subjectId: "d3-primary-academy", subjectName: "斗三初等学院与东海升学", from: 15_000, until: 24_999, text: "斗三适龄初等教育中，觉醒伴生魂力的孩子进入魂师班，班主任承担连续基础教学并会因学生毕业与表现受到职业影响。初级阶段成为魂师可形成后续中级学院推荐资格；东海学院报到仍需要推荐、接待、分班和现实旅途，不能从觉醒日直接跳到零班或高阶培养。" },
+  { era: 4, subjectId: "d4-tianluo-primary", subjectName: "斗四天罗初等学院", from: 25_000, until: 100_000, text: "斗四天罗初等魂师学院的早期生活包括年龄与报名核验、新生分班、正班主任负责教学、副班主任负责生活、体能记录和有教师看护的班级实战。高能少年班属于后续选拔，不是所有六岁觉醒者当天自动获得的身份。私人导师教学仍受家庭知情、安全和实际权限约束。" },
+] as const;
+
 function seedCanonKnowledge(): void {
   database.exec("BEGIN IMMEDIATE");
   try {
@@ -399,6 +406,10 @@ function seedCanonKnowledge(): void {
         text: `${fromName}与${toName}在该阶段的原著关系：${relationship.relation}。形成依据：${relationship.basis}。互动惯性：${relationship.dynamics}。边界：${relationship.boundary}。当前存档中的共同经历和玩家因果可以改变这段关系。`,
         metadata: { fromId: relationship.fromId, toId: relationship.toId, validFromDay: relationship.validFromDay ?? 1, disclosure: "behavior-only", sourceType: "结构化原著关系" } });
     }
+    for (const academy of EARLY_ACADEMY_CANON) {
+      const sourceKey = `academy-system:${academy.subjectId}`; validKeys.push(sourceKey);
+      storeCanonKnowledge({ sourceKey, era: academy.era, kind: "academy-system", subjectId: academy.subjectId, subjectName: academy.subjectName, validFromYear: academy.from, validUntilYear: academy.until, text: `以下是本地原著抽样形成的制度归纳，不是原著原话。${academy.text}原创玩家可以改变人物和结果，但不能倒灌其他时代制度。`, importance: .88, metadata: { provenance: "原著归纳", sourceType: "原著早期学院机制归纳" } });
+    }
     if (validKeys.length) database.prepare(`DELETE FROM canon_knowledge_vectors WHERE source_key NOT IN (${validKeys.map(() => "?").join(",")})`).run(...validKeys);
     database.exec("COMMIT");
   } catch (error) {
@@ -443,6 +454,7 @@ export function retrieveCanonKnowledge(game: StoredGame, query: string, limit = 
       if (row.kind === "location") return Boolean((row.subject_id && knownLocationIds.has(row.subject_id)) || (!row.metadata.hidden && query.includes(row.subject_name)));
       if (row.kind === "faction") return Boolean(row.subject_id && knownFactionIds.has(row.subject_id));
       if (row.kind === "soul-beast") return query.includes(row.subject_name) || game.view.hunting?.targetBeastId === row.subject_id || game.view.hunting?.targetName === row.subject_name;
+      if (row.kind === "academy-system") return /学院|入学|宿舍|班主任|同学|课程|考核|工读|魂环|猎魂|导师/.test(query);
       return false;
     }).map((row) => {
       const score = row.rawSimilarity * .84 + row.importance * .16;

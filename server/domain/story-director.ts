@@ -3,6 +3,10 @@ import type { StoryArcEvidenceKind, StoryArcNpcSceneView, StoryArcPayoffView, St
 
 export const STORY_ARC_STAGES: StoryArcStage[] = ["立局", "主动推进", "阻力显形", "局势扩大", "阶段兑现", "不可逆转折"];
 
+function boundedSuggestions(items: string[]): string[] {
+  return items.map((item) => item.length > 28 ? item.slice(0, 28) : item);
+}
+
 const ERA_OPENING: Record<1 | 2 | 3 | 4, { route: string; living: string; milestone: string; growthAction: string; riskAction: string }> = {
   1: { route: "确认武魂方向与可重复修炼方式", living: "落实学院名额、路费、食宿或监护安排", milestone: "取得第一魂环所需的调查、同行与安全条件", growthAction: "请主持者说明第一魂环方向与修炼门槛", riskAction: "核对武魂细节的登记与外传范围" },
   2: { route: "复核魂力、武魂特征与当前可用培养路线", living: "落实学院报名、食宿与家庭能够承担的费用", milestone: "取得第一魂环或当代魂师培养所需的真实条件", growthAction: "请主持者复核魂力、武魂特征与培养路线", riskAction: "先问清培养条件、费用与保密范围" },
@@ -161,9 +165,9 @@ function refreshPayoffs(arc: StoryArcView, text: string): boolean {
 }
 
 function npcCandidates(game: StoredGame): Array<{ id?: string; name: string; role: string; motive: string }> {
-  const relations = game.view.relations.filter((relation) => /觉醒|执事|导师|老师|父|母|监护|祖|院长|长老|所属学院|所属宗门/.test(`${relation.relation}${relation.impression}`)).filter((relation) => !relation.id || !game.world.npcs[relation.id] || game.world.npcs[relation.id].locationId === game.view.locationId).map((relation) => ({ id: relation.id, name: relation.name, role: relation.relation, motive: /父|母|监护|祖/.test(relation.relation) ? "需要确认孩子的食宿、费用和安全，不能把决定全推给六岁孩子" : /觉醒|执事|导师|老师/.test(`${relation.relation}${relation.impression}`) ? "亲眼见到觉醒结果，职责要求复核记录并说明培养边界" : "因当前学院、宗门或长辈职责，需要主角对公开条件作出回应" }));
+  const relations = game.view.relations.filter((relation) => /觉醒|执事|导师|老师|师徒|父|母|监护|祖|院长|长老|所属学院|所属宗门|同班同学|带队责任人|护送责任人/.test(`${relation.relation}${relation.impression}`)).filter((relation) => !relation.id || !game.world.npcs[relation.id] || game.world.npcs[relation.id].locationId === game.view.locationId).map((relation) => ({ id: relation.id, name: relation.name, role: relation.relation, motive: /父|母|监护|祖/.test(relation.relation) ? "需要确认孩子的食宿、费用和安全，不能把决定全推给六岁孩子" : /同班同学/.test(relation.relation) ? game.view.academyLife?.peers.find((peer) => peer.name === relation.name)?.motive ?? "正在处理自己的课程、名次和小组选择" : /带队责任人|护送责任人/.test(relation.relation) ? "已经在首环责任页签字，需要在出发前核对人员、许可和撤退条件" : /觉醒|执事|导师|老师|师徒/.test(`${relation.relation}${relation.impression}`) ? "亲眼见到当前成长结果，职责要求复核训练、课程或培养边界" : "因当前学院、宗门或长辈职责，需要主角对公开条件作出回应" }));
   const known = Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => ({ id: npc.id, name: npc.name, role: npc.activePlan?.responsibility ?? "同场人物", motive: npc.activePlan?.responsibility ? `因“${npc.activePlan.responsibility}”需要主角给出可执行答复` : "因当前公开职责与关系，需要主角回应眼前条件" }));
-  const score = (item: { role: string }) => /觉醒|执事|导师|老师|院长|长老/.test(item.role) ? 100 : /父|母|监护|祖/.test(item.role) ? 90 : /学院|宗门|势力/.test(item.role) ? 70 : 20;
+  const score = (item: { role: string }) => /带队责任人|护送责任人/.test(item.role) ? 115 : /觉醒|执事|导师|老师|师徒|院长|长老/.test(item.role) ? 100 : /父|母|监护|祖/.test(item.role) ? 90 : /同班同学/.test(item.role) ? 75 : /学院|宗门|势力/.test(item.role) ? 70 : 20;
   return [...relations, ...known].filter((item, index, all) => all.findIndex((candidate) => candidate.name === item.name) === index).sort((left, right) => score(right) - score(left));
 }
 
@@ -171,6 +175,11 @@ function npcActionFor(game: StoredGame, candidate: { name: string; role: string 
   const era = game.view.era ?? 1;
   const mode = String(game.world.flags.openingMode ?? "public");
   const institution = String(game.world.flags.openingInstitutionName ?? game.view.affiliations[0]?.name ?? "当前机构");
+  if (game.view.hunting?.support?.responsibleParty === candidate.name) return `回应${candidate.name}对预算、成年同行、许可与撤退条件的出发前核对`;
+  if (game.view.academyLife?.homeroomTeacher === candidate.name) return `回应${candidate.name}对课程、费用责任和首月考核缺项的当面追问`;
+  const peer = game.view.academyLife?.peers.find((item) => item.name === candidate.name);
+  if (peer) return peer.role === "竞争者" ? `回应${peer.name}提出的同组实战与名次竞争` : `回应${peer.name}围绕“${peer.motive}”提出的小组安排`;
+  if (game.view.mentorPursuit?.mentorName === candidate.name && game.view.mentorPursuit.stage === "已拜师") return `回应${candidate.name}对专项课程记录与训练禁忌的复核`;
   if (/父|母|监护|祖/.test(candidate.role)) {
     if (mode === "internal") return `和${candidate.name}核对${institution}内部导师、资源与第一魂环责任`;
     if (mode === "noble") return `和${candidate.name}比较家族培养、学院报名与外部导师的资格和代价`;
@@ -187,14 +196,70 @@ function refreshNpcScenes(game: StoredGame, arc: StoryArcView, action?: string):
   for (const scene of arc.npcScenes.filter((item) => item.status === "等待回应")) {
     const roleResponse = action && /主持者|执事|导师|老师|父亲|母亲|家人|监护/.test(action) && /觉醒|执事|导师|老师|父|母|家人|监护/.test(scene.role);
     if (action && (action.includes(scene.npcName) || roleResponse)) scene.status = "已回应";
-    else if (now > scene.expiresOrdinal) scene.status = "已错过";
+    else if (now > scene.expiresOrdinal) {
+      scene.status = "已错过";
+      arc.pressure = Math.min(100, arc.pressure + 5);
+      arc.evidence = [...new Set([...arc.evidence, `错过${scene.npcName}基于“${scene.motive}”提出的回应期限`])].slice(-16);
+      const relation = game.view.relations.find((item) => item.name === scene.npcName);
+      if (relation?.dimensions) { relation.dimensions.trust = Math.max(-100, relation.dimensions.trust - 2); relation.dimensions.vigilance = Math.min(100, relation.dimensions.vigilance + 2); }
+    }
   }
-  if (arc.npcScenes.some((item) => item.status === "等待回应") || arc.npcScenes.some((item) => item.stage === arc.stage)) return;
-  const used = new Set(arc.npcScenes.map((item) => item.npcName));
-  const candidate = npcCandidates(game).find((item) => !used.has(item.name));
+  if (arc.npcScenes.some((item) => item.status === "等待回应")) return;
+  const used = new Set(arc.npcScenes.filter((item) => item.earlyGrowthPhase === arc.earlyGrowthPhase).map((item) => item.npcName));
+  const candidates = npcCandidates(game).filter((item) => !used.has(item.name));
+  const preferredName = arc.earlyGrowthPhase === "首环筹备" ? game.view.hunting?.support?.responsibleParty : arc.earlyGrowthPhase === "学院师承生活" ? game.view.academyLife?.homeroomTeacher ?? (game.view.mentorPursuit?.stage === "已拜师" ? game.view.mentorPursuit.mentorName : undefined) : undefined;
+  const candidate = candidates.find((item) => item.name === preferredName) ?? candidates[0];
   if (!candidate) return;
-  arc.npcScenes.push({ id: `arc-npc-${arc.id}-${arc.stageIndex}-${arc.npcScenes.length}`, npcId: candidate.id, npcName: candidate.name, role: candidate.role, motive: candidate.motive, action: npcActionFor(game, candidate, arc.stage), stage: arc.stage, status: "等待回应", expiresOrdinal: now + (arc.stageIndex <= 1 ? 7 : 30) });
+  arc.npcScenes.push({ id: `arc-npc-${arc.id}-${arc.stageIndex}-${arc.npcScenes.length}`, npcId: candidate.id, npcName: candidate.name, role: candidate.role, motive: candidate.motive, action: npcActionFor(game, candidate, arc.stage), stage: arc.stage, status: "等待回应", expiresOrdinal: now + (arc.stageIndex <= 1 ? 7 : 30), earlyGrowthPhase: arc.earlyGrowthPhase });
   arc.npcScenes = arc.npcScenes.slice(-8);
+}
+
+function earlyGrowthPhase(game: StoredGame): NonNullable<StoryArcView["earlyGrowthPhase"]> {
+  if ((game.view.character?.soulRings.length ?? 0) > 0 || game.view.hunting?.stage === "完成") return "首环兑现";
+  if (game.view.hunting?.support || (game.view.hunting && game.view.hunting.stage !== "需求")) return "首环筹备";
+  if (game.view.academyLife || game.view.mentorPursuit?.stage === "已拜师") return "学院师承生活";
+  if (game.view.academyApplication || game.view.mentorPursuit) return "培养路线";
+  return "觉醒落地";
+}
+
+const EARLY_GROWTH_DIRECTION: Record<NonNullable<StoryArcView["earlyGrowthPhase"]>, { goal: string; conflict: string; payoff: string; turn: string }> = {
+  觉醒落地: { goal: "把觉醒结果变成能执行的培养条件", conflict: "天赋、身份与家庭现实尚未形成同一条可走路线", payoff: "拿到一条由具体责任人承认的培养方案", turn: "决定公开范围与第一条培养路线" },
+  培养路线: { goal: "在学院、导师、家族或宗门之间选出近期培养路线", conflict: "每条路线提供的资源、考核、费用与责任并不相同", payoff: "取得真实学籍、师承或明确拒绝后的替代路线", turn: "亲自接受或拒绝一项长期培养责任" },
+  学院师承生活: { goal: "用课程、同辈互动或导师训练证明路线能够持续", conflict: "同辈有自己的名次与家庭目标，导师和学院也有独立规则", payoff: "完成学院首月或导师正式课程并形成第一份成长履历", turn: "决定固定训练关系与首环准备方式" },
+  首环筹备: { goal: "在责任、费用、许可和成年同行闭合后取得第一魂环", conflict: "合适魂兽、带队权限、补给、路程与吸收风险必须同时成立", payoff: "完成一次不跳步的调查、准备、战斗与吸收", turn: "在安全建议、魂兽适配与个人选择之间确定目标" },
+  首环兑现: { goal: "处理第一魂环带来的能力、关系与下一阶段责任", conflict: "获得力量会改变课程、同辈评价、导师计划和外界关注", payoff: "让第一魂技进入真实训练与生活，而非只停在数值栏", turn: "选择下一阶段学院、师承、宗门或独立成长重心" },
+};
+
+function applyEarlyGrowthDirection(game: StoredGame, arc: StoryArcView, evidence?: string): void {
+  if (arc.arcNumber !== 1 && !arc.earlyGrowthPhase) return;
+  const phase = earlyGrowthPhase(game);
+  const previous = arc.earlyGrowthPhase;
+  arc.earlyGrowthPhase = phase;
+  arc.earlyGrowthEvidence ??= [];
+  if (previous !== phase) {
+    arc.earlyGrowthEvidence.push(`${previous ?? "开局"} → ${phase}：${evidence?.slice(0, 150) ?? "依据当前结构化状态重算"}`);
+    for (const scene of arc.npcScenes.filter((item) => item.status === "等待回应")) {
+      scene.status = "已错过";
+      arc.evidence = [...new Set([...arc.evidence, `成长阶段已从${previous ?? "开局"}推进，${scene.npcName}此前提出的要求未被正面回应`])].slice(-16);
+      arc.pressure = Math.min(100, arc.pressure + 3);
+    }
+  }
+  arc.earlyGrowthEvidence = arc.earlyGrowthEvidence.slice(-12);
+  const direction = EARLY_GROWTH_DIRECTION[phase];
+  arc.title = `${game.view.character?.originName ?? "新生"}·从觉醒到第一魂环`;
+  arc.centralGoal = direction.goal;
+  arc.centralConflict = direction.conflict;
+  arc.promisedPayoff = direction.payoff;
+  arc.irreversibleTurn = direction.turn;
+  arc.arcType = "成长";
+  const routePaid = Boolean(game.view.academyApplication || game.view.mentorPursuit || game.view.hunting?.support);
+  const livingPaid = Boolean(game.view.academyLife || game.view.mentorPursuit?.stage === "已拜师");
+  const ringPaid = phase === "首环兑现";
+  for (const payoff of arc.payoffLedger) {
+    if (payoff.id === "growth-route" && routePaid) payoff.status = "已兑现";
+    if (payoff.id === "living-condition" && livingPaid) payoff.status = "已兑现";
+    if (payoff.id === "first-milestone") payoff.status = ringPaid ? "已兑现" : game.view.hunting?.support ? "部分兑现" : payoff.status;
+  }
 }
 
 function hydrateStoryArc(game: StoredGame, arc: StoryArcView): StoryArcView {
@@ -206,6 +271,7 @@ function hydrateStoryArc(game: StoredGame, arc: StoryArcView): StoryArcView {
   arc.evidenceRecords ??= arc.beats.flatMap((beat) => evidenceKinds(beat.summary, /无法完成|规则阻止|失败/.test(beat.summary)).map((kind) => ({ actionIndex: beat.actionIndex, kind, summary: beat.summary })));
   arc.stageGates ??= createStageGates();
   arc.npcScenes ??= [];
+  applyEarlyGrowthDirection(game, arc);
   refreshStageGates(arc);
   const supportedIndex = arc.stageGates.reduce((index, gate, gateIndex) => gateIndex <= index + 1 && gate.satisfied ? gateIndex : index, 0);
   arc.stageIndex = Math.min(arc.stageIndex, supportedIndex);
@@ -233,6 +299,7 @@ export function createStoryArc(game: StoredGame, previous?: StoryArcView): Story
     pressure: Math.min(100, Math.max(10, Number(game.world.flags.destinyPressure ?? 1) * 12 + (attention >= 60 ? 12 : 0))),
     startedActionIndex: game.actionIndex, stageStartedActionIndex: game.actionIndex, lastUpdatedAction: game.actionIndex, beats: [], evidence: [], completedArcTitles: previous ? [...previous.completedArcTitles, previous.title].slice(-12) : [],
   };
+  applyEarlyGrowthDirection(game, arc, "建立早期成长卷");
   refreshNpcScenes(game, arc);
   return arc;
 }
@@ -274,14 +341,17 @@ export function updateStoryArc(game: StoredGame, action: string, result: ActionR
       }
     }
   }
+  applyEarlyGrowthDirection(game, arc, summary);
   const mainTask = game.view.tasks.find((task) => task.id === arc.mainTaskId);
   arc.sideThreads = activeTasks(game).filter((task) => task.id !== arc.mainTaskId).map((task) => ({ taskId: task.id ?? task.title, title: task.title, status: task.status ?? "进行中" }));
   arc.opposingForce = activePressure(game, mainTask);
   arc.promisedPayoff = promisedPayoff(arc.payoffLedger);
   arc.irreversibleTurn = irreversibleTurn(game);
+  applyEarlyGrowthDirection(game, arc);
   arc.lastUpdatedAction = game.actionIndex;
   refreshNpcScenes(game, arc);
-  if (arc.stageIndex === 5 && relevant && !blocked && arc.stageStartedActionIndex < game.actionIndex) arc = createStoryArc(game, arc);
+  const earlyVolumeStillOpen = Boolean(arc.earlyGrowthPhase && arc.earlyGrowthPhase !== "首环兑现");
+  if (arc.stageIndex === 5 && relevant && !blocked && arc.stageStartedActionIndex < game.actionIndex && !earlyVolumeStillOpen) arc = createStoryArc(game, arc);
   game.view.storyArc = arc;
   return arc;
 }
@@ -289,6 +359,12 @@ export function updateStoryArc(game: StoredGame, action: string, result: ActionR
 export function storyArcSuggestions(game: StoredGame): string[] {
   const arc = ensureStoryArc(game);
   if (!arc) return [];
+  if (arc.earlyGrowthPhase === "首环筹备") return boundedSuggestions(game.view.hunting?.support ? ["推进当前首环调查与准备", `回应${game.view.hunting.support.responsibleParty}的出发核对`, "保留撤退条件并核对秘密范围"] : ["选择一条首环责任路线", "请监护或机构说明能承担的责任", "暂缓猎魂并继续基础训练"]);
+  if (arc.earlyGrowthPhase === "学院师承生活") {
+    const peer = game.view.academyLife?.peers[0];
+    return boundedSuggestions([game.view.academyLife?.stage === "报到安置" ? "去宿舍安置并领取课表" : "完成下一项课程或导师训练", peer ? `回应${peer.name}的同组训练请求` : "回应导师对训练记录的复核", "核对隐藏武魂与培养责任边界"]);
+  }
+  if (arc.earlyGrowthPhase === "培养路线") return boundedSuggestions(["推进学院申请或导师试学", "和监护人比较费用与长期责任", "保留拒绝当前路线的选择"]);
   const era = game.view.era ?? 1;
   const profile = ERA_OPENING[era];
   const pendingNpc = arc.npcScenes.find((scene) => scene.status === "等待回应");
@@ -303,7 +379,7 @@ export function storyArcSuggestions(game: StoredGame): string[] {
   const growth = nextGate?.stage === "阶段兑现" ? payoffAction : openingGrowth;
   const relation = pendingNpc?.action ?? (game.view.relations[0] ? `向${game.view.relations[0].name}追问能提供的帮助与条件` : "向当前机构追问负责人、条件与答复期限");
   const risk = (game.view.character?.martialSouls.length ?? 0) > (game.view.character?.publiclyKnownMartialSoulIndices?.length ?? 1) ? "暂不公开隐藏武魂，先核对知情范围" : profile.riskAction;
-  return [growth, relation, risk].map((item) => item.length > 28 ? item.slice(0, 28) : item);
+  return boundedSuggestions([growth, relation, risk]);
 }
 
 export function ensureStoryArc(game: StoredGame): StoryArcView | undefined {

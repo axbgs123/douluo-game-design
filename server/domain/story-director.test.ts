@@ -53,10 +53,10 @@ describe("卷级故事导演", () => {
     applyBeat(game, "正式决定加入学院并签订培养协议", "双方签订培养协议，学院身份与责任正式生效。", "正式决定");
     expect(game.view.storyArc?.stage).toBe("不可逆转折");
     expect(game.view.storyArc?.evidenceRecords.some((item) => item.kind === "重大选择")).toBe(true);
-    const completedTitle = game.view.storyArc!.title;
     applyBeat(game, "开始学院第一堂基础课程", "完成第一次基础冥想课程并留下训练记录。", "课程");
-    expect(game.view.storyArc?.arcNumber).toBe(2);
-    expect(game.view.storyArc?.completedArcTitles).toContain(completedTitle);
+    expect(game.view.storyArc?.arcNumber).toBe(1);
+    expect(game.view.storyArc?.title).toContain("从觉醒到第一魂环");
+    expect(game.view.storyArc?.completedArcTitles).toHaveLength(0);
   });
 
   it("creates an observable NPC initiative and three era-grounded decision axes", () => {
@@ -74,6 +74,32 @@ describe("卷级故事导演", () => {
     }
   });
 
+  it("keeps the first volume on a causal awakening-to-first-ring arc and makes ignored NPC initiatives leave pressure", () => {
+    const game = playingGame("early-growth-directed-arc");
+    expect(game.view.storyArc).toMatchObject({ earlyGrowthPhase: "觉醒落地", centralGoal: expect.stringContaining("培养条件") });
+    const initialScene = game.view.storyArc!.npcScenes.find((item) => item.status === "等待回应")!;
+    const pressureBefore = game.view.storyArc!.pressure;
+    game.view.worldTime!.day += 10;
+    applyBeat(game, "独立冥想整理魂力", "完成一次独立冥想，没有回应在场人物。", "修炼");
+    expect(game.view.storyArc?.npcScenes.find((item) => item.id === initialScene.id)?.status).toBe("已错过");
+    expect(game.view.storyArc!.pressure).toBeGreaterThan(pressureBefore);
+
+    game.view.academyApplication = { academyId: "test-academy", academyName: "测试学院", stage: "材料准备", route: "普通学员", fundingType: "家庭自费", fundingSource: "家庭", obligations: ["支付费用"], availableFundingOptions: ["家庭自费"], requirements: ["材料"], evidence: [], fee: 12, passScore: 38 };
+    applyBeat(game, "申请测试学院", "测试学院登记申请与家庭费用责任，尚未录取。", "申请");
+    expect(game.view.storyArc).toMatchObject({ earlyGrowthPhase: "培养路线", centralGoal: expect.stringContaining("学院、导师") });
+
+    game.view.academyLife = { academyName: "测试学院", stage: "基础课程", className: "新生班", homeroomTeacher: "严老师", dormitory: "新生宿舍", attendance: 1, courseProgress: 1, practicalProgress: 0, fundingDutyProgress: 1, peerInteractions: 0, standing: 0, discipline: 100, evidence: [], peers: [] };
+    game.view.relations.push({ id: "early-teacher", name: "严老师", relation: "学院猎魂带队责任人", impression: "负责课程与首环带队边界", strength: 30, category: "师友" });
+    applyBeat(game, "参加新生基础课程", "完成第一堂课程并留下出勤记录。", "学院课程");
+    expect(game.view.storyArc).toMatchObject({ earlyGrowthPhase: "学院师承生活", centralConflict: expect.stringContaining("同辈") });
+
+    game.view.hunting = { stage: "需求", ringIndex: 1, recommendations: [], preparation: [], trailProgress: "责任已确认", support: { route: "学院带队", responsibleParty: "严老师", fundingSource: "学院与家庭", authorization: "需签字", sponsorBudget: 6, sponsorSpent: 0, obligations: ["安全课"], evidence: [], status: "已确认" } };
+    applyBeat(game, "确认学院首环带队", "严老师登记首环责任、预算和许可边界。", "确认猎魂责任路线");
+    expect(game.view.storyArc).toMatchObject({ earlyGrowthPhase: "首环筹备", centralGoal: expect.stringContaining("第一魂环") });
+    expect(game.view.storyArc?.earlyGrowthEvidence?.some((item) => item.includes("首环筹备"))).toBe(true);
+    expect(game.view.storyArc?.npcScenes.find((item) => item.status === "等待回应")?.action).toContain("预算、成年同行、许可与撤退条件");
+  });
+
   it("migrates old count-driven arcs to evidence gates without preserving unsupported progress", () => {
     const game = playingGame("story-arc-migration");
     const legacy = game.view.storyArc!;
@@ -87,7 +113,7 @@ describe("卷级故事导演", () => {
     delete (legacy as Partial<typeof legacy>).arcType;
     game.schemaVersion = 33;
     const migrated = ensureGameState(structuredClone(game));
-    expect(migrated.schemaVersion).toBe(43);
+    expect(migrated.schemaVersion).toBe(44);
     expect(migrated.view.storyArc?.stage).toBe("立局");
     expect(migrated.view.storyArc?.stageGates).toHaveLength(6);
     expect(migrated.view.storyArc?.payoffLedger.length).toBeGreaterThanOrEqual(3);
