@@ -580,17 +580,16 @@ export function sanitizeNarrativeSuggestions(game: StoredGame, suggestions: stri
   const sanitize = (items: string[]) => items
     .map((item) => item.trim())
     .filter(Boolean)
-    .map((item) => item.length > 28 ? item.slice(0, 28) : item)
+    .filter((item) => item.length <= 28)
     .filter((item) => !violatesCanonChronology(item, game.view.worldTime?.year ?? 0))
     .filter((item) => !/直接获得|必定成功|保证成功|无代价|立刻成神/.test(item))
     .filter((item) => !/指出第一处缺陷/.test(item))
     .filter((item) => !GENERIC_SUGGESTION.test(item))
     .filter((item) => !leaksUnavailableKnowledge(game, item));
-  const tactical = Boolean(game.view.combat || (game.view.hunting && game.view.hunting.stage !== "完成"));
-  const opening = game.actionIndex === 0 && game.view.tasks.some((task) => task.status !== "完成" && /觉醒|培养评估|亲自复核/.test(`${task.id}${task.title}${task.detail}`));
+  const liveAi = sanitize(suggestions);
   const arcSuggestions = sanitize(storyArcSuggestions(game));
   const grounded = sanitize(groundedNarrativeSuggestions(game));
-  const ordered = tactical || opening ? [...grounded, ...arcSuggestions, ...sanitize(fallback), ...sanitize(suggestions)] : [...arcSuggestions, ...sanitize(suggestions), ...sanitize(fallback), ...grounded];
+  const ordered = [...liveAi, ...arcSuggestions, ...grounded, ...sanitize(fallback)];
   const result: string[] = [];
   for (const item of ordered) {
     if (result.some((existing) => isNearDuplicate(existing, item))) continue;

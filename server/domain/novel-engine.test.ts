@@ -116,10 +116,20 @@ describe("增强小说引擎", () => {
     expect(auditNovelEngineNarrative(game, "印记目前不能无限使用，每次都会留下头痛。", pack)).not.toContain("特殊体系被写成无代价万能能力");
   });
 
+  it("rejects replacing a private hidden-soul test with an NPC cultivation meeting", () => {
+    const resolution = { ...ordinaryResolution, intent: "私下测试隐藏武魂", ruleSummary: "独自在住处测试太玄剑胎，没有NPC在场。" };
+    expect(auditResolutionAlignment("他刚准备测试，门外弟子便来传话，请他去议事堂定培养方案。", resolution)).toContain("私下测试被擅自改成NPC传唤或培养会议");
+    expect(auditResolutionAlignment("他关好门，独自让太玄剑胎短暂显形，记住重量后立刻收回。", resolution)).toEqual([]);
+    expect(auditResolutionAlignment("他把养剑木匣放到桌边，独自测试武魂。", resolution)).toContain("正文为私下测试凭空增加未持有物品");
+    expect(auditResolutionAlignment("他独自取出备用水晶，再次复测先天魂力。", resolution)).toContain("正文重复已经完成的觉醒复测");
+    expect(auditResolutionAlignment("他独自翻阅密密麻麻的记录，确认收放与承载都已达到上限。", resolution)).toContain("正文凭空补造程序未结算的精确测试结论");
+  });
+
   it("compresses minor actions while preserving space for consequential scenes", () => {
     const game = awakened("pacing");
     expect(narrativePacing(game, "翻找抽屉并整理旧衣", { ...ordinaryResolution, intent: "一般行动" }).kind).toBe("略写");
     expect(narrativePacing(game, "在魂环吸收中决定是否冒险", { ...ordinaryResolution, intent: "魂环吸收", ruleSummary: "这是可能重伤的重大选择" }).kind).toBe("关键");
+    expect(narrativePacing(game, "回住处单独测试第二武魂", { ...ordinaryResolution, intent: "私下测试隐藏武魂" }).target).toBe("500至850字");
   });
 
   it("rejects fluent prose that ignores an accountable historical result", () => {

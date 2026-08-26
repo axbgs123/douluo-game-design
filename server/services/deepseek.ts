@@ -134,16 +134,21 @@ export function validateInterpretedAction(game: StoredGame, original: string, in
 
 export function narrativePacing(game: StoredGame, playerInput: string, resolution: ActionResolution): { kind: "略写" | "推进" | "关键"; target: string; directive: string } {
   const scene = `${playerInput} ${resolution.intent} ${resolution.ruleSummary}`;
+  const privateHiddenSoulTest = /私下测试隐藏武魂/.test(resolution.intent);
   const importantCanonContact = CANON_CHARACTERS.some((character) => character.importance >= 4 && playerInput.includes(game.world.npcs[character.id]?.name ?? "不存在的当前姓名"));
   const activeEventContact = game.world.dynamicEvents.some((event) => event.status === "可介入" && playerInput.includes(event.title));
   const key = importantCanonContact || /重要战斗|生死|死亡|复生|魂环吸收|觉醒|加入势力|背叛|拜师|建立势力|历史偏移|原作关键|结局|神位|重大选择/.test(scene);
   const routineIntent = /^(调查|交谈|一般行动|购买|工作|休息|等待)$/u.test(resolution.intent);
   const minor = !key && !activeEventContact && (routineIntent || /观察|查看|翻找|整理|简单询问|购买|普通工作|休息|等待|赶路|一般行动|日常/.test(scene));
   const kind = key ? "关键" : minor ? "略写" : "推进";
-  const target = game.view.speed === "高速"
+  const target = privateHiddenSoulTest
+    ? game.view.speed === "高速" ? "260至450字" : "500至850字"
+    : game.view.speed === "高速"
     ? kind === "关键" ? "700至1200字" : kind === "略写" ? "160至320字" : "300至550字"
     : kind === "关键" ? "1600至2800字" : kind === "略写" ? "280至550字" : "600至1000字";
-  const directive = kind === "略写"
+  const directive = privateHiddenSoulTest
+    ? "只写独处测试本身：显形、一次可感知差异、主动收回和秘密仍被守住；不得转去见长老、开会、安排培养或补写完整觉醒流程。"
+    : kind === "略写"
     ? "压缩过程，只保留一个影响判断的细节和明确结果；不要把开门、走路、翻找、客套逐步展开。"
     : kind === "推进"
       ? "本次至少完成一个完整叙事节拍：目标发生变化、获得可用信息、关系改变或局面进入下一阶段。"
@@ -331,8 +336,10 @@ export async function narrateWithDeepSeek(
             "优先让玩家感到自己正在大陆上生活和成长：写主角想要的东西、当下的得失、身体感受、身份待遇、人与人的亲疏、力量兑现和选择后的滋味。日常、修炼、入学、交易、交友与胜利都可以直接给回报，不必一律转成新线索。",
             "章末可以落在满足、尴尬、疲惫、关系变化、拿到资源或明确的下一步目标上；只有真正的悬疑场景才用疑问和证据断章。",
             "canonNarrativeProfile 来自斗一至斗四原著的结构抽样，只学习场景进入、人物欲望、制度落地与节奏机制，不模仿或复述原著句子。必须遵守其中的时代生活质感、场景节拍、心理距离和设定讲法。",
-            "建议必须是角色眼下做得到的动作。若程序给出了建议，优先沿用其含义。",
-            "按中国男频互动网文设计选项：三项分别推进成长/资源、关系/势力、秘密/风险；写成动作+明确对象+近期目的，不能用查看地图、查看新事件、观察周围或继续行动占位。",
+            "suggestions必须由你根据本次刚生成的正文结尾实时创作，程序建议只作安全兜底，不要照抄或换词。三项都必须承接本次行动已经造成的现场状态，不能重复已经完成的动作。",
+            "按中国男频互动网文设计选项：三项分别推进成长/资源、关系/势力、秘密/风险；写成动作+明确对象+近期目的，控制在8至28个汉字，不能用查看地图、查看新事件、观察周围或继续行动占位。",
+            "playerInput是本次正文必须完整兑现的行动，不是可以替换的灵感。先写玩家所做之事及程序固定后果，再写由此产生的反应；不得用NPC来访、会议、转场或另一项任务抢走本次行动。",
+            "若本次行动是隐藏、私下测试、独处、保密或不公开，正文不得擅自加入敲门、传唤、长老会、议事堂、培养会议或知情NPC；suggestions也必须从私下行动完成后的真实状态继续。",
             "每个重要反应都要通过欲望、信息、权限、资源、行动、后果六环。异常天赋必须引发符合目击者利益和权限的复测、上报、谈条件、争夺或戒备，不能只惊叹一句便散场。",
             "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
             "narrativeLogicPacket 是正文生成前已经通过的硬逻辑合同。先逐项满足 protagonistContract、participantContracts、reactionChain 与 continuityContract，再写句子；不得在正文中提到逻辑包、状态版本或检查过程。",
@@ -345,6 +352,7 @@ export async function narrateWithDeepSeek(
             "storyArc 是程序按真实证据门槛维护的当前卷级导演状态。stageGates 决定当前阶段能否前进：未出现真实拒绝、费用、权限或风险时不得写成阻力显形；payoffLedger 未记录导师、名额、食宿、训练、身份或第一里程碑落地时不得写成阶段兑现；未有玩家重大选择时不得写成不可逆转折。sideThreads 是自主支线，除非玩家主动处理，不得抢走 centralGoal。",
             "storyArc.npcScenes 是已经进入玩家可观察范围的NPC主动要求。只能依据其中的角色、职责、动机与行动写现场压力，不得扩大成无条件收徒、送宝或强迫好感；等待回应不等于玩家已经同意。",
             "sceneNpcProfiles 中的 directorPlan 是NPC欲望—责任—信息—权限—资源行动规划，只用于让人物主动且连续地行动。不得把完整计划、内心或未知信息直接告诉主角；只能通过现场动作、说话、拒绝、调动资源和留下的后果表现。",
+            "儿童角色的语言必须符合年龄。六至十岁可以聪明、克制、有前世记忆或受严格教育，但若设定没有明确支持，不能连续使用数据治理、行政汇报、资源审批式口吻，也不能像成年管理者主持会议。",
             "activeLocalConsequences 是错过事件已经写入程序的持续后果。正文必须让供需、治安、伤亡、制度、关系、势力或生态变化落到当前生活中；不得把已经发生的损失恢复成事件前状态。",
             `activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗${game.view.era === 1 ? "一" : game.view.era === 2 ? "二" : game.view.era === 3 ? "三" : "四"}适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。`,
             "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",

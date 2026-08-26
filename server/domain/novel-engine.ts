@@ -143,7 +143,16 @@ export function auditResolutionAlignment(text: string, resolution: ActionResolut
     [/批准媒体联盟成员退出/, /退出|历史责任|成员不足|冻结|共享资源/, "正文没有呈现成员退出后的责任与资源冻结"],
     [/登记媒体联盟替补候选/, /替补|候选|责任|复核|独立调查/, "正文没有呈现联盟替补登记"],
     [/批准替补媒体加入联盟/, /替补|准入|分别复核|解冻|历史责任/, "正文没有呈现联盟替补准入结果"],
+    [/私下测试隐藏武魂/, /独自|无人|关好门|住处|房间|收回|隐藏|第二武魂|第三武魂/, "正文没有兑现私下测试隐藏武魂"],
   ];
   const requirement = requiredByIntent.find(([intent]) => intent.test(resolution.intent));
-  return requirement && !requirement[1].test(text) ? [requirement[2]] : [];
+  const issues = requirement && !requirement[1].test(text) ? [requirement[2]] : [];
+  if (/私下测试隐藏武魂/.test(resolution.intent)) {
+    if (/敲门|请.{0,8}去一趟|长老|宗主|封阵弟子|传唤|议事堂|培养会议|培养方案定下来/.test(text)) issues.push("私下测试被擅自改成NPC传唤或培养会议");
+    if (/养剑木匣|剑胚/.test(text) && !/养剑木匣|剑胚/.test(resolution.ruleSummary)) issues.push("正文为私下测试凭空增加未持有物品");
+    if (/备用水晶|重新?测试|再次?复测|又换.{0,8}水晶/.test(text)) issues.push("正文重复已经完成的觉醒复测");
+    if (/具体数据|密密麻麻.{0,8}记录|收放.{0,6}承载.{0,10}上限/.test(text)) issues.push("正文凭空补造程序未结算的精确测试结论");
+    if (text.length > 1600) issues.push("私下短测被扩写成失焦的长篇行政场景");
+  }
+  return issues;
 }

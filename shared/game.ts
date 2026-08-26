@@ -287,6 +287,8 @@ export interface MartialSoulView {
   sourceEra?: 1 | 2 | 3 | 4 | "原创" | "局外";
   cultivationState?: "主修" | "未修炼";
   originFit?: string;
+  privateTested?: boolean;
+  privateTestEvidence?: string[];
 }
 
 export interface CharacterPublic extends CandidatePublic {

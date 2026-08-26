@@ -599,23 +599,28 @@ describe("candidate generation", () => {
     expect(game.view.suggestions.every((suggestion) => !/查看地图|查看新事件|观察周围|继续行动/.test(suggestion))).toBe(true);
   });
 
-  it("keeps deterministic Chinese-webnovel choices ahead of generic or knowledge-leaking model choices", () => {
+  it("keeps valid live-AI choices first and uses deterministic choices only as safety fallback", () => {
     const game = createGame({ gender: "女", difficulty: "标准", seed: "grounded-choice-filter" });
     const hidden = game.hiddenCandidates[0];
     hidden.martialSouls = [hidden.martialSoul, { ...hidden.martialSoul, id: "secret-soul", name: "不可见副武魂" }];
     selectCandidate(game, hidden.public.id);
     finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
     awakenCharacter(game);
-    const suggestions = sanitizeNarrativeSuggestions(
-      game,
-      ["查看地图", "把不可见副武魂告诉唐三", "继续行动"],
-      game.view.suggestions,
-    );
+    const liveAi = ["独自在房间测试武魂消耗", "向养父询问近期修炼安排", "暂缓公开异常并观察外界反应"];
+    const suggestions = sanitizeNarrativeSuggestions(game, ["查看地图", ...liveAi, "把不可见副武魂告诉唐三", "继续行动"], game.view.suggestions);
     expect(suggestions).toHaveLength(3);
+    expect(suggestions).toEqual(liveAi);
     expect(suggestions.every((item) => item.length >= 8 && item.length <= 28)).toBe(true);
     expect(suggestions.every((item) => !/查看地图|查看新事件|观察周围|继续行动|不可见副武魂|唐三/.test(item))).toBe(true);
-    expect(suggestions.some((item) => /魂环|修炼|武魂/.test(item))).toBe(true);
-    expect(suggestions.some((item) => /觉醒|教习|培养|测试|条件/.test(item))).toBe(true);
+    expect(suggestions.some((item) => /修炼|武魂/.test(item))).toBe(true);
+  });
+
+  it("rejects overlong AI choices instead of cutting them into broken sentences", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "choice-no-hard-cut" });
+    const overlong = "请太玄剑宗守碑长老测试先天道体的体征魂力流向收放与承载并写下全部结果";
+    const suggestions = sanitizeNarrativeSuggestions(game, [overlong], ["独自测试武魂消耗", "询问家人修炼安排", "暂缓公开隐藏异常"]);
+    expect(suggestions).not.toContain(overlong.slice(0, 28));
+    expect(suggestions.every((item) => item.length <= 28)).toBe(true);
   });
 
   it("replaces vague screenshot-style choices with canon-grounded awakening actions", () => {

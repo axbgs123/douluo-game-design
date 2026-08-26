@@ -433,6 +433,40 @@ function switchMartialSoulResolution(game: StoredGame, action: string): ActionRe
   return { intent: "切换武魂", minutes: 5, ruleSummary: `当前主修武魂切换为${character.martialSoul.name}；该武魂独立记录${character.soulRings.length}枚魂环。`, fallbackNarrative: `魂力的运行方向慢慢换了。原先显露的武魂收回体内，${character.martialSoul.name}在掌心重新成形；属于它的魂环与魂技没有和另一武魂混在一起。`, suggestions: character.soulRings.length < Math.floor(character.soulRank / 10) ? ["调查适合当前武魂的魂兽", "请导师评估双生武魂风险", "查看当前武魂魂环"] : ["测试当前武魂", "继续修炼", "切换其他武魂"] };
 }
 
+function privateHiddenSoulTestResolution(game: StoredGame, action: string): ActionResolution {
+  const character = game.view.character!;
+  const pronoun = character.gender === "女" ? "她" : "他";
+  const publicIndices = new Set(character.publiclyKnownMartialSoulIndices ?? [0]);
+  const hidden = character.martialSouls.map((soul, index) => ({ soul, index })).filter((item) => !publicIndices.has(item.index));
+  if (!hidden.length) return impossible("当前没有仍未公开的第二或第三武魂可供私下测试。", ["练习当前武魂收放", "查看公开武魂", "继续当前成长路线"]);
+  const selected = hidden.find((item) => action.includes(item.soul.name)) ?? hidden[0];
+  const focus = /本体/.test(selected.soul.category) ? "身体变化、魂力流向与承载感"
+    : /兽/.test(selected.soul.category) ? "局部兽化、本能冲动与收回速度"
+      : /植物/.test(selected.soul.category) ? "形态、生长反应与魂力消耗"
+        : /食物/.test(selected.soul.category) ? "成形速度、消耗与保存状态"
+          : /元素/.test(selected.soul.category) ? "影响范围、稳定性与收回速度"
+            : "形态、重量、结构与魂力消耗";
+  selected.soul.privateTested = true;
+  selected.soul.privateTestEvidence = [...(selected.soul.privateTestEvidence ?? []), `${game.view.worldTime?.year ?? 0}年第${game.view.worldTime?.day ?? 1}日，在无人旁观时完成第一次${focus}测试`].slice(-8);
+  character.publiclyKnownMartialSoulIndices = [...publicIndices];
+  game.world.fatiguePoints += 5;
+  game.world.flags.privateHiddenSoulTestCount = Number(game.world.flags.privateHiddenSoulTestCount ?? 0) + 1;
+  const location = game.view.mapHierarchy?.buildingName ?? game.view.location ?? "住处";
+  const manifestation = /本体/.test(selected.soul.category) ? `没有外物出现在掌心，变化仍从${character.name}的身体内部浮现。`
+    : /兽/.test(selected.soul.category) ? `一层尚不稳定的兽化征兆刚刚浮现，便被${character.name}主动收了回去。`
+      : /植物/.test(selected.soul.category) ? `${selected.soul.name}只显出一小段轮廓，叶、藤或根须尚未完全展开。`
+        : /元素/.test(selected.soul.category) ? `${selected.soul.name}在身边聚成很小的一圈波动，没有越过房门。`
+          : `${selected.soul.name}在掌中短暂成形，重量与触感都和第一武魂不同。`;
+  return {
+    intent: "私下测试隐藏武魂",
+    minutes: 45,
+    ruleSummary: `${character.name}在${location}独自确认隐藏武魂${selected.soul.name}确实能够显形，并完成${focus}的第一次短测；没有NPC在场，没有公开、上报、拜师、培养会议或资源承诺。`,
+    fallbackNarrative: `${character.name}关好门窗，等外面的脚步声走远，才重新引动意识深处那股不同的魂力。${manifestation}${pronoun}只试了片刻，记住${focus}最明显的变化，便在气息可能传出房间以前将武魂收回。屋外始终安静，没人知道这次测试已经发生。`,
+    suggestions: [`继续独自测试${selected.soul.name}的魂力消耗`, "把两种武魂的差异记在只有自己知道的地方", "暂停测试，照公开路线练习第一武魂"],
+    systemMessages: [`秘密 · ${selected.soul.name} · 已私下测试 · 知情者仅本人`],
+  };
+}
+
 function trainingResolution(game: StoredGame, action = ""): ActionResolution {
   const character = game.view.character;
   if (!character) return impossible("还没有可修炼的角色状态。");
@@ -4169,6 +4203,7 @@ export function classifyCoreActionRoute(game: StoredGame, input: string): CoreAc
   const candidates: string[] = [];
   const huntingActive = Boolean(game.view.hunting && game.view.hunting.stage !== "完成");
   const mentor = game.view.mentorPursuit;
+  const privateHiddenSoulTest = /测试|感应|召出|尝试/.test(action) && /第二武魂|第三武魂|副武魂|隐藏武魂|回住处.*测试|单独测试|私下测试/.test(action) && (game.view.character?.martialSouls.length ?? 0) > (game.view.character?.publiclyKnownMartialSoulIndices?.length ?? 1);
   const mentorIndependentPractice = mentor?.stage === "已拜师" && /独立复练|按.*课程记录.*复练|复盘.*导师.*独立/.test(action);
   const mentorHuntSupport = Boolean(huntingActive && /请求.*(?:导师|师父).*(?:指导|负责).*(?:魂环|首环)|(?:导师|师父)承担.*(?:猎魂|首环)/.test(action));
   const establishedMentor = mentor?.stage === "已拜师" && !mentorIndependentPractice && !mentorHuntSupport && (action.includes(mentor.mentorName) || /师父|导师/.test(action)) && /课程|训练|练习|授业|修行|魂环|猎魂|资源|训练场|条件|禁忌|规矩|请教|询问|评估/.test(action);
@@ -4179,7 +4214,7 @@ export function classifyCoreActionRoute(game: StoredGame, input: string): CoreAc
   const mentorPursuit = Boolean(mentor && !["已拜师", "被拒绝", "已结束"].includes(mentor.stage) && (action.includes(mentor.mentorName) || /导师|拜师|师徒|试学|考察|考验|授业/.test(action))) || /拜师|拜.*为师|收我为徒|请.*指导|寻找.*导师/.test(action);
   const knownConversation = /问|询问|请教|交谈|告诉|拜访/.test(action) && game.view.relations.some((relation) => action.includes(relation.name));
   for (const [id, matched] of [
-    ["mentor-independent-practice", mentorIndependentPractice], ["mentor-hunt-support", mentorHuntSupport], ["established-mentor", establishedMentor],
+    ["private-hidden-soul-test", privateHiddenSoulTest], ["mentor-independent-practice", mentorIndependentPractice], ["mentor-hunt-support", mentorHuntSupport], ["established-mentor", establishedMentor],
     ["hunt-nonlethal", nonLethalHunt], ["active-hunt", hunt], ["academy-application", academyApplication], ["academy-life", academyLife],
     ["mentor-pursuit", mentorPursuit], ["known-conversation", knownConversation],
   ] as Array<[string, boolean]>) if (matched) candidates.push(id);
@@ -4208,6 +4243,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/机甲/.test(action) && (!game.view.combat || !/攻击|防御|格挡|闪避|逃跑|弱点/.test(action) || !game.view.mecha?.model)) resolution = mechaResolution(game, action);
   else if (/星舰|舰桥|随舰|航次|真实飞行|船员|舰员|星际航行|探索舰|项目舰|星球探索|星球调查|指挥考核|指挥资格|参谋部|入舰培训|舰队培训|岗位评估|岗位分配|作战部培训|航线与指挥培训|损管与动力培训|作战与登陆培训|军纪与保密培训/.test(action)) resolution = starshipResolution(game, action);
   else if (/前往|去往|出发去|旅行到/.test(action) && /船票|客运|航班|民航|搭乘/.test(action)) resolution = travelResolution(game, action);
+  else if (routing.selected === "private-hidden-soul-test") resolution = privateHiddenSoulTestResolution(game, action);
   else if (routing.selected === "mentor-independent-practice") resolution = trainingResolution(game, action);
   else if (routing.selected === "established-mentor") resolution = mentorLessonResolution(game, action);
   else if (routing.selected === "hunt-nonlethal") resolution = nonLethalRingResolution(game, action);
