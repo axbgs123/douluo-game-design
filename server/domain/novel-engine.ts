@@ -55,8 +55,8 @@ const MODULE_RULES: Record<NovelModuleId, string[]> = {
     "原创人物、势力、道具与功法可以出现，但必须嵌入斗罗力量、资源、地理和政治结构。",
     "不得提前使用未来时代组织、技术、称号和事件结果；不得把读者的原作知识塞给本地角色。",
     "不复述或拼接原著段落，只围绕当前玩家行动写原创场景。",
-    "当前时代的社会会对异常天赋作出制度性反应：先天高魂力、满魂力、顶级或多生武魂应引起当代家族、学院、宗门或官方机构的登记、招揽、试探与保护，而不是只得到一句惊叹。",
-    "异常天赋的反应必须当场可见并改变安排：复测、停下队伍、隔开围观者、叫来上级、安排当晚去处或提出培养谈判；反应强度服从现场机构能力。",
+    "当前时代的社会只会对已经公开且被实际目击的异常天赋作出制度性反应：先天高魂力、满魂力、顶级或公开多生武魂会引起当代家族、学院、宗门或官方机构的登记、招揽、试探与保护；隐藏且无人目击的武魂不得触发。",
+    "公开异常天赋的反应必须当场可见并改变安排：复测、停下队伍、隔开围观者、叫来上级、安排当晚去处或提出培养谈判；反应强度服从现场机构能力。私密行动则保持真实知情范围。",
   ],
   goldfinger: [
     "特殊体系和金手指只能放大主角的选择与努力，不能替主角自动完成目标。",
@@ -170,7 +170,7 @@ function auditPlayerActionOwnership(text: string, playerInput: string, resolutio
   return issues;
 }
 
-export function auditResolutionAlignment(text: string, resolution: ActionResolution, playerInput = ""): string[] {
+export function auditResolutionAlignment(text: string, resolution: ActionResolution, playerInput = "", game?: StoredGame): string[] {
   const requiredByIntent: Array<[RegExp, RegExp, string]> = [
     [/核验旧世档案/, /档案|目录|谱牒|账册|记录|证据|印记|年代/, "正文没有呈现旧世档案核验"],
     [/调查当代权属/, /登记|权属|产权|旧址|现权利|保管人/, "正文没有呈现当代权属调查"],
@@ -198,7 +198,11 @@ export function auditResolutionAlignment(text: string, resolution: ActionResolut
   issues.push(...auditPlayerActionOwnership(text, playerInput, resolution));
   if (/私下测试隐藏武魂/.test(resolution.intent)) {
     if (hasActualPrivateActionInterruption(text)) issues.push("私下测试被擅自改成NPC传唤或培养会议");
-    if (/养剑木匣|剑胚/.test(text) && !/养剑木匣|剑胚/.test(resolution.ruleSummary)) issues.push("正文为私下测试凭空增加未持有物品");
+    const declaredInventory = game?.view.inventory ?? [];
+    const declaredSoulDescriptions = game?.view.character?.martialSouls.map((soul) => `${soul.name}${soul.description}`).join("；") ?? "";
+    const inventedWoodBox = /养剑木匣/.test(text) && !declaredInventory.some((item) => item.includes("养剑木匣")) && !/养剑木匣/.test(resolution.ruleSummary);
+    const inventedSwordEmbryo = /剑胚/.test(text) && !/剑胚/.test(declaredSoulDescriptions) && !/剑胚/.test(resolution.ruleSummary);
+    if (inventedWoodBox || inventedSwordEmbryo) issues.push("正文为私下测试凭空增加未持有物品");
     const hiddenSoulName = resolution.ruleSummary.match(/隐藏武魂(.+?)(?:确实|能够|完成|；|，|。)/)?.[1]?.trim()
       ?? playerInput.match(/(?:感应|测试|催动|召出)([^，。]{2,24}?)(?:的状态|状态|$)/)?.[1]?.trim();
     const escapedHiddenSoulName = hiddenSoulName?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

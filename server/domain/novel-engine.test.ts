@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { awakenCharacter, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
 import { auditNovelEngineNarrative, auditResolutionAlignment, buildNovelEnginePack } from "./novel-engine.js";
 import { NarrativeAuditError, NarrativeLogicPreflightError, auditCanonNarrativeVoice, buildCanonNarrativeProfile, narrateWithAuditRetries, narrateWithDeepSeek, narrativePacing, observableCanonEventsForNarration, validateInterpretedAction } from "../services/deepseek.js";
-import { auditNarrativeLogicPacket, buildNarrativeLogicPacket } from "./story-rules.js";
+import { auditNarrativeLogicPacket, buildChineseWebnovelSceneCard, buildNarrativeLogicPacket } from "./story-rules.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 
 function awakened(seed = "novel-engine") {
@@ -65,6 +65,7 @@ describe("增强小说引擎", () => {
     expect(packet.generationContract.requiredBeats).toEqual(expect.arrayContaining([expect.stringContaining("短暂显形"), expect.stringContaining("主动停止") ]));
     expect(packet.generationContract.forbiddenClaims).toEqual(expect.arrayContaining([expect.stringContaining("木匣"), expect.stringContaining("灵智"), expect.stringContaining("新魂技") ]));
     expect(packet.generationContract.originalEntityBoundary).toContain("同人原创/局外实体而非原著实体");
+    expect(buildChineseWebnovelSceneCard(game, resolution)).toMatchObject({ availablePeople: [], availableInstitutions: [], unresolvedPromises: [], storyArc: undefined });
     expect(auditNarrativeLogicPacket(packet)).toEqual([]);
   });
 
@@ -120,6 +121,15 @@ describe("增强小说引擎", () => {
     expect(auditCanonNarrativeVoice("这是一件神秘的旧物，也是一个新的谜团。", investigation)).toEqual([]);
   });
 
+  it("does not present mature soul-spirit institutions as ordinary early-era-two life", () => {
+    const game = awakened("era-two-before-soul-spirit-system");
+    game.view.era = 2;
+    game.view.worldTime = { era: "霍雨浩离府求学基准年", year: 10_000, day: 1, time: "08:00", season: "春" };
+    expect(buildCanonNarrativeProfile(game, "参加基础课程", ordinaryResolution).eraTexture).toContain("成熟魂灵体系和传灵塔尚未成立");
+    game.view.worldTime.year = 10_012;
+    expect(buildCanonNarrativeProfile(game, "调查魂灵研究", ordinaryResolution).eraTexture).toContain("已经形成证据的魂灵研究");
+  });
+
   it("can be disabled without leaving hidden prompt fragments", () => {
     expect(buildNovelEnginePack(awakened("novel-engine-off"), "观察", ordinaryResolution, false)).toEqual({ enabled: false, activeModules: [], prompt: "" });
   });
@@ -147,6 +157,10 @@ describe("增强小说引擎", () => {
     const vineResolution = { ...resolution, ruleSummary: "独自在住处确认隐藏武魂霜纹藤确实能够显形；没有灵智或新能力。" };
     expect(auditResolutionAlignment("霜纹藤主动回应了他的呼唤，显露出择主意志。", vineResolution, "独自感应霜纹藤")).toContain("正文凭空赋予隐藏武魂灵智或主动意志");
     expect(auditResolutionAlignment("他把养剑木匣放到桌边，独自测试武魂。", resolution)).toContain("正文为私下测试凭空增加未持有物品");
+    const ownedGame = awakened("owned-private-test-items");
+    ownedGame.view.inventory.push("养剑木匣");
+    ownedGame.view.character!.martialSouls[0].description = "初醒时呈无锋剑胚形态。";
+    expect(auditResolutionAlignment("他把养剑木匣放在身边，确认无锋剑胚形态后收回武魂。", resolution, "独自测试武魂", ownedGame)).not.toContain("正文为私下测试凭空增加未持有物品");
     expect(auditResolutionAlignment("他独自取出备用水晶，再次复测先天魂力。", resolution)).toContain("正文重复已经完成的觉醒复测");
     expect(auditResolutionAlignment("他独自翻阅密密麻麻的记录，确认收放与承载都已达到上限。", resolution)).toContain("正文凭空补造程序未结算的精确测试结论");
   });

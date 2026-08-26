@@ -507,10 +507,20 @@ export function archiveRewrittenScene(game: StoredGame, narrative: string, sugge
 }
 
 function ensureVectorMemoryBackfill(game: StoredGame): void {
+  if (game.schemaVersion >= 46) {
+    database.prepare("DELETE FROM vector_memories WHERE game_id = ? AND (source_key LIKE 'ledger:%' OR source_key LIKE 'choice:%' OR (kind = 'npc' AND metadata_json LIKE '%storyMemory.npcNotes%'))").run(game.view.id);
+    database.prepare("DELETE FROM vector_memories WHERE game_id = ? AND action_index > ?").run(game.view.id, game.actionIndex);
+    database.prepare("DELETE FROM memory_chapters WHERE game_id = ? AND start_action_index > ?").run(game.view.id, game.actionIndex);
+    const chapters = database.prepare("SELECT chapter_number, title, start_action_index, end_action_index, importance, metadata_json FROM memory_chapters WHERE game_id = ?").all(game.view.id) as Array<{ chapter_number: number; title: string; start_action_index: number; end_action_index: number; importance: number; metadata_json: string }>;
+    for (const chapter of chapters) {
+      const summary = game.world.actionLedger.filter((entry) => entry.index >= chapter.start_action_index && entry.index <= chapter.end_action_index).map((entry) => `${entry.year}年${entry.day}日，${entry.action}；结果：${entry.result}`).join(" ");
+      if (summary) storeMemoryChapter({ gameId: game.view.id, chapterNumber: chapter.chapter_number, title: chapter.title, startActionIndex: chapter.start_action_index, endActionIndex: chapter.end_action_index, summary, importance: chapter.importance, metadata: { ...(JSON.parse(chapter.metadata_json) as Record<string, unknown>), rebuiltFromProgramLedger: true } });
+    }
+  }
   const sourceKeys = new Set((database.prepare("SELECT source_key FROM vector_memories WHERE game_id = ?").all(game.view.id) as Array<{ source_key: string }>).map((row) => row.source_key));
-  for (const entry of game.world.actionLedger) if (!sourceKeys.has(`action:${entry.index}`) && !sourceKeys.has(`ledger:${entry.index}`)) storeVectorMemory({
+  for (const entry of game.world.actionLedger) if (game.schemaVersion >= 46 || (!sourceKeys.has(`action:${entry.index}`) && !sourceKeys.has(`ledger:${entry.index}`))) storeVectorMemory({
     gameId: game.view.id,
-    sourceKey: `ledger:${entry.index}`,
+    sourceKey: game.schemaVersion >= 46 ? `action:${entry.index}` : `ledger:${entry.index}`,
     actionIndex: entry.index,
     kind: "action",
     text: `${entry.year}年${entry.day}日，玩家行动：${entry.action}。程序结果：${entry.result}`,
@@ -609,10 +619,11 @@ function seedCanonKnowledge(): void {
         const sourceKey = `character:${character.id}:stage:${index}:${stage.validFromYear}:${stage.validFromDay ?? 1}`;
         validKeys.push(sourceKey);
         const factionNames = stage.publicFactionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id);
+        const stableTemperament = character.personality.slice(0, 2);
         storeCanonKnowledge({ sourceKey, era: eraAtYear(stage.validFromYear), kind: "character", subjectId: character.id, subjectName: stage.publicName,
           validFromYear: stage.validFromYear, validUntilYear: stage.validUntilYear ?? character.deathYear ?? 100_000, importance: character.importance / 5,
-          text: `${stage.publicName}在这一时点的性格惯性为${character.personality.join("、")}。当前目标：${stage.currentGoal}。当前可证公开势力：${factionNames.join("、") || "暂无"}。本时间片不提供后来才形成的称号、武魂变化、关系结果、势力归属或人生目标。`,
-          metadata: { hidden: Boolean(character.hidden), personality: character.personality, publicName: stage.publicName, publicFactionIds: stage.publicFactionIds, validFromDay: stage.validFromDay ?? 1, validUntilYear: stage.validUntilYear ?? character.deathYear ?? 100_000, validUntilDay: stage.validUntilDay ?? 360, sourceType: "结构化人物人生阶段" } });
+          text: `${stage.publicName}在这一时点可安全使用的稳定气质锚点为${stableTemperament.join("、")}；这不代表后来形成的价值观或同伴责任已经出现。当前目标：${stage.currentGoal}。当前可证公开势力：${factionNames.join("、") || "暂无"}。本时间片不提供后来才形成的称号、武魂变化、关系结果、势力归属或人生目标。`,
+          metadata: { hidden: Boolean(character.hidden), personality: stableTemperament, publicName: stage.publicName, publicFactionIds: stage.publicFactionIds, validFromDay: stage.validFromDay ?? 1, validUntilYear: stage.validUntilYear ?? character.deathYear ?? 100_000, validUntilDay: stage.validUntilDay ?? 360, sourceType: "结构化人物人生阶段" } });
       });
       const snapshots = [...character.powerSnapshots].sort((left, right) => left.year - right.year);
       snapshots.forEach((snapshot, index) => {
@@ -1474,14 +1485,13 @@ export function commitResolvedAction(previous: StoredGame, resolved: StoredGame,
     if (settlement) applyRunReward(resolved, settlement);
     const committed = resolved.lastCommittedAction;
     if (committed) {
-      const narrative = resolved.view.narrative.find((entry) => entry.id === committed.narrativeEntryId)?.text ?? "";
       const date = resolved.view.worldTime;
       storeVectorMemory({
         gameId: resolved.view.id,
         sourceKey: `action:${resolved.actionIndex}`,
         actionIndex: resolved.actionIndex,
         kind: "action",
-        text: `${date?.year ?? 0}年${date?.day ?? 1}日，地点：${resolved.view.location}。玩家行动：${committed.playerInput}。程序判定：${committed.resolution.ruleSummary}。已发生场景：${narrative}`,
+        text: `${date?.year ?? 0}年${date?.day ?? 1}日，地点：${resolved.view.location}。玩家行动：${committed.playerInput}。程序判定：${committed.resolution.ruleSummary}`,
         importance: committed.resolution.conditionAfter || /承诺|关系|加入|离开|获得|失去|死亡|觉醒|突破|魂环|魂骨|历史|秘密/.test(`${committed.playerInput}${committed.resolution.ruleSummary}`) ? 0.88 : 0.62,
         year: date?.year,
         day: date?.day,

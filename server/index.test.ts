@@ -26,12 +26,18 @@ beforeAll(async () => {
       let body = "";
       request.on("data", (chunk) => { body += String(chunk); });
       request.on("end", () => {
-        modelRequestBodies.push(JSON.parse(body) as { max_tokens?: number; thinking?: { type?: string }; messages?: Array<{ content?: string }> });
+        const requestBody = JSON.parse(body) as { max_tokens?: number; thinking?: { type?: string }; messages?: Array<{ role?: string; content?: string }> };
+        modelRequestBodies.push(requestBody);
         modelRequestBodyLengths.push(body.length);
         const semanticRequest = body.includes("行动语义整理器");
+        const userContent = [...(requestBody.messages ?? [])].reverse().find((message) => message.role === "user")?.content;
+        let submittedAction = "等待一天";
+        try { const parsed = JSON.parse(userContent ?? "{}"); if (typeof parsed.playerInput === "string") submittedAction = parsed.playerInput; } catch { /* Keep deterministic fallback. */ }
         const content = semanticRequest
-          ? JSON.stringify({ ruleAction: "等待一天" })
-          : JSON.stringify({ narrative: "少年在屋中安静等了一日，窗外的光影从东墙移到西墙。", suggestions: ["查看当前计划", "观察周围", "继续修炼"], memory: { summary: "少年等待了一日。", openThreads: [], keyChoice: "", npcNotes: {}, chapterTitle: "觉醒之后" } });
+          ? JSON.stringify({ ruleAction: submittedAction })
+          : body.includes("私下测试隐藏武魂")
+            ? JSON.stringify({ narrative: "她关好门，独自引动那股不同的魂力。太玄剑胎在掌中短暂显形，她只记住重量与魂力消耗的差异，便主动将它收回。屋外始终无人停留，秘密仍只有她知道。", suggestions: ["继续独自测试魂力消耗", "记录两种武魂的形态差异", "暂停私测并练习公开武魂"], memory: { chapterTitle: "觉醒之后" } })
+            : JSON.stringify({ narrative: "少年在屋中安静等了一日，窗外的光影从东墙移到西墙。", suggestions: ["查看当前计划", "观察周围", "继续修炼"], memory: { summary: "少年等待了一日。", openThreads: [], keyChoice: "", npcNotes: {}, chapterTitle: "觉醒之后" } });
         response.writeHead(200, { "Content-Type": "application/json" });
         response.end(JSON.stringify({ choices: [{ message: { content } }] }));
       });
@@ -168,6 +174,9 @@ describe("HTTP 状态机", () => {
     expect(afterFirst.actionIndex).toBe(1);
     expect(afterSecond.actionIndex).toBe(1);
     expect(afterSecond.revision).toBe(afterFirst.revision);
+    expect(afterSecond.storyMemory.summary).not.toContain("少年等待了一日");
+    expect(afterSecond.storyMemory.summary).toContain("世界时间推进 1440 分钟");
+    expect(afterSecond.world.actionLedger.at(-1)?.action).toBe("等待一天");
     const [intentRequest, narratorRequest] = modelRequestBodies.slice(-2);
     expect(intentRequest.max_tokens).toBe(256);
     expect(narratorRequest.max_tokens).toBe(4096);
@@ -205,5 +214,47 @@ describe("HTTP 状态机", () => {
     const afterReplay = database.loadGame(game.view.id)!;
     expect(afterReplay.actionIndex).toBe(beforeReplay.actionIndex);
     expect(afterReplay.revision).toBe(beforeReplay.revision);
+  });
+
+  it("isolates a private hidden-soul scene in the actual narrator request", async () => {
+    const game = createGame({ gender: "女", difficulty: "标准", seed: "api-private-context-isolation" });
+    selectCandidate(game, game.view.candidates[0].id, "顾遥");
+    const draft = game.view.shaping!.personalityOptions[0];
+    finalizeCharacterShaping(game, { personalityId: draft.id, keywords: draft.keywords, answers: Object.fromEntries(draft.questions.map((question) => [question.id, question.options[0].id])) });
+    awakenCharacter(game);
+    selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+    const first = game.view.character!.martialSouls[0];
+    game.view.character!.martialSouls = [first, { ...first, name: "太玄剑胎", category: "器武魂", sourceEra: "原创", description: "无锋剑形武魂，能力尚未验证。", cultivationState: "未修炼" }];
+    game.view.character!.publiclyKnownMartialSoulIndices = [0];
+    database.saveGame(game, "test.private-context-isolation");
+    const response = await fetch(`${baseUrl}/api/games/${game.view.id}/action/stream`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ input: "回住处单独感应太玄剑胎的状态" }) });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"type":"done"');
+    const narratorRequest = modelRequestBodies.at(-1)!;
+    expect(JSON.stringify(narratorRequest).length).toBeLessThan(35_000);
+    const context = JSON.parse(narratorRequest.messages?.[1]?.content ?? "{}") as Record<string, any>;
+    expect(context.narrativeLogicPacket.participantContracts).toEqual([]);
+    expect(context.narrativeLogicPacket.reactionChain.witnesses).toEqual([]);
+    expect(context.sceneKnowledge.entries.every((entry: { kind: string }) => entry.kind === "地点")).toBe(true);
+    expect(context.relationships).toEqual([]);
+    expect(context.affiliations).toEqual([]);
+    expect(context.lifeGoal).toBeUndefined();
+    expect(context.playerCausalFootprints).toEqual([]);
+    expect(context.currentTaskRecords).toEqual([]);
+    expect(context.knownNpcMemories).toEqual({});
+    expect(context.sceneNpcProfiles).toEqual([]);
+    expect(context.knownFigures).toEqual([]);
+    expect(context.activeLocalConsequences).toEqual([]);
+    expect(context.storyArc).toBeUndefined();
+    expect(context.recentNarrative).toEqual([]);
+    expect(context.retrievedLongTermMemories.every((item: { text: string }) => !/议事|培养方案|传唤|拜师/.test(item.text))).toBe(true);
+    expect(context.retrievedWorldLogic.every((item: { category: string; trigger: string; logic: string }) => /秘密|隐藏|知情|信息边界|无人目击|保密/.test(`${item.category}${item.trigger}${item.logic}`))).toBe(true);
+    expect(context.character).not.toHaveProperty("rarity");
+    expect(context.character.martialSouls[0]).not.toHaveProperty("grade");
+    expect(context.character.martialSouls[1]).toMatchObject({ name: "太玄剑胎", visibility: "仅主角知道" });
+    expect(context.activeFanfictionRules.some((rule: { rule: string }) => /魂导通信|星际|斗铠|机甲|星舰/.test(rule.rule))).toBe(false);
+    expect(database.loadGame(game.view.id)?.view.character?.martialSouls[1].privateTested).toBe(true);
+    database.deleteGame(game.view.id);
   });
 });

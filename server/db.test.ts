@@ -201,6 +201,23 @@ describe("存档数据库", () => {
     database.deleteGame(game.view.id);
   });
 
+  it("rebuilds action vectors from program receipts instead of accepted AI prose", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "vector-program-receipt-only" });
+    game.schemaVersion = 46;
+    game.actionIndex = 1;
+    game.world.actionLedger = [{ index: 1, action: "独自测试隐藏武魂", intent: "私下测试隐藏武魂", result: "只确认武魂能够显形，没有NPC在场。", year: 0, day: 1 }];
+    database.saveGame(game, "test.vector-program-receipt-only");
+    database.storeVectorMemory({ gameId: game.view.id, sourceKey: "action:1", actionIndex: 1, kind: "action", text: "AI正文虚构齐长老每天训练三个时辰并安排两名执事猎魂。" });
+    const recalled = database.retrieveVectorMemories(game, "隐藏武魂私下测试", 4);
+    expect(recalled.some((item) => item.text.includes("只确认武魂能够显形"))).toBe(true);
+    expect(recalled.some((item) => /齐长老|三个时辰|两名执事/.test(item.text))).toBe(false);
+    game.actionIndex = 0;
+    game.world.actionLedger = [];
+    database.retrieveVectorMemories(game, "回溯后的新分支", 4);
+    expect(database.getModelUsage(game.view.id).vectorMemories).toBe(0);
+    database.deleteGame(game.view.id);
+  });
+
   it("retrieves a relevant chapter before ranking scenes inside selected chapters", () => {
     const game = createGame({ gender: "男", difficulty: "标准", seed: "chapter-scene-retrieval" });
     game.actionIndex = 8;
@@ -235,6 +252,17 @@ describe("存档数据库", () => {
     const academyKnowledge = database.retrieveCanonKnowledge(game, "诺丁学院工读生和普通学员的宿舍、班主任、课程与第一魂环猎魂手令", 20);
     expect(academyKnowledge.some((item) => item.kind === "academy-system" && item.subjectId === "d1-early-academy" && item.metadata.provenance === "原著归纳")).toBe(true);
     expect(database.getModelUsage().canonKnowledgeVectors).toBeGreaterThan(100);
+  });
+
+  it("uses conservative temperament anchors instead of later-developed full personalities", () => {
+    const game = createGame({ era: 1, gender: "女", difficulty: "标准", seed: "conservative-personality-anchor" });
+    game.view.worldTime = { era: "史莱克入学阶段", year: 6, day: 1, time: "08:00", season: "春" };
+    game.world.npcs["ning-rongrong"].knownToPlayer = true;
+    game.view.knownFigures.push({ id: "ning-rongrong", name: "宁荣荣", knownPower: "实力未知", location: "七宝琉璃宗", status: "已知", source: "亲眼见过" });
+    const character = database.retrieveCanonKnowledge(game, "宁荣荣当前性格与目标", 20).find((item) => item.subjectId === "ning-rongrong" && item.kind === "character");
+    expect(character?.metadata.personality).toEqual(["聪明", "骄傲"]);
+    expect(character?.text).toContain("不代表后来形成的价值观或同伴责任已经出现");
+    expect(character?.text).not.toContain("重视同伴");
   });
 
   it("retrieves only the current public name, goal, and faction stage for known canon characters", () => {

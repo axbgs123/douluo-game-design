@@ -1397,6 +1397,10 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
     relation.impression = relation.category === "敌对" ? relation.impression : `记得${game.view.character!.name}曾就具体事情当面交谈，仍保留自己的立场`;
     return { intent: "与已知人物交谈", minutes: 30, ruleSummary: `与${relation.name}当面交谈；对方只使用自己知道的信息，并按${relation.relation}立场回答。关系只留下交谈记录，没有自动好感或承诺。`, fallbackNarrative: `${relation.name}先把手里的事做完，才抬头听问题。能说的部分没有绕弯，涉及别人职责和自己没见过的事，他也没有装作知道。话谈完了，双方的立场并没有因此变成一样。`, suggestions: [`追问${relation.name}的信息来源`, `向${relation.name}提出一项具体交换`, "结束交谈并处理眼前行动"], systemMessages: [`交谈记录 · ${relation.name}`] };
   }
+  const genericLocalInquiry = /路人|附近(?:的人|住民|居民)|当地人|村民|店主|摊主|接待人员|工作人员|守卫|门房/.test(action);
+  if (!mentioned && localTargets.length === 0 && !genericLocalInquiry) {
+    return impossible("当前没有明确且已知的交谈对象，程序不能凭一句问话临时创造知情人。", game.view.relations.slice(0, 3).map((item) => `明确询问${item.name}`).concat("向附近居民打听公开消息").slice(0, 3));
+  }
   if (mentioned) {
     const npc = game.world.npcs[mentioned.id];
     const discoverable = canDiscoverNpc(game, mentioned.id);
@@ -4076,6 +4080,25 @@ function generalResolution(game: StoredGame): ActionResolution {
   };
 }
 
+const FACT_PRODUCING_SUGGESTION = /测试|感应|召出|催动|询问|打听|调查|寻找|前往|去往|加入|拜师|学习|研习|参悟|领悟|使用|购买|训练|修炼|猎魂|魂环|交谈|告诉|回应|接受|同意|拒绝|落实|确认|比较|取得|获得|领取|申请|签订|攻击|挑战|查看.{0,8}(?:人物|事件|线索|武魂|能力|结果)/;
+
+function suggestionIsProgramExecutable(game: StoredGame, suggestion: string): boolean {
+  const preview = structuredClone(game);
+  const result = resolveAction(preview, suggestion);
+  if (/无法完成|规则阻止/.test(result.intent)) return false;
+  if (result.intent === "一般行动" && FACT_PRODUCING_SUGGESTION.test(suggestion)) return false;
+  return true;
+}
+
+export function executableNarrativeSuggestions(game: StoredGame, suggestions: string[], fallback: string[]): string[] {
+  const sanitizedSuggestions = sanitizeNarrativeSuggestions(game, suggestions, fallback).filter((suggestion) => suggestionIsProgramExecutable(game, suggestion));
+  for (const safeFallback of ["继续当前武魂基础修炼", "休息一个时辰恢复状态", "整理床铺和随身物品"]) {
+    if (sanitizedSuggestions.length >= 3) break;
+    if (!sanitizedSuggestions.includes(safeFallback) && suggestionIsProgramExecutable(game, safeFallback)) sanitizedSuggestions.push(safeFallback);
+  }
+  return sanitizedSuggestions.slice(0, 3);
+}
+
 function impossible(reason: string, suggestions = ["检查当前状态", "换一个做法", "先做准备"]): ActionResolution {
   return {
     intent: "无法完成",
@@ -4275,7 +4298,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/成为朋友|确认朋友|建立友情|长期关系|成为伴侣|确认恋爱|表达.*心意|求婚|婚姻|结婚|成婚|婚礼|组建家庭|家庭住所|共同住所|家庭准备|生育|收养.*孩子|孩子.*加入家庭|孩子出生/.test(action)) resolution = relationshipResolution(game, action);
   else if (/训练|排练|复盘/.test(action) && /连携|合击|组合技|阵型|生命防线|锁定爆发|破绽突袭|封锁阵线|攻守枢纽|生息铁壁|猎杀三角|四象战阵|逐影围猎|五环协战阵|六芒轮转阵|七星全域战阵/.test(action) && !game.view.combat) resolution = comboTrainingResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);
-  else if (/修炼|冥想|运转|练功|闭关/.test(action)) resolution = trainingResolution(game, action);
+  else if (/修炼|冥想|运转|练功|闭关|基础训练|体能训练|训练身体|练习武魂/.test(action)) resolution = trainingResolution(game, action);
   else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验|责任编辑|核验编辑|采访.*编辑|提交.*补充.*(?:证据|材料)|独家.*(?:证据|材料|线索)|对比.*(?:媒体|两家)|比较.*(?:报道|媒体)|媒体联盟|核验联盟|共享核验|优先议题|共同核验|第三家.*(?:媒体|核验机构|加入|准入)|三方.*准入|退出.*联盟|联盟.*退出|替补.*(?:媒体|机构|成员|加入|准入)|(?:媒体|机构|成员|加入|准入).*替补/.test(action)) resolution = mediaResolution(game, action);
   else if (/休息|睡觉|疗伤|恢复/.test(action)) resolution = restResolution(game);
   else if (/使用|服用|吃下|吃掉/.test(action)) resolution = useItemResolution(game, action);
@@ -4292,6 +4315,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/攻击|战斗|防御|闪避|逃跑|弱点|连携|合击|组合技|阵型|战阵|围猎/.test(action) && game.view.combat) resolution = combatResolution(game, action);
   else if (/攻击|杀|刺杀|偷袭/.test(action) && mentionedCurrentCharacter(game, action)) resolution = npcConflictResolution(game, action);
   else if (/攻击|杀|抢|闯入/.test(action)) resolution = impossible("当前缺少明确目标或足够条件，强行行动只会引来警惕。", ["观察目标", "先做准备", "暂时退开"]);
+  else if (FACT_PRODUCING_SUGGESTION.test(action)) resolution = impossible("这项行动会产生能力、人物、地点、资源或调查事实，但当前没有对应的专用程序结算；不能让小说模型代替规则编造结果。", ["把目标、对象和具体做法说清楚", "先调查完成行动所需的现实条件", "改做已经有程序支持的训练或交谈"]);
   else resolution = generalResolution(game);
 
   if (routed.deferred) {
@@ -4398,7 +4422,7 @@ export function applyActionResult(
     }
   }
   updateStoryArc(game, effectiveInput, result);
-  game.view.suggestions = sanitizeNarrativeSuggestions(game, suggestions, result.suggestions);
+  game.view.suggestions = executableNarrativeSuggestions(game, suggestions, result.suggestions);
   recordStoryConsequence(game, input, result);
   queueSocialRumor(game, effectiveInput, result.intent, result.ruleSummary);
   game.view.updatedAt = new Date().toISOString();

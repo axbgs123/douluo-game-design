@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { DIFFICULTIES, type RunSettlementView } from "../shared/game.js";
-import { applyActionResult, resolveAction } from "./domain/actions.js";
+import { applyActionResult, executableNarrativeSuggestions, resolveAction } from "./domain/actions.js";
 import {
   awakenCharacter,
   createGame,
@@ -471,7 +471,7 @@ app.post("/api/games/:id/action/rewrite", async (request, response) => {
   const narrativeEntry = working.view.narrative.find((entry) => entry.id === previous.narrativeEntryId);
   if (!narrativeEntry) return response.status(409).json({ error: "上一段正文已不在当前存档中" });
   narrativeEntry.text = generated.narrative;
-  working.view.suggestions = generated.suggestions.length === 3 ? generated.suggestions : previous.resolution.suggestions;
+  working.view.suggestions = executableNarrativeSuggestions(working, generated.suggestions, previous.resolution.suggestions);
   applyNarrativeMemory(working, generated);
   working.view.updatedAt = new Date().toISOString();
   saveNarrativeRewrite(working, generated.narrative, working.view.suggestions, generated.traceGroupId);

@@ -365,7 +365,7 @@ describe("candidate generation", () => {
       ],
     };
     const upgradedNoble = ensureGameState(migratedNoble);
-    expect(upgradedNoble.schemaVersion).toBe(45);
+    expect(upgradedNoble.schemaVersion).toBe(46);
     expect(JSON.stringify(upgradedNoble.view.chapterObjective)).toMatch(/家族培养.*学院.*外部导师/);
 
     const firstStep = resolveAction(noble, `请${noble.world.flags.openingOfficiant}完成武魂复核测试`);
@@ -621,6 +621,7 @@ describe("candidate generation", () => {
     const suggestions = sanitizeNarrativeSuggestions(game, [overlong], ["独自测试武魂消耗", "询问家人修炼安排", "暂缓公开隐藏异常"]);
     expect(suggestions).not.toContain(overlong.slice(0, 28));
     expect(suggestions.every((item) => item.length <= 28)).toBe(true);
+    expect(sanitizeNarrativeSuggestions(game, ["请长老测试体征、魂力流向、收放与承"], ["独自测试武魂消耗", "询问家人修炼安排", "暂缓公开隐藏异常"])).not.toContain("请长老测试体征、魂力流向、收放与承");
   });
 
   it("replaces vague screenshot-style choices with canon-grounded awakening actions", () => {

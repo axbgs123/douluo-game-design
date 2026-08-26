@@ -1,10 +1,8 @@
 import type { ActionResolution, StoredGame } from "../domain/model.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, characterById, locationById } from "../data/world.js";
-import { toThirdPersonNarrative } from "../domain/narrative.js";
 import { auditNarrative, auditNarrativeLogicPacket, buildChineseWebnovelSceneCard, buildNarrativeLogicPacket, refreshStoryArchive, sanitizeNarrativeSuggestions, selectNarrativeRules, violatesCanonChronology } from "../domain/story-rules.js";
 import { readDeepSeekSettings } from "./settings.js";
 import { auditNovelEngineNarrative, auditResolutionAlignment, buildNovelEnginePack } from "../domain/novel-engine.js";
-import { rememberNpcInteraction } from "../domain/world.js";
 import { buildSceneKnowledgePack } from "../domain/scene-knowledge.js";
 import { randomUUID } from "node:crypto";
 
@@ -39,9 +37,10 @@ export function buildCanonNarrativeProfile(game: StoredGame, playerInput: string
       : /修炼|训练|突破|冥想|锻造|制作/.test(scene) ? "修炼突破"
         : /学院|入学|宗门|势力|拜师|课程|舰队/.test(scene) ? "学院势力" : "生活成长";
   const era = game.view.era ?? 1;
+  const year = game.view.worldTime?.year ?? 0;
   const eraTexture = ({
     1: "斗一的奇异感从村庄、家庭生计、铁匠铺、学院名额、路费与猎魂手令等日常门槛中长出来；魂师身份尊贵，但普通人仍要吃饭、干活、赶路和求人。",
-    2: "斗二先写个人匮乏、谋生本领、同伴相遇与学院竞争，再让魂导器、魂灵研究和万年制度变化进入人物选择；弱小阶段的每份资源都应有重量。",
+    2: year < 10_012 ? "斗二前期先写个人匮乏、谋生本领、魂导器发展、同伴相遇与学院竞争；成熟魂灵体系和传灵塔尚未成立，不能作为日常制度提前出现。" : "斗二后期仍要从人物匮乏、学院与战争压力出发，再让已经形成证据的魂灵研究和制度变化进入选择；弱小阶段的每份资源都应有重量。",
     3: "斗三重视童年愿望、家庭安慰、学校生活、职业劳动、身体异变与同龄竞争；大设定先落到孩子的失望、饭量、工资、训练和朋友关系上。",
     4: "斗四的联邦科技必须通过岗位命令、设备操作、军衔责任和家庭/同事关系显形；制度场景里也要有人情、玩笑、偏心、疲惫和生活安排。",
   } as const)[era];
@@ -70,7 +69,7 @@ export function auditArchivedNarrative(game: StoredGame, playerInput: string, re
     ...auditNarrative(game, narrative),
     ...auditNovelEngineNarrative(game, narrative, buildNovelEnginePack(game, playerInput, resolution, readDeepSeekSettings().novelEngineEnabled)),
     ...auditCanonNarrativeVoice(narrative, buildCanonNarrativeProfile(game, playerInput, resolution)),
-    ...auditResolutionAlignment(narrative, resolution, playerInput),
+    ...auditResolutionAlignment(narrative, resolution, playerInput, game),
   ];
   return [...new Set(issues)];
 }
@@ -334,7 +333,9 @@ export async function narrateWithDeepSeek(
   const activeRules = selectNarrativeRules(game, playerInput, resolution);
   const novelEngine = buildNovelEnginePack(game, playerInput, resolution, settings.novelEngineEnabled);
   const pacing = narrativePacing(game, playerInput, resolution);
-  const sceneKnowledge = buildSceneKnowledgePack(game, playerInput);
+  const privateSolitaryAction = /私下测试隐藏武魂/.test(resolution.intent) || /没有NPC在场|无NPC在场|无人旁观/.test(resolution.ruleSummary);
+  const rawSceneKnowledge = buildSceneKnowledgePack(game, playerInput);
+  const sceneKnowledge = privateSolitaryAction ? { ...rawSceneKnowledge, entries: rawSceneKnowledge.entries.filter((entry) => entry.kind === "地点" || (entry.kind === "情报" && playerInput.includes(entry.name))) } : rawSceneKnowledge;
   const narrativeLogicPacket = buildNarrativeLogicPacket(game, playerInput, resolution, sceneKnowledge);
   const canonNarrativeProfile = buildCanonNarrativeProfile(game, playerInput, resolution);
   const logicIssues = auditNarrativeLogicPacket(narrativeLogicPacket);
@@ -344,19 +345,37 @@ export async function narrateWithDeepSeek(
   const memoryQuery = [
     playerInput, resolution.intent, resolution.ruleSummary, game.view.location,
     publicSoulNames.length ? `已公开${publicSoulNames.length}个武魂：${publicSoulNames.join("、")}；先天魂力${game.view.character?.innateSoulPower ?? "未知"}；社会评价${game.view.character?.reputation ?? "尚未形成"}` : "",
-    game.view.storyArc ? `当前故事卷：${game.view.storyArc.title}；阶段${game.view.storyArc.stage}；目标${game.view.storyArc.centralGoal}；冲突${game.view.storyArc.centralConflict}；对抗压力${game.view.storyArc.opposingForce}` : "",
-    game.view.academyLife ? `${game.view.academyLife.periodLabel}：${game.view.academyLife.className}；${game.view.academyLife.stage}；${game.view.academyLife.teacherRole}${game.view.academyLife.teacherName}；当前安排${game.view.academyLife.arrangementName}；同辈${game.view.academyLife.peers.map((peer) => `${peer.name}/${peer.motive}`).join("、")}` : "",
-    ...game.view.tasks.filter((task) => task.status !== "完成").slice(0, 6).map((task) => `${task.title} ${task.detail}`),
+    !privateSolitaryAction && game.view.storyArc ? `当前故事卷：${game.view.storyArc.title}；阶段${game.view.storyArc.stage}；目标${game.view.storyArc.centralGoal}；冲突${game.view.storyArc.centralConflict}；对抗压力${game.view.storyArc.opposingForce}` : "",
+    !privateSolitaryAction && game.view.academyLife ? `${game.view.academyLife.periodLabel}：${game.view.academyLife.className}；${game.view.academyLife.stage}；${game.view.academyLife.teacherRole}${game.view.academyLife.teacherName}；当前安排${game.view.academyLife.arrangementName}；同辈${game.view.academyLife.peers.map((peer) => `${peer.name}/${peer.motive}`).join("、")}` : "",
+    ...(!privateSolitaryAction ? game.view.tasks.filter((task) => task.status !== "完成").slice(0, 6).map((task) => `${task.title} ${task.detail}`) : ["无人目击，隐藏武魂，保密，知情范围不变"]),
     ...game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === game.view.locationId).map((item) => `持续后果：${item.summary}`),
-    ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => `${npc.name}：${npc.activePlan?.nextAction ?? npc.currentGoal}；责任${npc.activePlan?.responsibility ?? "个人事务"}`),
+    ...(!privateSolitaryAction ? Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => `${npc.name}：${npc.activePlan?.nextAction ?? npc.currentGoal}；责任${npc.activePlan?.responsibility ?? "个人事务"}`) : []),
   ].join("\n");
-  const retrievedLongTermMemories = await retrieveVectorMemoryContext(game, memoryQuery);
+  const rawLongTermMemories = await retrieveVectorMemoryContext(game, memoryQuery);
+  const hiddenSoulNames = game.view.character?.martialSouls.filter((_soul, index) => !(game.view.character?.publiclyKnownMartialSoulIndices ?? [0]).includes(index)).map((soul) => soul.name) ?? [];
+  const retrievedLongTermMemories = privateSolitaryAction ? rawLongTermMemories.filter((item) => hiddenSoulNames.some((name) => item.text.includes(name)) && !/议事|培养方案|传唤|拜师/.test(item.text)) : rawLongTermMemories;
   const retrievedCanonKnowledge = await retrieveCanonKnowledgeContext(game, memoryQuery);
-  const retrievedWorldLogic = await retrieveWorldLogicContext(game, memoryQuery);
+  const rawWorldLogic = await retrieveWorldLogicContext(game, memoryQuery);
+  const retrievedWorldLogic = privateSolitaryAction ? rawWorldLogic.filter((item) => /秘密|隐藏|知情|信息边界|无人目击|保密/.test(`${item.category}${item.trigger}${item.logic}`)) : rawWorldLogic;
   if (!retrievedWorldLogic.length) throw new Error("世界基本逻辑检索没有返回适用规则，已停止本次正文生成");
   await safeRecordContextRetrieval(game, "narrator", { memory: retrievedLongTermMemories, canon: retrievedCanonKnowledge, logic: retrievedWorldLogic });
   const lengthTarget = `${pacing.kind}场景，${pacing.target}。${pacing.directive}`;
   const eraTitle = ({ 1: "《斗罗大陆》第一部", 2: "《绝世唐门》", 3: "《龙王传说》", 4: "《终极斗罗》" } as const)[game.view.era ?? 1];
+  const narrativeCharacter = game.view.character ? (() => {
+    const { rarity: _originRarity, martialSoul: _activeSoul, martialSouls, ...rest } = game.view.character!;
+    const publicIndices = new Set(game.view.character!.publiclyKnownMartialSoulIndices ?? [0]);
+    const cleanSoul = ({ rarity: _rarity, grade: _grade, sourceEra: _sourceEra, originFit: _originFit, ...soul }: typeof martialSouls[number], index?: number) => ({ ...soul, visibility: index === undefined || publicIndices.has(index) ? "已公开" : "仅主角知道" });
+    const cleanedSouls = martialSouls.map((soul, index) => cleanSoul(soul, index));
+    return { ...rest, martialSoul: cleanSoul(game.view.character!.martialSoul, game.view.character!.activeMartialSoulIndex), martialSouls: cleanedSouls };
+  })() : undefined;
+  const narrativeStoryArc = privateSolitaryAction ? undefined : game.view.storyArc;
+  const scenePersonNames = new Set(sceneKnowledge.entries.filter((entry) => entry.kind === "人物").map((entry) => entry.name));
+  const relevantRelations = privateSolitaryAction ? [] : [...game.view.relations]
+    .sort((left, right) => Number(playerInput.includes(right.name)) - Number(playerInput.includes(left.name)) || Number(scenePersonNames.has(right.name)) - Number(scenePersonNames.has(left.name)) || (right.strength ?? 0) - (left.strength ?? 0))
+    .filter((relation, index) => playerInput.includes(relation.name) || scenePersonNames.has(relation.name) || index < 4)
+    .slice(0, 8);
+  const relevantIntelligence = privateSolitaryAction ? [] : game.view.intelligence.filter((item) => playerInput.includes(item.title) || item.subjectId === game.view.locationId || sceneKnowledge.entries.some((entry) => entry.id === item.subjectId)).slice(0, 8);
+  const relevantTasks = privateSolitaryAction ? [] : game.view.tasks.filter((task) => task.status !== "完成" && (task.id === game.view.storyArc?.mainTaskId || playerInput.includes(task.title) || task.destinationId === game.view.locationId)).slice(0, 5);
 
   const payload = await tracedCompletion(game, "narrator", settings, {
       model: settings.model,
@@ -389,7 +408,7 @@ export async function narrateWithDeepSeek(
             "playerInput是本次正文必须完整兑现的行动，不是可以替换的灵感。先写玩家所做之事及程序固定后果，再写由此产生的反应；不得用NPC来访、会议、转场或另一项任务抢走本次行动。",
             "行动所有权是硬门禁：正文前半段必须出现玩家动作的可见执行证据和fixedRuleResult的可见结果证据。若当前行动很短，可以扩写感受、阻力与直接后果，但不能靠新增事件凑字数。",
             "若本次行动是隐藏、私下测试、独处、保密或不公开，正文不得让敲门、传唤、NPC进门、实际前往议事堂或培养会议抢走行动，也不得凭空生成未持有物品。测试确实完成后，可以用一句内心提醒承接结构化状态中已经存在的未来安排，但不能实际转场、赴会或替玩家决定如何回应；suggestions必须从私下行动完成后的真实状态继续。",
-            "每个重要反应都要通过欲望、信息、权限、资源、行动、后果六环。异常天赋必须引发符合目击者利益和权限的复测、上报、谈条件、争夺或戒备，不能只惊叹一句便散场。",
+            "每个重要反应都要通过欲望、信息、权限、资源、行动、后果六环。只有已经公开且被现场人物实际目击的异常天赋，才能引发符合目击者利益和权限的复测、上报、谈条件、争夺或戒备；未显形、无人目击或仍属主角秘密时不得产生NPC反应。",
             "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
             "narrativeLogicPacket 是正文生成前已经通过的硬逻辑合同。generationContract是本稿的正向场景白名单：先按sceneGoal和requiredBeats搭好本场骨架，只从allowedFacts取事实，逐条避开forbiddenClaims，并严格停在endingBoundary；然后再满足protagonistContract、participantContracts、reactionChain与continuityContract。不要先自由发挥再依赖审校纠错，也不得在正文中提到逻辑包、白名单、状态版本或检查过程。",
             "retrievedLongTermMemories 是本地向量库按当前行动召回的玩家已知旧事。只在与当前场景相关时自然延续；它不能覆盖当前程序状态，也不能让未亲历该事的NPC突然知情。发生冲突时以当前结构化状态和 fixedRuleResult 为准。",
@@ -405,53 +424,52 @@ export async function narrateWithDeepSeek(
             "儿童角色的语言必须符合年龄。六至十岁可以聪明、克制、有前世记忆或受严格教育，但若设定没有明确支持，不能连续使用数据治理、行政汇报、资源审批式口吻，也不能像成年管理者主持会议。",
             "activeLocalConsequences 是错过事件已经写入程序的持续后果。正文必须让供需、治安、伤亡、制度、关系、势力或生态变化落到当前生活中；不得把已经发生的损失恢复成事件前状态。",
             `activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗${game.view.era === 1 ? "一" : game.view.era === 2 ? "二" : game.view.era === 3 ? "三" : "四"}适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。`,
-            "你还负责维护玩家可知的长期记忆。summary 要合并旧摘要和本次结果，保留身份、关系、承诺、伤势、秘密与长期目标，控制在八百字内。openThreads 只留仍未解决的事。npcNotes 按人名记录此人亲历且今后应该记得的互动，不得写入其未知事实。",
-            "当地点、人生阶段、主要矛盾或长期目标发生明显变化时，可以拟一个短章节名；普通行动沿用旧章节名。",
+            "事实记忆完全由程序根据行动账本、任务和结构化状态维护，你不得替程序生成summary、openThreads、keyChoice或npcNotes。当地点、人生阶段、主要矛盾或长期目标明显变化时，只可在memory.chapterTitle提出一个短章节名；普通行动返回空字符串。",
             novelEngine.prompt,
             retryGuidance.length ? `上一稿未通过审校，必须逐项修复后完整重写，不要解释修改过程：${retryGuidance.join("；")}` : "",
             `本次长度要求：${lengthTarget}。按情节自然分段，不固定段数。`,
-            "输出 JSON：{\"narrative\":\"第三人称限知正文\",\"suggestions\":[\"建议1\",\"建议2\",\"建议3\"],\"memory\":{\"summary\":\"长期摘要\",\"openThreads\":[\"未决事项\"],\"keyChoice\":\"本次关键选择，无则空字符串\",\"npcNotes\":{\"人名\":\"应记住的互动\"},\"chapterTitle\":\"章节名\"}}。",
+            "输出 JSON：{\"narrative\":\"第三人称限知正文\",\"suggestions\":[\"建议1\",\"建议2\",\"建议3\"],\"memory\":{\"chapterTitle\":\"章节名或空字符串\"}}。不要返回其他memory字段。",
           ].join("\n"),
         },
         {
           role: "user",
           content: JSON.stringify({
-            character: game.view.character,
+            character: narrativeCharacter,
             personality: game.view.personalitySummary,
             personalityEvidence: game.personalityProfile.evidence?.slice(-12),
             location: game.view.location,
             worldTime: game.view.worldTime,
             occurredCanonEvents: observableCanonEventsForNarration(game).sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1)).slice(-24).map(({ year, day, title, publicSummary }) => ({ year, day: day ?? 1, title, publicSummary })),
             futureCanonGuard: { currentYear: game.view.worldTime?.year ?? 0, currentDay: game.view.worldTime?.day ?? 1, hiddenFutureEventCount: CANON_EVENTS.filter((event) => event.year > (game.view.worldTime?.year ?? 0) || (event.year === (game.view.worldTime?.year ?? 0) && (event.day ?? 1) > (game.view.worldTime?.day ?? 1))).length, rule: "未来事件标题、参与者与结果未提供；不得猜测或补写" },
-            playerCausalFootprints: observableCausalFootprintsForNarration(game).slice(-16),
+            playerCausalFootprints: privateSolitaryAction ? [] : observableCausalFootprintsForNarration(game).slice(-16),
             sceneKnowledge,
-            lifeGoal: game.view.lifeGoal,
-            affiliations: game.view.affiliations,
-            relationships: game.view.relations.slice(0, 16),
-            relationshipDimensionsAndCauses: game.view.relations.slice(0, 16).map(({ name, dimensions, history }) => ({ name, dimensions, latestCause: history?.at(-1) })),
-            reputationsByIdentityAndRegion: game.view.reputations,
-            economy: game.view.economy,
+            lifeGoal: privateSolitaryAction ? undefined : game.view.lifeGoal,
+            affiliations: privateSolitaryAction ? [] : game.view.affiliations,
+            relationships: relevantRelations,
+            relationshipDimensionsAndCauses: relevantRelations.map(({ name, dimensions, history }) => ({ name, dimensions, latestCause: history?.at(-1) })),
+            reputationsByIdentityAndRegion: privateSolitaryAction ? [] : game.view.reputations,
+            economy: privateSolitaryAction ? undefined : game.view.economy,
             inventoryLoad: game.view.inventoryLoad,
-            professions: game.view.professions,
-            managedFactions: game.view.managedFactions,
-            currentTaskRecords: game.view.tasks.filter((task) => task.status !== "完成").slice(0, 10),
-            academyApplication: game.view.academyApplication,
-            academyLife: game.view.academyLife,
-            mentorPursuit: game.view.mentorPursuit,
-            hunting: game.view.hunting,
-            combat: game.view.combat,
-            knownFigures: game.view.knownFigures.slice(0, 12),
-            intelligenceWithSources: game.view.intelligence.slice(0, 12),
-            knownNpcMemories: Object.fromEntries(Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer && npc.episodicMemory.length).map((npc) => [npc.name, npc.episodicMemory.slice(-4).map(({ text, year, day, significance }) => ({ text, year, day, significance }))])),
-            sceneNpcProfiles: Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => { const definition = characterById(npc.id); return { name: npc.name, personality: definition?.personality, currentGoal: npc.currentGoal, attitude: npc.dispositionToPlayer, directorPlan: npc.activePlan ? { desire: npc.activePlan.desire, responsibility: npc.activePlan.responsibility, informationBoundary: npc.activePlan.informationBoundary, authority: npc.activePlan.authority, resources: npc.activePlan.resources, nextAction: npc.activePlan.nextAction, status: npc.activePlan.status, lastOutcome: npc.activePlan.lastOutcome, playerImpact: npc.activePlan.playerImpact } : undefined, rememberedInteractions: npc.episodicMemory.slice(-4).map(({ text, year, day, significance }) => ({ text, year, day, significance })), knownPower: game.view.knownFigures.find((item) => item.id === npc.id)?.knownPower }; }),
-            recentNews: game.view.news.slice(0, 8),
-            longTermMemory: { summary: game.storyMemory.summary.slice(0, 1_800), openThreads: game.storyMemory.openThreads, keyChoices: game.storyMemory.keyChoices.slice(-8) },
+            professions: privateSolitaryAction ? [] : game.view.professions,
+            managedFactions: privateSolitaryAction ? [] : game.view.managedFactions,
+            currentTaskRecords: relevantTasks,
+            academyApplication: privateSolitaryAction ? undefined : game.view.academyApplication,
+            academyLife: privateSolitaryAction ? undefined : game.view.academyLife,
+            mentorPursuit: privateSolitaryAction ? undefined : game.view.mentorPursuit,
+            hunting: privateSolitaryAction ? undefined : game.view.hunting,
+            combat: privateSolitaryAction ? undefined : game.view.combat,
+            knownFigures: privateSolitaryAction ? [] : game.view.knownFigures.slice(0, 12),
+            intelligenceWithSources: relevantIntelligence,
+            knownNpcMemories: privateSolitaryAction ? {} : Object.fromEntries(Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer && npc.episodicMemory.length && (scenePersonNames.has(npc.name) || playerInput.includes(npc.name))).map((npc) => [npc.name, npc.episodicMemory.slice(-4).map(({ text, year, day, significance }) => ({ text, year, day, significance }))])),
+            sceneNpcProfiles: privateSolitaryAction ? [] : Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => { const definition = characterById(npc.id); return { name: npc.name, stableTemperamentHints: definition?.personality.slice(0, 2), temperamentBoundary: "只作为稳定气质参考，不代表后来价值观、关系或同伴责任已经形成", currentGoal: npc.currentGoal, attitude: npc.dispositionToPlayer, directorPlan: npc.activePlan ? { desire: npc.activePlan.desire, responsibility: npc.activePlan.responsibility, informationBoundary: npc.activePlan.informationBoundary, authority: npc.activePlan.authority, resources: npc.activePlan.resources, nextAction: npc.activePlan.nextAction, status: npc.activePlan.status, lastOutcome: npc.activePlan.lastOutcome, playerImpact: npc.activePlan.playerImpact } : undefined, rememberedInteractions: npc.episodicMemory.slice(-4).map(({ text, year, day, significance }) => ({ text, year, day, significance })), knownPower: game.view.knownFigures.find((item) => item.id === npc.id)?.knownPower }; }),
+            recentNews: privateSolitaryAction ? [] : game.view.news.slice(0, 8),
+            longTermMemory: { summary: game.storyMemory.summary.slice(0, privateSolitaryAction ? 800 : 1_800), openThreads: privateSolitaryAction ? [] : game.storyMemory.openThreads, keyChoices: privateSolitaryAction ? [] : game.storyMemory.keyChoices.slice(-8) },
             retrievedLongTermMemories,
             retrievedCanonKnowledge,
             retrievedWorldLogic,
-            storyArc: game.view.storyArc,
-            activeLocalConsequences: game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === game.view.locationId),
-            recentNarrative: game.view.narrative.slice(-6).map((entry) => ({ ...entry, text: entry.text.slice(0, 1_600) })),
+            storyArc: narrativeStoryArc,
+            activeLocalConsequences: privateSolitaryAction ? [] : game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === game.view.locationId),
+            recentNarrative: privateSolitaryAction ? [] : game.view.narrative.slice(-6).map((entry) => ({ ...entry, text: entry.text.slice(0, 1_600) })),
             playerInput,
             fixedRuleResult: resolution.ruleSummary,
             fixedSuggestions: resolution.suggestions,
@@ -471,13 +489,13 @@ export async function narrateWithDeepSeek(
   if (typeof parsed.narrative !== "string" || !Array.isArray(parsed.suggestions)) {
     throw new Error("DeepSeek 返回结构不合法");
   }
-  const memoryText = parsed.memory && typeof parsed.memory === "object" ? [parsed.memory.summary, ...(parsed.memory.openThreads ?? []), parsed.memory.keyChoice, ...Object.keys(parsed.memory.npcNotes ?? {}), ...Object.values(parsed.memory.npcNotes ?? {}), parsed.memory.chapterTitle].filter((item): item is string => typeof item === "string").join("\n") : "";
+  const memoryText = parsed.memory && typeof parsed.memory === "object" && typeof parsed.memory.chapterTitle === "string" ? parsed.memory.chapterTitle : "";
   const chronologyText = `${parsed.narrative}\n${parsed.suggestions.filter((item): item is string => typeof item === "string").join("\n")}\n${memoryText}`;
   if (violatesCanonChronology(chronologyText, game.view.worldTime?.year ?? 0)) throw new Error("DeepSeek 生成内容违反当前原作时间线，已改用安全叙事");
   const auditIssues = auditNarrative(game, parsed.narrative);
   const memoryTimelineIssues = auditNarrative(game, memoryText).filter((issue) => /提前|时间线|年份|年龄|魂力|后期姓名|势力归属/.test(issue));
   const novelEngineIssues = auditNovelEngineNarrative(game, parsed.narrative, novelEngine);
-  const allAuditIssues = [...auditIssues, ...memoryTimelineIssues, ...novelEngineIssues, ...auditCanonNarrativeVoice(parsed.narrative, canonNarrativeProfile), ...auditResolutionAlignment(parsed.narrative, resolution, playerInput)];
+  const allAuditIssues = [...auditIssues, ...memoryTimelineIssues, ...novelEngineIssues, ...auditCanonNarrativeVoice(parsed.narrative, canonNarrativeProfile), ...auditResolutionAlignment(parsed.narrative, resolution, playerInput, game)];
   if (allAuditIssues.length) throw new NarrativeAuditError(allAuditIssues);
 
   return {
@@ -553,19 +571,6 @@ export async function narrateWithAuditRetries(
 export function applyNarrativeMemory(game: StoredGame, generated: NarrationResult): void {
   const memory = generated.memory;
   if (!memory) return;
-  const character = game.view.character;
-  const normalize = (text: string) => character ? toThirdPersonNarrative(text, character.name, character.gender) : text;
-  if (typeof memory.summary === "string" && memory.summary.trim()) game.storyMemory.summary = normalize(memory.summary.trim()).slice(0, 4000);
-  if (Array.isArray(memory.openThreads)) game.storyMemory.openThreads = memory.openThreads.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.slice(0, 120)).slice(0, 12);
-  if (typeof memory.keyChoice === "string" && memory.keyChoice.trim()) game.storyMemory.keyChoices = [...game.storyMemory.keyChoices, normalize(memory.keyChoice.trim()).slice(0, 160)].slice(-20);
-  if (memory.npcNotes && typeof memory.npcNotes === "object") {
-    for (const [name, note] of Object.entries(memory.npcNotes)) if (typeof note === "string" && note.trim()) {
-      const normalizedNote = normalize(note.trim());
-      game.storyMemory.npcNotes[name.slice(0, 30)] = normalizedNote.slice(0, 400);
-      const npc = Object.values(game.world.npcs).find((item) => item.name === name && item.knownToPlayer);
-      if (npc) rememberNpcInteraction(game, npc, normalizedNote, "叙事提取");
-    }
-  }
   if (typeof memory.chapterTitle === "string" && memory.chapterTitle.trim() && memory.chapterTitle.trim() !== game.storyMemory.chapterTitle) {
     game.storyMemory.chapterNumber += 1;
     game.storyMemory.chapterTitle = memory.chapterTitle.trim().slice(0, 24);

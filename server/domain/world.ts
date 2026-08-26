@@ -1426,7 +1426,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 45;
+  legacy.schemaVersion = 46;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1719,6 +1719,37 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.storyMemory.openThreads = game.storyMemory.openThreads.map(replaceEarlyTemplateLanguage);
     for (const event of game.world.dynamicEvents.filter((item) => /awakening|talent-recruitment/.test(item.id))) { event.title = replaceEarlyTemplateLanguage(event.title); event.detail = replaceEarlyTemplateLanguage(event.detail); }
     for (const relation of game.view.relations.filter((item) => item.relation === "觉醒主持者")) relation.relation = "负责本次觉醒的魂师";
+  }
+  if (previousSchemaVersion < 46) {
+    const hiddenSoulCount = game.view.character ? Math.max(0, game.view.character.martialSouls.length - (game.view.character.publiclyKnownMartialSoulIndices?.length ?? 1)) : 0;
+    for (const entry of game.world.actionLedger) {
+      const requestedPrivateTest = /暂不显露|不公开|隐藏/.test(entry.action) && /第二武魂|第三武魂|副武魂|隐藏武魂|单独测试|私下测试/.test(entry.action);
+      const resolvedAsDifferentAction = !/私下测试隐藏武魂|隐藏武魂.{0,20}(?:显形|测试)/.test(`${entry.intent}${entry.result}`);
+      if (hiddenSoulCount > 0 && requestedPrivateTest && resolvedAsDifferentAction) {
+        entry.intent = "旧版本未完成私测";
+        entry.result = "旧版本没有实际执行隐藏武魂私测；该记录不构成公开、测试、能力或NPC知情证据，需由玩家重新行动。";
+        const consequence = game.view.storyArchive?.recentConsequences.find((item) => item.action === entry.action);
+        if (consequence) { consequence.result = entry.result; consequence.tone = "普通"; }
+      }
+    }
+    const ledgerSummary = game.world.actionLedger.slice(-40).map((entry) => `${entry.year}年第${entry.day}日，${entry.action}；程序结果：${entry.result}`);
+    const awakeningFact = game.view.character ? `${game.view.character.name}已完成武魂觉醒，当前公开武魂为${game.view.character.martialSouls?.filter((_soul, index) => (game.view.character?.publiclyKnownMartialSoulIndices ?? [0]).includes(index)).map((soul) => soul.name).join("、") || game.view.character.martialSoul.name}，先天魂力${game.view.character.innateSoulPower}级。` : "";
+    game.storyMemory.summary = [awakeningFact, ...ledgerSummary].filter(Boolean).join(" ").slice(-4_000);
+    game.storyMemory.openThreads = [...new Set((game.view.tasks ?? []).filter((task) => task.status !== "完成").map((task) => task.title))].slice(0, 12);
+    game.storyMemory.keyChoices = game.world.actionLedger.filter((entry) => /确定|选择|公开|隐藏|加入|拜师|承诺|拒绝|介入|魂环|生死/.test(`${entry.action}${entry.intent}`)).slice(-20).map((entry) => `${entry.year}年第${entry.day}日，${entry.action}`);
+    game.storyMemory.npcNotes = {};
+    game.storyMemory.lastUpdatedAction = game.actionIndex;
+    for (const npc of Object.values(game.world.npcs)) {
+      npc.episodicMemory = (npc.episodicMemory ?? []).filter((memory) => memory.source !== "叙事提取");
+      npc.memoryOfPlayer = npc.episodicMemory.map((memory) => memory.text).slice(-12);
+    }
+    if (game.view.storyArchive) {
+      game.view.storyArchive.summary = game.storyMemory.summary;
+      game.view.storyArchive.openThreads = [...game.storyMemory.openThreads];
+      game.view.storyArchive.keyChoices = [...game.storyMemory.keyChoices].reverse();
+    }
+    if (game.view.chapter) game.view.chapter.summary = game.storyMemory.summary.slice(-260);
+    game.world.flags.schema46MemoryRebuilt = true;
   }
   if (previousSchemaVersion < 35) {
     const day = game.view.worldTime?.day ?? 1;

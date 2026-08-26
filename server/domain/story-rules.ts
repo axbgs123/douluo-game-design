@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { StoryArchiveView, StoryConsequenceView } from "../../shared/game.js";
-import { CANON_CHARACTERS, FACTIONS, factionActiveAtYear } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, factionActiveAtYear } from "../data/world.js";
 import { rulesForEra, type FanfictionRule } from "../data/fanfiction-rules.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import type { SceneKnowledgePack } from "./scene-knowledge.js";
 import { storyArcSuggestions } from "./story-director.js";
 
-const BASE_SECTIONS = [5, 18, 53, 69, 70, 93, 94, 97, 100];
+const BASE_SECTIONS = [5, 53, 69, 70, 94, 97, 100];
 
 const ACTION_SECTION_ROUTES: Array<[RegExp, number[]]> = [
   [/猎魂|魂兽|魂环|吸收/, [27, 28, 29, 30, 40, 41, 43, 85]],
@@ -29,11 +29,17 @@ const FUTURE_TECH_BY_ERA: Record<1 | 2 | 3 | 4, RegExp | undefined> = {
   4: undefined,
 };
 const EXTERNAL_POWER = /查克拉|魔力|灵力|仙力|斗气|念能力|恶魔果实|斩魄刀|修仙功法|御剑术/;
+const EXCLUSIVE_CANON_TECHNIQUES = ["玄天功", "紫极魔瞳", "鬼影迷踪", "控鹤擒龙", "玄玉手", "暗器百解", "乱披风锤法", "昊天九绝", "大须弥锤", "炸环", "分心控制"];
 
 function worldDate(game: StoredGame): string {
   const time = game.view.worldTime;
   if (!time) return "时间未定";
   return `${time.era} · 第${time.day}日 ${time.time}`;
+}
+
+function allowsForeignCultivationVocabulary(game: StoredGame): boolean {
+  const character = game.view.character;
+  return /异世剑修|修仙世界转生|异界体系|前世.*修行|前世.*识海/.test(`${character?.originName ?? ""}${character?.route ?? ""}${character?.selfKnowledge ?? ""}${character?.knownBackground ?? ""}`);
 }
 
 function impossible(game: StoredGame, reason: string, suggestions: string[], ruleIds: number[]): ActionResolution {
@@ -52,6 +58,17 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
   const year = game.view.worldTime?.year ?? 0;
   const name = game.view.character?.name ?? "角色";
   const age = game.view.character?.age ?? 6;
+  const capabilityEvidence = [
+    game.view.character?.revealedGift,
+    ...(game.view.character?.specialSystem?.abilities ?? []),
+    ...(game.view.character?.soulRings ?? []).flatMap((ring) => [ring.skillName, ring.skillDescription]),
+    ...game.world.actionLedger.map((entry) => `${entry.action} ${entry.result}`),
+    ...game.view.intelligence.filter((item) => item.status === "确定").map((item) => `${item.title} ${item.detail}`),
+  ].filter((item): item is string => Boolean(item)).join("；");
+  const unownedTechnique = EXCLUSIVE_CANON_TECHNIQUES.find((technique) => action.includes(technique) && !capabilityEvidence.includes(technique));
+  if (unownedTechnique && /学习|研习|参悟|领悟|修炼|施展|使用|运转|练习|传授|掌握|发动/.test(action)) {
+    return impossible(game, `${name}目前只有“${unownedTechnique}”这个名字，没有已经学习、传授或掌握它的程序证据；知道原著或听过传闻不等于能够使用。`, ["调查这项能力的真实来源", "寻找有权限且愿意传授的人", "继续修炼已经掌握的能力"], [18, 53, 69, 220, 491]);
+  }
   const mentionedFactions = FACTIONS.filter((faction) => action.includes(faction.name));
   const hasActiveMention = mentionedFactions.some((faction) => factionActiveAtYear(faction, year));
   const futureFaction = !hasActiveMention ? mentionedFactions.find((faction) => faction.activeFromYear !== undefined && year < faction.activeFromYear) : undefined;
@@ -78,7 +95,7 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
   if (/^(?:先)?(?:试探一下(?:他|她|对方)?|处理一下|想办法|采取行动|随便做点准备)[。！]?$/u.test(action) && (game.view.combat || game.world.dynamicEvents.some((event) => event.status === "可介入"))) {
     return impossible(game, "这句话在当前情境下可能代表多种后果差异很大的做法，程序不能替玩家选择风险和底线。", ["保持距离，用言语试探", "先调查对方掌握的情报", "明确说明自己的目标与退路"], [681, 691, 921]);
   }
-  const futureTech = FUTURE_TECH_BY_ERA[game.view.era ?? 1];
+  const futureTech = (game.view.era ?? 1) === 2 && year >= 10_012 ? /斗铠|星舰|宇宙飞船|升灵台/ : FUTURE_TECH_BY_ERA[game.view.era ?? 1];
   if (futureTech?.test(action)) {
     const researchOnly = /调查|研究|设想|查资料|寻找遗迹/.test(action);
     if (!researchOnly) return impossible(game,
@@ -126,6 +143,16 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
     const npc = Object.values(game.world.npcs).find((item) => action.includes(item.name));
     const definition = npc ? CANON_CHARACTERS.find((item) => item.id === npc.id) : undefined;
     const hasIdentityEvidence = definition ? game.world.intelligenceRecords.some((record) => record.subjectType === "人物" && record.subjectId === definition.id && record.confidence >= 60) || game.world.canonCausalFootprints.some((cause) => cause.affectedNpcIds.includes(definition.id)) : false;
+    const knownThroughState = Boolean(npc && (npc.knownToPlayer || game.view.knownFigures.some((item) => item.id === npc.id) || game.view.relations.some((item) => item.id === npc.id || item.name === npc.name) || hasIdentityEvidence));
+    const hasUnlockedPlotMemory = /剧情记忆|原作记忆|穿越者.*记得|现代世界.*原作/.test(`${game.view.character?.selfKnowledge ?? ""}${game.view.character?.knownBackground ?? ""}`);
+    const sourceInvestigation = /调查|核验|查证/.test(action) && /名字|传闻|来源|身份/.test(action);
+    if (definition && npc && !knownThroughState && !hasUnlockedPlotMemory && !sourceInvestigation) {
+      return impossible(game, `${name}当前没有通过亲历、转述、情报或穿越记忆知道“${npc.name}”这个人，不能直接按读者知识寻找、询问或接触。`, ["调查这个名字从哪里听来", "先询问当前认识的人与本地消息", "处理眼前能够确认的人和事"], [18, 53, 54, 66, 69, 931]);
+    }
+    const immediateRemoteContact = /当面交谈|与.{0,10}交谈|拜访|拜师|攻击|杀|跟随|见到/.test(action);
+    if (definition && npc && knownThroughState && npc.locationId !== game.view.locationId && immediateRemoteContact) {
+      return impossible(game, `${npc.name}不在当前地点，${name}必须先取得可达路线并完成旅行，不能在这一回合直接见面或出手。`, [`调查${npc.name}当前可能所在的位置`, "查看能够实际抵达的路线", "先处理当前地点的事情"], [17, 18, 20, 66, 932, 933]);
+    }
     if (definition?.hidden && npc && npc.name === definition.name && !npc.knownToPlayer && !hasIdentityEvidence) {
       return impossible(game,
         `${name}无法确认这个名字对应现实中的哪一个人，更不能据此直接接触或攻击目标。`,
@@ -158,6 +185,13 @@ export function selectNarrativeRules(game: StoredGame, action: string, resolutio
   const year = game.view.worldTime?.year ?? 0;
   const era = game.view.era ?? 1;
   const all = rulesForEra(era).filter((rule) => {
+    const allowedEraOneStorageRule = rule.section === 45 && /储物|容量|活物/.test(rule.text) && /储物魂导器|魂导遗物|储物器/.test(action);
+    const futureRuleContent = era === 1
+      ? (/魂导|飞船|星际|斗铠|机甲|星舰|联邦议会|星际联邦|传灵塔|升灵台|千锻|灵锻|魂锻/.test(rule.text) && !allowedEraOneStorageRule)
+      : era === 2
+        ? /斗铠|机甲|星舰|星际|升灵台|千锻|灵锻|魂锻|天龙星|天马星/.test(rule.text) || (year < 10_012 && /传灵塔/.test(rule.text))
+        : era === 3 ? /星舰|星际|天龙星|天马星|龙马联邦/.test(rule.text) : false;
+    if (futureRuleContent) return false;
     if (era === 1 && /海神阁|联邦议会|星际联邦|圣灵教/.test(rule.text)) return false;
     if ([44, 45, 46, 47, 48, 49, 76].includes(rule.section) && !/(魂灵|魂导|斗铠|机甲|锻造|星舰|传灵塔|升灵台|遗迹)/.test(action)) return false;
     if (rule.section === 73 && year < 12 && !/唐门|暗器|玄天功/.test(action)) return false;
@@ -176,6 +210,7 @@ export function selectNarrativeRules(game: StoredGame, action: string, resolutio
 
 export function violatesCanonChronology(text: string, year: number): boolean {
   const compact = text.replace(/\s+/g, "");
+  if (CANON_EVENTS.some((event) => event.year > year && compact.includes(event.title.replace(/\s+/g, "")))) return true;
   if (year < 6) {
     const earlyShrekNames = "唐三|小舞|宁荣荣|朱竹清";
     if (new RegExp(`(${earlyShrekNames}).{0,28}(进入|去了|就读|加入|学员).{0,8}史莱克`).test(compact)) return true;
@@ -225,7 +260,16 @@ export function auditNarrative(game: StoredGame, text: string, options: { exclud
   if (/(玩家|主角|程序判定|固定结果|规则包|小说引擎|写作模块|语言模型|系统替|AI)/i.test(outside)) issues.push("正文泄露后台叙事称谓");
   if (/(^|[。！？\n])\s*(首先|其次|最后)[，,:：]|值得注意的是|这意味着|本质上|总而言之|综上所述|不是.{0,18}而是/.test(text)) issues.push("正文含有模板化表达");
   if (violatesCanonChronology(text, game.view.worldTime?.year ?? 0)) issues.push("正文违反当前时代或原作时间线");
-  if ((game.view.era ?? 1) === 1 && /识海|精神之海|意识海/.test(text)) issues.push("斗一正文倒灌了后世精神空间术语");
+  if ((game.view.era ?? 1) === 1 && /识海|精神之海|意识海/.test(text) && !allowsForeignCultivationVocabulary(game)) issues.push("斗一正文倒灌了后世精神空间术语");
+  const hasUnlockedPlotMemory = /剧情记忆|原作记忆|穿越者.*记得|现代世界.*原作/.test(`${game.view.character?.selfKnowledge ?? ""}${game.view.character?.knownBackground ?? ""}`);
+  if (!hasUnlockedPlotMemory) {
+    const unknownCanonFigure = CANON_CHARACTERS.find((definition) => {
+      const npc = game.world.npcs[definition.id];
+      if (!npc?.alive || npc.knownToPlayer || game.view.knownFigures.some((item) => item.id === definition.id) || game.view.relations.some((item) => item.id === definition.id)) return false;
+      return [npc.name, ...definition.aliases].some((name) => name.length >= 2 && text.includes(name));
+    });
+    if (unknownCanonFigure) issues.push(`正文让角色无来源知道尚未认识的原著人物${game.world.npcs[unknownCanonFigure.id]?.name ?? unknownCanonFigure.name}`);
+  }
   for (const npc of Object.values(game.world.npcs)) {
     const escapedName = npc.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const rankClaims = [
@@ -408,21 +452,22 @@ export function groundedNarrativeSuggestions(game: StoredGame): string[] {
 
 export function buildChineseWebnovelSceneCard(game: StoredGame, resolution: ActionResolution): Record<string, unknown> {
   const { publicNames, hiddenNames } = publicAndHiddenSoulNames(game);
+  const privateSolitaryAction = /私下测试隐藏武魂/.test(resolution.intent) || /没有NPC在场|无NPC在场|无人旁观/.test(resolution.ruleSummary);
   return {
     immediateProblem: game.view.chapterObjective?.title ?? resolution.intent,
     currentStep: game.view.chapterObjective?.steps.find((step) => step.status === "进行中")?.text,
-    availablePeople: game.view.relations.slice(0, 12).map(({ name, relation, faction }) => ({ name, relation, faction })),
-    availableInstitutions: [...new Set([...game.view.affiliations.map((item) => item.name), ...(game.view.academyApplication ? [game.view.academyApplication.academyName] : []), ...game.view.relations.map((item) => item.faction).filter(Boolean)])],
+    availablePeople: privateSolitaryAction ? [] : game.view.relations.slice(0, 12).map(({ name, relation, faction }) => ({ name, relation, faction })),
+    availableInstitutions: privateSolitaryAction ? [] : [...new Set([...game.view.affiliations.map((item) => item.name), ...(game.view.academyApplication ? [game.view.academyApplication.academyName] : []), ...game.view.relations.map((item) => item.faction).filter(Boolean)])],
     publicFacts: { martialSouls: publicNames, soulPower: game.view.character?.innateSoulPower, location: game.view.location },
     protagonistSecrets: { hiddenMartialSouls: hiddenNames, specialSystem: game.view.character?.specialSystem?.name },
-    unresolvedPromises: game.storyMemory.openThreads.slice(0, 8),
-    academyApplication: game.view.academyApplication,
-    academyLife: game.view.academyLife,
-    mentorPursuit: game.view.mentorPursuit,
-    storyArc: game.view.storyArc ? { title: game.view.storyArc.title, stage: game.view.storyArc.stage, goal: game.view.storyArc.centralGoal, conflict: game.view.storyArc.centralConflict, opposingForce: game.view.storyArc.opposingForce, payoff: game.view.storyArc.promisedPayoff, payoffLedger: game.view.storyArc.payoffLedger, nextGate: game.view.storyArc.stageGates[game.view.storyArc.stageIndex + 1], activeNpcScene: game.view.storyArc.npcScenes.find((scene) => scene.status === "等待回应"), sideThreads: game.view.storyArc.sideThreads, irreversibleTurn: game.view.storyArc.irreversibleTurn, pressure: game.view.storyArc.pressure } : undefined,
-    reactionChain: ["谁目击", "谁有权限", "谁获益或受损", "立即反应", "留下何种记录、关系或代价"],
+    unresolvedPromises: privateSolitaryAction ? [] : game.storyMemory.openThreads.slice(0, 8),
+    academyApplication: privateSolitaryAction ? undefined : game.view.academyApplication,
+    academyLife: privateSolitaryAction ? undefined : game.view.academyLife,
+    mentorPursuit: privateSolitaryAction ? undefined : game.view.mentorPursuit,
+    storyArc: privateSolitaryAction ? undefined : game.view.storyArc ? { title: game.view.storyArc.title, stage: game.view.storyArc.stage, goal: game.view.storyArc.centralGoal, conflict: game.view.storyArc.centralConflict, opposingForce: game.view.storyArc.opposingForce, payoff: game.view.storyArc.promisedPayoff, payoffLedger: game.view.storyArc.payoffLedger, nextGate: game.view.storyArc.stageGates[game.view.storyArc.stageIndex + 1], activeNpcScene: game.view.storyArc.npcScenes.find((scene) => scene.status === "等待回应"), sideThreads: game.view.storyArc.sideThreads, irreversibleTurn: game.view.storyArc.irreversibleTurn, pressure: game.view.storyArc.pressure } : undefined,
+    reactionChain: privateSolitaryAction ? ["无人目击", "行动完成", "秘密范围不变", "主角主动停止"] : ["谁目击", "谁有权限", "谁获益或受损", "立即反应", "留下何种记录、关系或代价"],
     choiceVectors: ["成长或资源", "关系或势力", "秘密或风险"],
-    deterministicSuggestions: storyArcSuggestions(game),
+    deterministicSuggestions: privateSolitaryAction ? resolution.suggestions : storyArcSuggestions(game),
   };
 }
 
@@ -538,8 +583,8 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
     game.view.academyLife ? `${game.view.academyLife.periodLabel}：${game.view.academyLife.className}·${game.view.academyLife.stage}；${game.view.academyLife.teacherRole}${game.view.academyLife.teacherName}负责；课程${game.view.academyLife.courseProgress}、同辈互动${game.view.academyLife.peerInteractions}、费用约定${game.view.academyLife.fundingDutyProgress}` : undefined,
     game.view.mentorPursuit ? `导师关系：${game.view.mentorPursuit.mentorName}·${game.view.mentorPursuit.stage}，未到已拜师不得写成师徒` : undefined,
   ].filter((item): item is string => Boolean(item));
-  const originalEntities = (game.view.character?.martialSouls ?? []).filter((soul) => soul.sourceEra === "原创" || soul.sourceEra === "局外");
-  const originalEntityFacts = originalEntities.map((soul) => `${soul.name}：${soul.category}；${soul.description}；品质${soul.grade}`);
+  const originalEntities = (game.view.character?.martialSouls ?? []).filter((soul) => (soul.sourceEra === "原创" || soul.sourceEra === "局外") && (publicNames.includes(soul.name) || playerInput.includes(soul.name) || resolution.ruleSummary.includes(soul.name)));
+  const originalEntityFacts = originalEntities.map((soul) => `${soul.name}：${soul.category}；${soul.description}`);
   const privateSoulName = hiddenNames.find((name) => playerInput.includes(name) || resolution.ruleSummary.includes(name)) ?? hiddenNames[0];
   const generationContract: NarrativeLogicPacket["generationContract"] = privateSolitaryAction ? {
     sceneGoal: `只完成${privateSoulName ? `隐藏武魂${privateSoulName}` : "隐藏力量"}的本次私下短测，不处理培养会议或其他任务`,
@@ -552,7 +597,7 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
     allowedFacts: [resolution.ruleSummary, ...originalEntityFacts, `随身物品仅限：${game.view.inventory.join("、") || "无"}`, "可描写呼吸、出汗、疲劳、魂力接触和当前房间已有环境"],
     forbiddenClaims: ["NPC敲门、传唤、进场、看见或作出反应", "实际前往议事堂、培养会议、拜师或领取资源", "生成库存中不存在的木匣、剑胚容器、药物、记录册或测试器具", "赋予武魂灵智、回应、警告、拒绝、等待、择主或主动意志", "发现新魂技、隐藏能力、魂环效果、精确数值或原著未声明的修炼体系"],
     endingBoundary: "停在私测完成、力量收回和秘密仍被守住；最多一句想起已有未来安排，不实际转场或替玩家决定回应",
-    eraLanguage: (game.view.era ?? 1) === 1 ? "只使用斗一当时可用的武魂、魂力、魂环和身体感知语言；不用识海、精神之海、意识海等后世空间化术语" : `使用斗${game.view.era ?? 1}当前时代已经成立的术语，不倒灌未来制度`,
+    eraLanguage: (game.view.era ?? 1) === 1 ? allowsForeignCultivationVocabulary(game) ? "斗罗本地体系只使用斗一的武魂、魂力与魂环语言；主角可在内心把识海等词作为前世异界概念对照，但必须明确它尚未被证明为斗罗本地机制，NPC不得使用" : "只使用斗一当时可用的武魂、魂力、魂环和身体感知语言；不用识海、精神之海、意识海等后世空间化术语" : `使用斗${game.view.era ?? 1}当前时代已经成立的术语，不倒灌未来制度`,
     originalEntityBoundary: originalEntityFacts.length ? `以下是同人原创/局外实体而非原著实体，只能按已声明事实描写：${originalEntityFacts.join("；")}` : "本场没有需要扩写的原创实体；不得自行创建原著不存在的体系",
   } : {
     sceneGoal: `完成玩家行动“${playerInput.trim()}”及程序固定结果，不扩展下一项重大行动`,
@@ -560,7 +605,7 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
     allowedFacts: [resolution.ruleSummary, ...originalEntityFacts, `随身物品仅限：${game.view.inventory.join("、") || "无"}`, ...sceneKnowledge.entries.slice(0, 12).map((entry) => `${entry.name}：${entry.fact}`)],
     forbiddenClaims: ["改变程序胜负、时间、资源、关系、伤势或任务结果", "新增未持有物品、未结算能力或未知NPC", "让原创实体冒充原著实体或大陆公认体系", "替玩家执行fixedConsequence之后的新决定"],
     endingBoundary: "完成本次结果后停止；下一项重大行动只能成为建议，不能写进正文已经发生",
-    eraLanguage: (game.view.era ?? 1) === 1 ? "使用斗一当时成立的生活、武魂、魂力与势力语言；禁止后世制度和精神空间术语倒灌" : `使用斗${game.view.era ?? 1}当前时代已经成立的制度和词汇`,
+    eraLanguage: (game.view.era ?? 1) === 1 ? allowsForeignCultivationVocabulary(game) ? "斗罗本地人只使用斗一语言；主角可在内心引用明确属于前世异界的识海等概念作失败对照，不得把它说成斗罗公共知识" : "使用斗一当时成立的生活、武魂、魂力与势力语言；禁止后世制度和精神空间术语倒灌" : `使用斗${game.view.era ?? 1}当前时代已经成立的制度和词汇`,
     originalEntityBoundary: originalEntityFacts.length ? `以下实体为同人原创/局外，只能按声明事实描写：${originalEntityFacts.join("；")}` : "不得临时创建或伪造原著实体",
   };
   return {
@@ -626,6 +671,7 @@ export function sanitizeNarrativeSuggestions(game: StoredGame, suggestions: stri
     .map((item) => item.trim())
     .filter(Boolean)
     .filter((item) => item.length <= 28)
+    .filter((item) => !/[与和、的并及或承向将把]$/.test(item))
     .filter((item) => !violatesCanonChronology(item, game.view.worldTime?.year ?? 0))
     .filter((item) => !/直接获得|必定成功|保证成功|无代价|立刻成神/.test(item))
     .filter((item) => !/指出第一处缺陷/.test(item))

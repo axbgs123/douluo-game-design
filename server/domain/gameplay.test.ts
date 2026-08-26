@@ -96,6 +96,10 @@ describe("完整游玩规则", () => {
     const game = awakened("era-one-mental-space-language");
     expect(auditNarrative(game, "他把注意力沉入意识深处，感应自己的武魂状态。")).not.toContain("斗一正文倒灌了后世精神空间术语");
     expect(auditNarrative(game, "他进入精神之海，在识海里寻找武魂。")).toContain("斗一正文倒灌了后世精神空间术语");
+    game.view.character!.originName = "异世剑修转生者";
+    game.view.character!.route = "修仙世界转生";
+    game.view.character!.knownBackground = "前世修行记忆仍在，但需要重新适配斗罗规则。";
+    expect(auditNarrative(game, "他只在内心沿用前世的识海一词，并确认这不是斗罗本地人的公共体系。")).not.toContain("斗一正文倒灌了后世精神空间术语");
   });
   it("四时代学院生活不会再共用斗一首月结业模板", () => {
     const eraOne = academyEraLifeProfile(1);
@@ -126,13 +130,26 @@ describe("完整游玩规则", () => {
     expect(game.world.npcs["di-tian"].knownToPlayer).toBe(false);
   });
 
+  it("不能凭读者知识接触原著人物或使用未学习的原著专属能力", () => {
+    const game = awakened("canon-knowledge-and-technique-ownership");
+    game.world.npcs["tang-san"].locationId = game.view.locationId!;
+    expect(resolveAction(game, "询问唐三最近在做什么").intent).toBe("规则阻止");
+    expect(resolveAction(game, "修炼玄天功").intent).toBe("规则阻止");
+    expect(resolveAction(game, "学习玄天功").intent).toBe("规则阻止");
+    expect(resolveAction(game, "施展紫极魔瞳观察剑碑").intent).toBe("规则阻止");
+    game.world.npcs["tang-san"].knownToPlayer = true;
+    expect(resolveAction(game, "询问唐三最近在做什么").intent).toBe("交谈");
+    game.world.actionLedger.push({ index: 1, action: "接受玄天功传授", intent: "学习能力", result: "已经完成玄天功入门传授", year: 0, day: 1 });
+    expect(resolveAction(game, "修炼玄天功").intent).not.toBe("规则阻止");
+  });
+
   it("不能用后期姓名把当前人物提前路由进拜师或攻击行动", () => {
     const game = awakenedInEra(3, "future-name-action-guard");
     game.view.worldTime = { era: "东海学院零班阶段", year: 20003, day: 1, time: "08:00", season: "春" };
     game.world = createHiddenWorld(20003, "east-sea-city");
     expect(game.world.npcs["gu-yue-na"].name).toBe("古月");
-    expect(resolveAction(game, "拜古月娜为师").intent).toBe("无法完成");
-    expect(resolveAction(game, "刺杀古月娜").intent).toBe("无法完成");
+    expect(resolveAction(game, "拜古月娜为师").intent).toBe("规则阻止");
+    expect(resolveAction(game, "刺杀古月娜").intent).toBe("规则阻止");
     expect(game.world.npcs["gu-yue-na"].memoryOfPlayer).toHaveLength(0);
   });
 
@@ -749,7 +766,7 @@ describe("完整游玩规则", () => {
     game.view.mediaOutlets = [{ name: "联邦事务公报编辑部", stance: "公共机构与职业秩序", trustScore: 64, publications: 2, corrections: 0, linkedReports: 0, status: "信誉稳定", evidence: ["旧报道"] }];
     game.world.npcs["tang-san"].factionIds = ["shrek", "clear-sky", "tang-sect"];
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(45);
+    expect(migrated.schemaVersion).toBe(46);
     expect(migrated.view.map.length).toBeGreaterThan(0);
     expect(migrated.view.mapPins).toEqual([]);
     expect(migrated.view.candidates[0].residence.building).toBeTruthy();
@@ -763,6 +780,7 @@ describe("完整游玩规则", () => {
   it("重要人物互动会留下记忆并推动世界偏差", () => {
     const game = awakened("canon-contact");
     game.world.npcs["tang-san"].locationId = game.view.locationId!;
+    game.world.npcs["tang-san"].knownToPlayer = true;
     const before = game.world.deviation;
     resolveAction(game, "询问唐三最近在做什么");
     expect(game.world.deviation).toBeGreaterThan(before);
@@ -855,7 +873,7 @@ describe("完整游玩规则", () => {
     legacyAcademy.view.academyLife = undefined;
     legacyAcademy.world.flags.academyCourseProgress = 3;
     const migratedAcademy = ensureGameState(legacyAcademy);
-    expect(migratedAcademy.schemaVersion).toBe(45);
+    expect(migratedAcademy.schemaVersion).toBe(46);
     expect(migratedAcademy.view.academyLife).toMatchObject({ stage: "同辈磨合", courseProgress: 3, peerInteractions: 0 });
     expect(migratedAcademy.view.academyLife?.peers).toHaveLength(3);
     expect(migratedAcademy.view.tasks.find((task) => task.id === "academy-foundation")?.status).toBe("进行中");
@@ -899,7 +917,7 @@ describe("完整游玩规则", () => {
     delete oldApplication.obligations;
     delete oldApplication.availableFundingOptions;
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(45);
+    expect(migrated.schemaVersion).toBe(46);
     expect(migrated.view.academyApplication).toMatchObject({ fundingType: "家庭自费", fundingSource: "本人及家庭支付" });
 
     const legacyD1Exam = prepare(1, "academy-legacy-fake-exam");
@@ -979,16 +997,18 @@ describe("完整游玩规则", () => {
     expect(explicit.routing?.selected).toBe("known-conversation");
   });
 
-  it("AI长期记忆补丁会更新章节、线索和NPC记忆", () => {
+  it("AI只能建议章节名，不能把摘要、线索、选择或NPC笔记写入事实状态", () => {
     const game = awakened("story-memory");
     game.world.npcs["tang-san"].knownToPlayer = true;
+    const before = structuredClone(game.storyMemory);
     applyNarrativeMemory(game, { narrative: "", suggestions: [], memory: { summary: "我在诺丁城认识了唐三。", openThreads: ["学院名额"], keyChoice: "答应帮助工读生", npcNotes: { 唐三: "记得我替他保守过秘密" }, chapterTitle: "学院后街" } });
-    expect(game.storyMemory.summary).toContain("唐三");
-    expect(game.storyMemory.summary).not.toContain("我在诺丁城");
-    expect(game.storyMemory.openThreads).toContain("学院名额");
+    expect(game.storyMemory.summary).toBe(before.summary);
+    expect(game.storyMemory.openThreads).toEqual(before.openThreads);
+    expect(game.storyMemory.keyChoices).toEqual(before.keyChoices);
+    expect(game.storyMemory.npcNotes).toEqual(before.npcNotes);
     expect(game.view.chapter.title).toBe("学院后街");
-    expect(game.world.npcs["tang-san"].memoryOfPlayer.at(-1)).toContain("保守");
-    expect(game.world.npcs["tang-san"].episodicMemory.at(-1)).toMatchObject({ source: "叙事提取", significance: 3 });
+    expect(game.world.npcs["tang-san"].memoryOfPlayer).toEqual([]);
+    expect(game.world.npcs["tang-san"].episodicMemory).toEqual([]);
   });
 
   it("unrelated deviation cannot rewrite a canon event", () => {
@@ -1182,7 +1202,7 @@ describe("完整游玩规则", () => {
     game.storyMemory.summary = "主角在东海学院见到了古月娜。";
     game.view.relations.push({ id: "gu-yue-na", name: "古月娜", relation: "同学", impression: "旧存档提前使用了后期姓名", strength: 10, category: "师友" });
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(45);
+    expect(migrated.schemaVersion).toBe(46);
     expect(migrated.world.npcs["gu-yue-na"].name).toBe("古月");
     expect(migrated.view.relations.find((item) => item.id === "gu-yue-na")?.name).toBe("古月");
     expect(migrated.storyMemory.summary).not.toContain("古月娜");
@@ -1208,11 +1228,57 @@ describe("完整游玩规则", () => {
     game.storyMemory.openThreads = ["家人与出身中尚未说清的细节"];
     delete game.world.flags.openingMode; delete game.world.flags.openingInstitutionName; delete game.world.flags.openingOfficiant; delete game.world.flags.openingSoulTestFocus;
     const migrated = ensureGameState(game);
-    expect(migrated.schemaVersion).toBe(45);
+    expect(migrated.schemaVersion).toBe(46);
     expect(migrated.view.narrative.at(-1)?.text).not.toMatch(/先天道体托在掌心|学院名额|恐怕不只是魂环/);
     expect(migrated.view.chapterObjective?.title).toContain("太玄剑宗内部觉醒");
     expect(JSON.stringify(migrated.view.chapterObjective)).not.toMatch(/加入宗门|学院名额/);
-    expect(migrated.storyMemory.openThreads).toContain("谈清太玄剑宗内部培养条件与责任");
+    expect(migrated.storyMemory.openThreads).toContain("获得第一魂环");
+    expect(migrated.storyMemory.openThreads).not.toContain("谈清太玄剑宗内部培养条件与责任");
+  });
+
+  it("Schema 46从程序账本重建长期事实并清除AI叙事记忆", () => {
+    const game = awakened("schema-46-memory-rebuild");
+    game.schemaVersion = 45;
+    game.storyMemory.summary = "模型声称齐长老已经每天训练三个时辰，半年后两名执事陪同猎魂。";
+    game.storyMemory.openThreads = ["模型虚构的议事堂安排"];
+    game.storyMemory.keyChoices = ["模型替玩家接受培养路线"];
+    game.storyMemory.npcNotes = { 闻九: "模型虚构的NPC记忆" };
+    game.world.actionLedger = [{ index: 1, action: "独自测试武魂", intent: "私下测试隐藏武魂", result: "只确认武魂能够短暂显形，没有NPC在场。", year: 0, day: 1 }];
+    game.world.npcs["tang-san"].episodicMemory.push({ id: "ai-note", text: "模型虚构的NPC记忆", year: 0, day: 1, actionIndex: 1, significance: 3, source: "叙事提取", witnessed: true });
+    game.world.npcs["tang-san"].memoryOfPlayer.push("模型虚构的NPC记忆");
+    const migrated = ensureGameState(game);
+    expect(migrated.schemaVersion).toBe(46);
+    expect(migrated.storyMemory.summary).toContain("独自测试武魂；程序结果：只确认武魂能够短暂显形");
+    expect(migrated.storyMemory.summary).not.toMatch(/齐长老|三个时辰|两名执事/);
+    expect(migrated.storyMemory.openThreads).toEqual(migrated.view.tasks.filter((task) => task.status !== "完成").map((task) => task.title));
+    expect(migrated.storyMemory.npcNotes).toEqual({});
+    expect(migrated.world.npcs["tang-san"].episodicMemory).not.toEqual(expect.arrayContaining([expect.objectContaining({ source: "叙事提取" })]));
+    expect(migrated.world.npcs["tang-san"].memoryOfPlayer).not.toContain("模型虚构的NPC记忆");
+  });
+
+  it("Schema 46把旧版本错配的隐藏武魂私测标记为未完成", () => {
+    const game = awakened("schema-46-private-test-mismatch");
+    game.schemaVersion = 45;
+    const first = game.view.character!.martialSouls[0];
+    game.view.character!.martialSouls = [first, { ...first, name: "霜纹藤", category: "植物武魂", cultivationState: "未修炼" }];
+    game.view.character!.publiclyKnownMartialSoulIndices = [0];
+    game.world.actionLedger = [{ index: 1, action: "暂不显露第二武魂，回住处后单独测试", intent: "一般行动", result: "长老完成第一武魂测试", year: 0, day: 1 }];
+    const migrated = ensureGameState(game);
+    expect(migrated.world.actionLedger[0]).toMatchObject({ intent: "旧版本未完成私测" });
+    expect(migrated.world.actionLedger[0].result).toContain("需由玩家重新行动");
+    expect(migrated.storyMemory.summary).not.toContain("长老完成第一武魂测试");
+    expect(migrated.view.character!.martialSouls[1].privateTested).not.toBe(true);
+  });
+
+  it("事实型AI选项必须通过程序门禁和专用路由", () => {
+    const game = awakened("suggestion-program-preview");
+    const result = resolveAction(game, "整理床铺");
+    applyActionResult(game, "整理床铺", result, result.fallbackNarrative, ["施展紫极魔瞳观察剑碑", "询问不存在的齐长老培养方案", "整理已经确认的随身物品"]);
+    expect(game.view.suggestions).not.toEqual(expect.arrayContaining(["施展紫极魔瞳观察剑碑", "询问不存在的齐长老培养方案"]));
+    expect(game.view.suggestions).toHaveLength(3);
+    expect(game.view.suggestions).toEqual(expect.arrayContaining(["继续当前武魂基础修炼", "休息一个时辰恢复状态"]));
+    expect(resolveAction(game, "回应不存在的齐长老提出的培养条件").intent).toBe("无法完成");
+    expect(resolveAction(game, "测试一种程序从未登记的神秘能力").intent).toBe("无法完成");
   });
 
   it("normalizes generated prose to third-person limited", () => {
@@ -1227,6 +1293,8 @@ describe("完整游玩规则", () => {
     expect(violatesCanonChronology("宁荣荣已经去了史莱克学院就读。", -1)).toBe(true);
     expect(violatesCanonChronology("七宝琉璃宗位于天斗城外，守卫严密。", -1)).toBe(false);
     expect(violatesCanonChronology("宁荣荣进入史莱克学院就读。", 6)).toBe(false);
+    const futureEvent = CANON_EVENTS.find((event) => event.year >= 8)!;
+    expect(violatesCanonChronology(`当地人已经在谈论“${futureEvent.title}”的结果。`, 0)).toBe(true);
   });
 
   it("rejects canon ages and ranks copied from a future snapshot", () => {
@@ -1317,7 +1385,7 @@ describe("第一部世界资料", () => {
     legacy.view.locationId = "mother-ship-port";
     legacy.view.location = "联邦母舰港";
     const migrated = ensureGameState(legacy);
-    expect(migrated.schemaVersion).toBe(45);
+    expect(migrated.schemaVersion).toBe(46);
     expect(migrated.view.location).toBe("联邦舰队集结基地");
   });
 
@@ -1339,7 +1407,19 @@ describe("第一部世界资料", () => {
     const game = awakened("rule-retrieval");
     const rules = selectNarrativeRules(game, "调查适合第一魂环的魂兽", { intent: "猎魂调查", minutes: 30, ruleSummary: "", fallbackNarrative: "", suggestions: [] });
     expect(rules.some((rule) => [27, 28, 29, 30, 41, 85].includes(rule.section))).toBe(true);
-    expect(rules.some((rule) => rule.section === 93)).toBe(true);
+    expect(rules.some((rule) => /魂导通信|星际|斗铠|机甲|星舰/.test(rule.text))).toBe(false);
+  });
+
+  it("斗一到斗三的生成规则不会主动注入后世技术", () => {
+    const cases = [
+      [awakenedInEra(1, "rules-no-future-d1"), /魂导通信|魂导车|飞船|星际|斗铠|机甲|星舰|联邦议会|传灵塔|升灵台/],
+      [awakenedInEra(2, "rules-no-future-d2"), /斗铠|机甲|星舰|星际|升灵台|传灵塔/],
+      [awakenedInEra(3, "rules-no-future-d3"), /星舰|星际|天龙星|天马星|龙马联邦/],
+    ] as const;
+    for (const [game, forbidden] of cases) {
+      const rules = selectNarrativeRules(game, "前往附近城市并询问公开消息", { intent: "旅行交谈", minutes: 30, ruleSummary: "", fallbackNarrative: "", suggestions: [] });
+      expect(rules.some((rule) => forbidden.test(rule.text))).toBe(false);
+    }
   });
 
   it("阻止斗一时代直接使用后世技术和无来源力量", () => {
@@ -1810,6 +1890,7 @@ describe("第一部世界资料", () => {
   it("玩家关系以多维数值和明确原因变化", () => {
     const game = awakened("relation-evidence");
     game.world.npcs["tang-san"].locationId = game.view.locationId!;
+    game.world.npcs["tang-san"].knownToPlayer = true;
     resolveAction(game, "询问唐三最近在做什么");
     resolveAction(game, "继续与唐三交谈修炼安排");
     const relation = game.view.relations.find((item) => item.id === "tang-san")!;
