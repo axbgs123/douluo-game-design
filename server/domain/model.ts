@@ -153,6 +153,7 @@ export interface CanonCausalFootprint {
   domains?: CanonCausalDomain[];
   expiresOrdinal?: number;
   originEventId?: string;
+  targetEventId?: string;
   propagationDepth?: number;
 }
 
@@ -162,6 +163,8 @@ export interface CanonTimelineBranch {
   state: "延后" | "替代" | "取消";
   originalYear: number;
   originalDay: number;
+  originalDatePrecision?: "原著日序" | "原著年份" | "游戏估算日序";
+  originalWindow?: [number, number];
   resolveOrdinal: number;
   causeIds: string[];
   affectedNpcIds: string[];
@@ -170,6 +173,27 @@ export interface CanonTimelineBranch {
   status: "待结算" | "已结算";
   replacementEventId?: string;
   recheckCount?: number;
+}
+
+export interface CanonInterventionProject {
+  id: string;
+  eventId: string;
+  title: string;
+  objective: "阻止" | "改变" | "保护" | "夺取";
+  stage: "调查" | "准备" | "待执行" | "待核验" | "完成" | "失败";
+  intelligence: number;
+  access: number;
+  preparation: number;
+  evidence: string[];
+  supportNpcIds: string[];
+  supportFactionIds: string[];
+  createdOrdinal: number;
+  updatedOrdinal: number;
+  targetOrdinal: number;
+  executionStrength?: number;
+  executionSucceeded?: boolean;
+  footprintId?: string;
+  outcome?: string;
 }
 
 export interface DynamicWorldEvent {
@@ -219,6 +243,7 @@ export interface HiddenWorldState {
   deviation: number;
   canonCausalFootprints: CanonCausalFootprint[];
   canonTimelineBranches: CanonTimelineBranch[];
+  canonInterventionProjects: CanonInterventionProject[];
   npcRelations: NpcRelationState[];
   dynamicEvents: DynamicWorldEvent[];
   localConsequences: LocalWorldConsequence[];

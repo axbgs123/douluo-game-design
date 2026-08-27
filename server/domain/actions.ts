@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AcademyApplicationView, AcademyLifeView, AcademyPeerView, CompanionRole, ConditionLabel, HuntSupportView, HuntingStage, InstitutionAssignmentView, NarrativeEntry, SoulRingView, TaskView } from "../../shared/game.js";
-import { CANON_CHARACTERS, FACTIONS, SOUL_BEASTS, factionActiveAtYear, locationById, soulBeastById } from "../data/world.js";
-import type { ActionResolution, StoredGame } from "./model.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, SOUL_BEASTS, canonEventDateLabel, canonEventSimulationOrdinal, factionActiveAtYear, factionMentionMatches, locationById, soulBeastById } from "../data/world.js";
+import type { ActionResolution, CanonInterventionProject, StoredGame } from "./model.js";
 import { createRandom, integer, pick } from "./random.js";
 import { advanceWorldTime, buildKnownFigures, buildMapHierarchy, buildMapView, canDiscoverNpc, inferLocationId, queueSocialRumor, recordCanonInfluence, recordIntelligence, recordMediaCompetition, recordMediaOutletReputation, rememberNpcInteraction, revealNpc } from "./world.js";
 import { toThirdPersonNarrative } from "./narrative.js";
@@ -12,6 +12,7 @@ import { heirloomByName } from "../../shared/heirlooms.js";
 import { updateStoryArc } from "./story-director.js";
 import { resolveExpiredDynamicEvent } from "./event-consequences.js";
 import { academyEraLifeProfile } from "../../shared/academy-life.js";
+import { ensureLocalPeople, relationTargetsForAction } from "./local-people.js";
 
 interface DifficultyRules {
   training: number;
@@ -1389,12 +1390,17 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
   const mentioned = mentionedCurrentCharacter(game, action);
   let detail = "对方只回答了愿意说的部分。";
   const systemMessages: string[] = [];
-  const localTargets = game.view.relations.filter((relation) => action.includes(relation.name));
+  const localTargets = relationTargetsForAction(game, action);
   if (!mentioned && localTargets.length > 1) return impossible("这句话同时指向多名已认识的人，不能擅自决定由谁回答。", localTargets.slice(0, 3).map((item) => `明确询问${item.name}`));
   if (!mentioned && localTargets.length === 1) {
     const relation = localTargets[0];
     recordPlayerRelation(game, relation, `围绕“${action.slice(0, 40)}”完成一次当面交谈`, { trust: 1, identityKnowledge: 2 });
     relation.impression = relation.category === "敌对" ? relation.impression : `记得${game.view.character!.name}曾就具体事情当面交谈，仍保留自己的立场`;
+    if (relation.localState) {
+      relation.localState.lastOutcome = `与${game.view.character!.name}谈过“${action.slice(0, 40)}”；只回答本人知道且有权说明的部分`;
+      relation.localState.status = "完成";
+      relation.localState.updatedOrdinal = actionOrdinal(game);
+    }
     return { intent: "与已知人物交谈", minutes: 30, ruleSummary: `与${relation.name}当面交谈；对方只使用自己知道的信息，并按${relation.relation}立场回答。关系只留下交谈记录，没有自动好感或承诺。`, fallbackNarrative: `${relation.name}先把手里的事做完，才抬头听问题。能说的部分没有绕弯，涉及别人职责和自己没见过的事，他也没有装作知道。话谈完了，双方的立场并没有因此变成一样。`, suggestions: [`追问${relation.name}的信息来源`, `向${relation.name}提出一项具体交换`, "结束交谈并处理眼前行动"], systemMessages: [`交谈记录 · ${relation.name}`] };
   }
   const genericLocalInquiry = /路人|附近(?:的人|住民|居民)|当地人|村民|店主|摊主|接待人员|工作人员|守卫|门房/.test(action);
@@ -1444,6 +1450,41 @@ function conversationResolution(game: StoredGame, action: string): ActionResolut
     suggestions: ["追问消息来源", "换个话题", "把情报记下来"],
     systemMessages,
   };
+}
+
+function dailyLifeResolution(game: StoredGame, action: string): ActionResolution {
+  const targets = relationTargetsForAction(game, action).filter((relation) => relation.category !== "势力");
+  const study = /读写|识字|大陆常识|基础常识|看书|读书/.test(action);
+  const sparring = /切磋|对练|比试|共同训练/.test(action);
+  if (sparring && targets.length !== 1) {
+    const peers = game.view.relations.filter((relation) => /同学|同辈|同伴|朋友|竞争/.test(`${relation.relation}${relation.impression}`)).slice(0, 3);
+    return impossible("切磋会改变伤势、训练和关系，必须明确一名已经认识且在场的对象。", peers.length ? peers.map((peer) => `与${peer.name}进行有边界的切磋`) : ["先认识一名同龄人", "参加有老师看护的基础实战", "独自练习武魂收放"]);
+  }
+  if (/父亲|母亲|父母|双亲|家人|老师|同学|同辈|同龄/.test(action) && !targets.length) {
+    return impossible("当前关系中没有与这个称谓唯一对应且能够在场的人。", game.view.relations.filter((relation) => relation.category !== "势力").slice(0, 3).map((relation) => `明确写${relation.name}`));
+  }
+  const involved = targets.length ? targets : [];
+  for (const relation of involved) {
+    recordPlayerRelation(game, relation, `共同完成日常行动“${action.slice(0, 40)}”`, { closeness: 1, trust: study ? 0 : 1 });
+    if (relation.localState) {
+      relation.localState.lastOutcome = `${relation.name}按自己的职责和当天安排参与了“${action.slice(0, 40)}”`;
+      relation.localState.updatedOrdinal = actionOrdinal(game);
+      relation.localState.status = "完成";
+    }
+  }
+  if (study) {
+    const progress = Number(game.world.flags.basicLifeStudyProgress ?? 0) + 1;
+    game.world.flags.basicLifeStudyProgress = progress;
+    game.world.fatiguePoints += 4;
+    return { intent: "学习生活常识", minutes: 120, ruleSummary: `完成第${progress}次读写或大陆生活常识学习；只增加可追溯的基础认知，没有增加魂力、职业等级或未登记能力。`, fallbackNarrative: `${game.view.character!.name}把今天真正用得上的字和规矩抄了一遍。碰到不懂的地方，${involved[0]?.name ?? "身边的人"}只讲自己确认过的事，没有顺手把大陆秘密全塞给一个孩子。`, suggestions: [involved[0] ? `向${involved[0].name}核对一条生活常识` : "继续练习读写", "把今天学会的内容用在一件小事上", "结束学习并休息"] };
+  }
+  if (sparring) {
+    game.world.trainingPoints += 4;
+    game.world.fatiguePoints += 10;
+    return { intent: "同辈切磋", minutes: 60, ruleSummary: `与${involved[0].name}完成一次事先说清边界的基础切磋；训练进度+4、疲劳+10，未产生真实伤势或胜负履历。`, fallbackNarrative: `${game.view.character!.name}和${involved[0].name}先说好停手的信号，才各自站开。两人都想占便宜，也都不愿在一次练习里真把对方打伤。结束后，谁在哪一步露了破绽，已经比输赢更清楚。`, suggestions: [`和${involved[0].name}复盘刚才的破绽`, "休息恢复", "请在场老师安排下一次基础实战"] };
+  }
+  const targetText = involved.map((relation) => relation.name).join("、") || "当前住处的人";
+  return { intent: "家庭与日常生活", minutes: 60, ruleSummary: `${game.view.character!.name}与${targetText}完成“${action.slice(0, 60)}”；留下共同生活记录和轻微关系变化，没有凭空得到资源、情报或能力。`, fallbackNarrative: `${game.view.character!.name}没有把这件小事做成任务清单。该洗的、该收的、该端上桌的都有人伸手，话也只是顺着眼前的事情说。做完以后，屋里没有突然冒出机缘，人与人之间却多了一段真正共同过的时间。`, suggestions: involved[0] ? [`问${involved[0].name}今天还要处理什么`, "继续当前武魂基础修炼", "休息一个时辰恢复状态"] : ["继续处理住处里的日常事务", "继续当前武魂基础修炼", "休息一个时辰恢复状态"] };
 }
 
 const allianceCandidateProfiles = {
@@ -1783,6 +1824,41 @@ function mediaResolution(game: StoredGame, action: string): ActionResolution {
 
 function investigateResolution(game: StoredGame, action: string): ActionResolution {
   const name = game.view.character!.name;
+  const genericAreaInquiry = /(?:调查|研究|搜索|查找)(?:附近|周围|当地|当前地点|环境)|观察周围/.test(action);
+  const rawTarget = action
+    .replace(/^(?:偷偷|仔细|独自|先|继续|反复)?(?:调查|搜索|查找|研究|追查|核对|观察)/, "")
+    .replace(/(?:的)?(?:来源|去向|运输路线|行动路径|真实情况|相关记录|线索)$/, "")
+    .replace(/[。！？]/g, "")
+    .trim();
+  const personalGiftInquiry = /自己的身世|自身身世|梦|征兆|胎记|异象|自己的武魂|自身传承/.test(action) && game.hiddenCandidates.some((candidate) => candidate.public.id === game.view.selectedCandidateId && candidate.hiddenGift && !game.view.character?.revealedGift);
+  if (!genericAreaInquiry && !personalGiftInquiry && rawTarget.length >= 2) {
+    const normalized = rawTarget.slice(0, 48);
+    const knownRelation = relationTargetsForAction(game, action)[0];
+    const knownItem = game.view.inventory.find((item) => action.includes(item));
+    const knownFaction = FACTIONS.find((faction) => factionActiveAtYear(faction, game.view.worldTime?.year ?? 0) && factionMentionMatches(faction, action) && (game.view.affiliations.some((item) => item.id === faction.id) || game.world.intelligenceRecords.some((record) => record.subjectType === "势力" && record.subjectId === faction.id && record.confidence >= 45)));
+    const knownIntel = game.world.intelligenceRecords.find((record) => action.includes(record.title) || record.title.includes(normalized) || normalized.includes(record.title));
+    const activeEvent = game.world.dynamicEvents.find((event) => action.includes(event.title));
+    const known = Boolean(knownRelation || knownItem || knownFaction || knownIntel || activeEvent || game.view.tasks.some((task) => action.includes(task.title)));
+    const flagKey = `targetedInvestigation:${normalized}`;
+    const count = Number(game.world.flags[flagKey] ?? 0) + 1;
+    game.world.flags[flagKey] = count;
+    const confidence = known ? Math.min(88, 55 + count * 8) : Math.min(58, 22 + count * 12);
+    const subjectType = knownRelation ? "人物" as const : knownItem ? "物品" as const : knownFaction ? "势力" as const : "事件" as const;
+    const subjectId = knownRelation?.id ?? (knownItem ? `item:${knownItem}` : knownFaction?.id ?? activeEvent?.id ?? knownIntel?.subjectId ?? `unverified:${normalized}`);
+    const detail = known
+      ? `围绕“${normalized}”完成第${count}次有对象的核对；只确认了当前能够接触的记录、目击或物品状态，尚未自动证明幕后人物、未来结果或玩家猜测。`
+      : `没有在当前地点、已知人物、随身物品、任务或既有情报中找到足以确认“${normalized}”真实存在的依据；本次只保留查无实证的记录。`;
+    recordIntelligence(game, { subjectType, subjectId: subjectId ?? `unverified:${normalized}`, title: normalized, detail, source: known ? "指定对象调查与现有记录交叉核对" : "指定对象调查但未找到可靠来源", confidence, status: known ? (confidence >= 75 ? "确定" : "推测") : "传闻" });
+    game.world.metrics.discoveries += 1;
+    return {
+      intent: "调查指定对象",
+      minutes: speedMinutes(game, 180, 720),
+      ruleSummary: known ? `完成对“${normalized}”的第${count}次针对性调查，可信度${confidence}；只记录已核对范围，没有生成目标以外的随机人物。` : `调查“${normalized}”后仍无可靠存在证据，可信度${confidence}；没有把玩家猜测写成世界事实。`,
+      fallbackNarrative: known ? `${name}没有沿路随便抓一个名字交差。他把与“${normalized}”直接有关的记录和眼前能碰到的东西分开核对，只留下能够互相对上的部分。` : `${name}按“${normalized}”这个说法问了一圈，也翻过当前有权接触的记录。没有一条能把它钉成事实，他便把“未证实”三个字写在最前面。`,
+      suggestions: known ? [`继续核对${normalized}的第二来源`, `询问与${normalized}直接有关的人`, `根据现有可信度决定是否行动`] : [`调查最初从哪里听到${normalized}`, "换一个能够接触的具体对象", "暂不把传闻当成事实"],
+      systemMessages: [`定向调查 · ${normalized} · ${known ? `可信度${confidence}` : "未证实"}`],
+    };
+  }
   const random = actionRandom(game);
   const localNpc = Object.values(game.world.npcs).find((npc) => npc.alive && npc.currentGoal !== "尚未出生" && npc.locationId === game.view.locationId && !npc.knownToPlayer && canDiscoverNpc(game, npc.id) && random() < 0.45);
   const systemMessages: string[] = [];
@@ -1816,6 +1892,201 @@ function investigateResolution(game: StoredGame, action: string): ActionResoluti
     suggestions: giftRevealed ? ["尝试感应这份传承", "记录触发条件", "暂时保守秘密"] : localNpc ? [`打听${localNpc.name}`, "核对线索日期", "查看世界记录"] : ["换个地点调查", "找当地老人", "检查地图"],
     systemMessages,
   };
+}
+
+function actionOrdinal(game: StoredGame): number {
+  return (game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
+}
+
+function interventionTitleParts(title: string): string[] {
+  return title.split(/在|与|和|的|完成|发动|开启|成立|进入|遭到|正式|开始|进行|出现/).map((part) => part.trim()).filter((part) => part.length >= 3);
+}
+
+function mentionedCanonEvent(action: string) {
+  return CANON_EVENTS.filter((event) => {
+    if (action.includes(event.title)) return true;
+    const parts = interventionTitleParts(event.title);
+    return parts.length >= 2 && parts.filter((part) => action.includes(part)).length >= 2;
+  }).sort((left, right) => right.title.length - left.title.length)[0];
+}
+
+function projectForAction(game: StoredGame, action: string): CanonInterventionProject | undefined {
+  const exact = game.world.canonInterventionProjects.find((project) => action.includes(project.title));
+  if (exact) return exact;
+  const active = game.world.canonInterventionProjects.filter((project) => !["完成", "失败"].includes(project.stage));
+  return active.length === 1 && /干预计划|该事件|目标事件|继续调查|准备资源|取得支持|执行计划|核验结果/.test(action) ? active[0] : undefined;
+}
+
+function characterKnowsCanonEvent(game: StoredGame, event: (typeof CANON_EVENTS)[number]): { known: boolean; basis: string } {
+  const candidate = game.hiddenCandidates.find((item) => item.public.id === game.view.selectedCandidateId);
+  if (candidate?.originId === "modern-transmigrator" && /原作.*时间线|剧情.*时间线/.test(game.view.character?.revealedGift ?? "")) return { known: true, basis: "穿越记忆中的原作节点；改变越多，细节越不可靠" };
+  const intel = game.world.intelligenceRecords.find((record) => record.subjectType === "事件" && (record.subjectId === event.id || `${record.title}${record.detail}`.includes(event.title)) && record.confidence >= 45);
+  if (intel) return { known: true, basis: `${intel.source}形成的${intel.status}情报` };
+  if (game.view.news.some((item) => `${item.title}${item.detail}`.includes(event.title))) return { known: true, basis: "已经传到角色耳中的公开消息" };
+  if (game.world.dynamicEvents.some((item) => `${item.title}${item.detail}`.includes(event.title) && item.status === "可介入")) return { known: true, basis: "当前可介入事件的现场情报" };
+  return { known: false, basis: "角色尚无可靠信息来源" };
+}
+
+function interventionObjective(action: string): CanonInterventionProject["objective"] {
+  if (/保护|救|护送|预警/.test(action)) return "保护";
+  if (/夺取|截获|调换/.test(action)) return "夺取";
+  if (/改变|替代|谈判/.test(action)) return "改变";
+  return "阻止";
+}
+
+function syncCanonInterventionView(game: StoredGame): void {
+  game.view.canonInterventions = game.world.canonInterventionProjects.slice(-12).reverse().map((project) => {
+    const targetEvent = CANON_EVENTS.find((event) => event.id === project.eventId);
+    const nextPreparation = !project.evidence.some((item) => item.includes("准备类别：执行演练")) ? `演练${project.title}的执行步骤` : !project.evidence.some((item) => item.includes("准备类别：物资耗材")) ? `为${project.title}准备物资耗材` : `为${project.title}准备退路与接应`;
+    const nextAction = project.stage === "调查"
+      ? `调查${project.title}的参与者与行动路径`
+      : project.stage === "准备"
+        ? project.access < 1 ? `勘察${project.title}的地点与进入路线` : project.preparation < 2 ? nextPreparation : `为${project.title}取得一名可靠支持者`
+        : project.stage === "待执行"
+          ? `执行${project.objective}${project.title}的计划`
+          : project.stage === "待核验" ? `核验${project.title}的干预结果` : "留意后续时间线变化";
+    return { id: project.id, eventId: project.eventId, title: project.title, objective: project.objective, stage: project.stage, intelligence: project.intelligence, access: project.access, preparation: project.preparation, targetDate: targetEvent ? canonEventDateLabel(targetEvent) : "原著时间待核实", nextAction, outcome: project.outcome };
+  });
+}
+
+function refreshInterventionStage(project: CanonInterventionProject): void {
+  if (["待核验", "完成", "失败"].includes(project.stage)) return;
+  if (project.intelligence < 2) project.stage = "调查";
+  else if (project.access < 1 || project.preparation < 2) project.stage = "准备";
+  else project.stage = "待执行";
+}
+
+function canonInterventionActionMatches(game: StoredGame, action: string): boolean {
+  if (!/干预|阻止|改变|保护|救|夺取|截获|调查|追查|核验|准备|筹集|布置|勘察|路线|支持|协助|执行|破坏|切断|调换|护送|预警|演练/.test(action)) return false;
+  return Boolean(projectForAction(game, action) || mentionedCanonEvent(action));
+}
+
+function canonInterventionResolution(game: StoredGame, action: string): ActionResolution {
+  const now = actionOrdinal(game);
+  let project = projectForAction(game, action);
+  const event = project ? CANON_EVENTS.find((item) => item.id === project!.eventId) : mentionedCanonEvent(action);
+  if (!event) return impossible("没有找到与这句话唯一对应的原著事件。", ["查看已经掌握的事件情报", "明确事件名称与近期目标", "继续当前计划"]);
+  const targetOrdinal = canonEventSimulationOrdinal(event);
+  if (game.world.firedCanonEvents.includes(event.id) && !game.world.suppressedCanonEvents.includes(event.id)) return impossible(`${event.title}已经发生，不能把事后行动写成提前阻止。`, ["调查事件留下的后果", "帮助幸存者处理损失", "追查后续责任链"]);
+  if (now >= targetOrdinal && !game.world.suppressedCanonEvents.includes(event.id)) return impossible(`${event.title}已经进入当前推演的触发点，当前没有足够提前量建立新的干预计划。`, ["调查现场状态", "介入当前公开事件", "保护眼前能够接触的人"]);
+
+  if (!project) {
+    const knowledge = characterKnowsCanonEvent(game, event);
+    if (!knowledge.known) return impossible(`角色虽然说出了“${event.title}”，但当前存档没有亲历、告知、调查或穿越记忆作为信息来源。`, ["调查近期异常与相关势力动向", "核对公开消息和地方记录", "放弃使用角色不该知道的未来信息"]);
+    project = {
+      id: `canon-plan-${event.id}-${game.actionIndex}`,
+      eventId: event.id,
+      title: event.title,
+      objective: interventionObjective(action),
+      stage: "调查",
+      intelligence: 1,
+      access: 0,
+      preparation: 0,
+      evidence: [knowledge.basis],
+      supportNpcIds: [],
+      supportFactionIds: [],
+      createdOrdinal: now,
+      updatedOrdinal: now,
+      targetOrdinal,
+    };
+    game.world.canonInterventionProjects.push(project);
+    game.world.canonInterventionProjects = game.world.canonInterventionProjects.slice(-24);
+    recordIntelligence(game, { subjectType: "事件", subjectId: event.id, title: event.title, detail: `已确认这是需要继续核对参与者、地点和行动路径的历史风险；当前依据：${knowledge.basis}。`, source: "干预计划初始依据", confidence: 48, status: "推测" });
+    refreshInterventionStage(project);
+    syncCanonInterventionView(game);
+    return { intent: "建立原著事件干预计划", minutes: 30, ruleSummary: `以“${knowledge.basis}”建立${project.objective}${event.title}的计划；目前只有初始情报，尚未改变时间线。`, fallbackNarrative: `${game.view.character!.name}先把记得的、听来的和已经证实的内容分开写下。纸上有了目标，却还没有能让目标倒下的办法。`, suggestions: [`调查${event.title}的参与者与行动路径`, event.locationId ? `勘察${event.title}涉及的${locationById(event.locationId)?.name ?? "地点"}路线` : `调查${event.title}的组织路径`, `为${event.title}寻找可靠支持者`], systemMessages: [`原著干预 · 已立项 · ${event.title}`] };
+  }
+
+  project.updatedOrdinal = now;
+  if (/核验|确认结果|检查结果/.test(action)) {
+    if (project.stage !== "待核验") return impossible("计划尚未完成实际执行，不能提前核验一个不存在的结果。", [project.stage === "待执行" ? `执行${project.objective}${project.title}的计划` : project.stage === "调查" ? `继续调查${project.title}` : `继续准备${project.title}`, "查看干预计划", "暂缓行动"]);
+    project.stage = project.executionSucceeded ? "完成" : "失败";
+    project.outcome = project.executionSucceeded ? `实际行动已形成强度${project.executionStrength}的历史因果；原定节点到期时将按新条件结算。` : `实际行动没有突破事件的组织与资源条件，只留下了有限警觉和局部变化。`;
+    recordIntelligence(game, { subjectType: "事件", subjectId: event.id, title: event.title, detail: project.outcome, source: "行动后的独立核验", confidence: 88, status: "确定" });
+    syncCanonInterventionView(game);
+    return { intent: "核验原著事件干预结果", minutes: 90, ruleSummary: project.outcome, fallbackNarrative: project.executionSucceeded ? `几份互不相干的消息终于对上了。原定的人没有按原路线出现，负责接应的一方也临时换了安排。${game.view.character!.name}这才在计划最后一栏落笔：行动已经生效，但后面会变成什么，没人能照旧书回答。` : `${game.view.character!.name}逐项核对后划掉了“已经改变”四个字。对方提高了戒备，关键的人和东西却仍沿原路线移动。这次行动确实发生过，却没有被旁白夸成胜利。`, suggestions: project.executionSucceeded ? ["留意相关人物的新行动", "调查替代路线", "准备承担势力反应"] : ["总结失败暴露的条件", "另建更充分的干预计划", "保护当前能够接触的人"], systemMessages: [`原著干预 · ${project.stage} · ${event.title}`] };
+  }
+
+  if (/执行|实施|动手|破坏|切断|截获|调换|护送|预警/.test(action) && !/准备|演练|勘察/.test(action)) {
+    const daysUntilEvent = targetOrdinal - now;
+    if (daysUntilEvent > 120) return impossible(`距离${event.title}的当前推演触发点还有${daysUntilEvent}日。人员、路线和资源会继续变化，现在只能调查与建立关系，不能把多年后的执行结果提前锁死。`, [`继续调查${event.title}的当前条件`, `在${Math.max(1, daysUntilEvent - 120)}日后重新核对执行窗口`, "推进眼前能够实际影响的关系与势力"]);
+    refreshInterventionStage(project);
+    if (project.stage !== "待执行") return impossible(`执行前至少需要两项可靠情报、一条真实接近路线和两项准备；当前情报${project.intelligence}/2、路线${project.access}/1、准备${project.preparation}/2。`, [`调查${event.title}的参与者与行动路径`, `勘察${event.title}的地点与进入路线`, `为${event.title}准备物资并演练`]);
+    const support = project.supportNpcIds.length + project.supportFactionIds.length;
+    const soulRank = game.view.character?.soulRank ?? 0;
+    const executionStrength = Math.round(8 + project.intelligence * 4 + project.access * 4 + project.preparation * 5 + support * 6 + soulRank / 5);
+    const resistance = event.inertia * 8 * ({ 爽: .8, 简单: .9, 标准: 1, 困难: 1.15, 地狱: 1.3 }[game.view.difficulty]);
+    const routeExists = !event.locationId || (game.view.locationId === event.locationId && project.access >= 1);
+    const success = routeExists && executionStrength >= resistance;
+    project.executionStrength = executionStrength;
+    project.executionSucceeded = success;
+    project.stage = "待核验";
+    project.outcome = success ? "计划已经实际执行，正在等待独立消息确认结果。" : "计划已经实际执行，但没有突破目标的防备与资源条件。";
+    const participantFactions = [...new Set(event.participantIds.flatMap((id) => game.world.npcs[id]?.factionIds ?? []))];
+    const footprint = recordCanonInfluence(game, { source: success ? "原著事件干预执行" : "原著事件干预失败", description: `${project.objective}${event.title}：${project.evidence.slice(-3).join("；")}`, affectedNpcIds: event.participantIds, affectedFactionIds: participantFactions, strength: success ? executionStrength : Math.min(6, Math.max(2, Math.round(executionStrength * .12))), locationId: event.locationId, domains: project.objective === "保护" ? ["survival", "goal", "relationship"] : project.objective === "夺取" ? ["resource", "institution", "faction"] : ["goal", "institution", "resource"], expiresOrdinal: targetOrdinal + 360, targetEventId: event.id });
+    project.footprintId = footprint.id;
+    game.world.deviation += success ? Math.max(5, Math.round(executionStrength / 2)) : 1;
+    game.world.metrics.historicalImpact += success ? Math.max(5, Math.round(executionStrength / 2)) : 1;
+    syncCanonInterventionView(game);
+    return { intent: "执行原著事件干预计划", minutes: 360, ruleSummary: `${event.title}干预已按情报、路线、资源和支持结算：行动强度${executionStrength}，节点抵抗${Math.round(resistance)}，${success ? "实际条件已被撼动" : "尚未突破"}；仍需核验结果。`, fallbackNarrative: success ? `${game.view.character!.name}没有对着一个故事标题挥手。盯梢的人、换过的路线、已经花掉的钱和临时答应出手的人同时动了起来。等最后一处信号按约熄灭，原定安排第一次真正断了一环。` : `计划确实执行了，钱也花了，人也到了。但目标一方的接应比预计更严，准备好的手段只撕开外围，没碰到真正决定结果的那一环。`, suggestions: [`核验${event.title}的干预结果`, "处理行动留下的暴露风险", "保留尚未使用的准备"], systemMessages: [`原著干预执行 · 强度${executionStrength}/${Math.round(resistance)}`, `结果待核验 · ${event.title}`] };
+  }
+
+  if (/调查|追查|核对|打听/.test(action)) {
+    if (project.intelligence >= 3) return impossible("关于该事件的关键参与者、地点和行动路径已经达到当前可核实上限。", [`勘察${event.title}的进入路线`, `为${event.title}准备物资并演练`, `为${event.title}取得可靠支持者`]);
+    project.intelligence += 1;
+    const evidence = project.intelligence === 2 ? `核对了${event.title}的主要参与者与目标地点` : `从独立来源复核了${event.title}的时间窗口与行动路径`;
+    project.evidence.push(evidence);
+    recordIntelligence(game, { subjectType: "事件", subjectId: event.id, title: event.title, detail: evidence, source: project.intelligence === 2 ? "人物行踪与地点记录交叉核对" : "第二条独立来源复核", confidence: project.intelligence === 2 ? 66 : 78, status: project.intelligence === 2 ? "推测" : "确定" });
+    refreshInterventionStage(project);
+    syncCanonInterventionView(game);
+    return { intent: "调查原著事件干预条件", minutes: 180, ruleSummary: `${evidence}；情报${project.intelligence}/3。调查本身没有被记成历史改写。`, fallbackNarrative: `${game.view.character!.name}把不同人口中的日期和路线并排抄下，删掉互相矛盾的部分。剩下的内容不够传奇，却足够拿来安排下一步。`, suggestions: project.stage === "调查" ? [`继续调查${event.title}的行动路径`, `勘察${event.title}的目标地点`, `寻找${event.title}相关势力的可靠支持`] : [`勘察${event.title}的进入路线`, `为${event.title}准备物资并演练`, `为${event.title}取得可靠支持者`], systemMessages: [`干预情报 · ${project.intelligence}/3 · ${event.title}`] };
+  }
+
+  if (/支持|协助|盟友|联络|说服|请求/.test(action) && !/准备.*(?:联络|通信)/.test(action)) {
+    const relation = game.view.relations.find((item) => action.includes(item.name) && (item.dimensions?.trust ?? item.strength ?? 0) >= 35 && (!item.id || !game.world.npcs[item.id] || (game.world.npcs[item.id]?.alive && game.world.npcs[item.id]?.locationId === game.view.locationId)) && (!item.localState || item.localState.locationId === game.view.locationId));
+    const affiliation = game.view.affiliations.find((item) => action.includes(item.name) && ((item.contribution ?? 0) >= 3 || /宗主|少宗主|长老|核心|负责人|军官|指挥|阁主|现役/.test(item.role)));
+    if (!relation && !affiliation) return impossible("没有找到已经建立信任、且被明确点名的支持者；陌生强者不会因为主角说一句话就替他改史。", ["明确联系一名信任达到35的关系人物", "请求自己所属势力提供有限协助", `先调查${event.title}取得可交换的证据`]);
+    if (relation?.id && !project.supportNpcIds.includes(relation.id)) project.supportNpcIds.push(relation.id);
+    if (affiliation && !project.supportFactionIds.includes(affiliation.id)) project.supportFactionIds.push(affiliation.id);
+    project.access = Math.min(3, project.access + 1);
+    project.evidence.push(`${relation?.name ?? affiliation?.name}基于现有关系同意提供有限路线或人手支持`);
+    refreshInterventionStage(project);
+    syncCanonInterventionView(game);
+    return { intent: "取得原著事件干预支持", minutes: 120, ruleSummary: `${relation?.name ?? affiliation?.name}只承诺有限支持；计划路线${project.access}/3，支持者${project.supportNpcIds.length + project.supportFactionIds.length}名。`, fallbackNarrative: `${game.view.character!.name}没有只讲“大事将至”。证据、要做的事和一旦失败由谁承担都摆上桌后，对方才答应给一条路线和有限人手。`, suggestions: [`为${event.title}准备物资并演练`, `继续调查${event.title}`, project.stage === "待执行" ? `执行${project.objective}${event.title}的计划` : `勘察${event.title}的进入路线`], systemMessages: [`干预支持 · ${relation?.name ?? affiliation?.name}`] };
+  }
+
+  if (/勘察|路线|潜入|通行|接近|踩点/.test(action)) {
+    if (project.access >= 3) return impossible("现有进入路线已经核对到当前能力上限。", [`为${event.title}准备物资并演练`, `为${event.title}取得可靠支持者`, project.stage === "待执行" ? `执行${project.objective}${event.title}的计划` : `继续调查${event.title}`]);
+    if (game.view.locationId !== event.locationId && !game.world.discoveredLocations.includes(event.locationId ?? "")) return impossible("尚未到过目标地区，也没有可靠当地支持，不能凭空完成路线勘察。", [event.locationId ? `前往${locationById(event.locationId)?.name ?? "目标地区"}` : "调查相关势力的行动范围", `为${event.title}寻找当地支持者`, "暂缓计划"]);
+    project.access += 1;
+    project.evidence.push(`实地核对了接近目标的第${project.access}条可行路线`);
+    refreshInterventionStage(project);
+    syncCanonInterventionView(game);
+    return { intent: "勘察原著事件干预路线", minutes: 240, ruleSummary: `完成一条真实接近路线的勘察；路线${project.access}/3。`, fallbackNarrative: `${game.view.character!.name}按实际脚程走了一遍，把守卫换班、遮蔽物和退路分别记下。地图上的一条线终于变成了脚下真正能走的路。`, suggestions: [`为${event.title}准备物资并演练`, `继续调查${event.title}`, `为${event.title}取得可靠支持者`], systemMessages: [`干预路线 · ${project.access}/3 · ${event.title}`] };
+  }
+
+  if (/准备|筹集|布置|演练|训练/.test(action)) {
+    if (project.preparation >= 4) return impossible("物资与演练已经达到当前计划上限，继续重复不能无限堆高历史因果。", [project.stage === "待执行" ? `执行${project.objective}${event.title}的计划` : `继续调查${event.title}`, `为${event.title}取得可靠支持者`, "检查当前计划"]);
+    const preparationKind = /演练|训练/.test(action) ? "执行演练" : /退路|撤退|接应/.test(action) ? "退路接应" : /联络|通信|传信/.test(action) ? "联络通信" : "物资耗材";
+    if (project.evidence.some((item) => item.includes(`准备类别：${preparationKind}`))) return impossible(`${preparationKind}已经完成；重复同一种准备不能继续增加历史因果强度。`, ["准备一条真实退路与接应", "完成一次执行演练", "准备联络与传信安排"]);
+    const cost = Math.max(20, event.inertia * 50);
+    if (preparationKind !== "执行演练") {
+      if ((game.view.character?.coins ?? 0) < cost) return impossible(`这一步需要${formatSoulCoins(cost)}用于交通、耗材、联络和退路，当前资金不足。`, ["工作筹集资金", `改为演练${event.title}的执行步骤`, "缩小当前计划"]);
+      game.view.character!.coins -= cost;
+      recordEconomyTransaction(game, "支出", cost, "原著事件干预计划", `${event.title}的交通、耗材、联络与退路准备`);
+    } else {
+      if (game.world.fatiguePoints >= 82) return impossible("当前过于疲劳，继续演练只会让正式行动失误。", ["休息恢复", "整理现有证据", "暂缓干预计划"]);
+      game.world.fatiguePoints += 12;
+    }
+    project.preparation += 1;
+    project.evidence.push(preparationKind === "执行演练" ? `准备类别：${preparationKind}；完成执行演练并记录失误点` : `准备类别：${preparationKind}；实际支出${formatSoulCoins(cost)}完成可追溯准备`);
+    refreshInterventionStage(project);
+    syncCanonInterventionView(game);
+    return { intent: "准备原著事件干预", minutes: 240, ruleSummary: `完成第${project.preparation}项可追溯准备；当前情报${project.intelligence}/3、路线${project.access}/3、准备${project.preparation}/4。`, fallbackNarrative: `${game.view.character!.name}把要用的东西逐件清点，又按最坏情况走了一遍撤退顺序。钱袋轻了，纸上的空格也少了一项。`, suggestions: [project.stage === "待执行" ? `执行${project.objective}${event.title}的计划` : `继续调查${event.title}`, `为${event.title}取得可靠支持者`, `勘察${event.title}的另一条路线`], systemMessages: [`干预准备 · ${project.preparation}/4 · ${event.title}`] };
+  }
+
+  syncCanonInterventionView(game);
+  return impossible("这句话指向干预计划，但没有说明要调查、勘察路线、取得支持、准备、执行还是核验。", [`继续调查${event.title}`, `为${event.title}准备物资并演练`, `检查${event.title}干预计划`]);
 }
 
 function specialSystemResolution(game: StoredGame, action: string): ActionResolution {
@@ -2137,6 +2408,7 @@ function createAcademyLife(game: StoredGame, application: AcademyApplicationView
 function academyResolution(game: StoredGame, action: string): ActionResolution {
   const character = game.view.character!;
   const era = game.view.era ?? 1;
+  if (/不存在的学院|随便一所学院|任意学院|虚构学院/.test(action)) return impossible("学院申请必须指向当前位置真实存在的学院，程序不能把占位说法自动替换成录取机构。", ["查看当前位置可申请的学院", "明确学院名称", "先和监护人比较培养路线"]);
   if (character.innateSoulPower <= 0) return impossible("学院要求至少能够稳定感应魂力。", ["申请重新检测", "寻找其他修行道路", "打听理论研究者"]);
   const target = academyAtCurrentLocation(game, action);
   const academyName = target.name;
@@ -2171,6 +2443,7 @@ function academyResolution(game: StoredGame, action: string): ActionResolution {
     return { intent: "变更学院费用路线", minutes: 30, ruleSummary: `${academyName}申请仍处于材料阶段；费用路线改为${requestedFunding}，来源为${application.fundingSource}，附带责任为${application.obligations.join("；")}。`, fallbackNarrative: `接待老师把原来那一格划掉，在旁边签了日期。新选的费用来源、谁来签字、以后要承担什么，都重新念了一遍。改的是申请办法，不是偷偷把人变成另一种学生。`, suggestions: [`按${requestedFunding}准备报名材料`, `向${application.fundingSource}确认责任`, "撤回申请并比较其他学院"], systemMessages: [`入学费用路线 · ${previous} → ${requestedFunding}`] };
   }
   if (application.stage === "材料准备") {
+    if (!/提交|准备|带上|出示|说明来处|担保|证明|材料|觉醒记录|费用来源/.test(action)) return impossible(`当前仍缺${academyName}要求的真实材料；重复说“申请”不会自动补齐证明、监护和费用来源。`, [`准备${academyName}需要的证明`, "请监护人说明来处与费用来源", "撤回本次申请"]);
     const guardian = game.view.relations.find((item) => item.category === "亲属" || /监护|父|母|祖|村长|里正/.test(`${item.relation}${item.name}`));
     if (character.age < 12 && !guardian && !game.view.inventory.some((item) => /临时来处证明|地方临时身份凭据/.test(item))) return impossible("孩子还没有能说明来处的长辈或担保人，学院不能替他编造家庭。", ["寻找愿意作保的当地人", "请负责觉醒的魂师说明经过", "先解决住处和照料人"]);
     const fundingProblem = academyFundingProblem(game, application.fundingType, action);
@@ -2183,6 +2456,7 @@ function academyResolution(game: StoredGame, action: string): ActionResolution {
     return { intent: "提交学院入学证明", minutes: 120, ruleSummary: `${academyName}已经收下觉醒记录、来处说明和${application.fundingType}安排；还要完成${application.admissionAssessmentName}，现在尚未录取。`, fallbackNarrative: `带孩子来的人把名字和来处说清，接待老师又看过觉醒记录，最后才说明下一场测试在哪里。谁出钱、住哪里、考不过怎么办，也都当面讲明白了。`, suggestions: [`参加${academyName}${application.admissionAssessmentName}`, "询问测试内容和失败后的去向", "问清费用安排会带来什么义务"], systemMessages: [`入学申请 · ${academyName} · 等待${application.admissionAssessmentName}`] };
   }
   if (application.stage === "入学考核") {
+    if (!/参加|进行|开始|接受|完成/.test(action) || !/考核|测试|分班|评审/.test(action)) return impossible(`下一步是本人实际参加${application.admissionAssessmentName}；没有执行测试就不能生成分数。`, [`参加${academyName}${application.admissionAssessmentName}`, "询问考核内容与失败后去向", "撤回本次申请"]);
     const talent = character.innateSoulPower * 5 + Math.min(25, character.soulRank) + Math.min(10, Math.floor(game.world.trainingPoints / 10));
     const score = Math.min(100, talent + integer(actionRandom(game), -6, 8));
     application.examScore = score;
@@ -2796,8 +3070,14 @@ function academyStudyResolution(game: StoredGame, action: string): ActionResolut
 }
 
 function dynamicEventResolution(game: StoredGame, action: string): ActionResolution {
-  const event = game.world.dynamicEvents.find((item) => item.status === "可介入" && (item.locationId === game.view.locationId || action.includes(item.title)));
+  const openEvents = game.world.dynamicEvents.filter((item) => item.status === "可介入");
+  const namedEvents = openEvents.filter((item) => action.includes(item.title));
+  if (namedEvents.length > 1) return impossible("这句话同时指向多个事件，不能擅自选择其中一个结算。", namedEvents.slice(0, 3).map((item) => `明确处理${item.title}`));
+  const localEvents = openEvents.filter((item) => item.locationId === game.view.locationId);
+  if (!namedEvents.length && localEvents.length > 1 && !/查看新事件/.test(action)) return impossible("当前位置有多个可介入事件，必须明确事件名称。", localEvents.slice(0, 3).map((item) => `调查${item.title}`));
+  const event = namedEvents[0] ?? localEvents[0];
   if (!event) return impossible("眼下没有我能直接介入的公开事件。", ["查看世界消息", "调查本地传闻", "前往事件地点"]);
+  if (event.locationId !== game.view.locationId && !/拒绝|不接受|回绝/.test(action)) return impossible(`${event.title}发生在${locationById(event.locationId)?.name ?? event.locationId}，当前只能调查或前往，不能隔空完成介入。`, [`调查前往${locationById(event.locationId)?.name ?? "事件地点"}的路线`, `前往${locationById(event.locationId)?.name ?? "事件地点"}`, "继续处理当前位置的事情"]);
   if (/拒绝|不接受|回绝/.test(action)) {
     event.outcome = "玩家明确拒绝介入，但事件仍会按原期限继续发展。";
     game.world.flags[`declinedEvent:${event.id}`] = true;
@@ -2814,8 +3094,13 @@ function dynamicEventResolution(game: StoredGame, action: string): ActionResolut
     return { intent: "调查世界事件", minutes: 90, ruleSummary: `确认${event.title}的地点、期限和主要风险。`, fallbackNarrative: `我把几种说法分开问了一遍。有人夸大，也有人故意漏话。能互相对上的部分不多，至少地点和最后期限是真的。`, suggestions: [`帮助处理${event.title}`, `阻止${event.title}继续恶化`, "寻找参与者核对"] };
   }
   const random = actionRandom(game);
-  const power = (game.view.character?.soulRank ?? 0) + game.view.relations.length * 2 + game.view.affiliations.length * 3;
-  const success = random() < Math.min(0.9, 0.42 + power / 120 + (game.personalityProfile.scores.patience ?? 0) * 0.025);
+  const affectedFactions = [...new Set(event.participantIds.flatMap((id) => game.world.npcs[id]?.factionIds ?? []))];
+  const participantRelations = game.view.relations.filter((relation) => event.participantIds.includes(relation.id ?? ""));
+  const relevantAffiliations = game.view.affiliations.filter((affiliation) => affectedFactions.includes(affiliation.id));
+  const relationshipSupport = participantRelations.reduce((sum, relation) => sum + Math.max(0, relation.dimensions?.trust ?? relation.strength ?? 0), 0);
+  const methodSpecified = /护送|封锁|谈判|救援|追踪|埋伏|转移|修复|治疗|疏散|截断|核对|调换/.test(action);
+  const successChance = Math.min(.88, .28 + (game.view.character?.soulRank ?? 0) / 180 + relationshipSupport / 500 + relevantAffiliations.length * .08 + (methodSpecified ? .12 : 0) + (game.personalityProfile.scores.patience ?? 0) * .02);
+  const success = random() < successChance;
   if (success) {
     event.status = "已解决";
     event.outcome = "玩家的介入改变了结果。";
@@ -2827,7 +3112,6 @@ function dynamicEventResolution(game: StoredGame, action: string): ActionResolut
   const impact = event.stakes * (success ? 3 : 2);
   game.world.deviation += impact;
   game.world.metrics.historicalImpact += impact;
-  const affectedFactions = [...new Set(event.participantIds.flatMap((id) => game.world.npcs[id]?.factionIds ?? []))];
   if (event.participantIds.length || affectedFactions.length) recordCanonInfluence(game, { source: "介入事件", description: `介入${event.title}`, affectedNpcIds: event.participantIds, affectedFactionIds: affectedFactions, strength: impact, domains: ["goal", "relationship", "resource", "institution"] });
   if (!success) { game.world.healthPoints -= event.stakes * 4; game.view.character!.reputation = "惹上麻烦"; }
   else game.view.character!.reputation = event.stakes >= 4 ? "当地知名" : "略有名声";
@@ -2851,8 +3135,11 @@ function npcConflictResolution(game: StoredGame, action: string): ActionResoluti
   const estimatedNpcPower = npc.soulRank ?? (/封号|超级|绝世/.test(npc.powerTier) ? 92 : /魂斗罗/.test(npc.powerTier) ? 82 : /魂圣/.test(npc.powerTier) ? 72 : 45);
   const playerPower = (game.view.character?.soulRank ?? 0) + (game.view.character?.soulRings.length ?? 0) * 2 + game.view.affiliations.length;
   const random = actionRandom(game);
-  const prepared = /偷袭|下毒|埋伏|准备/.test(action) ? 10 : 0;
-  const successChance = Math.max(0.01, Math.min(0.9, 0.42 + (playerPower + prepared - estimatedNpcPower) / 55));
+  const preparationEvidence = game.world.actionLedger.slice(-30).filter((entry) => entry.action.includes(npc.name) && /调查指定对象|购买|制作|准备冲突|取得原著事件干预支持/.test(entry.intent) && !/无法|失败|未证实/.test(entry.result));
+  const hasPoison = /下毒/.test(action) && game.view.inventory.some((item) => /毒/.test(item));
+  const prepared = Math.min(12, preparationEvidence.length * 3 + (hasPoison ? 4 : 0));
+  const powerGap = playerPower + prepared - estimatedNpcPower;
+  const successChance = powerGap < -20 ? 0 : Math.max(0.03, Math.min(0.9, 0.42 + powerGap / 55));
   const success = random() < successChance;
   const lethal = /杀|刺杀|致命|不留活口/.test(action);
   if (success && lethal) {
@@ -4052,7 +4339,8 @@ function openingFollowupResolution(game: StoredGame, action: string): ActionReso
     fallbackNarrative: `岩叔没有说“外面危险”便算完。他带着孩子走到气息覆盖的最外沿，一步以内，林中的兽群仍会回应；再往前，钱、门锁、路引和人话里的规矩都得靠孩子自己学。`,
     suggestions: [next, "准备一次不越过安全线的人类外围接触", "先学钱币、称呼和公共觉醒记录"], systemMessages: ["去向边界 · 兽群保护范围已确认"],
   };
-  if (step.id === "path" && /决定|选择|公开|隐藏|主修|路线|登记|留在|接触/.test(action)) {
+  const openingPathRelevant = action.includes(soul) || /武魂|主修|公开范围|公开武魂|隐藏武魂|保守秘密|培养条件|成长路线|近期路线/.test(action);
+  if (step.id === "path" && openingPathRelevant && /决定|选择|公开|隐藏|主修|路线|登记|留在|接触|接受|拒绝/.test(action)) {
     const character = game.view.character!;
     const chosenIndex = character.martialSouls.findIndex((soul) => action.includes(soul.name));
     if (chosenIndex >= 0) character.activeMartialSoulIndex = chosenIndex;
@@ -4192,7 +4480,7 @@ function updatePersonality(game: StoredGame, action: string): void {
 }
 
 function firstRoutingClause(input: string): { action: string; deferred?: string } {
-  const explicitFirst = input.match(/^先(.+?)[，,]?(?:然后|接着|随后|再去|再来|顺便|并且)(.+)$/);
+  const explicitFirst = input.match(/^先(.+?)[，,]?(?:然后|接着|随后|再去|再来|再(?=问|询问|请教|调查|修炼|训练|前往|申请|商量|告诉|帮助)|顺便|并且)(.+)$/);
   if (explicitFirst) return { action: explicitFirst[1].trim(), deferred: explicitFirst[2].trim() };
   const sequenced = input.match(/^(.+?)[，,](?:然后|接着|随后|顺便)(.+)$/);
   if (sequenced) return { action: sequenced[1].trim(), deferred: sequenced[2].trim() };
@@ -4208,7 +4496,7 @@ function contextualizeRuleFallback(game: StoredGame, input: string, text: string
 }
 
 function ambiguousRoleTargetGuard(game: StoredGame, action: string): ActionResolution | undefined {
-  if (game.view.relations.some((relation) => action.includes(relation.name))) return undefined;
+  if (relationTargetsForAction(game, action).length === 1) return undefined;
   if (/问|询问|请教|联系|告诉/.test(action) && /老师|导师|师父/.test(action)) {
     const teachers = game.view.relations.filter((relation) => /老师|导师|班主任|师徒|教官|教习/.test(`${relation.relation}${relation.impression}`));
     if (teachers.length > 1) return impossible("当前认识多名教师或导师，必须明确对象；班主任、私人导师和机构教官的权限并不相同。", teachers.slice(0, 3).map((item) => `明确询问${item.name}`));
@@ -4241,7 +4529,7 @@ export function classifyCoreActionRoute(game: StoredGame, input: string): CoreAc
   const academyApplication = Boolean(game.view.academyApplication && !["已入学", "未通过", "已撤回"].includes(game.view.academyApplication.stage) && /学院|报名|材料|证明|来处|监护|担保|工读|家族资助|家族承担|学院奖助|奖学|宗门委培|宗门资助|义务教育|家庭自费|普通自费|入学考核|分班测试|录取|报到|进入学院|接受.*入学|食宿|放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action));
   const academyLife = Boolean(game.view.academyLife && /宿舍|课表|安置|安顿|报到|校服|上课|课程|学院学习|体能课|魂师基础|同学|同桌|舍友|认识|交谈|切磋|共同训练|小组练习|一起吃饭|阶段考核|新生考核|班级实战|基础课程与实战检查|工读|排班|校内劳动|奖助|宗门|委培|培养情况|家族|费用用途/.test(action));
   const mentorPursuit = Boolean(mentor && !["已拜师", "被拒绝", "已结束"].includes(mentor.stage) && (action.includes(mentor.mentorName) || /导师|拜师|师徒|试学|考察|考验|授业/.test(action))) || /拜师|拜.*为师|收我为徒|请.*指导|寻找.*导师/.test(action);
-  const knownConversation = /问|询问|请教|交谈|告诉|拜访/.test(action) && game.view.relations.some((relation) => action.includes(relation.name));
+  const knownConversation = /问|询问|请教|交谈|告诉|拜访|商量|说服|请求|申请/.test(action) && relationTargetsForAction(game, action).length === 1;
   for (const [id, matched] of [
     ["private-hidden-soul-test", privateHiddenSoulTest], ["mentor-independent-practice", mentorIndependentPractice], ["mentor-hunt-support", mentorHuntSupport], ["established-mentor", establishedMentor],
     ["hunt-nonlethal", nonLethalHunt], ["active-hunt", hunt], ["academy-application", academyApplication], ["academy-life", academyLife],
@@ -4256,6 +4544,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   if (!game.view.character) return impossible("角色尚未完成觉醒。");
   if (game.view.status === "ended") return impossible("这一局已经结束。");
   ensureMartialSoulAccounts(game);
+  ensureLocalPeople(game);
 
   let resolution: ActionResolution;
   const guarded = guardActionByStoryRules(game, action) ?? ambiguousRoleTargetGuard(game, action);
@@ -4285,6 +4574,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/魂导师/.test(action) && /认证|考核/.test(action)) resolution = professionResolution(game, action);
   else if (/学习|研究|尝试|实验|制作|改良|炼制|锻造|打造/.test(action) && /炼药|丹药|药剂|锻造|炼器|魂导器|阵法|阵纹|医术|治疗|毒术|制毒|商业|经商|驯兽|驯养|学术|魂兽/.test(action)) resolution = professionResolution(game, action);
   else if (/参悟|修炼传承|修行剑|炼丹|炼器|特殊体系|异界功法/.test(action)) resolution = specialSystemResolution(game, action);
+  else if (canonInterventionActionMatches(game, action)) resolution = canonInterventionResolution(game, action);
   else if (/处理|介入|参与|帮助处理|阻止.*恶化|查看新事件|拒绝|不接受|回绝/.test(action) && game.world.dynamicEvents.some((item) => item.status === "可介入" && (action.includes(item.title) || item.participantIds.some((id) => action.includes(game.world.npcs[id]?.name ?? "")) || /查看新事件/.test(action)))) resolution = dynamicEventResolution(game, action);
   else if (/完成承诺|履行承诺/.test(action)) resolution = fulfillPromiseResolution(game, action);
   else if (routing.selected === "academy-application") resolution = academyResolution(game, action);
@@ -4298,6 +4588,9 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/成为朋友|确认朋友|建立友情|长期关系|成为伴侣|确认恋爱|表达.*心意|求婚|婚姻|结婚|成婚|婚礼|组建家庭|家庭住所|共同住所|家庭准备|生育|收养.*孩子|孩子.*加入家庭|孩子出生/.test(action)) resolution = relationshipResolution(game, action);
   else if (/训练|排练|复盘/.test(action) && /连携|合击|组合技|阵型|生命防线|锁定爆发|破绽突袭|封锁阵线|攻守枢纽|生息铁壁|猎杀三角|四象战阵|逐影围猎|五环协战阵|六芒轮转阵|七星全域战阵/.test(action) && !game.view.combat) resolution = comboTrainingResolution(game, action);
   else if (/^(我)?(答应|承诺|保证)/.test(action)) resolution = promiseResolution(game, action);
+  else if ((openingFollowup = openingFollowupResolution(game, action))) resolution = openingFollowup;
+  else if (routing.selected === "known-conversation") resolution = conversationResolution(game, action);
+  else if (/吃.*饭|用饭|用餐|做饭|家务|做活|帮忙|整理药堂|整理店铺|读写|识字|大陆常识|基础常识|看书|读书|切磋|对练|共同训练/.test(action)) resolution = dailyLifeResolution(game, action);
   else if (/修炼|冥想|运转|练功|闭关|基础训练|体能训练|训练身体|练习武魂/.test(action)) resolution = trainingResolution(game, action);
   else if (/负面传闻|公开澄清|申请更正|媒体更正|舆情核验|责任编辑|核验编辑|采访.*编辑|提交.*补充.*(?:证据|材料)|独家.*(?:证据|材料|线索)|对比.*(?:媒体|两家)|比较.*(?:报道|媒体)|媒体联盟|核验联盟|共享核验|优先议题|共同核验|第三家.*(?:媒体|核验机构|加入|准入)|三方.*准入|退出.*联盟|联盟.*退出|替补.*(?:媒体|机构|成员|加入|准入)|(?:媒体|机构|成员|加入|准入).*替补/.test(action)) resolution = mediaResolution(game, action);
   else if (/休息|睡觉|疗伤|恢复/.test(action)) resolution = restResolution(game);
@@ -4305,9 +4598,8 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   else if (/购买|买|采购/.test(action)) resolution = buyResolution(game, action);
   else if (/打工|工作|赚钱|干活/.test(action)) resolution = workResolution(game, action);
   else if (game.view.worldInheritance && (/旧世|祖先|档案|家谱|谱牒|旧产业|历史权益|旁支|年表|历史节点|转交|衰减|再发现/.test(action) || game.view.worldInheritance.institutions.some((item) => action.includes(item.name)) || game.view.worldInheritance.branches?.some((item) => action.includes(item.name)) || game.view.worldInheritance.chronology?.some((item) => action.includes(item.title))) && /核验|查证|调查|追查|验证|提交|申请|主张|听证|审理|裁定|投资|复建|经营/.test(action)) resolution = inheritanceResolution(game, action);
-  else if ((openingFollowup = openingFollowupResolution(game, action))) resolution = openingFollowup;
-  else if (routing.selected === "known-conversation") resolution = conversationResolution(game, action);
-  else if (/猎魂|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
+  else if (/猎魂行动/.test(action)) resolution = impossible("这里说的是势力发动的历史行动，不是角色当前猎取魂环；必须先确认情报来源、目标和能够采取的具体手段。", ["调查猎魂行动的消息来源", "向已知势力提交有证据的预警", "明确要保护的人与地点"]);
+  else if (/猎魂(?!行动)|猎取魂环|调查.*魂兽|获得魂环/.test(action)) resolution = huntResolution(game, action);
   else if (/前往|去往|出发去|旅行到|离开去/.test(action)) resolution = travelResolution(game, action);
   else if (/问|询问|打听|交谈|告诉|拜访/.test(action)) resolution = conversationResolution(game, action);
   else if (/调查|搜索|观察周围|查找|研究/.test(action)) resolution = investigateResolution(game, action);
@@ -4366,6 +4658,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   updatePersonality(game, action);
   syncCharacterState(game);
   syncInventoryAndEconomy(game);
+  ensureLocalPeople(game);
   game.view.updatedAt = new Date().toISOString();
   resolution.routing = routing;
   return resolution;
@@ -4400,7 +4693,7 @@ export function applyActionResult(
   const objective = game.view.chapterObjective;
   if (objective && !/无法完成|规则阻止/.test(result.intent)) {
     const current = objective.steps.find((step) => step.status === "进行中") ?? objective.steps.find((step) => step.status === "未开始");
-    const matches = current && ((current.id === "understand" && /问|询问|打听|请教|了解|请|测试|复测|确认|说明/.test(effectiveInput)) || (current.id === "summon" && /召唤|武魂|尝试|测试/.test(effectiveInput)) || (current.id === "path" && /入学|拜师|加入|宗门|修炼|计划|决定|选择|公开|主修|登记/.test(effectiveInput)) || (current.id === "identity" && /住处|见证|身份|登记|担保|临时凭据/.test(effectiveInput)) || (current.id === "support" && /导师|训练场|资源|猎魂|路费|食宿|监护|魂灵|费用|安排|核对/.test(effectiveInput)) || (current.id === "boundary" && /离开|保护|领地|人类|兽群|边界/.test(effectiveInput)) || (current.id === "recheck" && /检查|重测|调查|阵法|水晶/.test(effectiveInput)) || (current.id === "alternate" && /锻炼|学习|研究|特殊|功法|体魄/.test(effectiveInput)) || (current.id === "commit" && /决定|选择|加入|拜师|开始/.test(effectiveInput)) || (current.id === "train-plan" && /修炼|冥想|训练/.test(effectiveInput)) || (current.id === "first-milestone" && /猎魂|魂环|魂兽/.test(effectiveInput)));
+    const matches = current && ((current.id === "understand" && /问|询问|打听|请教|了解|请|测试|复测|确认|说明/.test(effectiveInput)) || (current.id === "summon" && /召唤|武魂|尝试|测试/.test(effectiveInput)) || (current.id === "path" && /武魂|主修|公开范围|公开武魂|隐藏武魂|保守秘密|培养条件|成长路线|近期路线/.test(effectiveInput) && /决定|选择|公开|隐藏|主修|接受|拒绝|登记/.test(effectiveInput)) || (current.id === "identity" && /住处|见证|身份|登记|担保|临时凭据/.test(effectiveInput)) || (current.id === "support" && /导师|训练场|资源|猎魂|路费|食宿|监护|魂灵|费用|安排|核对/.test(effectiveInput)) || (current.id === "boundary" && /离开|保护|领地|人类|兽群|边界/.test(effectiveInput)) || (current.id === "recheck" && /检查|重测|调查|阵法|水晶/.test(effectiveInput)) || (current.id === "alternate" && /锻炼|学习|研究|特殊|功法|体魄/.test(effectiveInput)) || (current.id === "commit" && /决定|选择|加入|拜师|开始/.test(effectiveInput)) || (current.id === "train-plan" && /修炼|冥想|训练/.test(effectiveInput)) || (current.id === "first-milestone" && /猎魂|魂环|魂兽/.test(effectiveInput)));
     if (matches && current) {
       current.status = "完成";
       const next = objective.steps.find((step) => step.status === "未开始");
@@ -4412,9 +4705,9 @@ export function applyActionResult(
       };
     }
   }
-  if (!/无法完成|规则阻止|交谈/.test(result.intent) && /帮助|阻止|攻击|杀|救|告诉|承诺|夺取|保护/.test(effectiveInput)) {
+  if (!/无法完成|规则阻止|交谈|一般行动|调查|计划|准备|勘察|核验/.test(result.intent) && /帮助|阻止|攻击|杀|救|告诉|承诺|夺取|保护/.test(effectiveInput)) {
     const npcIds = CANON_CHARACTERS.filter((definition) => { const currentName = game.world.npcs[definition.id]?.name; return Boolean(currentName && effectiveInput.includes(currentName)); }).map((npc) => npc.id);
-    const factionIds = [...new Set([...FACTIONS.filter((faction) => effectiveInput.includes(faction.name)).map((faction) => faction.id), ...npcIds.flatMap((id) => game.world.npcs[id]?.factionIds ?? [])])];
+    const factionIds = [...new Set([...FACTIONS.filter((faction) => factionMentionMatches(faction, effectiveInput)).map((faction) => faction.id), ...npcIds.flatMap((id) => game.world.npcs[id]?.factionIds ?? [])])];
     const alreadyRecorded = game.world.canonCausalFootprints.some((cause) => cause.id.startsWith(`cause-${Math.max(0, game.actionIndex - 1)}-`) && (cause.affectedNpcIds.some((id) => npcIds.includes(id)) || cause.affectedFactionIds.some((id) => factionIds.includes(id))));
     if (!alreadyRecorded && (npcIds.length || factionIds.length)) {
       const domains = /杀|救下/.test(effectiveInput) ? ["survival", "goal", "relationship"] as const : /摧毁|夺取/.test(effectiveInput) ? ["resource", "institution", "faction"] as const : ["relationship", "goal"] as const;

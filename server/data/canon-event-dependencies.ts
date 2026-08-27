@@ -98,7 +98,7 @@ export const CANON_EVENT_DEPENDENCIES: Record<string, CanonEventDependencyRule> 
   "d4-rising-dragon": hard("d4-dragon-horse-infiltration"),
   "d4-heavenly-dragon-test": hard("d4-dragon-horse-infiltration"),
   "d4-dragon-horse-federation-founded": { catalysts: ["d4-rising-dragon"] },
-  "d4-future-rookies": { requiredAll: ["d4-dragon-horse-federation-founded"], catalysts: ["d4-rising-dragon"] },
+  "d4-future-rookies": { catalysts: ["d4-rising-dragon"] },
   "d4-crimson-ultimatum": hard("d4-dragon-horse-federation-founded"),
   "d4-crimson-domain": hard("d4-crimson-ultimatum"),
   "d4-final-space-war": hard("d4-crimson-domain"),

@@ -46,7 +46,7 @@ export function SettingsPanel({ open, gameId, onClose, onSaved }: SettingsPanelP
       <h2>DeepSeek 设置</h2>
       <p className="settings-copy">API Key 仅保存在本机 <code>.data</code>。</p>
       <p className="settings-copy">复杂行动会先整理语义，再生成正文并更新长期记忆。</p>
-      {usage && <p className="settings-copy">本机调用统计：{usage.calls} 次 · 失败 {usage.failures} 次 · {usage.totalTokens || "未返回"} tokens · 累计 {(usage.totalLatencyMs / 1000).toFixed(1)} 秒。调用统计表只记录计数、延迟与状态；用于回合重放的完整模型请求、返回和冻结存档另存于本机数据库，绝不包含 API Key。</p>}
+      {usage && <p className="settings-copy">本机模型传输：{usage.calls} 次 · 网络或接口失败 {usage.failures} 次 · {usage.totalTokens || "未返回"} tokens · 累计 {(usage.totalLatencyMs / 1000).toFixed(1)} 秒。正文已接受 {usage.acceptedNarrativeTurns} 回合 · 审校拒绝 {usage.narrativeAuditFailures} 稿；审校拒绝不会再伪装成“模型失败0次”。用于回合重放的完整模型请求、返回和冻结存档另存于本机数据库，绝不包含 API Key。</p>}
       {usage && <p className="settings-copy">本地向量记忆：{usage.vectorMemories} 条场景 · {usage.memoryChapters} 个章节索引 · {usage.vectorDimensions} 维。每回合先选最多 {usage.chapterRetrievalLimit} 个相关章节，再从其中召回最多 {usage.vectorRetrievalLimit} 条旧事。</p>}
       {usage && <p className="settings-copy">斗罗世界知识：{usage.canonKnowledgeVectors} 条 · 每回合最多召回 {usage.canonRetrievalLimit} 条人物阶段、关键关系、势力、地点、事件与魂兽生态。</p>}
       {usage && <p className="settings-copy">世界基本逻辑：{usage.worldLogicVectors} 条 · 每回合最多召回 {usage.worldLogicRetrievalLimit} 条异常反应、培养争夺、资源倾斜、秘密暴露和敌对风险链。</p>}

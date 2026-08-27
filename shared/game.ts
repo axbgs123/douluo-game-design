@@ -384,6 +384,18 @@ export interface RelationView {
   consentEvidence?: string[];
   partnerDiscussedAtOrdinal?: number;
   marriageDiscussedAtOrdinal?: number;
+  localState?: {
+    currentGoal: string;
+    responsibility: string;
+    informationBoundary: string[];
+    authority: string;
+    resources: string[];
+    nextAction: string;
+    locationId: string;
+    status: "计划中" | "执行中" | "受阻" | "完成";
+    updatedOrdinal: number;
+    lastOutcome?: string;
+  };
 }
 
 export interface FamilyView {
@@ -650,6 +662,20 @@ export interface CanonInfluenceView {
   affects: string;
   strength: string;
   date: string;
+}
+
+export interface CanonInterventionView {
+  id: string;
+  eventId: string;
+  title: string;
+  objective: "阻止" | "改变" | "保护" | "夺取";
+  stage: "调查" | "准备" | "待执行" | "待核验" | "完成" | "失败";
+  intelligence: number;
+  access: number;
+  preparation: number;
+  targetDate: string;
+  nextAction: string;
+  outcome?: string;
 }
 
 export interface StoryConsequenceView {
@@ -1064,6 +1090,7 @@ export interface GameView {
   mediaAlliances: MediaAllianceView[];
   activeEvents: WorldEventView[];
   canonInfluences: CanonInfluenceView[];
+  canonInterventions: CanonInterventionView[];
   storyArchive: StoryArchiveView;
   lastActionReceipt?: ActionReceiptView;
   knownFigures: KnownFigureView[];
@@ -1142,6 +1169,8 @@ export interface DeepSeekSettingsView { hasKey: boolean; baseUrl: string; model:
 export interface ModelUsageView {
   calls: number;
   failures: number;
+  acceptedNarrativeTurns: number;
+  narrativeAuditFailures: number;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;

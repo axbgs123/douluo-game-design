@@ -161,6 +161,9 @@ describe("存档数据库", () => {
 
     expect(database.getModelUsage("telemetry-game")).toMatchObject({ calls: 2, failures: 1, promptTokens: 120, completionTokens: 45, totalTokens: 165, totalLatencyMs: 401, narratorContextRetrievals: 0, contextRetrievalReady: false, contextRetrievalStatus: "未产生升级后正文样本" });
     database.recordContextRetrieval({ gameId: "telemetry-game", role: "narrator", actionIndex: 1, memory: 1, canon: 4, logic: 3, chapters: 1, memoryLabels: ["action#1 · 觉醒之日"], canonLabels: ["character · 唐三"], logicLabels: ["秘密传播"], memoryDetails: [{ label: "action#1", snippet: "完整剧情片段", similarity: .8123, source: "actionLedger", reason: "章节命中后入选" }] });
+    telemetryGame.actionIndex = 2;
+    telemetryGame.lastCommittedAction = { playerInput: "测试", ruleAction: "测试", resolution: { intent: "测试", minutes: 1, ruleSummary: "完成测试", fallbackNarrative: "完成测试。", suggestions: [] }, narrativeEntryId: "test", committedAt: new Date().toISOString() };
+    database.saveGame(telemetryGame, "test.telemetry-current-sample");
     expect(database.getModelUsage("telemetry-game")).toMatchObject({ narratorContextRetrievals: 1, contextRetrievalReady: true, contextRetrievalStatus: "最近正文已完成三层检索", lastRetrievedMemoryCount: 1, lastRetrievedChapterCount: 1, lastRetrievedCanonCount: 4, lastRetrievedLogicCount: 3, lastRetrievedMemoryLabels: ["action#1 · 觉醒之日"], lastRetrievedCanonLabels: ["character · 唐三"], lastRetrievedLogicLabels: ["秘密传播"] });
     expect(database.getNarrativeDiagnostics("telemetry-game").retrieval?.memory[0]).toMatchObject({ snippet: "完整剧情片段", similarity: .8123, reason: "章节命中后入选" });
     database.deleteGame("telemetry-game");
@@ -261,7 +264,7 @@ describe("存档数据库", () => {
     game.view.knownFigures.push({ id: "ning-rongrong", name: "宁荣荣", knownPower: "实力未知", location: "七宝琉璃宗", status: "已知", source: "亲眼见过" });
     const character = database.retrieveCanonKnowledge(game, "宁荣荣当前性格与目标", 20).find((item) => item.subjectId === "ning-rongrong" && item.kind === "character");
     expect(character?.metadata.personality).toEqual(["聪明", "骄傲"]);
-    expect(character?.text).toContain("不代表后来形成的价值观或同伴责任已经出现");
+    expect(character?.text).toContain("当前人生阶段可安全使用的稳定气质锚点");
     expect(character?.text).not.toContain("重视同伴");
   });
 
@@ -348,6 +351,17 @@ describe("存档数据库", () => {
     expect(database.retrieveCanonKnowledge(game, "阿银献祭与昊天宗旧案", 20).some((item) => item.subjectId === "ayin-sacrifice")).toBe(false);
     game.view.news.push({ id: "ayin-sacrifice", title: "阿银旧案已核实", detail: "玩家通过可靠档案确认阿银献祭与昊天宗旧案。", date: "原作0年" });
     expect(database.retrieveCanonKnowledge(game, "阿银献祭与昊天宗旧案", 20).some((item) => item.subjectId === "ayin-sacrifice")).toBe(true);
+  });
+
+  it("labels year-only canon events without fabricating the first day of the year", () => {
+    const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "year-only-event-vector" });
+    game.view.worldTime = { era: "分头修行阶段", year: 10, day: 360, time: "08:00", season: "冬" };
+    game.world.firedCanonEvents.push("five-year-training");
+    game.world.intelligenceRecords.push({ id: "known-five-year-training", subjectType: "事件", subjectId: "five-year-training", title: "史莱克七怪分头修行", detail: "从可靠消息确认众人已经分头修行。", source: "可靠告知", confidence: 85, year: 10, day: 300, status: "确定" });
+    const event = database.retrieveCanonKnowledge(game, "史莱克七怪分头修行时间", 20).find((item) => item.subjectId === "five-year-training");
+    expect(event?.metadata.datePrecision).toBe("原著年份");
+    expect(event?.text).toContain("具体日序未核实");
+    expect(event?.text).not.toContain("10年1日");
   });
 
   it("labels original place vectors and never injects gameplay travel minutes as canon facts", () => {

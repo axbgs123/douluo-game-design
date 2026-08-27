@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { StoryArchiveView, StoryConsequenceView } from "../../shared/game.js";
-import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, factionActiveAtYear } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, factionActiveAtYear, factionMentionMatches } from "../data/world.js";
 import { rulesForEra, type FanfictionRule } from "../data/fanfiction-rules.js";
 import type { ActionResolution, StoredGame } from "./model.js";
 import type { SceneKnowledgePack } from "./scene-knowledge.js";
@@ -69,7 +69,7 @@ export function guardActionByStoryRules(game: StoredGame, action: string): Actio
   if (unownedTechnique && /学习|研习|参悟|领悟|修炼|施展|使用|运转|练习|传授|掌握|发动/.test(action)) {
     return impossible(game, `${name}目前只有“${unownedTechnique}”这个名字，没有已经学习、传授或掌握它的程序证据；知道原著或听过传闻不等于能够使用。`, ["调查这项能力的真实来源", "寻找有权限且愿意传授的人", "继续修炼已经掌握的能力"], [18, 53, 69, 220, 491]);
   }
-  const mentionedFactions = FACTIONS.filter((faction) => action.includes(faction.name));
+  const mentionedFactions = FACTIONS.filter((faction) => factionMentionMatches(faction, action));
   const hasActiveMention = mentionedFactions.some((faction) => factionActiveAtYear(faction, year));
   const futureFaction = !hasActiveMention ? mentionedFactions.find((faction) => faction.activeFromYear !== undefined && year < faction.activeFromYear) : undefined;
   if (futureFaction) {

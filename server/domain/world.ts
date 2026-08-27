@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { GameView, IntelligenceView, KnownFigureView, MapHierarchyView, MapLocationView, NpcRelationEvidenceView, WorldEventView, WorldNewsView } from "../../shared/game.js";
-import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationActiveAtYear, locationById, locationProfileAtYear } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, canonEventDateLabel, canonEventDatePrecision, canonEventSimulationDay, canonEventSimulationOrdinal, canonEventSimulationWindow, characterById, locationActiveAtYear, locationById, locationProfileAtYear } from "../data/world.js";
 import { canonEventDependencyRule, canonEventHardPrerequisites } from "../data/canon-event-dependencies.js";
 import type { CanonCausalDomain, CanonCausalFootprint, HiddenWorldState, NpcMemoryEntry, SocialRumorState, StoredGame, WorldNpcState } from "./model.js";
 import { toThirdPersonNarrative } from "./narrative.js";
@@ -17,6 +17,7 @@ import { decayLocalConsequences, resolveExpiredDynamicEvent } from "./event-cons
 import { dynamicEventTemplatesForEra } from "../data/era-dynamic-events.js";
 import { CHARACTER_LIFE_STAGES, characterLifeStageAtDate } from "../data/character-life-stages.js";
 import { academyEraLifeProfile } from "../../shared/academy-life.js";
+import { advanceLocalPeople, ensureLocalPeople } from "./local-people.js";
 
 const DAYS_PER_YEAR = 360;
 
@@ -110,7 +111,7 @@ export function canonicalFactionIdsAtDate(characterId: string, year: number, day
     const membership = TIMED_FACTION_MEMBERSHIPS.find((item) => item.characterId === characterId && item.factionId === factionId);
     if (!membership) return true;
     const event = CANON_EVENTS.find((item) => item.id === membership.eventId);
-    return Boolean(event && ordinal(event.year, event.day ?? 1) <= ordinal(year, day));
+    return Boolean(event && canonEventSimulationOrdinal(event) <= ordinal(year, day));
   });
 }
 
@@ -212,6 +213,7 @@ function causalExpiry(atOrdinal: number, domains: CanonCausalDomain[]): number {
 function effectiveCauseStrength(cause: CanonCausalFootprint, atOrdinal: number): number {
   const created = ordinal(cause.atYear, cause.atDay);
   if (atOrdinal < created || (cause.expiresOrdinal !== undefined && atOrdinal > cause.expiresOrdinal)) return 0;
+  if (cause.targetEventId) return cause.strength;
   const domains = cause.domains ?? inferCausalDomains(cause.source, cause.description);
   if (domains.includes("survival") || domains.includes("identity")) return cause.strength;
   const lifetime = Math.max(1, (cause.expiresOrdinal ?? causalExpiry(created, domains)) - created);
@@ -305,8 +307,8 @@ function powerAtDate(characterId: string, year: number, day = 1): { soulRank?: n
 function canonicalLocationAtYear(characterId: string, year: number, day = 360): string {
   const definition = characterById(characterId);
   const latestEvent = CANON_EVENTS
-    .filter((event) => (event.year < year || (event.year === year && (event.day ?? 1) <= day)) && event.locationId && event.participantIds.includes(characterId))
-    .sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1))
+    .filter((event) => canonEventSimulationOrdinal(event) <= ordinal(year, day) && event.locationId && event.participantIds.includes(characterId))
+    .sort((left, right) => canonEventSimulationOrdinal(left) - canonEventSimulationOrdinal(right))
     .at(-1);
   return latestEvent?.locationId ?? definition?.initialLocationId ?? "notting-city";
 }
@@ -341,11 +343,12 @@ export function createHiddenWorld(startYear: number, startLocationId: string, st
   ensureCanonRelationshipBaselines(npcs, npcRelations, startYear, startDay);
   return {
     npcs,
-    firedCanonEvents: CANON_EVENTS.filter((event) => ordinal(event.year, event.day ?? 1) < ordinal(startYear, startDay)).map((event) => event.id),
+    firedCanonEvents: CANON_EVENTS.filter((event) => canonEventSimulationOrdinal(event) < ordinal(startYear, startDay)).map((event) => event.id),
     suppressedCanonEvents: [],
     deviation: 0,
     canonCausalFootprints: [],
     canonTimelineBranches: [],
+    canonInterventionProjects: [],
     npcRelations,
     dynamicEvents: [],
     localConsequences: [],
@@ -401,8 +404,8 @@ export function rememberNpcInteraction(
 
 export function recordCanonInfluence(
   game: StoredGame,
-  input: { source: string; description: string; affectedNpcIds?: string[]; affectedFactionIds?: string[]; strength: number; locationId?: string; domains?: CanonCausalDomain[]; expiresOrdinal?: number },
-): void {
+  input: { source: string; description: string; affectedNpcIds?: string[]; affectedFactionIds?: string[]; strength: number; locationId?: string; domains?: CanonCausalDomain[]; expiresOrdinal?: number; targetEventId?: string },
+): CanonCausalFootprint {
   const time = game.view.worldTime;
   const atOrdinal = ordinal(time?.year ?? 0, time?.day ?? 1);
   const domains = [...new Set(input.domains ?? inferCausalDomains(input.source, input.description))];
@@ -413,7 +416,8 @@ export function recordCanonInfluence(
     duplicate.strength = Math.max(duplicate.strength, input.strength);
     duplicate.domains = [...new Set([...(duplicate.domains ?? []), ...domains])];
     duplicate.expiresOrdinal = Math.max(duplicate.expiresOrdinal ?? 0, input.expiresOrdinal ?? causalExpiry(atOrdinal, domains));
-    return;
+    duplicate.targetEventId ??= input.targetEventId;
+    return duplicate;
   }
   game.world.canonCausalFootprints.push({
     id: `cause-${game.actionIndex}-${game.world.canonCausalFootprints.length}`,
@@ -427,6 +431,7 @@ export function recordCanonInfluence(
     strength: Math.max(0, input.strength),
     domains,
     expiresOrdinal: input.expiresOrdinal ?? causalExpiry(atOrdinal, domains),
+    targetEventId: input.targetEventId,
     propagationDepth: 0,
   });
   game.world.canonCausalFootprints = game.world.canonCausalFootprints.slice(-120);
@@ -441,6 +446,7 @@ export function recordCanonInfluence(
     date: `原作 ${latest.atYear >= 0 ? "+" : ""}${latest.atYear} 年 · 第 ${latest.atDay} 日`,
   });
   game.view.canonInfluences = game.view.canonInfluences.slice(0, 24);
+  return latest;
 }
 
 function npcHasPlayerInfluence(game: StoredGame, npcId: string): boolean {
@@ -981,6 +987,7 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
   const endCycle = Math.floor(currentOrdinal / 30);
   const firstCycle = Math.max(startCycle, endCycle - 60);
   for (let cycle = firstCycle; cycle <= endCycle; cycle += 1) {
+    advanceLocalPeople(game, cycle * 30);
     for (const event of game.world.dynamicEvents) {
       if (event.status === "可介入" && event.expiresOrdinal < cycle * 30) {
         resolveExpiredDynamicEvent(game, event, cycle * 30);
@@ -1041,6 +1048,7 @@ function simulateNpcAutonomy(game: StoredGame, previousOrdinal: number, currentO
     const protectedTasks = game.view.tasks.filter((task) => task.id === "life-goal" || task.status === "进行中");
     game.view.tasks = [...protectedTasks, ...game.view.tasks.filter((task) => !protectedTasks.includes(task)).slice(-40)].slice(-80);
   }
+  advanceLocalPeople(game, currentOrdinal);
   game.world.lastAutonomyOrdinal = currentOrdinal;
   const currentEventMessages = buildActiveEvents(game).map((event) => `新事件 · ${event.title}`);
   return [...messages.filter((message) => !message.startsWith("新事件 ·")), ...currentEventMessages];
@@ -1062,7 +1070,7 @@ function canonEventObservable(game: StoredGame, event: CanonEvent, causes: Hidde
 }
 
 function eventParticipantFactions(game: StoredGame, event: CanonEvent): Set<string> {
-  return new Set(event.participantIds.flatMap((id) => [...(game.world.npcs[id]?.factionIds ?? []), ...canonicalFactionIdsAtDate(id, event.year, event.day ?? 1)]));
+  return new Set(event.participantIds.flatMap((id) => [...(game.world.npcs[id]?.factionIds ?? []), ...canonicalFactionIdsAtDate(id, event.year, canonEventSimulationDay(event))]));
 }
 
 function canonDependencyFailure(game: StoredGame, event: CanonEvent): { state: "延后" | "替代" | "取消"; prerequisiteIds: string[] } | undefined {
@@ -1089,7 +1097,7 @@ function ensureCanonDependencyCauses(game: StoredGame, event: CanonEvent, eventO
       source: "原著事件前置条件",
       description: `前置节点没有按原条件完成，${event.id}必须从当前人物、势力与资源状态重新结算`,
       atYear: event.year,
-      atDay: event.day ?? 1,
+      atDay: canonEventSimulationDay(event),
       locationId: event.locationId ?? game.view.locationId ?? "notting-city",
       affectedNpcIds: [...event.participantIds],
       affectedFactionIds: participantFactions,
@@ -1105,14 +1113,18 @@ function ensureCanonDependencyCauses(game: StoredGame, event: CanonEvent, eventO
 
 function causeTargetsEvent(game: StoredGame, cause: CanonCausalFootprint, event: CanonEvent, eventOrdinal: number): boolean {
   if (effectiveCauseStrength(cause, eventOrdinal) < .5) return false;
+  if (cause.targetEventId) return cause.targetEventId === event.id;
   const createdOrdinal = ordinal(cause.atYear, cause.atDay);
   const gap = eventOrdinal - createdOrdinal;
   const sharedNpcCount = cause.affectedNpcIds.filter((id) => event.participantIds.includes(id)).length;
   if (cause.originEventId) {
     if (cause.originEventId === event.id) return false;
+    const rule = canonEventDependencyRule(event.id);
+    if (rule?.siblings?.includes(cause.originEventId) || rule?.observationRoute?.includes(cause.originEventId)) return false;
+    if (rule?.catalysts?.includes(cause.originEventId)) return game.world.suppressedCanonEvents.includes(cause.originEventId) || game.world.canonTimelineBranches.some((branch) => branch.eventId === cause.originEventId);
     if (canonEventHardPrerequisites(event.id).includes(cause.originEventId)) return !(game.world.firedCanonEvents.includes(cause.originEventId) && !game.world.suppressedCanonEvents.includes(cause.originEventId));
     const origin = CANON_EVENTS.find((item) => item.id === cause.originEventId);
-    if (origin && ordinal(origin.year, origin.day ?? 1) > ordinal(event.year, event.day ?? 1)) return false;
+    if (origin && canonEventSimulationOrdinal(origin) > canonEventSimulationOrdinal(event)) return false;
     if (!origin || gap > 3 * DAYS_PER_YEAR) return false;
     const originSharedCount = origin.participantIds.filter((id) => event.participantIds.includes(id)).length;
     if (originSharedCount >= 2 || (origin.participantIds.length <= 2 && originSharedCount >= 1 && gap <= 2 * DAYS_PER_YEAR)) return true;
@@ -1122,6 +1134,13 @@ function causeTargetsEvent(game: StoredGame, cause: CanonCausalFootprint, event:
   if (sharedNpcCount > 0) return true;
   if (causeHasDomain(cause, "faction", "institution", "resource") && cause.affectedFactionIds.some((id) => eventParticipantFactions(game, event).has(id))) return true;
   return Boolean(event.locationId && cause.locationId === event.locationId && gap <= 180 && causeHasDomain(cause, "location", "resource", "institution"));
+}
+
+function canonCatalystResistanceFactor(game: StoredGame, event: CanonEvent): number {
+  const catalysts = canonEventDependencyRule(event.id)?.catalysts ?? [];
+  if (!catalysts.length) return 1;
+  const altered = catalysts.filter((id) => game.world.suppressedCanonEvents.includes(id) || game.world.canonTimelineBranches.some((branch) => branch.eventId === id));
+  return altered.length ? Math.max(.65, 1 - altered.length * .18) : 1;
 }
 
 function linkedCausesForEvent(game: StoredGame, event: CanonEvent, eventOrdinal: number): Array<{ cause: CanonCausalFootprint; strength: number }> {
@@ -1162,7 +1181,7 @@ function settleCanonTimelineBranch(game: StoredGame, branch: HiddenWorldState["c
   const causes = linked.map((item) => item.cause);
   const causalStrength = combinedCausalStrength(linked);
   const livingParticipants = event.participantIds.filter((id) => game.world.npcs[id]?.alive);
-  const resistance = event.inertia * 8 * ({ 爽: .8, 简单: .9, 标准: 1, 困难: 1.15, 地狱: 1.3 }[game.view.difficulty]);
+  const resistance = event.inertia * 8 * ({ 爽: .8, 简单: .9, 标准: 1, 困难: 1.15, 地狱: 1.3 }[game.view.difficulty]) * canonCatalystResistanceFactor(game, event);
   if (branch.state === "延后") {
     const missingCritical = !game.world.npcs[event.participantIds[0]]?.alive || livingParticipants.length < Math.ceil(event.participantIds.length / 2);
     const factionRedirected = linked.some((item) => item.strength >= resistance * .5 && causeHasDomain(item.cause, "faction", "institution"));
@@ -1234,15 +1253,22 @@ function settlePendingCanonBranches(game: StoredGame, throughOrdinal: number, me
 
 function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentOrdinal: number): string[] {
   const messages: string[] = [];
+  for (const project of game.world.canonInterventionProjects.filter((item) => item.targetOrdinal <= currentOrdinal && !["待核验", "完成", "失败"].includes(item.stage))) {
+    project.stage = "失败";
+    project.updatedOrdinal = currentOrdinal;
+    project.outcome = "当前推演的触发点已经到来，但计划没有完成实际执行；调查和准备不能冒充已经改变历史。";
+    const view = game.view.canonInterventions?.find((item) => item.id === project.id);
+    if (view) { view.stage = "失败"; view.outcome = project.outcome; view.nextAction = "调查事件已经造成的后果"; }
+  }
   const dependencyDepth = (eventId: string, seen = new Set<string>()): number => {
     if (seen.has(eventId)) return 0;
     const nextSeen = new Set(seen); nextSeen.add(eventId);
     const prerequisites = canonEventHardPrerequisites(eventId);
     return prerequisites.length ? 1 + Math.max(...prerequisites.map((id) => dependencyDepth(id, nextSeen))) : 0;
   };
-  const events = CANON_EVENTS.filter((event) => { const at = ordinal(event.year, event.day ?? 1); return at >= previousOrdinal && at <= currentOrdinal; }).sort((left, right) => ordinal(left.year, left.day ?? 1) - ordinal(right.year, right.day ?? 1) || dependencyDepth(left.id) - dependencyDepth(right.id));
+  const events = CANON_EVENTS.filter((event) => { const at = canonEventSimulationOrdinal(event); return at >= previousOrdinal && at <= currentOrdinal; }).sort((left, right) => canonEventSimulationOrdinal(left) - canonEventSimulationOrdinal(right) || dependencyDepth(left.id) - dependencyDepth(right.id));
   for (const event of events) {
-    const eventOrdinal = ordinal(event.year, event.day ?? 1);
+    const eventOrdinal = canonEventSimulationOrdinal(event);
     settlePendingCanonBranches(game, eventOrdinal, messages);
     if (game.world.firedCanonEvents.includes(event.id) || game.world.suppressedCanonEvents.includes(event.id)) continue;
     const participantFactions = eventParticipantFactions(game, event);
@@ -1252,7 +1278,7 @@ function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentO
     const linkedCauses = linked.map((item) => item.cause);
     const causalStrength = combinedCausalStrength(linked);
     const difficultyResistance = { 爽: .8, 简单: .9, 标准: 1, 困难: 1.15, 地狱: 1.3 }[game.view.difficulty];
-    const resistance = event.inertia * 8 * difficultyResistance;
+    const resistance = event.inertia * 8 * difficultyResistance * canonCatalystResistanceFactor(game, event);
     if (dependencyFailure || causalStrength >= resistance) {
       game.world.suppressedCanonEvents.push(event.id);
       const livingCount = event.participantIds.filter((id) => game.world.npcs[id]?.alive).length;
@@ -1265,7 +1291,9 @@ function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentO
         eventId: event.id,
         state,
         originalYear: event.year,
-        originalDay: event.day ?? 1,
+        originalDay: canonEventSimulationDay(event),
+        originalDatePrecision: canonEventDatePrecision(event),
+        originalWindow: (() => { const window = canonEventSimulationWindow(event); return [window.startDay, window.endDay] as [number, number]; })(),
         resolveOrdinal: eventOrdinal + delayDays,
         causeIds: linkedCauses.map((cause) => cause.id),
         affectedNpcIds: [...event.participantIds],
@@ -1379,7 +1407,7 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
     const cursorDate = dateAtOrdinal(cursor);
     const nextYearOrdinal = ordinal(cursorDate.year + 1, 1);
     const nextCycleOrdinal = (Math.floor(cursor / 30) + 1) * 30;
-    const nextCanonOrdinal = Math.min(...CANON_EVENTS.map((event) => ordinal(event.year, event.day ?? 1)).filter((value) => value > cursor && value <= currentOrdinal), Number.POSITIVE_INFINITY);
+    const nextCanonOrdinal = Math.min(...CANON_EVENTS.map(canonEventSimulationOrdinal).filter((value) => value > cursor && value <= currentOrdinal), Number.POSITIVE_INFINITY);
     const nextBranchOrdinal = Math.min(...game.world.canonTimelineBranches.filter((branch) => branch.status === "待结算" && branch.resolveOrdinal > cursor && branch.resolveOrdinal <= currentOrdinal).map((branch) => branch.resolveOrdinal), Number.POSITIVE_INFINITY);
     const boundary = Math.min(currentOrdinal, nextYearOrdinal, nextCycleOrdinal, nextCanonOrdinal, nextBranchOrdinal);
     setDate(boundary);
@@ -1495,7 +1523,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 48;
+  legacy.schemaVersion = 51;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1518,11 +1546,23 @@ export function ensureGameState(game: StoredGame): StoredGame {
     cause.propagationDepth ??= cause.originEventId ? 1 : 0;
   }
   legacy.world.canonTimelineBranches ??= [];
+  for (const branch of legacy.world.canonTimelineBranches) {
+    const event = CANON_EVENTS.find((item) => item.id === branch.eventId);
+    if (!event) continue;
+    branch.originalDatePrecision ??= canonEventDatePrecision(event);
+    const window = canonEventSimulationWindow(event);
+    branch.originalWindow ??= [window.startDay, window.endDay];
+  }
+  legacy.world.canonInterventionProjects ??= [];
   legacy.world.firedCanonEvents ??= [];
   legacy.world.suppressedCanonEvents ??= [];
   legacy.world.dynamicEvents ??= [];
   legacy.world.localConsequences ??= [];
   legacy.world.socialRumors ??= [];
+  ensureLocalPeople(game);
+  for (const step of game.view.chapterObjective?.steps ?? []) {
+    if (step.text === "决定先练哪个武魂、秘密告诉谁、接受哪些条件" || step.text === "决定主修顺序、公开范围和愿意承担的内部责任") step.text = "决定隐藏武魂告诉谁、接受哪些培养条件，必要时调整当前主修";
+  }
   for (const rumor of legacy.world.socialRumors) {
     rumor.confidence ??= rumor.witnessNpcIds.length ? Math.min(85, 35 + rumor.witnessNpcIds.length * 7) : 92;
     rumor.sourceKind ??= rumor.witnessNpcIds.length ? "现场目击" : "公开登记";
@@ -1742,7 +1782,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
         steps: [
           { id: "understand", text: `请${officiant}完成${character.martialSoul.name}的${testFocus}测试`, status: "进行中" },
           { id: "support", text: "问清先跟谁练、每天在哪里练、第一次猎魂谁同行", status: "未开始" },
-          { id: "path", text: "决定先练哪个武魂、秘密告诉谁、接受哪些条件", status: "未开始" },
+          { id: "path", text: "决定隐藏武魂告诉谁、接受哪些培养条件，必要时调整当前主修", status: "未开始" },
         ],
       };
       game.storyMemory.openThreads = game.storyMemory.openThreads.map((thread) => thread === "家人与出身中尚未说清的细节" ? `弄清${institution}愿意怎么教、又要什么` : thread);
@@ -1842,7 +1882,8 @@ export function ensureGameState(game: StoredGame): StoredGame {
       .replace(/确认武魂方向与([^。！？\n]{1,32})内部培养方案/g, "弄清$1准备怎样教，并定下第一步")
       .replace(/问清[^。！？\n]{1,32}能安排哪位导师、多少训练时间和哪些猎魂帮助/g, "问清先跟谁练、每天在哪里练、第一次猎魂谁同行")
       .replace(/谈清([^。！？\n]{1,32})内部培养条件与责任/g, "弄清$1愿意怎么教、又要什么")
-      .replaceAll("决定主修顺序、公开范围和愿意承担的内部责任", "决定先练哪个武魂、秘密告诉谁、接受哪些条件")
+      .replaceAll("决定主修顺序、公开范围和愿意承担的内部责任", "决定隐藏武魂告诉谁、接受哪些培养条件，必要时调整当前主修")
+      .replaceAll("决定先练哪个武魂、秘密告诉谁、接受哪些条件", "决定隐藏武魂告诉谁、接受哪些培养条件，必要时调整当前主修")
       .replaceAll("拿到一条由具体责任人承认的培养方案", "有人真正答应教、给出住处或承担第一次猎魂中的一件事")
       .replaceAll("带领太玄剑宗公开入世，迫使上三宗承认它的席位", "带领太玄剑宗公开入世，用足够的战绩与信誉让大陆强宗平等相待")
       .replace(/([^。！？\n]{1,32})最高优先记录的先天满魂力/g, "在$1内部引起高层关注的先天满魂力")
@@ -1897,7 +1938,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const fired = new Set(game.world.firedCanonEvents);
     const addPast = (id: string): void => {
       const event = CANON_EVENTS.find((item) => item.id === id);
-      if (event && ordinal(event.year, event.day ?? 1) <= now) fired.add(id);
+      if (event && canonEventSimulationOrdinal(event) <= now) fired.add(id);
     };
     if (fired.has("tang-awakening")) { addPast("notting-arrival"); addPast("xiao-wu-notting-meeting"); }
     if (fired.has("slaughter-training")) { addPast("tang-san-awakens-emperor"); addPast("slaughter-city-entry"); }
@@ -1906,6 +1947,27 @@ export function ensureGameState(game: StoredGame): StoredGame {
     if (fired.has("d4-crimson-domain")) { addPast("d4-dragon-horse-federation-founded"); addPast("d4-crimson-ultimatum"); }
     game.world.firedCanonEvents = [...fired];
     game.world.flags.schema48CanonEventsReconciled = true;
+  }
+  if (previousSchemaVersion < 51) {
+    const now = ordinal(startYear, game.view.worldTime?.day ?? 1);
+    const premature = new Set(CANON_EVENTS.filter((event) => event.dayProvenance !== "原著" && canonEventSimulationOrdinal(event) > now && game.world.firedCanonEvents.includes(event.id)).filter((event) => {
+      const playerEvidence = game.world.canonCausalFootprints.some((cause) => cause.targetEventId === event.id || cause.originEventId === event.id)
+        || game.world.canonTimelineBranches.some((branch) => branch.eventId === event.id)
+        || game.view.canonInfluences.some((influence) => influence.action.includes(event.title))
+        || game.world.intelligenceRecords.some((record) => record.subjectType === "事件" && record.subjectId === event.id && record.confidence >= 60);
+      return !playerEvidence;
+    }).map((event) => event.id));
+    if (premature.size) {
+      game.world.firedCanonEvents = game.world.firedCanonEvents.filter((id) => !premature.has(id));
+      for (const event of CANON_EVENTS.filter((item) => premature.has(item.id))) {
+        for (const participantId of event.participantIds) {
+          const npc = game.world.npcs[participantId];
+          const locationAltered = game.world.canonCausalFootprints.some((cause) => cause.affectedNpcIds.includes(participantId) && causeHasDomain(cause, "location", "faction", "institution"));
+          if (npc && !locationAltered && event.locationId && npc.locationId === event.locationId) npc.locationId = canonicalLocationAtYear(participantId, startYear, game.view.worldTime?.day ?? 1);
+        }
+      }
+    }
+    game.world.flags.schema51YearOnlyScheduleReconciled = true;
   }
   if (previousSchemaVersion < 35) {
     const day = game.view.worldTime?.day ?? 1;
@@ -1930,7 +1992,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
       }
     }
     const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const futureEventTitles = CANON_EVENTS.filter((event) => ordinal(event.year, event.day ?? 1) > ordinal(startYear, day)).map((event) => event.title);
+    const futureEventTitles = CANON_EVENTS.filter((event) => canonEventSimulationOrdinal(event) > ordinal(startYear, day)).map((event) => event.title);
     const replaceFutureFacts = (text: string) => {
       let value = replacements.reduce((current, [laterName, currentName]) => current.replaceAll(laterName, currentName), text);
       for (const [publicName, factionName] of futureFactionPairs) {
@@ -2026,6 +2088,19 @@ export function ensureGameState(game: StoredGame): StoredGame {
     affects: [...cause.affectedNpcIds.map((id) => legacy.world.npcs[id]?.name ?? id), ...cause.affectedFactionIds.map((id) => FACTIONS.find((item) => item.id === id)?.name ?? id)].join("、") || "当前地点",
     strength: cause.strength >= 30 ? "足以撼动关键节点" : cause.strength >= 12 ? "可能形成长期偏差" : "轻微影响",
     date: `原作 ${cause.atYear >= 0 ? "+" : ""}${cause.atYear} 年 · 第 ${cause.atDay} 日`,
+  }));
+  game.view.canonInterventions ??= legacy.world.canonInterventionProjects.map((project) => ({
+    id: project.id,
+    eventId: project.eventId,
+    title: project.title,
+    objective: project.objective,
+    stage: project.stage,
+    intelligence: project.intelligence,
+    access: project.access,
+    preparation: project.preparation,
+    targetDate: (() => { const event = CANON_EVENTS.find((item) => item.id === project.eventId); return event ? canonEventDateLabel(event) : "原著时间待核实"; })(),
+    nextAction: project.stage === "调查" ? `调查${project.title}的参与者与路径` : project.stage === "准备" ? `为${project.title}取得支持并准备资源` : project.stage === "待执行" ? `执行${project.objective}${project.title}的计划` : project.stage === "待核验" ? `核验${project.title}的干预结果` : "留意后续时间线变化",
+    outcome: project.outcome,
   }));
   game.view.storyArchive ??= { summary: game.storyMemory.summary, openThreads: game.storyMemory.openThreads, keyChoices: game.storyMemory.keyChoices, recentConsequences: [], continuity: [], localConsequences: [] };
   game.view.storyArchive.localConsequences ??= [];

@@ -6,7 +6,7 @@ import { guardActionByStoryRules, selectNarrativeRules, violatesCanonChronology 
 import { applyActionResult, resolveAction } from "./actions.js";
 import { advanceWorldTime, buildKnownFigures, buildMapView, canonicalFactionIdsAtDate, createHiddenWorld } from "./world.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
-import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, factionActiveAtYear } from "../data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, canonEventSimulationDay, factionActiveAtYear } from "../data/world.js";
 import { CHARACTER_LIFE_STAGES, CHARACTER_LIFE_STAGE_CHARACTER_COUNT } from "../data/character-life-stages.js";
 
 function playingGame(era: GameEra, seed: string) {
@@ -76,7 +76,9 @@ describe("multi-era foundations", () => {
     expect(era3.npcs["lan-xuanyu"].alive).toBe(false);
     expect(era3.npcs["tang-wulin"].locationId).toBe("aolai-city-d3");
     expect(era3.npcs["tang-wulin"].factionIds).not.toContain("d3-shrek-seven");
-    const shrekAgeWulin = createHiddenWorld(20_007, "shrek-city").npcs["tang-wulin"];
+    const shrekEntry = CANON_EVENTS.find((event) => event.id === "d3-shrek-entry")!;
+    expect(createHiddenWorld(20_007, "shrek-city", 1).npcs["tang-wulin"].locationId).toBe("east-sea-city");
+    const shrekAgeWulin = createHiddenWorld(20_007, "shrek-city", canonEventSimulationDay(shrekEntry)).npcs["tang-wulin"];
     expect(shrekAgeWulin.age).toBe(13);
     expect(shrekAgeWulin.locationId).toBe("shrek-city");
     expect(shrekAgeWulin.factionIds).toContain("d3-shrek-seven");

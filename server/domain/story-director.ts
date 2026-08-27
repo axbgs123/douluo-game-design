@@ -109,8 +109,9 @@ function refreshStageGates(arc: StoryArcView): void {
 }
 
 function evidenceKinds(text: string, blocked: boolean): StoryArcEvidenceKind[] {
+  if (blocked) return ["外部阻力"];
   const kinds = new Set<StoryArcEvidenceKind>();
-  if (!blocked) kinds.add("主动行动");
+  kinds.add("主动行动");
   if (/测试|复测|训练|考核|实战|调查|制作|完成课程|魂力|武魂控制/.test(text) && !/未测试|没有测试/.test(text)) kinds.add("能力证明");
   if (/商量|谈判|询问|追问|条件|合同|协议|监护|家人|导师面谈|表态/.test(text)) kinds.add("关系谈判");
   if (/花费|支付|消耗|疲劳|受伤|伤势|路费|学费|代价|损失/.test(text)) kinds.add("现实代价");

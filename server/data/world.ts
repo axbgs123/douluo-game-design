@@ -1,6 +1,8 @@
 export type ImportanceTier = 1 | 2 | 3 | 4 | 5;
 export type KnowledgeProvenance = "原著" | "原著归纳" | "原创";
 import { EXPANDED_CHARACTERS, EXPANDED_EVENTS, EXPANDED_FACTIONS, EXPANDED_LOCATIONS, EXPANDED_SOUL_BEASTS } from "./expanded-world-catalog.js";
+import { canonEventDependencyRule, canonEventHardPrerequisites } from "./canon-event-dependencies.js";
+import { canonEventSourceAnchor } from "./canon-event-source-anchors.js";
 
 export interface PowerSnapshotDefinition {
   year: number;
@@ -54,6 +56,12 @@ export function factionActiveAtYear(faction: FactionDefinition, year: number): b
   return currentEra >= foundingEra;
 }
 
+export function factionMentionMatches(faction: FactionDefinition, text: string): boolean {
+  if (text.includes(faction.name)) return true;
+  const naturalName = faction.name.replace(/^(?:两万年|万年后|第一代|当代)/, "").replace(/（[^）]+）/g, "").trim();
+  return naturalName.length >= 2 && text.includes(naturalName);
+}
+
 export interface LocationDefinition {
   id: string;
   name: string;
@@ -101,6 +109,7 @@ export interface CanonEventDefinition {
   id: string;
   year: number;
   day?: number;
+  dayProvenance?: "原著" | "游戏估算";
   title: string;
   locationId?: string;
   participantIds: string[];
@@ -368,6 +377,64 @@ const REDUNDANT_EXPANDED_EVENT_IDS = new Set([
 ]);
 appendUnique(CANON_EVENTS, EXPANDED_EVENTS.filter((event) => !REDUNDANT_EXPANDED_EVENT_IDS.has(event.id)), (item) => item.id);
 appendUnique(SOUL_BEASTS, EXPANDED_SOUL_BEASTS, (item) => item.id);
+
+const estimatedCanonDayCache = new Map<string, number>();
+
+export function canonEventDatePrecision(event: CanonEventDefinition): "原著日序" | "原著年份" | "游戏估算日序" {
+  if (event.dayProvenance === "原著" && event.day !== undefined) return "原著日序";
+  return event.day === undefined ? "原著年份" : "游戏估算日序";
+}
+
+export function canonEventSimulationDay(event: CanonEventDefinition): number {
+  if (event.dayProvenance === "原著" && event.day !== undefined) return event.day;
+  const cached = estimatedCanonDayCache.get(event.id);
+  if (cached !== undefined) return cached;
+  const peers = CANON_EVENTS.filter((item) => item.year === event.year && item.dayProvenance !== "原著");
+  const sourceOrder = new Map(CANON_EVENTS.map((item, index) => [item.id, canonEventSourceAnchor(item.id)?.relativeOrder ?? 10_000 + index]));
+  const usedExactDays = new Set(CANON_EVENTS.filter((item) => item.year === event.year && item.dayProvenance === "原著" && item.day !== undefined).map((item) => item.day!));
+  const peerIds = new Set(peers.map((item) => item.id));
+  const roots = peers.filter((item) => !canonEventHardPrerequisites(item.id).some((id) => CANON_EVENTS.find((candidate) => candidate.id === id)?.year === item.year)).sort((left, right) => (sourceOrder.get(left.id) ?? 0) - (sourceOrder.get(right.id) ?? 0));
+  roots.forEach((item, index) => {
+    const sourceAnchored = Boolean(canonEventSourceAnchor(item.id));
+    let estimate = sourceAnchored ? (roots.length === 1 ? 180 : Math.round(35 + index * (290 / Math.max(1, roots.length - 1)))) : item.day ?? (roots.length === 1 ? 180 : Math.round(35 + index * (290 / Math.max(1, roots.length - 1))));
+    while (usedExactDays.has(estimate) || [...estimatedCanonDayCache.entries()].some(([id, day]) => CANON_EVENTS.find((candidate) => candidate.id === id)?.year === item.year && day === estimate)) estimate += 1;
+    estimatedCanonDayCache.set(item.id, Math.min(350, estimate));
+  });
+  const schedule = (item: CanonEventDefinition, seen = new Set<string>()): number => {
+    const existing = estimatedCanonDayCache.get(item.id);
+    if (existing !== undefined) return existing;
+    if (seen.has(item.id)) return 180;
+    const nextSeen = new Set(seen); nextSeen.add(item.id);
+    const prerequisites = canonEventHardPrerequisites(item.id).map((id) => CANON_EVENTS.find((candidate) => candidate.id === id)).filter((candidate): candidate is CanonEventDefinition => Boolean(candidate && candidate.year === item.year));
+    let estimate = prerequisites.length ? Math.max(item.day ?? 1, Math.max(...prerequisites.map((required) => required.dayProvenance === "原著" && required.day !== undefined ? required.day : peerIds.has(required.id) ? schedule(required, nextSeen) : 1)) + 1) : item.day ?? 180;
+    const scheduledSibling = (canonEventDependencyRule(item.id)?.siblings ?? []).map((id) => estimatedCanonDayCache.get(id)).find((day): day is number => day !== undefined);
+    if (scheduledSibling !== undefined) estimate = scheduledSibling;
+    else while (usedExactDays.has(estimate) || [...estimatedCanonDayCache.entries()].some(([id, day]) => CANON_EVENTS.find((candidate) => candidate.id === id)?.year === item.year && day === estimate)) estimate += 1;
+    estimate = Math.min(359, estimate);
+    estimatedCanonDayCache.set(item.id, estimate);
+    return estimate;
+  };
+  for (const item of peers.sort((left, right) => (sourceOrder.get(left.id) ?? 0) - (sourceOrder.get(right.id) ?? 0))) schedule(item);
+  return estimatedCanonDayCache.get(event.id) ?? 180;
+}
+
+export function canonEventSimulationOrdinal(event: CanonEventDefinition): number {
+  return event.year * 360 + canonEventSimulationDay(event);
+}
+
+export function canonEventSimulationWindow(event: CanonEventDefinition): { startDay: number; endDay: number; basis: "原著日序" | "游戏推测窗口" } {
+  if (event.dayProvenance === "原著" && event.day !== undefined) return { startDay: event.day, endDay: event.day, basis: "原著日序" };
+  const endDay = canonEventSimulationDay(event);
+  const width = event.day === undefined ? 30 : 15;
+  const prerequisiteEnd = Math.max(0, ...canonEventHardPrerequisites(event.id).map((id) => CANON_EVENTS.find((candidate) => candidate.id === id)).filter((candidate): candidate is CanonEventDefinition => Boolean(candidate && candidate.year === event.year)).map(canonEventSimulationDay));
+  return { startDay: Math.min(endDay, Math.max(1, endDay - width, prerequisiteEnd ? prerequisiteEnd + 1 : 1)), endDay, basis: "游戏推测窗口" };
+}
+
+export function canonEventDateLabel(event: CanonEventDefinition): string {
+  if (event.dayProvenance === "原著" && event.day !== undefined) return `原作${event.year}年第${event.day}日`;
+  const window = canonEventSimulationWindow(event);
+  return `原作${event.year}年（具体日序未核实；游戏推测窗口第${window.startDay}—${window.endDay}日）`;
+}
 
 export function locationById(id: string): LocationDefinition | undefined {
   return LOCATIONS.find((location) => location.id === id);

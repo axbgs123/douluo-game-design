@@ -196,6 +196,20 @@ export function auditResolutionAlignment(text: string, resolution: ActionResolut
   const requirement = requiredByIntent.find(([intent]) => intent.test(resolution.intent));
   const issues = requirement && !requirement[1].test(text) ? [requirement[2]] : [];
   issues.push(...auditPlayerActionOwnership(text, playerInput, resolution));
+  if (game) {
+    const knownNames = new Set([game.view.character?.name ?? "", ...game.view.relations.map((item) => item.name), ...game.view.knownFigures.map((item) => item.name), ...Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer).map((npc) => npc.name)]);
+    const inventedRoleName = [...text.matchAll(/([\u4e00-\u9fff]{1,3})(长老|老师|导师|教官|执事|主教|院长)/g)]
+      .map((match) => `${match[1]}${match[2]}`)
+      .find((name) => !/一名|那名|那位|这名|这位|负责|守碑|传功|学院|宗门|当班/.test(name) && ![...knownNames].some((known) => known.includes(name) || name.includes(known)) && !resolution.ruleSummary.includes(name) && !playerInput.includes(name));
+    if (inventedRoleName) issues.push(`正文凭空增加未登记人物${inventedRoleName}`);
+
+    const originalSouls = game.view.character?.martialSouls.filter((soul) => soul.sourceEra === "原创" || soul.sourceEra === "局外") ?? [];
+    const allowedMechanics = `${resolution.ruleSummary} ${originalSouls.map((soul) => soul.description).join(" ")}`;
+    const inventedMechanic = text.split(/[。！？\n]/).find((sentence) => originalSouls.some((soul) => sentence.includes(soul.name))
+      && /意味着|说明|能够|可以|会让|使得|越.{0,12}越|上限|品质|自动|天生/.test(sentence)
+      && !sentence.split(/[，；：]/).some((part) => part.length >= 6 && allowedMechanics.includes(part.trim())));
+    if (inventedMechanic) issues.push("正文为原创或局外武魂补造程序未声明的能力规律");
+  }
   if (/私下测试隐藏武魂/.test(resolution.intent)) {
     if (hasActualPrivateActionInterruption(text)) issues.push("私下测试被擅自改成NPC传唤或培养会议");
     const declaredInventory = game?.view.inventory ?? [];

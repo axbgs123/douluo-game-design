@@ -177,6 +177,15 @@ describe("增强小说引擎", () => {
     expect(auditResolutionAlignment("两家从公开议题中选择优先项，再分别核验来源。", ordinaryResolution, "让媒体联盟共同核验优先议题")).toEqual([]);
   });
 
+  it("rejects newly invented local authority figures and original-soul mechanics", () => {
+    const game = awakened("semantic-invention-audit");
+    game.view.character!.martialSouls[0] = { ...game.view.character!.martialSouls[0], name: "先天道体", sourceEra: "局外", description: "对相容修炼体系有较高理解力，但必须逐级修炼。" };
+    const general = { ...ordinaryResolution, intent: "一般行动", ruleSummary: "完成当前能力范围内的一般行动，没有获得确定性奖励。" };
+    expect(auditResolutionAlignment("齐长老说先天道体吃根基，根基越厚，魂环品质就越高。", general, "询问测试结果", game))
+      .toEqual(expect.arrayContaining(["正文凭空增加未登记人物齐长老", "正文为原创或局外武魂补造程序未声明的能力规律"]));
+    expect(auditResolutionAlignment("闻九只让他按已经确认的方法收回先天道体，没有补充新的能力结论。", general, "练习收放", game)).toEqual([]);
+  });
+
   it("compresses minor actions while preserving space for consequential scenes", () => {
     const game = awakened("pacing");
     expect(narrativePacing(game, "翻找抽屉并整理旧衣", { ...ordinaryResolution, intent: "一般行动" }).kind).toBe("略写");

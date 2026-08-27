@@ -6,7 +6,7 @@ import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView,
 import type { MartialSoulTemplate } from "./domain/model.js";
 import { META_MARTIAL_SOULS, META_MARTIAL_SOUL_POOL_SIZE, metaSoulById } from "./data/meta-martial-souls.js";
 import { META_HEIRLOOMS } from "./data/meta-heirlooms.js";
-import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS, locationActiveAtYear, locationProfileAtYear } from "./data/world.js";
+import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS, canonEventDateLabel, canonEventDatePrecision, locationActiveAtYear, locationProfileAtYear } from "./data/world.js";
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
 import { canonicalFactionIdsAtDate, characterCurrentGoalAtDate, characterPublicNameAtDate, ensureGameState } from "./domain/world.js";
@@ -16,6 +16,7 @@ import { WORLD_SOCIAL_LAWS } from "./data/world-social-laws.js";
 import { CANON_RELATIONSHIPS } from "./data/canon-relationships.js";
 import { WORLD_REACTION_LOGIC } from "./data/world-reaction-logic.js";
 import { CHARACTER_LIFE_STAGES } from "./data/character-life-stages.js";
+import { canonEventSourceAnchor } from "./data/canon-event-source-anchors.js";
 
 const databasePath = process.env.DOULUO_DATA_DIR
   ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
@@ -622,7 +623,7 @@ function seedCanonKnowledge(): void {
         const stableTemperament = character.personality.slice(0, 2);
         storeCanonKnowledge({ sourceKey, era: eraAtYear(stage.validFromYear), kind: "character", subjectId: character.id, subjectName: stage.publicName,
           validFromYear: stage.validFromYear, validUntilYear: stage.validUntilYear ?? character.deathYear ?? 100_000, importance: character.importance / 5,
-          text: `${stage.publicName}在这一时点可安全使用的稳定气质锚点为${stableTemperament.join("、")}；这不代表后来形成的价值观或同伴责任已经出现。当前目标：${stage.currentGoal}。当前可证公开势力：${factionNames.join("、") || "暂无"}。本时间片不提供后来才形成的称号、武魂变化、关系结果、势力归属或人生目标。`,
+          text: `${stage.publicName}在当前人生阶段可安全使用的稳定气质锚点为${stableTemperament.join("、")}。当前目标：${stage.currentGoal}。当前可证公开势力：${factionNames.join("、") || "暂无"}。`,
           metadata: { hidden: Boolean(character.hidden), personality: stableTemperament, publicName: stage.publicName, publicFactionIds: stage.publicFactionIds, validFromDay: stage.validFromDay ?? 1, validUntilYear: stage.validUntilYear ?? character.deathYear ?? 100_000, validUntilDay: stage.validUntilDay ?? 360, sourceType: "结构化人物人生阶段" } });
       });
       const snapshots = [...character.powerSnapshots].sort((left, right) => left.year - right.year || (left.day ?? 1) - (right.day ?? 1));
@@ -671,8 +672,8 @@ function seedCanonKnowledge(): void {
       const sourceKey = `event:${event.id}`; validKeys.push(sourceKey);
       storeCanonKnowledge({ sourceKey, era: eraAtYear(event.year), kind: "event", subjectId: event.id, subjectName: event.title,
         validFromYear: event.year, validUntilYear: 100_000, importance: event.inertia / 5,
-        text: `重要原著事件“${event.title}”的原作时间锚点为${event.year}年${event.day ?? 1}日，地点${LOCATIONS.find((item) => item.id === event.locationId)?.name ?? event.locationId ?? "跨地区"}。原著公开结果：${event.publicSummary}。没有玩家因果足迹时保持惯性；玩家实际改变参与者、资源、地点或势力条件后重新推演。`,
-        metadata: { visibility: event.visibility ?? "公开", participantIds: event.participantIds, inertia: event.inertia, sourceType: "结构化原著事件" } });
+        text: `重要原著事件“${event.title}”的时间锚点为${canonEventDateLabel(event)}，地点${LOCATIONS.find((item) => item.id === event.locationId)?.name ?? event.locationId ?? "跨地区"}。原著公开结果：${event.publicSummary.replace(/[。；]+$/, "")}。日序不清且没有玩家因果足迹时，在推测窗口末端触发以保留完整准备时间；玩家实际改变参与者、关系、资源、地点或势力条件后改按存档因果推演，不再强制套用该窗口。`,
+        metadata: { datePrecision: canonEventDatePrecision(event), sourceOrderVerified: Boolean(canonEventSourceAnchor(event.id)), visibility: event.visibility ?? "公开", participantIds: event.participantIds, inertia: event.inertia, sourceType: "结构化原著事件" } });
     }
     for (const beast of SOUL_BEASTS) {
       const sourceKey = `soul-beast:${beast.id}`; validKeys.push(sourceKey);
@@ -858,11 +859,17 @@ export function getModelUsage(gameId?: string): ModelUsageView {
   const retrievalWhere = gameId ? " WHERE game_id = ?" : "";
   const retrievalCount = database.prepare(`SELECT COUNT(*) AS count FROM context_retrievals${retrievalWhere}`).get(...(gameId ? [gameId] : [])) as { count: number };
   const narratorRetrievalCount = database.prepare(`SELECT COUNT(*) AS count FROM context_retrievals${gameId ? " WHERE game_id = ? AND role = 'narrator'" : " WHERE role = 'narrator'"}`).get(...(gameId ? [gameId] : [])) as { count: number };
-  const lastRetrieval = database.prepare(`SELECT memory_count, canon_count, logic_count, chapter_count, memory_keys_json, canon_keys_json, logic_keys_json, created_at FROM context_retrievals${gameId ? " WHERE game_id = ? AND role = 'narrator'" : " WHERE role = 'narrator'"} ORDER BY id DESC LIMIT 1`).get(...(gameId ? [gameId] : [])) as { memory_count: number; canon_count: number; logic_count: number; chapter_count: number; memory_keys_json: string; canon_keys_json: string; logic_keys_json: string; created_at: string } | undefined;
-  const contextRetrievalReady = Boolean(lastRetrieval && lastRetrieval.canon_count > 0 && lastRetrieval.logic_count > 0);
-  const contextRetrievalStatus: ModelUsageView["contextRetrievalStatus"] = !lastRetrieval ? "未产生升级后正文样本" : contextRetrievalReady ? "最近正文已完成三层检索" : "最近正文检索不完整";
+  const lastRetrieval = database.prepare(`SELECT action_index, memory_count, canon_count, logic_count, chapter_count, memory_keys_json, canon_keys_json, logic_keys_json, created_at FROM context_retrievals${gameId ? " WHERE game_id = ? AND role = 'narrator'" : " WHERE role = 'narrator'"} ORDER BY id DESC LIMIT 1`).get(...(gameId ? [gameId] : [])) as { action_index: number; memory_count: number; canon_count: number; logic_count: number; chapter_count: number; memory_keys_json: string; canon_keys_json: string; logic_keys_json: string; created_at: string } | undefined;
+  const storedGame = gameId ? database.prepare("SELECT state_json FROM games WHERE id = ?").get(gameId) as { state_json: string } | undefined : undefined;
+  const currentGame = storedGame ? JSON.parse(storedGame.state_json) as Pick<StoredGame, "actionIndex" | "lastCommittedAction"> : undefined;
+  const retrievalMatchesCurrentSave = !gameId || Boolean(currentGame?.lastCommittedAction && lastRetrieval && lastRetrieval.action_index >= Math.max(0, currentGame.actionIndex - 1) && lastRetrieval.action_index <= currentGame.actionIndex);
+  const contextRetrievalReady = Boolean(retrievalMatchesCurrentSave && lastRetrieval && lastRetrieval.canon_count > 0 && lastRetrieval.logic_count > 0);
+  const contextRetrievalStatus: ModelUsageView["contextRetrievalStatus"] = !lastRetrieval || !retrievalMatchesCurrentSave ? "未产生升级后正文样本" : contextRetrievalReady ? "最近正文已完成三层检索" : "最近正文检索不完整";
+  const currentRetrieval = retrievalMatchesCurrentSave ? lastRetrieval : undefined;
+  const acceptedNarrativeTurns = Number((database.prepare(`SELECT COUNT(*) AS count FROM turn_trace_groups${gameId ? " WHERE game_id = ? AND status = 'accepted'" : " WHERE status = 'accepted'"}`).get(...(gameId ? [gameId] : [])) as { count: number }).count);
+  const narrativeAuditFailures = Number((database.prepare(`SELECT COUNT(*) AS count FROM turn_trace_attempts a JOIN turn_trace_groups g ON g.id = a.trace_group_id${gameId ? " WHERE g.game_id = ? AND a.status = 'audit-failed'" : " WHERE a.status = 'audit-failed'"}`).get(...(gameId ? [gameId] : [])) as { count: number }).count);
   const parseLabels = (value?: string): string[] => { try { const parsed = JSON.parse(value ?? "[]"); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 12) : []; } catch { return []; } };
-  return { calls: Number(row.calls), failures: Number(row.failures), promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), memoryChapters: Number(chapterRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8, chapterRetrievalLimit: 3, canonKnowledgeVectors: Number(canonRow.count), canonRetrievalLimit: 10, worldLogicVectors: Number(logicRow.count), worldLogicRetrievalLimit: 8, contextRetrievals: Number(retrievalCount.count), narratorContextRetrievals: Number(narratorRetrievalCount.count), contextRetrievalReady, contextRetrievalStatus, lastRetrievedMemoryCount: Number(lastRetrieval?.memory_count ?? 0), lastRetrievedChapterCount: Number(lastRetrieval?.chapter_count ?? 0), lastRetrievedCanonCount: Number(lastRetrieval?.canon_count ?? 0), lastRetrievedLogicCount: Number(lastRetrieval?.logic_count ?? 0), lastRetrievedMemoryLabels: parseLabels(lastRetrieval?.memory_keys_json), lastRetrievedCanonLabels: parseLabels(lastRetrieval?.canon_keys_json), lastRetrievedLogicLabels: parseLabels(lastRetrieval?.logic_keys_json), lastContextRetrievalAt: lastRetrieval?.created_at };
+  return { calls: Number(row.calls), failures: Number(row.failures), acceptedNarrativeTurns, narrativeAuditFailures, promptTokens: Number(row.prompt_tokens), completionTokens: Number(row.completion_tokens), totalTokens: Number(row.total_tokens), totalLatencyMs: Number(row.total_latency_ms), lastCallAt: row.last_call_at || undefined, vectorMemories: Number(vectorRow.count), memoryChapters: Number(chapterRow.count), vectorDimensions: VECTOR_MEMORY_DIMENSIONS, vectorRetrievalLimit: 8, chapterRetrievalLimit: 3, canonKnowledgeVectors: Number(canonRow.count), canonRetrievalLimit: 10, worldLogicVectors: Number(logicRow.count), worldLogicRetrievalLimit: 8, contextRetrievals: Number(retrievalCount.count), narratorContextRetrievals: Number(narratorRetrievalCount.count), contextRetrievalReady, contextRetrievalStatus, lastRetrievedMemoryCount: Number(currentRetrieval?.memory_count ?? 0), lastRetrievedChapterCount: Number(currentRetrieval?.chapter_count ?? 0), lastRetrievedCanonCount: Number(currentRetrieval?.canon_count ?? 0), lastRetrievedLogicCount: Number(currentRetrieval?.logic_count ?? 0), lastRetrievedMemoryLabels: parseLabels(currentRetrieval?.memory_keys_json), lastRetrievedCanonLabels: parseLabels(currentRetrieval?.canon_keys_json), lastRetrievedLogicLabels: parseLabels(currentRetrieval?.logic_keys_json), lastContextRetrievalAt: currentRetrieval?.created_at };
 }
 
 const gameColumns = database.prepare("PRAGMA table_info(games)").all() as Array<{ name: string }>;

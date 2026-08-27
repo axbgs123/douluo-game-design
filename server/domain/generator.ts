@@ -32,6 +32,7 @@ import { fixedTraitEffect } from "./traits.js";
 import { CHARACTER_SURNAMES, FEMALE_GIVEN_NAMES, MALE_GIVEN_NAMES, MATURE_FEMALE_GIVEN_NAMES, MATURE_MALE_GIVEN_NAMES, NEUTRAL_GIVEN_NAMES } from "../data/chinese-name-pool.js";
 import { GOLD_FINGERS, createSpecialSystemView, goldFingerByPreference, isGoldFinger } from "../data/gold-fingers.js";
 import { createStoryArc } from "./story-director.js";
+import { ensureLocalPeople } from "./local-people.js";
 
 interface OriginTemplate {
   id: string;
@@ -1687,7 +1688,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 48,
+    schemaVersion: 51,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1740,6 +1741,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
       mediaAlliances: [],
       activeEvents: [],
       canonInfluences: [],
+      canonInterventions: [],
       storyArchive: {
         summary: "六岁的孩子即将参加武魂觉醒，眼前最重要的仍是看清自己的武魂与魂力。",
         openThreads: ["武魂觉醒结果", "家人与出身中尚未说清的细节"],
@@ -2192,7 +2194,7 @@ function openingObjective(game: StoredGame, selected: HiddenCandidate, awakening
   if (mode === "internal") return { ...common, title: `听清${awakening.factionName}愿意怎么培养他`, steps: [
     { id: "understand", text: `请${awakening.officiant}完成${soulName}的${awakeningTestFocus(selected.martialSoul)}测试`, status: "进行中" },
     { id: "support", text: `问清先跟谁练、每天在哪里练、第一次猎魂谁同行`, status: "未开始" },
-    { id: "path", text: "决定先练哪个武魂、秘密告诉谁、接受哪些条件", status: "未开始" },
+    { id: "path", text: "决定隐藏武魂告诉谁、接受哪些培养条件，必要时调整当前主修", status: "未开始" },
   ] };
   if (mode === "noble") return { ...common, title: "比较贵族身份能够打开的培养路线", steps: [
     { id: "understand", text: `请${awakening.officiant}完成${soulName}的${awakeningTestFocus(selected.martialSoul)}测试`, status: "进行中" },
@@ -2346,6 +2348,7 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
       history: [{ date: "出生至觉醒日", reason: "共同生活、监护或身份归属形成的初始关系", changes: "初始关系" }],
     };
   });
+  ensureLocalPeople(game);
   game.view.tasks = selected.innateSoulPower > 0
     ? [{ id: "first-ring", title: "获得第一魂环", kind: "修炼需求", detail: "魂力达到十级后，完成一次完整猎魂。", status: "进行中" }]
     : [{ title: "理解觉醒结果", kind: "线索", detail: "没有显现先天魂力并不等于所有道路都已断绝。" }];

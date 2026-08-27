@@ -114,7 +114,7 @@ export function StoryScreen({ game, busy, aiConnected, actionPhase, actionDraft,
             {panel === "情报" && <IntelligencePanel game={game} />}
             {panel === "手记" && <><KnownRecordSearch game={game} /><ArchivePanel game={game} /></>}
             {panel === "猎魂" && <HuntPanel game={game} submit={submit} busy={busy} />}
-            {panel === "世界" && <><MediaAccountabilityPanel game={game} submit={submit} busy={busy} /><ChronologyPanel game={game} submit={submit} busy={busy} /><WorldPanel game={game} submit={submit} busy={busy} /></>}
+            {panel === "世界" && <><MediaAccountabilityPanel game={game} submit={submit} busy={busy} /><ChronologyPanel game={game} submit={submit} busy={busy} /><CanonInterventionPanel game={game} submit={submit} busy={busy} /><WorldPanel game={game} submit={submit} busy={busy} /></>}
           </div>
           <footer className="panel-footer"><span>{game.difficulty}</span><span>{game.speed}</span></footer>
         </aside>
@@ -471,6 +471,11 @@ function ChronologyPanel({ game, submit, busy }: { game: GameView; submit: (valu
       <button type="button" disabled={busy || event.verification === "已核验"} onClick={() => submit(`调查年表节点${event.title}`)}>核验节点</button>
     </article>)}</div>
   </section>;
+}
+
+function CanonInterventionPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {
+  if (!game.canonInterventions?.length) return null;
+  return <section className="world-panel"><h3 className="panel-title">原著事件干预</h3><div className="world-event-list">{game.canonInterventions.map((project) => <article key={project.id}><header><span>{project.objective} · {project.stage}</span><strong>{project.title}</strong></header><p>情报 {project.intelligence}/3 · 路线 {project.access}/3 · 准备 {project.preparation}/4</p><small>{project.targetDate}{project.outcome ? ` · ${project.outcome}` : ""}</small><div><button type="button" disabled={busy || project.stage === "完成" || project.stage === "失败"} onClick={() => submit(project.nextAction)}>{project.stage === "待执行" ? "执行" : project.stage === "待核验" ? "核验" : "推进"}</button></div></article>)}</div></section>;
 }
 
 function WorldPanel({ game, submit, busy }: { game: GameView; submit: (value: string) => void; busy: boolean }) {

@@ -51,7 +51,7 @@ import {
   getTurnTraceReplaySource,
   saveNarrativeRewrite,
 } from "./db.js";
-import { applyNarrativeMemory, auditArchivedNarrative, interpretActionWithDeepSeek, narrateWithAuditRetries, narrateWithDeepSeek, replayStoredNarratorPrompt, validateInterpretedAction } from "./services/deepseek.js";
+import { NarrativeLogicPreflightError, applyNarrativeMemory, auditArchivedNarrative, interpretActionWithDeepSeek, narrateWithAuditRetries, narrateWithDeepSeek, replayStoredNarratorPrompt, validateInterpretedAction, type NarrationResult } from "./services/deepseek.js";
 import { readDeepSeekSettings, settingsView, writeDeepSeekSettings } from "./services/settings.js";
 import { settleRun } from "./domain/endings.js";
 import { guardActionByStoryRules } from "./domain/story-rules.js";
@@ -345,6 +345,23 @@ function settleIfNeeded(game: ReturnType<typeof loadGame> extends infer T ? Excl
   return undefined;
 }
 
+async function narrateOrUseRuleFallback(
+  game: Exclude<ReturnType<typeof loadGame>, undefined>,
+  playerInput: string,
+  resolution: ReturnType<typeof resolveAction>,
+  signal?: AbortSignal,
+  onRetry?: (attempt: number, reason: string) => void,
+): Promise<{ generated: NarrationResult; usedAiNarrator: boolean }> {
+  try {
+    const generated = await narrateWithAuditRetries(game, playerInput, resolution, signal, onRetry);
+    if (generated) return { generated, usedAiNarrator: true };
+  } catch (error) {
+    if (error instanceof NarrativeLogicPreflightError) throw error;
+  }
+  resolution.systemMessages = [...(resolution.systemMessages ?? []), "AI正文未通过或未完整返回 · 已采用程序安全正文 · 规则结果照常提交"];
+  return { generated: { narrative: resolution.fallbackNarrative, suggestions: resolution.suggestions }, usedAiNarrator: false };
+}
+
 app.post("/api/games/:id/action", async (request, response) => {
   const input = actionSchema.parse(request.body);
   const game = loadGame(request.params.id);
@@ -367,16 +384,16 @@ app.post("/api/games/:id/action", async (request, response) => {
       ruleAction = interpreted ? validateInterpretedAction(working, input.input, interpreted) : input.input;
     }
     const resolution = resolveAction(working, ruleAction);
-    let generated;
-    if (!/规则阻止|无法完成/.test(resolution.intent)) generated = await narrateWithAuditRetries(working, input.input, resolution);
-    if (!generated && !/规则阻止|无法完成/.test(resolution.intent)) throw new Error("AI 没有返回可提交的正文，本次行动未推进");
+    let generated: NarrationResult | undefined;
+    let usedAiNarrator = false;
+    if (!/规则阻止|无法完成/.test(resolution.intent)) ({ generated, usedAiNarrator } = await narrateOrUseRuleFallback(working, input.input, resolution));
     const beforeNarrative = new Set(working.view.narrative.map((entry) => entry.id));
     applyActionResult(working, input.input, resolution, generated?.narrative ?? resolution.fallbackNarrative, generated?.suggestions.length === 3 ? generated.suggestions : resolution.suggestions, requestId);
     if (generated) applyNarrativeMemory(working, generated);
     const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
     if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString(), traceGroupId: generated?.traceGroupId };
     const settlement = settleIfNeeded(working);
-    commitResolvedAction(game, working, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds }, settlement);
+    commitResolvedAction(game, working, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator, appliedRuleIds: resolution.appliedRuleIds }, settlement);
     return response.json(publicView(working));
   } finally {
     activeActionGames.delete(game.view.id);
@@ -427,27 +444,31 @@ app.post("/api/games/:id/action/stream", async (request, response) => {
 
     phase("logic", "编译人物动机、知情、权限、资源与后果");
     phase("writing", "按第三人称续写正文");
-    const generated = /规则阻止|无法完成/.test(resolution.intent)
-      ? { narrative: resolution.fallbackNarrative, suggestions: resolution.suggestions }
-      : await narrateWithAuditRetries(working, input.input, resolution, controller.signal, (attempt) => send({ type: "retry", attempt, label: "重新续写" }));
-    if (!generated) throw new Error("AI 没有返回可提交的正文");
+    let usedAiNarrator = false;
+    let finalGenerated: NarrationResult;
+    if (/规则阻止|无法完成/.test(resolution.intent)) finalGenerated = { narrative: resolution.fallbackNarrative, suggestions: resolution.suggestions };
+    else {
+      const narration = await narrateOrUseRuleFallback(working, input.input, resolution, controller.signal, (attempt) => send({ type: "retry", attempt, label: "重新续写" }));
+      finalGenerated = narration.generated;
+      usedAiNarrator = narration.usedAiNarrator;
+    }
     if (cancelled) return;
 
     phase("auditing", "核对时间线、知情边界与程序结果");
-    for (const paragraph of generated.narrative.split(/(?<=。|！|？)\s*|\n+/).filter(Boolean)) {
+    for (const paragraph of finalGenerated.narrative.split(/(?<=。|！|？)\s*|\n+/).filter(Boolean)) {
       send({ type: "draft", text: paragraph });
     }
     if (cancelled) return;
 
     phase("committing", "写入存档");
     const beforeNarrative = new Set(working.view.narrative.map((entry) => entry.id));
-    applyActionResult(working, input.input, resolution, generated.narrative, generated.suggestions.length === 3 ? generated.suggestions : resolution.suggestions, requestId);
-    if ("memory" in generated) applyNarrativeMemory(working, generated);
+    applyActionResult(working, input.input, resolution, finalGenerated.narrative, finalGenerated.suggestions.length === 3 ? finalGenerated.suggestions : resolution.suggestions, requestId);
+    if ("memory" in finalGenerated) applyNarrativeMemory(working, finalGenerated);
     const narrativeEntry = working.view.narrative.find((entry) => !beforeNarrative.has(entry.id) && entry.kind === "narration");
-    if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString(), traceGroupId: "traceGroupId" in generated ? generated.traceGroupId : undefined };
+    if (narrativeEntry) working.lastCommittedAction = { requestId, playerInput: input.input, ruleAction, resolution, narrativeEntryId: narrativeEntry.id, committedAt: new Date().toISOString(), traceGroupId: "traceGroupId" in finalGenerated ? finalGenerated.traceGroupId : undefined };
     const settlement = settleIfNeeded(working);
     if (cancelled) return;
-    commitResolvedAction(game, working, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator: true, appliedRuleIds: resolution.appliedRuleIds }, settlement);
+    commitResolvedAction(game, working, `第 ${game.actionIndex + 1} 次行动前 · ${input.input.slice(0, 32)}`, "action.resolved", { requestId, input: input.input, ruleAction, minutes: resolution.minutes, usedAiNarrator, appliedRuleIds: resolution.appliedRuleIds }, settlement);
     send({ type: "done", game: publicView(working), explanation: resolution.ruleSummary });
     response.end();
   } catch (error) {

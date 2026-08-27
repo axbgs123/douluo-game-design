@@ -367,7 +367,7 @@ describe("candidate generation", () => {
       ],
     };
     const upgradedNoble = ensureGameState(migratedNoble);
-    expect(upgradedNoble.schemaVersion).toBe(48);
+    expect(upgradedNoble.schemaVersion).toBe(51);
     expect(JSON.stringify(upgradedNoble.view.chapterObjective)).toMatch(/家族培养.*学院.*外部导师/);
 
     const firstStep = resolveAction(noble, `请${noble.world.flags.openingOfficiant}完成武魂复核测试`);
