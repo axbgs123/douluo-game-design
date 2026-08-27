@@ -241,7 +241,7 @@ describe("存档数据库", () => {
 
   it("retrieves era-valid canon personality, timeline, faction, and social logic without leaking unknown characters", () => {
     const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "canon-vector-retrieval" });
-    game.view.worldTime = { era: "斗罗大陆", year: 0, day: 20, time: "08:00", season: "春" };
+    game.view.worldTime = { era: "斗罗大陆", year: 0, day: 31, time: "08:00", season: "春" };
     game.view.knownFigures.push({ id: "tang-san", name: "唐三", knownPower: "觉醒阶段", location: "圣魂村", status: "已知", source: "亲眼见过" });
     game.view.knownFigures.push({ id: "xiao-wu", name: "小舞", knownPower: "新生", location: "诺丁学院", status: "已知", source: "亲眼见过" });
     const knowledge = database.retrieveCanonKnowledge(game, "唐三原作0年先天满魂力觉醒阶段的实力、性格、目标；唐三和小舞如何相处；与唐三建立信任的人际逻辑", 20);
@@ -293,8 +293,8 @@ describe("存档数据库", () => {
 
   it("keeps hidden identities, injuries, exact power and divine progress out of ordinary character vectors", () => {
     const xiaoWuGame = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "xiao-wu-private-snapshot" });
-    xiaoWuGame.view.worldTime = { era: "唐三觉醒基准年", year: 0, day: 20, time: "08:00", season: "春" };
-    xiaoWuGame.world = createHiddenWorld(0, "notting-academy");
+    xiaoWuGame.view.worldTime = { era: "唐三觉醒基准年", year: 0, day: 31, time: "08:00", season: "春" };
+    xiaoWuGame.world = createHiddenWorld(0, "notting-academy", 31);
     xiaoWuGame.world.npcs["xiao-wu"].knownToPlayer = true;
     xiaoWuGame.view.knownFigures.push({ id: "xiao-wu", name: "小舞", knownPower: "实力未知", location: "诺丁学院", status: "已知", source: "同学" });
     const xiaoWuKnowledge = database.retrieveCanonKnowledge(xiaoWuGame, "小舞当前实力、身份和入学阶段", 20).filter((item) => item.subjectId === "xiao-wu");
@@ -368,7 +368,7 @@ describe("存档数据库", () => {
     game.world = createHiddenWorld(-5, "holy-soul-village");
     expect(game.world.npcRelations.some((item) => [item.leftId, item.rightId].includes("tang-san") && [item.leftId, item.rightId].includes("tang-hao") && item.kind === "亲近")).toBe(true);
     expect(game.world.npcRelations.some((item) => [item.leftId, item.rightId].includes("tang-san") && [item.leftId, item.rightId].includes("xiao-wu"))).toBe(false);
-    game.view.worldTime = { era: "斗罗大陆", year: 0, day: 20, time: "08:00", season: "春" };
+    game.view.worldTime = { era: "斗罗大陆", year: 0, day: 31, time: "08:00", season: "春" };
     ensureGameState(game);
     expect(game.world.npcRelations.some((item) => [item.leftId, item.rightId].includes("tang-san") && [item.leftId, item.rightId].includes("xiao-wu"))).toBe(true);
   });

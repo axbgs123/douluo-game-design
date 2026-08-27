@@ -14,7 +14,8 @@ const stage = (characterId: string, validFromYear: number, publicName: string, c
 export const CHARACTER_LIFE_STAGES: CharacterLifeStageDefinition[] = [
   stage("tang-san", -6, "唐三", "与父亲在圣魂村生活，完成力所能及的家务与自身基础练习", [], -1),
   stage("tang-san", 0, "唐三", "与父亲在圣魂村生活，完成武魂觉醒并弄清眼前能够走的路", [], 0, 1, 19),
-  stage("tang-san", 0, "唐三", "在诺丁学院学习、修炼武魂并处理工读生活与家庭牵挂", [], 6, 20, 19),
+  stage("tang-san", 0, "唐三", "完成觉醒后准备前往诺丁学院，处理离家、名额与路程", [], 0, 20, 29),
+  stage("tang-san", 0, "唐三", "在诺丁学院学习、修炼武魂并处理工读生活与家庭牵挂", [], 6, 30, 19),
   stage("tang-san", 6, "唐三", "与史莱克同伴共同训练，准备真实战斗与魂环成长", ["shrek"], 12, 20),
   stage("tang-san", 13, "唐三", "追查父母旧事、面对昊天宗关系并保护已经建立的同伴", ["shrek", "clear-sky"], 13),
   stage("tang-san", 14, "唐三", "建立唐门现实班底，同时承担亲友、宗门与大陆冲突带来的责任", ["shrek", "clear-sky", "tang-sect"]),
@@ -22,8 +23,8 @@ export const CHARACTER_LIFE_STAGES: CharacterLifeStageDefinition[] = [
   stage("tang-hao", 13, "唐昊", "在旧事逐步浮出水面后处理家人、伤势与宗门之间的责任", []),
 
   stage("xiao-wu", -6, "小舞", "在熟悉的照料环境中成长，处理当前年龄能够理解的生活问题", [], -1),
-  stage("xiao-wu", 0, "小舞", "以普通适龄孩子身份寻找能够生活和学习的地方", [], 0, 1, 19),
-  stage("xiao-wu", 0, "小舞", "在诺丁学院处理工读生活、基础修炼与同龄人的日常相处", [], 6, 20, 19),
+  stage("xiao-wu", 0, "小舞", "以普通适龄孩子身份寻找能够生活和学习的地方", [], 0, 1, 30),
+  stage("xiao-wu", 0, "小舞", "在诺丁学院处理工读生活、基础修炼与同龄人的日常相处", [], 6, 31, 19),
   stage("xiao-wu", 6, "小舞", "作为史莱克学员参加训练和实战，同时保护自己的私人边界", ["shrek"], undefined, 20),
 
   stage("dai-mubai", -9, "戴沐白", "面对星罗家族竞争压力，提升实力并寻找能够活下去的道路", ["star-luo"], 3),

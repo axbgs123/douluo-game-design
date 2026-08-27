@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { GameView, IntelligenceView, KnownFigureView, MapHierarchyView, MapLocationView, NpcRelationEvidenceView, WorldEventView, WorldNewsView } from "../../shared/game.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationActiveAtYear, locationById, locationProfileAtYear } from "../data/world.js";
-import { canonEventPrerequisites } from "../data/canon-event-dependencies.js";
+import { canonEventDependencyRule, canonEventHardPrerequisites } from "../data/canon-event-dependencies.js";
 import type { CanonCausalDomain, CanonCausalFootprint, HiddenWorldState, NpcMemoryEntry, SocialRumorState, StoredGame, WorldNpcState } from "./model.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { refreshStoryArchive } from "./story-rules.js";
@@ -21,7 +21,7 @@ import { academyEraLifeProfile } from "../../shared/academy-life.js";
 const DAYS_PER_YEAR = 360;
 
 const RELATIONSHIP_EVENT_PREREQUISITES: Record<string, string> = {
-  "tangsan-xiaowu-notting": "tang-awakening",
+  "tangsan-xiaowu-notting": "xiao-wu-notting-meeting",
   "tangsan-yuxiaogang": "notting-master-disciple",
   "d2-yuhao-wangdonger": "d2-shrek-enrollment",
   "d3-wulin-gu-yue": "d3-zero-class",
@@ -1066,9 +1066,11 @@ function eventParticipantFactions(game: StoredGame, event: CanonEvent): Set<stri
 }
 
 function canonDependencyFailure(game: StoredGame, event: CanonEvent): { state: "延后" | "替代" | "取消"; prerequisiteIds: string[] } | undefined {
-  const prerequisiteIds = canonEventPrerequisites(event.id);
-  if (!prerequisiteIds.length) return undefined;
-  const missing = prerequisiteIds.filter((id) => !game.world.firedCanonEvents.includes(id) || game.world.suppressedCanonEvents.includes(id));
+  const rule = canonEventDependencyRule(event.id);
+  const missingAll = (rule?.requiredAll ?? []).filter((id) => !game.world.firedCanonEvents.includes(id) || game.world.suppressedCanonEvents.includes(id));
+  const any = rule?.requiredAny ?? [];
+  const anySatisfied = !any.length || any.some((id) => game.world.firedCanonEvents.includes(id) && !game.world.suppressedCanonEvents.includes(id));
+  const missing = [...new Set([...missingAll, ...(anySatisfied ? [] : any)])];
   if (!missing.length) return undefined;
   const branches = missing.map((id) => game.world.canonTimelineBranches.filter((branch) => branch.eventId === id).at(-1));
   if (branches.some((branch) => branch?.status === "已结算" && branch.state === "取消")) return { state: "取消", prerequisiteIds: missing };
@@ -1108,7 +1110,7 @@ function causeTargetsEvent(game: StoredGame, cause: CanonCausalFootprint, event:
   const sharedNpcCount = cause.affectedNpcIds.filter((id) => event.participantIds.includes(id)).length;
   if (cause.originEventId) {
     if (cause.originEventId === event.id) return false;
-    if (canonEventPrerequisites(event.id).includes(cause.originEventId)) return !(game.world.firedCanonEvents.includes(cause.originEventId) && !game.world.suppressedCanonEvents.includes(cause.originEventId));
+    if (canonEventHardPrerequisites(event.id).includes(cause.originEventId)) return !(game.world.firedCanonEvents.includes(cause.originEventId) && !game.world.suppressedCanonEvents.includes(cause.originEventId));
     const origin = CANON_EVENTS.find((item) => item.id === cause.originEventId);
     if (origin && ordinal(origin.year, origin.day ?? 1) > ordinal(event.year, event.day ?? 1)) return false;
     if (!origin || gap > 3 * DAYS_PER_YEAR) return false;
@@ -1235,7 +1237,7 @@ function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentO
   const dependencyDepth = (eventId: string, seen = new Set<string>()): number => {
     if (seen.has(eventId)) return 0;
     const nextSeen = new Set(seen); nextSeen.add(eventId);
-    const prerequisites = canonEventPrerequisites(eventId);
+    const prerequisites = canonEventHardPrerequisites(eventId);
     return prerequisites.length ? 1 + Math.max(...prerequisites.map((id) => dependencyDepth(id, nextSeen))) : 0;
   };
   const events = CANON_EVENTS.filter((event) => { const at = ordinal(event.year, event.day ?? 1); return at >= previousOrdinal && at <= currentOrdinal; }).sort((left, right) => ordinal(left.year, left.day ?? 1) - ordinal(right.year, right.day ?? 1) || dependencyDepth(left.id) - dependencyDepth(right.id));
@@ -1493,7 +1495,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 47;
+  legacy.schemaVersion = 48;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1889,6 +1891,21 @@ export function ensureGameState(game: StoredGame): StoredGame {
     for (const event of game.world.dynamicEvents.filter((item) => /awakening|talent-recruitment/.test(item.id))) event.detail = naturalizeOpeningLanguage(event.detail);
     game.storyMemory.openThreads = game.storyMemory.openThreads.map(naturalizeOpeningLanguage);
     game.world.flags.schema47OpeningProseNaturalized = true;
+  }
+  if (previousSchemaVersion < 48) {
+    const now = ordinal(startYear, game.view.worldTime?.day ?? 1);
+    const fired = new Set(game.world.firedCanonEvents);
+    const addPast = (id: string): void => {
+      const event = CANON_EVENTS.find((item) => item.id === id);
+      if (event && ordinal(event.year, event.day ?? 1) <= now) fired.add(id);
+    };
+    if (fired.has("tang-awakening")) { addPast("notting-arrival"); addPast("xiao-wu-notting-meeting"); }
+    if (fired.has("slaughter-training")) { addPast("tang-san-awakens-emperor"); addPast("slaughter-city-entry"); }
+    if (fired.has("tang-sect-founded")) { addPast("tang-sect-preparation"); addPast("single-clans-gather"); }
+    if (fired.has("d3-shrek-destruction") || fired.has("d3-tang-sect-strike")) addPast("d3-godkiller-coordinated-strike");
+    if (fired.has("d4-crimson-domain")) { addPast("d4-dragon-horse-federation-founded"); addPast("d4-crimson-ultimatum"); }
+    game.world.firedCanonEvents = [...fired];
+    game.world.flags.schema48CanonEventsReconciled = true;
   }
   if (previousSchemaVersion < 35) {
     const day = game.view.worldTime?.day ?? 1;

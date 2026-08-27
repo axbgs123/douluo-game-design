@@ -16,8 +16,8 @@ export interface CanonRelationshipDefinition {
 }
 
 export const CANON_RELATIONSHIPS: CanonRelationshipDefinition[] = [
-  { id: "tangsan-xiaowu-notting", era: 1, fromId: "tang-san", toId: "xiao-wu", validFromYear: 0, validFromDay: 20, relation: "诺丁同学与刚建立的结义兄妹关系", basis: "七舍相识、冲突后的同学生活与当时已经发生的结义", dynamics: "唐三偏克制，小舞表达更直接；此时信任仍需通过共同生活形成", boundary: "不得预设后来感情、献祭或固定配对，后续关系按实际经历推进", importance: 1 },
-  { id: "tangsan-yuxiaogang", era: 1, fromId: "tang-san", toId: "yu-xiaogang", validFromYear: 0, validFromDay: 22, relation: "刚正式建立的师徒关系", basis: "玉小刚完成当时的理论判断，唐三已经作出拜师选择", dynamics: "玉小刚开始承担理论与训练责任，唐三仍保留自己的秘密与判断", boundary: "导师有建议和训练权，不拥有主角全部秘密或人生决定权；不得提前写后来猎魂与团队结果", importance: 1 },
+  { id: "tangsan-xiaowu-notting", era: 1, fromId: "tang-san", toId: "xiao-wu", validFromYear: 0, validFromDay: 31, relation: "诺丁同学与刚建立的结义兄妹关系", basis: "七舍相识、冲突后的同学生活与当时已经发生的结义", dynamics: "唐三偏克制，小舞表达更直接；此时信任仍需通过共同生活形成", boundary: "不得预设后来感情、献祭或固定配对，后续关系按实际经历推进", importance: 1 },
+  { id: "tangsan-yuxiaogang", era: 1, fromId: "tang-san", toId: "yu-xiaogang", validFromYear: 0, validFromDay: 32, relation: "刚正式建立的师徒关系", basis: "玉小刚完成当时的理论判断，唐三已经作出拜师选择", dynamics: "玉小刚开始承担理论与训练责任，唐三仍保留自己的秘密与判断", boundary: "导师有建议和训练权，不拥有主角全部秘密或人生决定权；不得提前写后来猎魂与团队结果", importance: 1 },
   { id: "tangsan-tanghao", era: 1, fromId: "tang-san", toId: "tang-hao", validFromYear: -6, relation: "父子", basis: "血缘、抚养与阿银旧事", dynamics: "唐昊沉默自责却高度护短，唐三重情并试图理解父亲隐瞒", boundary: "亲情不消除信息差、旧伤和宗门责任", importance: 1 },
   { id: "tanghao-ayin", era: 1, fromId: "tang-hao", toId: "a-yin", validFromYear: -20, relation: "伴侣", basis: "长期相伴、共同面对武魂殿追杀与献祭后果", dynamics: "唐昊的隐居、自责和保护唐三均受这段关系影响", boundary: "阿银的恢复受生命状态和资源限制，不能靠感情直接复原", importance: 1 },
   { id: "ning-rongrong-ning-fengzhi", era: 1, fromId: "ning-rongrong", toId: "ning-fengzhi", validFromYear: -6, relation: "父女", basis: "血缘、宗门继承与长期宠爱", dynamics: "宁风致疼爱女儿，同时必须考虑宗门继承、辅助系保护与政治利益", boundary: "父爱不等于允许女儿无视宗门安全和继承责任", importance: .92 },
