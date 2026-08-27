@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { GameView, IntelligenceView, KnownFigureView, MapHierarchyView, MapLocationView, NpcRelationEvidenceView, WorldEventView, WorldNewsView } from "../../shared/game.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, characterById, locationActiveAtYear, locationById, locationProfileAtYear } from "../data/world.js";
+import { canonEventPrerequisites } from "../data/canon-event-dependencies.js";
 import type { CanonCausalDomain, CanonCausalFootprint, HiddenWorldState, NpcMemoryEntry, SocialRumorState, StoredGame, WorldNpcState } from "./model.js";
 import { toThirdPersonNarrative } from "./narrative.js";
 import { refreshStoryArchive } from "./story-rules.js";
@@ -310,22 +311,22 @@ function canonicalLocationAtYear(characterId: string, year: number, day = 360): 
   return latestEvent?.locationId ?? definition?.initialLocationId ?? "notting-city";
 }
 
-export function createHiddenWorld(startYear: number, startLocationId: string): HiddenWorldState {
+export function createHiddenWorld(startYear: number, startLocationId: string, startDay = 1): HiddenWorldState {
   const npcs = Object.fromEntries(CANON_CHARACTERS.map((definition) => {
-    const power = powerAtDate(definition.id, startYear, 1);
+    const power = powerAtDate(definition.id, startYear, startDay);
     const born = definition.birthYear === undefined || startYear >= definition.birthYear;
     const inCurrentEra = characterExistsInEra(definition.id, startYear);
     const aliveAtStart = inCurrentEra && born && (definition.deathYear === undefined || startYear < definition.deathYear);
     const state: WorldNpcState = {
       id: definition.id,
-      name: characterPublicNameAtDate(definition.id, startYear, 1),
+      name: characterPublicNameAtDate(definition.id, startYear, startDay),
       alive: aliveAtStart,
       age: definition.birthYear === undefined ? undefined : Math.max(0, startYear - definition.birthYear),
       soulRank: aliveAtStart ? power.soulRank : undefined,
       powerTier: aliveAtStart ? power.tier : "不在当世活动",
-      locationId: canonicalLocationAtYear(definition.id, startYear, 1),
-      factionIds: canonicalFactionIdsAtDate(definition.id, startYear, 1),
-      currentGoal: !inCurrentEra ? "不在当前时代活动" : !born ? "尚未出生" : aliveAtStart ? characterCurrentGoalAtDate(definition.id, startYear, 1) : "已死亡",
+      locationId: canonicalLocationAtYear(definition.id, startYear, startDay),
+      factionIds: canonicalFactionIdsAtDate(definition.id, startYear, startDay),
+      currentGoal: !inCurrentEra ? "不在当前时代活动" : !born ? "尚未出生" : aliveAtStart ? characterCurrentGoalAtDate(definition.id, startYear, startDay) : "已死亡",
       dispositionToPlayer: 0,
       knownToPlayer: false,
       lastSimulatedYear: startYear,
@@ -337,10 +338,10 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
   }));
 
   const npcRelations: HiddenWorldState["npcRelations"] = [];
-  ensureCanonRelationshipBaselines(npcs, npcRelations, startYear, 1);
+  ensureCanonRelationshipBaselines(npcs, npcRelations, startYear, startDay);
   return {
     npcs,
-    firedCanonEvents: CANON_EVENTS.filter((event) => event.year < startYear).map((event) => event.id),
+    firedCanonEvents: CANON_EVENTS.filter((event) => ordinal(event.year, event.day ?? 1) < ordinal(startYear, startDay)).map((event) => event.id),
     suppressedCanonEvents: [],
     deviation: 0,
     canonCausalFootprints: [],
@@ -349,7 +350,7 @@ export function createHiddenWorld(startYear: number, startLocationId: string): H
     dynamicEvents: [],
     localConsequences: [],
     socialRumors: [],
-    lastAutonomyOrdinal: ordinal(startYear, 1),
+    lastAutonomyOrdinal: ordinal(startYear, startDay),
     resurrectionCount: 0,
     resurrectionRecords: [],
     discoveredLocations: [startLocationId],
@@ -1064,13 +1065,52 @@ function eventParticipantFactions(game: StoredGame, event: CanonEvent): Set<stri
   return new Set(event.participantIds.flatMap((id) => [...(game.world.npcs[id]?.factionIds ?? []), ...canonicalFactionIdsAtDate(id, event.year, event.day ?? 1)]));
 }
 
+function canonDependencyFailure(game: StoredGame, event: CanonEvent): { state: "延后" | "替代" | "取消"; prerequisiteIds: string[] } | undefined {
+  const prerequisiteIds = canonEventPrerequisites(event.id);
+  if (!prerequisiteIds.length) return undefined;
+  const missing = prerequisiteIds.filter((id) => !game.world.firedCanonEvents.includes(id) || game.world.suppressedCanonEvents.includes(id));
+  if (!missing.length) return undefined;
+  const branches = missing.map((id) => game.world.canonTimelineBranches.filter((branch) => branch.eventId === id).at(-1));
+  if (branches.some((branch) => branch?.status === "已结算" && branch.state === "取消")) return { state: "取消", prerequisiteIds: missing };
+  if (branches.some((branch) => branch?.status === "已结算" && branch.state === "替代") || missing.some((id) => game.world.suppressedCanonEvents.includes(id) && !branches.some((branch) => branch?.eventId === id && branch.status === "待结算"))) return { state: "替代", prerequisiteIds: missing };
+  return { state: "延后", prerequisiteIds: missing };
+}
+
+function ensureCanonDependencyCauses(game: StoredGame, event: CanonEvent, eventOrdinal: number, failure: NonNullable<ReturnType<typeof canonDependencyFailure>>): void {
+  const participantFactions = [...eventParticipantFactions(game, event)];
+  for (const prerequisiteId of failure.prerequisiteIds) {
+    const id = `dependency-${prerequisiteId}-to-${event.id}`;
+    const existing = game.world.canonCausalFootprints.find((cause) => cause.id === id);
+    if (existing) { existing.expiresOrdinal = Math.max(existing.expiresOrdinal ?? 0, eventOrdinal + 360); continue; }
+    game.world.canonCausalFootprints.push({
+      id,
+      source: "原著事件前置条件",
+      description: `前置节点没有按原条件完成，${event.id}必须从当前人物、势力与资源状态重新结算`,
+      atYear: event.year,
+      atDay: event.day ?? 1,
+      locationId: event.locationId ?? game.view.locationId ?? "notting-city",
+      affectedNpcIds: [...event.participantIds],
+      affectedFactionIds: participantFactions,
+      strength: event.inertia * 16,
+      domains: ["goal", "institution", "relationship"],
+      expiresOrdinal: eventOrdinal + 360,
+      originEventId: prerequisiteId,
+      propagationDepth: 1,
+    });
+  }
+  game.world.canonCausalFootprints = game.world.canonCausalFootprints.slice(-120);
+}
+
 function causeTargetsEvent(game: StoredGame, cause: CanonCausalFootprint, event: CanonEvent, eventOrdinal: number): boolean {
   if (effectiveCauseStrength(cause, eventOrdinal) < .5) return false;
   const createdOrdinal = ordinal(cause.atYear, cause.atDay);
   const gap = eventOrdinal - createdOrdinal;
   const sharedNpcCount = cause.affectedNpcIds.filter((id) => event.participantIds.includes(id)).length;
   if (cause.originEventId) {
+    if (cause.originEventId === event.id) return false;
+    if (canonEventPrerequisites(event.id).includes(cause.originEventId)) return !(game.world.firedCanonEvents.includes(cause.originEventId) && !game.world.suppressedCanonEvents.includes(cause.originEventId));
     const origin = CANON_EVENTS.find((item) => item.id === cause.originEventId);
+    if (origin && ordinal(origin.year, origin.day ?? 1) > ordinal(event.year, event.day ?? 1)) return false;
     if (!origin || gap > 3 * DAYS_PER_YEAR) return false;
     const originSharedCount = origin.participantIds.filter((id) => event.participantIds.includes(id)).length;
     if (originSharedCount >= 2 || (origin.participantIds.length <= 2 && originSharedCount >= 1 && gap <= 2 * DAYS_PER_YEAR)) return true;
@@ -1192,23 +1232,31 @@ function settlePendingCanonBranches(game: StoredGame, throughOrdinal: number, me
 
 function simulateCanonEvents(game: StoredGame, previousOrdinal: number, currentOrdinal: number): string[] {
   const messages: string[] = [];
-  const events = CANON_EVENTS.filter((event) => { const at = ordinal(event.year, event.day ?? 1); return at >= previousOrdinal && at <= currentOrdinal; }).sort((left, right) => ordinal(left.year, left.day ?? 1) - ordinal(right.year, right.day ?? 1));
+  const dependencyDepth = (eventId: string, seen = new Set<string>()): number => {
+    if (seen.has(eventId)) return 0;
+    const nextSeen = new Set(seen); nextSeen.add(eventId);
+    const prerequisites = canonEventPrerequisites(eventId);
+    return prerequisites.length ? 1 + Math.max(...prerequisites.map((id) => dependencyDepth(id, nextSeen))) : 0;
+  };
+  const events = CANON_EVENTS.filter((event) => { const at = ordinal(event.year, event.day ?? 1); return at >= previousOrdinal && at <= currentOrdinal; }).sort((left, right) => ordinal(left.year, left.day ?? 1) - ordinal(right.year, right.day ?? 1) || dependencyDepth(left.id) - dependencyDepth(right.id));
   for (const event of events) {
     const eventOrdinal = ordinal(event.year, event.day ?? 1);
     settlePendingCanonBranches(game, eventOrdinal, messages);
     if (game.world.firedCanonEvents.includes(event.id) || game.world.suppressedCanonEvents.includes(event.id)) continue;
     const participantFactions = eventParticipantFactions(game, event);
+    const dependencyFailure = canonDependencyFailure(game, event);
+    if (dependencyFailure) ensureCanonDependencyCauses(game, event, eventOrdinal, dependencyFailure);
     const linked = linkedCausesForEvent(game, event, eventOrdinal);
     const linkedCauses = linked.map((item) => item.cause);
     const causalStrength = combinedCausalStrength(linked);
     const difficultyResistance = { 爽: .8, 简单: .9, 标准: 1, 困难: 1.15, 地狱: 1.3 }[game.view.difficulty];
     const resistance = event.inertia * 8 * difficultyResistance;
-    if (causalStrength >= resistance) {
+    if (dependencyFailure || causalStrength >= resistance) {
       game.world.suppressedCanonEvents.push(event.id);
       const livingCount = event.participantIds.filter((id) => game.world.npcs[id]?.alive).length;
       const missingCritical = !game.world.npcs[event.participantIds[0]]?.alive || livingCount < Math.ceil(event.participantIds.length / 2);
       const factionRedirected = linked.some((item) => item.strength >= resistance * .5 && causeHasDomain(item.cause, "faction", "institution"));
-      const state = missingCritical ? "取消" as const : causalStrength >= resistance * 1.6 || factionRedirected ? "替代" as const : "延后" as const;
+      const state = dependencyFailure?.state ?? (missingCritical ? "取消" as const : causalStrength >= resistance * 1.6 || factionRedirected ? "替代" as const : "延后" as const);
       const delayDays = state === "延后" ? Math.max(30, Math.min(180, Math.round(event.inertia * 18 + causalStrength / 2))) : 0;
       const branch = {
         id: `branch-${event.id}-${game.world.canonTimelineBranches.length}`,

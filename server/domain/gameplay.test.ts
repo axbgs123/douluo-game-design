@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS } from "../data/world.js";
+import { CANON_EVENT_DEPENDENCIES } from "../data/canon-event-dependencies.js";
 import { applyActionResult, classifyCoreActionRoute, resolveAction } from "./actions.js";
 import { settleRun } from "./endings.js";
 import { awakenCharacter, createEraSuccessor, createGame, finalizeCharacterShaping, selectCandidate, selectLifeGoal } from "./generator.js";
@@ -1023,7 +1024,7 @@ describe("完整游玩规则", () => {
 
   it("轻微关系接触不会冻结人物后续人生阶段", () => {
     const game = awakened("minor-contact-does-not-freeze-stage");
-    game.world = createHiddenWorld(0, "notting-academy");
+    game.world = createHiddenWorld(0, "notting-academy", 30);
     game.view.worldTime = { era: "唐三觉醒基准年", year: 0, day: 30, time: "08:00", season: "春" };
     recordCanonInfluence(game, { source: "普通寒暄", description: "与唐三短暂说过一句话", affectedNpcIds: ["tang-san"], strength: 1, domains: ["relationship"] });
     advanceWorldTime(game, 6 * 360 * 1440);
@@ -1074,9 +1075,55 @@ describe("完整游玩规则", () => {
     expect(CANON_EVENTS.find((event) => event.id === "tournament-finals")).toMatchObject({ year: 8, day: 260, locationId: "spirit-city" });
   });
 
+  it("关键原著事件依赖图没有缺失节点、倒序引用或循环", () => {
+    const eventById = new Map(CANON_EVENTS.map((event) => [event.id, event]));
+    expect(Object.keys(CANON_EVENT_DEPENDENCIES).length).toBeGreaterThanOrEqual(70);
+    for (const [eventId, prerequisites] of Object.entries(CANON_EVENT_DEPENDENCIES)) {
+      const event = eventById.get(eventId);
+      expect(event, `依赖图引用了不存在的事件${eventId}`).toBeDefined();
+      for (const prerequisiteId of prerequisites) {
+        const prerequisite = eventById.get(prerequisiteId);
+        expect(prerequisite, `${eventId}引用了不存在的前置${prerequisiteId}`).toBeDefined();
+        const prerequisiteOrdinal = prerequisite!.year * 360 + (prerequisite!.day ?? 1);
+        const eventOrdinal = event!.year * 360 + (event!.day ?? 1);
+        expect(prerequisiteOrdinal, `${eventId}的前置${prerequisiteId}发生在后面`).toBeLessThanOrEqual(eventOrdinal);
+      }
+    }
+    const visit = (eventId: string, path: Set<string>): void => {
+      expect(path.has(eventId), `事件依赖出现循环：${[...path, eventId].join(" -> ")}`).toBe(false);
+      const next = new Set(path); next.add(eventId);
+      for (const prerequisiteId of CANON_EVENT_DEPENDENCIES[eventId] ?? []) visit(prerequisiteId, next);
+    };
+    for (const eventId of Object.keys(CANON_EVENT_DEPENDENCIES)) visit(eventId, new Set());
+  });
+
+  it("前置原著节点取消后，后继节点不会按原日期凭空发生", () => {
+    const game = awakened("cancelled-canon-prerequisite");
+    game.view.worldTime = { era: "史莱克入学年", year: 6, day: 19, time: "08:00", season: "春" };
+    game.world = createHiddenWorld(6, "shrek-village");
+    game.world.suppressedCanonEvents.push("shrek-enrollment");
+    game.world.canonTimelineBranches.push({ id: "cancelled-shrek", eventId: "shrek-enrollment", state: "取消", originalYear: 6, originalDay: 20, resolveOrdinal: 6 * 360 + 20, causeIds: [], affectedNpcIds: [], affectedFactionIds: [], summary: "入学条件已经失效", status: "已结算" });
+    advanceWorldTime(game, 2 * 1_440);
+    expect(game.world.firedCanonEvents).not.toContain("zhao-wuji-test");
+    expect(game.world.suppressedCanonEvents).toContain("zhao-wuji-test");
+    expect(game.world.canonTimelineBranches).toEqual(expect.arrayContaining([expect.objectContaining({ eventId: "zhao-wuji-test", state: "取消", status: "已结算" })]));
+  });
+
+  it("前置节点延后时后继会等待，并在前置真正发生后从新日期结算", () => {
+    const game = awakened("delayed-canon-prerequisite");
+    game.view.worldTime = { era: "史莱克入学年", year: 6, day: 19, time: "08:00", season: "春" };
+    game.world = createHiddenWorld(6, "shrek-village");
+    game.world.suppressedCanonEvents.push("shrek-enrollment");
+    game.world.canonTimelineBranches.push({ id: "delayed-shrek", eventId: "shrek-enrollment", state: "延后", originalYear: 6, originalDay: 20, resolveOrdinal: 6 * 360 + 50, causeIds: [], affectedNpcIds: ["tang-san", "xiao-wu"], affectedFactionIds: ["shrek"], summary: "等待新入学日期", status: "待结算" });
+    advanceWorldTime(game, 111 * 1_440);
+    expect(game.world.firedCanonEvents).toContain("shrek-enrollment");
+    expect(game.world.firedCanonEvents).toContain("zhao-wuji-test");
+    expect(game.world.canonTimelineBranches).toEqual(expect.arrayContaining([expect.objectContaining({ eventId: "zhao-wuji-test", state: "延后", status: "已结算" })]));
+  });
+
   it("秘密事件照常推进世界但不会变成全图即时新闻", () => {
     const game = awakened("secret-news");
-    game.world = createHiddenWorld(6, "notting-city");
+    game.world = createHiddenWorld(6, "notting-city", 360);
     game.view.locationId = "notting-city";
     game.view.location = "诺丁城";
     game.view.worldTime = { era: "唐三觉醒后 6 年", year: 6, day: 360, time: "23:00", season: "冬" };
@@ -1088,7 +1135,7 @@ describe("完整游玩规则", () => {
 
   it("大陆级公开事件仍会通过世界消息传播", () => {
     const game = awakened("public-news");
-    game.world = createHiddenWorld(7, "notting-city");
+    game.world = createHiddenWorld(7, "notting-city", 360);
     game.view.locationId = "notting-city";
     game.view.location = "诺丁城";
     game.view.worldTime = { era: "唐三觉醒后 7 年", year: 7, day: 360, time: "23:00", season: "冬" };
@@ -1110,15 +1157,15 @@ describe("完整游玩规则", () => {
 
     advanceWorldTime(game, 300 * 1440);
     const branch = game.world.canonTimelineBranches.find((item) => item.eventId === "tang-awakening");
-    expect(branch).toMatchObject({ state: "替代", status: "已结算", recheckCount: 2 });
-    expect(game.world.firedCanonEvents).not.toContain("tang-awakening");
-    expect(game.world.suppressedCanonEvents).toContain("tang-awakening");
+    expect(branch).toMatchObject({ state: "延后", status: "已结算", recheckCount: 2 });
+    expect(game.world.firedCanonEvents).toContain("tang-awakening");
+    expect(game.world.suppressedCanonEvents).not.toContain("tang-awakening");
     expect(game.world.dynamicEvents.some((item) => item.id === branch?.replacementEventId && item.status === "可介入")).toBe(true);
-    expect(game.world.npcs["tang-san"].currentGoal).toMatch(/利益|计划失效/);
+    expect(game.world.npcs["tang-san"].currentGoal).toMatch(/延后|新条件/);
     expect(game.world.canonCausalFootprints.some((item) => item.source === "历史分支结算" && item.affectedNpcIds.includes("tang-san"))).toBe(true);
   });
 
-  it("改写后的节点只向直接后继衰减传播，不会感染整条原著", () => {
+  it("改写后的节点只沿显式直接依赖逐段传播，不跨过中间节点瞬间感染远期事件", () => {
     const game = awakened("causal-cascade");
     game.world = createHiddenWorld(-1, "notting-academy");
     game.view.locationId = "notting-academy";
@@ -1132,7 +1179,8 @@ describe("完整游玩规则", () => {
     expect(game.world.canonTimelineBranches.some((item) => item.eventId === "notting-master-disciple")).toBe(true);
 
     advanceWorldTime(game, (6 * 360 - 120) * 1440);
-    expect(game.world.canonTimelineBranches.some((item) => item.eventId === "shrek-enrollment")).toBe(false);
+    expect(game.world.canonTimelineBranches.some((item) => item.eventId === "shrek-enrollment")).toBe(true);
+    expect(game.world.canonCausalFootprints.some((item) => item.originEventId === "notting-years" && item.id.includes("shrek-enrollment"))).toBe(true);
   });
 
   it("远方未获知的历史分支不会通过模型因果上下文泄露", () => {
