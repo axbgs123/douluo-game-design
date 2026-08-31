@@ -259,12 +259,26 @@ function itemWeight(item: string): number {
 function syncInventoryAndEconomy(game: StoredGame): void {
   const character = game.view.character;
   if (!character) return;
-  const storageSoulTool = game.view.inventory.some((item) => /储物魂导器|储物戒|二十四桥明月夜/.test(item));
+  const smallStorageSoulTool = game.view.inventory.some((item) => /小型储物魂导器|储物戒|二十四桥明月夜/.test(item));
+  const livingStorageSoulTool = game.view.inventory.some((item) => /如意百宝囊/.test(item));
   const physique = character.abilityDescriptors.physique === "顶尖" ? 12 : character.abilityDescriptors.physique === "优秀" ? 6 : 0;
-  const capacity = 18 + physique + (storageSoulTool ? 80 : 0);
+  const capacity = 18 + physique + (smallStorageSoulTool ? 40 : 0) + (livingStorageSoulTool ? 80 : 0);
   const used = Math.round(game.view.inventory.reduce((sum, item) => sum + itemWeight(item), 0) * 10) / 10;
-  game.view.inventoryLoad = { used, capacity, state: used > capacity ? "超载" : used > capacity * .82 ? "沉重" : used > capacity * .5 ? "适中" : "轻便", storage: game.view.inventoryLoad?.storage ?? [] };
+  const storage = [...new Set([...(game.view.inventoryLoad?.storage ?? []), ...(smallStorageSoulTool ? ["小型储物魂导器：只存死物"] : []), ...(livingStorageSoulTool ? ["如意百宝囊：可存活物，仍需空气食物与体型条件"] : [])])];
+  game.view.inventoryLoad = { used, capacity, state: used > capacity ? "超载" : used > capacity * .82 ? "沉重" : used > capacity * .5 ? "适中" : "轻便", storage };
   game.view.economy.cash = character.coins;
+}
+
+function ensureSoulPowerPool(game: StoredGame): void {
+  const character = game.view.character;
+  if (!character) return;
+  const spiritBase = character.abilityDescriptors.spirit === "顶尖" ? 35 : character.abilityDescriptors.spirit === "优秀" ? 18 : 5;
+  const boneBonus = (character.soulBones ?? []).filter((bone) => bone.fusionState === "已融合").reduce((sum, bone) => sum + bone.attributeBonuses.spirit, 0);
+  const maximum = 80 + character.soulRank * 8 + spiritBase + boneBonus * 2;
+  const previousMaximum = character.soulPowerMax ?? maximum;
+  const previousCurrent = character.soulPowerCurrent ?? previousMaximum;
+  character.soulPowerMax = maximum;
+  character.soulPowerCurrent = Math.max(0, Math.min(maximum, previousCurrent + Math.max(0, maximum - previousMaximum)));
 }
 
 function recordEconomyTransaction(game: StoredGame, kind: StoredGame["view"]["economy"]["transactions"][number]["kind"], amount: number, counterparty: string, note: string): void {
@@ -857,14 +871,23 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
   if (/出发|启程|开始前往|进入.*(?:森林|栖息地)/.test(action)) {
     if (hunting.preparation.length < 2) return impossible("至少完成两项可核验准备后才能出发猎魂。", ["购买猎魂补给", "寻找同行者", "研究目标习性"]);
     if (character.age < 12 && !hunting.preparation.some((item) => item.startsWith("成年同行者："))) return impossible(`${character.age}岁的孩子不能把同龄队友算作成年责任人；必须有当前同地、明确同意并能承担责任的成年魂师同行。`, ["邀请可信成年魂师同行", "请学院或家族安排护送", "暂缓猎魂并继续准备"]);
-    if ((hunting.locationId === "soul-hunting-forest" || /猎魂森林/.test(hunting.targetName ?? "")) && !hunting.preparation.some((item) => /入林凭证|猎魂手令/.test(item))) return impossible("猎魂森林属于受管控的圈养魂兽区，仅有补给和同行者仍不能入林，需要由有权限的机构或魂师办理入林凭证。", ["请同行导师办理猎魂手令", "向地方武魂殿申请入林凭证", "改查无需该凭证的合法路线"]);
+    let relicPermitUsed = false;
+    if ((hunting.locationId === "soul-hunting-forest" || /猎魂森林/.test(hunting.targetName ?? "")) && !hunting.preparation.some((item) => /入林凭证|猎魂手令/.test(item))) {
+      const active = game.view.activeHeirloom;
+      if (active?.id === "heirloom-ring-ruler" && active.remainingUses > 0) {
+        hunting.preparation.push("武魂殿一次性猎魂森林手令：已核验并提交");
+        consumeHeirloomUse(active);
+        relicPermitUsed = true;
+      } else return impossible("猎魂森林属于受管控的圈养魂兽区，仅有补给和同行者仍不能入林，需要由有权限的机构或魂师办理入林凭证。", ["请同行导师办理猎魂手令", "向地方武魂殿申请入林凭证", "改查无需该凭证的合法路线"]);
+    }
     hunting.stage = "旅行";
     return {
       intent: "猎魂出发确认",
       minutes: 30,
-      ruleSummary: `确认携带 ${hunting.preparation.length} 项准备并按既定路线出发；未邀请的同行者不会在途中凭空加入。`,
+      ruleSummary: `确认携带 ${hunting.preparation.length} 项准备并按既定路线出发；未邀请的同行者不会在途中凭空加入。${relicPermitUsed ? ` 武魂殿猎魂森林手令已提交，剩余${game.view.activeHeirloom?.remainingUses ?? 0}份。` : ""}`,
       fallbackNarrative: "我把名单和包裹最后核了一遍。留下的人不会因为一句‘全队’突然出现在路上；已经签下名字的同伴各自背好东西，我们才真正离开。",
       suggestions: ["沿路线进入魂兽栖息地", "核对同行者名单", "检查撤离路线"],
+      systemMessages: relicPermitUsed ? [`武魂殿猎魂森林手令 · 已提交 · 剩余${game.view.activeHeirloom?.remainingUses ?? 0}份`] : [],
     };
   }
   if (/买|购买|药|补给|绳|食物/.test(action)) {
@@ -908,7 +931,7 @@ function prepareHunt(game: StoredGame, action: string): ActionResolution {
     if (requestedRole && inferredRole !== requestedRole) return impossible(`${companion.name}现有关系档案不能证明具备“${requestedRole}”岗位能力。`, [`让${companion.name}按${inferredRole}岗位同行`, "寻找对应职业同伴", "先共同训练并记录能力"]);
     const role = requestedRole ?? inferredRole;
     const readiness = Math.min(90, Math.max(25, Math.round((companion.dimensions?.trust ?? companion.strength ?? 30) * .8)));
-    const adultResponsible = (companion.age ?? 0) >= 18 || /导师|老师|教官|护卫|执事|父|母|叔|长老|向导|佣兵|带队责任人|护送责任人/.test(profile);
+    const adultResponsible = (companion.age ?? 0) >= 18 || /师徒|导师|老师|教官|护卫|执事|父|母|叔|长老|向导|佣兵|带队责任人|护送责任人/.test(profile);
     additions.push(`${adultResponsible ? "成年同行者" : "同行者"}：${companion.name}（${role}·协同${readiness}）`);
   }
   if (/检查|适配|资料|研究/.test(action)) additions.push("目标习性笔记");
@@ -1078,6 +1101,11 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   const combat = game.view.combat;
   const hunting = game.view.hunting;
   if (!combat || !hunting) return impossible("当前没有可结算的战斗。");
+  const character = game.view.character!;
+  ensureSoulPowerPool(game);
+  const invokedRing = character.soulRings.find((ring) => action.includes(ring.skillName));
+  const ringSoulPowerCost = invokedRing ? 8 + invokedRing.index * 5 + Math.min(25, Math.floor(invokedRing.years / 5000)) : 0;
+  if (invokedRing && (character.soulPowerCurrent ?? 0) < ringSoulPowerCost) return impossible(`当前魂力不足以发动${invokedRing.skillName}，需要${ringSoulPowerCost}点，现有${character.soulPowerCurrent ?? 0}点。`, ["使用普通攻击", "防守并保存魂力", "撤退恢复"]);
   combat.allies ??= [];
   for (const ally of combat.allies) ally.role ??= "协同";
   combat.comboHistory ??= [];
@@ -1152,13 +1180,14 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   let enemyHp = Number(game.world.flags.combatEnemyHp ?? 80);
   const beast = soulBeastById(hunting.targetBeastId ?? "");
   const danger = beast?.danger ?? 2;
-  const character = game.view.character!;
+  if (invokedRing) character.soulPowerCurrent = Math.max(0, (character.soulPowerCurrent ?? 0) - ringSoulPowerCost);
   const activeBattleArmor = /斗铠|着甲/.test(action) ? [...(character.battleArmors ?? [])].filter((armor) => armor.status === "完整").sort((left, right) => right.tier - left.tier)[0] : undefined;
   const armorPower = activeBattleArmor ? activeBattleArmor.tier * 22 + Math.round(activeBattleArmor.compatibility / 5) : 0;
   const activeMecha = /机甲/.test(action) && game.view.mecha?.model && game.view.mecha.condition !== "大修" && (game.view.mecha.energy ?? 0) >= 6 ? game.view.mecha : undefined;
   if (activeMecha) activeMecha.energy = Math.max(0, (activeMecha.energy ?? 0) - 6);
   const mechaPower = activeMecha ? 30 + ["无", "白级", "黄级", "紫级", "黑级"].indexOf(activeMecha.license) * 14 : 0;
-  const playerPower = character.soulRank * 2 + character.soulRings.length * 12 + (character.abilityDescriptors.physique === "顶尖" ? 12 : character.abilityDescriptors.physique === "优秀" ? 6 : 0) + armorPower + mechaPower;
+  const soulBonePower = (character.soulBones ?? []).filter((bone) => bone.fusionState === "已融合").reduce((sum, bone) => sum + bone.attributeBonuses.physique * .7 + bone.attributeBonuses.spirit * .45 + bone.attributeBonuses.perception * .35, 0);
+  const playerPower = character.soulRank * 2 + character.soulRings.length * 12 + (character.abilityDescriptors.physique === "顶尖" ? 12 : character.abilityDescriptors.physique === "优秀" ? 6 : 0) + soulBonePower + armorPower + mechaPower;
   const prepared = hunting.preparation.length * 5;
   const observe = /观察|试探|弱点/.test(action);
   const flee = /逃|撤|离开战斗/.test(action);
@@ -1198,7 +1227,7 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   const attackBase = integer(random, 10, 22) + Math.round(playerPower * 0.32) + prepared;
   if (observe) combat.insight = Math.min(3, combat.insight + 1);
   combat.guard = defend ? Math.min(3, combat.guard + 1) : Math.max(0, combat.guard - 1);
-  const usedSoulSkill = character.soulRings.some((ring) => action.includes(ring.skillName));
+  const usedSoulSkill = Boolean(invokedRing);
   const allyPower = readyAllies.reduce((sum, ally) => sum + ally.readiness, 0) / (teamTactic ? 4 : 8);
   const allyAttack = readyAllies.filter((ally) => ally.role === "强攻" || ally.role === "协同").reduce((sum, ally) => sum + ally.readiness, 0) / (teamTactic ? 5 : 12);
   const allyDefense = readyAllies.filter((ally) => ally.role === "防护").reduce((sum, ally) => sum + ally.readiness, 0) / 6;
@@ -1259,7 +1288,7 @@ function combatResolution(game: StoredGame, action: string): ActionResolution {
   return {
     intent: "战斗",
     minutes: 10,
-    ruleSummary: `第 ${combat.round} 回合，${combat.allies.length ? `${game.view.character!.name}与同行者` : game.view.character!.name}造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。${comboPreparing ? `已准备连携“${combat.comboPreparation!.name}”${comboMastery ? `（熟练度${comboMastery}%${comboBranch ? `·${comboBranch}` : ""}）` : ""}，最迟在第 ${combat.comboPreparation!.expiresAfterRound} 回合发动。` : ""}${comboActive ? `发动连携“${comboActive.name}”${comboMastery ? `（熟练度${comboMastery}%${comboBranch ? `·${comboBranch}` : ""}）` : ""}，冷却至第 ${combat.comboCooldownUntilRound} 回合。` : ""}${healed ? `${healer ? healer.name : comboActive?.name}治疗恢复${healed}点状态。` : ""}${controlAttempt ? `控制结果：${combat.controlStatus}；当前控制抗性 ${combat.controlResistance}%。` : ""}${combat.allies.length ? `同行者：${combat.allies.map((ally) => `${ally.name}（${ally.role}·协同${ally.readiness}·${ally.condition}）`).join("、")}。` : ""}${activeBattleArmor ? `${activeBattleArmor.title}提供增幅与减伤。` : ""}${activeMecha ? `${activeMecha.model}消耗 6% 能源参战。` : ""}敌方状态 ${combat.enemyCondition}，${game.view.character!.name}状态 ${combat.playerCondition}。`,
+    ruleSummary: `第 ${combat.round} 回合，${combat.allies.length ? `${game.view.character!.name}与同行者` : game.view.character!.name}造成 ${damage} 点内部伤害，承受 ${enemyHp > 0 ? enemyAttack : 0} 点内部伤害。${invokedRing ? `魂技${invokedRing.skillName}消耗${ringSoulPowerCost}点魂力，剩余${character.soulPowerCurrent}/${character.soulPowerMax}。` : ""}${comboPreparing ? `已准备连携“${combat.comboPreparation!.name}”${comboMastery ? `（熟练度${comboMastery}%${comboBranch ? `·${comboBranch}` : ""}）` : ""}，最迟在第 ${combat.comboPreparation!.expiresAfterRound} 回合发动。` : ""}${comboActive ? `发动连携“${comboActive.name}”${comboMastery ? `（熟练度${comboMastery}%${comboBranch ? `·${comboBranch}` : ""}）` : ""}，冷却至第 ${combat.comboCooldownUntilRound} 回合。` : ""}${healed ? `${healer ? healer.name : comboActive?.name}治疗恢复${healed}点状态。` : ""}${controlAttempt ? `控制结果：${combat.controlStatus}；当前控制抗性 ${combat.controlResistance}%。` : ""}${combat.allies.length ? `同行者：${combat.allies.map((ally) => `${ally.name}（${ally.role}·协同${ally.readiness}·${ally.condition}）`).join("、")}。` : ""}${activeBattleArmor ? `${activeBattleArmor.title}提供增幅与减伤。` : ""}${activeMecha ? `${activeMecha.model}消耗 6% 能源参战。` : ""}敌方状态 ${combat.enemyCondition}，${game.view.character!.name}状态 ${combat.playerCondition}。`,
     fallbackNarrative: enemyHp <= 0
       ? `我抓住它转身的空当，把最后一下送了进去。${combat.enemyName}撞断一根矮树，挣了几下，不再起来。魂环从尸身上浮出时，我的手还在抖。`
       : flee
@@ -1290,18 +1319,16 @@ function absorbRing(game: StoredGame): ActionResolution {
   const years = hunting.targetYears ?? beast.ageRange[0];
   const ringIndex = hunting.ringIndex;
   const baseLimit = RING_LIMITS[Math.min(ringIndex, RING_LIMITS.length - 1)] ?? 423;
-  const physique = (PHYSIQUE_BONUS[character.abilityDescriptors.physique] ?? 0) + Number(game.world.flags.legacyFoundation ?? 0) * 45;
+  const soulBonePhysique = (character.soulBones ?? []).filter((bone) => bone.fusionState === "已融合").reduce((sum, bone) => sum + bone.attributeBonuses.physique, 0);
+  const physique = (PHYSIQUE_BONUS[character.abilityDescriptors.physique] ?? 0) + Number(game.world.flags.legacyFoundation ?? 0) * 45 + soulBonePhysique * 8;
   const healthFactor = game.world.healthPoints / 100;
   const fatigueFactor = 1 - game.world.fatiguePoints / 180;
-  const ringRulerActive = game.view.activeHeirloom?.id === "heirloom-ring-ruler" && game.view.activeHeirloom.remainingUses > 0;
-  const effectiveLimit = Math.max(80, (baseLimit + physique) * healthFactor * fatigueFactor * (ringRulerActive ? 1.75 : 1));
+  const effectiveLimit = Math.max(80, (baseLimit + physique) * healthFactor * fatigueFactor);
   const overRatio = years / effectiveLimit;
   const rules = DIFFICULTY_RULES[game.view.difficulty];
   const successChance = Math.max(0.03, Math.min(0.98, 1.12 - Math.max(0, overRatio - 0.75) * 0.9 + rules.safety));
   const success = random() < successChance;
   hunting.absorptionRisk = overRatio <= 0.8 ? "低" : overRatio <= 1.05 ? "中" : overRatio <= 1.35 ? "高" : "致命";
-  if (ringRulerActive) consumeHeirloomUse(game.view.activeHeirloom!);
-
   if (!success) {
     const severe = overRatio > 1.3 || random() > 0.55 + rules.safety;
     const loss = severe ? integer(random, 45, 85) : integer(random, 18, 40);
@@ -1323,7 +1350,7 @@ function absorbRing(game: StoredGame): ActionResolution {
         ? "魂环刚入体就失去了控制。热流顶进胸口，我连第一轮都没撑完，喉咙里全是血腥味。醒来时魂环已经散了，手指还在不受控制地发抖。"
         : "魂力冲了几轮，始终没能稳下来。最后那圈光从我身上剥开，散进空气里。我趴在地上缓了很久，胸口每次起伏都疼。",
       suggestions: game.view.status === "ended" ? [] : ["立刻处理伤势", "返回聚居地", "检查是否留下后遗症"],
-      systemMessages: ringRulerActive ? [`魂环量尺 · 承载上限提高75% · 剩余${game.view.activeHeirloom!.remainingUses}次`] : [],
+      systemMessages: [],
     };
   }
 
@@ -1352,7 +1379,7 @@ function absorbRing(game: StoredGame): ActionResolution {
     ruleSummary: `成功吸收 ${years} 年${beast.name}魂环，获得魂技 ${skillName}，魂力 ${character.soulRank} 级。`,
     fallbackNarrative: nonLethalSource ? `最难受的那一阵过去后，散乱的灵魂力量终于沿着武魂收拢。${ring.color}色魂环停在脚下，它的来历没有被这次融合抹去。${skillName}的用法随魂力一同浮现。` : `最难受的那一阵过去后，体内的力量终于沿着同一个方向转起来。${ring.color}色魂环停在脚下，${skillName}的用法随魂力一同浮进脑海。我睁眼时，天已经偏了。`,
     suggestions: ["测试新魂技", "处理疲劳和伤势", "收拾物资返回"],
-    systemMessages: [`魂环 · ${ring.color}色 · ${beast.name} · ${years} 年`, `魂技 · ${skillName}`, ...(ringRulerActive ? [`魂环量尺 · 承载上限提高75% · 剩余${game.view.activeHeirloom!.remainingUses}次`] : [])],
+    systemMessages: [`魂环 · ${ring.color}色 · ${beast.name} · ${years} 年`, `魂技 · ${skillName}`],
   };
 }
 
@@ -2293,23 +2320,36 @@ function specialSystemResolution(game: StoredGame, action: string): ActionResolu
   };
 }
 
-function academyAtCurrentLocation(game: StoredGame, action: string): { id: string; name: string; local: boolean } {
-  const named = ["史莱克学院", "诺丁初级魂师学院", "天斗皇家学院", "天魂皇家学院", "日月皇家魂导师学院", "东海学院", "联邦星际学院", "星罗城初级魂师学院", "武魂城初级魂师学院", "斗灵皇家学院"].find((name) => action.includes(name));
-  const academyNameByLocation: Record<string, string> = {
-    "shrek-village": "史莱克学院", "suotuo-city": "索托初级魂师学院", "star-luo-city": "星罗城初级魂师学院",
-    "heaven-dou-city": (game.view.era ?? 1) === 2 ? "天魂皇家学院" : "天斗城初级魂师学院", "heaven-royal-academy": "天斗皇家学院", "spirit-city": "武魂城初级魂师学院", "notting-academy": "诺丁初级魂师学院", "notting-city": "诺丁初级魂师学院",
-    "shrek-city": "史莱克学院", "radiant-city": "日月皇家魂导师学院", "dou-ling-city": "斗灵皇家学院",
-    "east-sea-city": "东海学院", "mingdu-federal": "明都联邦学院", "mother-ship-port": "联邦星际学院",
-  };
-  const local = academyNameByLocation[game.view.locationId ?? ""] ?? `${game.view.location ?? "当地"}初级魂师学院`;
-  return { id: `academy-${game.view.locationId}-${(named ?? local).replace(/\s/g, "")}`, name: named ?? local, local: !named || named === local || game.view.location?.includes(named) === true };
+function academyAtCurrentLocation(game: StoredGame, action: string): { id: string; name: string; local: boolean; source: AcademyApplicationView["academySource"] } {
+  const named = ["史莱克学院", "诺丁初级魂师学院", "天斗皇家学院", "天魂皇家学院", "日月皇家魂导师学院", "东海学院", "联邦星际学院", "星罗城当地初级魂师学院", "武魂城当地初级魂师学院", "斗灵皇家学院"].find((name) => action.includes(name));
+  const place = (game.view.location ?? "当前住处").split(" · ")[0];
+  const local = /诺丁/.test(place) ? "诺丁初级魂师学院"
+    : /史莱克学院/.test(place) ? "史莱克学院"
+      : /索托城/.test(place) ? "索托城当地初级魂师学院"
+        : /星罗城/.test(place) ? "星罗城当地初级魂师学院"
+          : /天斗城|天魂/.test(place) ? ((game.view.era ?? 1) === 2 ? "天魂皇家学院" : "天斗城当地初级魂师学院")
+            : /武魂城/.test(place) ? "武魂城当地初级魂师学院"
+              : /史莱克城/.test(place) ? "史莱克学院"
+                : /明都/.test(place) ? ((game.view.era ?? 1) === 2 ? "日月皇家魂导师学院" : "明都当地学院")
+                  : /东海城/.test(place) ? "东海学院"
+                    : /(?:城|镇)$/.test(place) ? `${place}当地初级魂师学院` : undefined;
+  if (!local) return { id: `academy-route-${game.view.locationId ?? "unknown"}`, name: "最近城镇的初级魂师学院", local: false, source: "同人场景" };
+  const name = named ?? local;
+  const source: AcademyApplicationView["academySource"] = ["史莱克学院", "诺丁初级魂师学院", "天斗皇家学院", "日月皇家魂导师学院", "东海学院"].includes(name) ? "原著" : "同人场景";
+  return { id: `academy-${game.view.locationId}-${name.replace(/\s/g, "")}`, name, local: !named || named === local || game.view.location?.includes(named) === true, source };
+}
+
+function hasEstablishedFamilyFunding(game: StoredGame): boolean {
+  const character = game.view.character;
+  const selectedHousehold = game.hiddenCandidates.find((candidate) => candidate.public.id === game.view.selectedCandidateId)?.public.household.summary ?? "";
+  return String(game.world.flags.openingMode ?? "") === "noble" || /贵族|王府|公爵|皇室|宗主|核心|嫡系|联姻候选|世家/.test(`${character?.originName ?? ""}${character?.originAdvantage ?? ""}${selectedHousehold}`);
 }
 
 function academyFundingFromAction(action: string): AcademyApplicationView["fundingType"] | undefined {
   if (/工读/.test(action)) return "工读抵扣";
   if (/家族资助|家族承担|家里出钱|家族出钱/.test(action)) return "家族资助";
   if (/学院奖助|奖学|天赋资助|学院资助/.test(action)) return "学院奖助";
-  if (/宗门委培|宗门资助|宗门承担/.test(action)) return "宗门委培";
+  if (/所属机构委培|机构委培|宗门委培|宗门资助|宗门承担/.test(action)) return "所属机构委培";
   if (/义务教育|公共免费/.test(action)) return "公共义务教育";
   if (/家庭自费|普通自费|自费/.test(action)) return "家庭自费";
   return undefined;
@@ -2319,14 +2359,14 @@ function academyAvailableFunding(game: StoredGame): AcademyApplicationView["avai
   const options: AcademyApplicationView["availableFundingOptions"] = ["家庭自费"];
   const guardian = game.view.relations.some((item) => item.category === "亲属" || /监护|父|母|祖|村长|里正/.test(`${item.relation}${item.name}`));
   if ((game.view.era ?? 1) === 1 && guardian) options.push("工读抵扣");
-  if (guardian) options.push("家族资助");
+  if (guardian && hasEstablishedFamilyFunding(game)) options.push("家族资助");
   if ((game.view.character?.innateSoulPower ?? 0) >= 7) options.push("学院奖助");
-  if (String(game.world.flags.openingMode ?? "") === "internal" || game.view.affiliations.some((item) => !/学院/.test(item.name))) options.push("宗门委培");
+  if (String(game.world.flags.openingMode ?? "") === "internal" || game.view.affiliations.some((item) => !/学院/.test(item.name))) options.push("所属机构委培");
   if ((game.view.era ?? 1) === 3 && (game.view.character?.age ?? 99) >= 6 && (game.view.character?.age ?? 99) <= 15) options.push("公共义务教育");
   return [...new Set(options)];
 }
 
-function academyApplicationProfile(game: StoredGame, academyName: string, fundingType: AcademyApplicationView["fundingType"], action = ""): Pick<AcademyApplicationView, "route" | "fundingType" | "fundingSource" | "obligations" | "availableFundingOptions" | "requirements" | "fee" | "passScore" | "admissionAssessmentName" | "assessmentRequired"> {
+function academyApplicationProfile(game: StoredGame, academyName: string, fundingType: AcademyApplicationView["fundingType"], action = ""): Pick<AcademyApplicationView, "route" | "fundingType" | "fundingSource" | "obligations" | "availableFundingOptions" | "requirements" | "fee" | "feeProvenance" | "passScore" | "admissionAssessmentName" | "assessmentRequired"> {
   const era = game.view.era ?? 1;
   const elite = /史莱克|皇家|日月皇家|星际学院/.test(academyName);
   const route: AcademyApplicationView["route"] = fundingType === "工读抵扣" ? "工读生" : elite ? "选拔生" : fundingType === "公共义务教育" ? "义务教育生" : era >= 3 ? "魂师班" : "普通学员";
@@ -2336,38 +2376,45 @@ function academyApplicationProfile(game: StoredGame, academyName: string, fundin
     : fundingType === "工读抵扣" ? "地方工读名额与在校劳动抵扣"
       : fundingType === "家族资助" ? `${guardian?.name ?? "家族监护人"}代表家族支付`
         : fundingType === "学院奖助" ? `${academyName}竞争性奖助额度`
-          : fundingType === "宗门委培" ? `${sect}委托培养额度`
+          : fundingType === "所属机构委培" ? `${sect}委托培养额度`
             : "斗三适龄免费义务教育安排";
   const obligations = fundingType === "工读抵扣" ? ["按排班完成适龄校内劳动", "劳动不能替代课程与考核"]
     : fundingType === "家族资助" ? ["接受家族对费用用途的核对", "培养选择仍由玩家决定，但需回应家族责任"]
       : fundingType === "学院奖助" ? ["维持奖助考核要求", "成绩或纪律不达标时重新评议资助"]
-        : fundingType === "宗门委培" ? [`向${sect}提交阶段培养记录`, "委培不等于学院或导师无条件服从宗门"]
+        : fundingType === "所属机构委培" ? [`向${sect}提交阶段培养记录`, "委培不等于学院、导师或学员无条件服从出资机构"]
           : fundingType === "公共义务教育" ? ["完成适龄基础课程与纪律要求", "魂灵、额外训练和生活消费仍需另算"]
             : ["家庭承担学费、食宿与路费", "不附带工读、宗门或奖助义务"];
   const specialRequirement = fundingType === "工读抵扣" ? "取得真实工读名额与担保"
     : fundingType === "学院奖助" ? "通过高于普通录取线的奖助评审"
-      : fundingType === "宗门委培" ? `取得${sect}书面委培责任`
+      : fundingType === "所属机构委培" ? `取得${sect}书面委培责任`
         : fundingType === "公共义务教育" ? "完成斗三适龄入学登记"
           : fundingType === "家族资助" ? "由家族监护人确认费用与责任" : "确认学费、食宿与路费";
   const admissionAssessmentName = elite ? "学院入学考核" : era === 1 ? "觉醒证明与来处查验" : era === 2 ? "学院入学考核" : era === 3 ? "魂力测试与分班" : "入学与分班测试";
-  const assessmentRequired = elite || era >= 2 || fundingType === "学院奖助";
+  const assessmentRequired = elite || era >= 2 || (fundingType === "学院奖助" && (game.view.character?.innateSoulPower ?? 0) < 10);
+  const eraOneOrdinaryRequirements = fundingType === "家族资助"
+    ? ["带上家族内部觉醒记录", "由家族监护人说明身份与培养责任", specialRequirement]
+    : fundingType === "所属机构委培" ? ["带上所属势力的觉醒记录", `由${sect}说明委培责任`, specialRequirement]
+      : fundingType === "学院奖助" && (game.view.character?.innateSoulPower ?? 0) === 10 ? ["出示已复核的先天满魂力记录", "由监护人或觉醒机构证明记录来源", specialRequirement]
+        : ["带上武魂觉醒证明或地方工读证明", "由家人、村中长者或其他担保人说明来处", specialRequirement];
   const requirements = elite
     ? ["说明年龄、公开武魂与已有修为", "由监护人或原机构说明来处", specialRequirement, `通过${admissionAssessmentName}`]
     : era === 1
-      ? ["带上武魂觉醒证明或地方工读证明", "由家人、村中长者或其他担保人说明来处", specialRequirement]
+      ? eraOneOrdinaryRequirements
       : ["带上觉醒记录与身份资料", "由家人或原学校说明来处", specialRequirement, `完成${admissionAssessmentName}`];
   const baseFee = elite ? 30 : era === 2 ? 15 : 12;
-  const fee = ["工读抵扣", "学院奖助", "宗门委培", "公共义务教育"].includes(fundingType) ? 0 : baseFee;
+  const fee = ["工读抵扣", "家族资助", "学院奖助", "所属机构委培", "公共义务教育"].includes(fundingType) ? 0 : baseFee;
   const passScore = elite ? 72 : fundingType === "学院奖助" ? 62 : 38;
-  return { route, fundingType, fundingSource, obligations, availableFundingOptions: academyAvailableFunding(game), requirements, fee, passScore, admissionAssessmentName, assessmentRequired };
+  const availableFundingOptions = academyAvailableFunding(game);
+  const fundingPriority: AcademyApplicationView["fundingType"][] = [fundingType, "学院奖助", "家族资助", "所属机构委培", "公共义务教育", "工读抵扣", "家庭自费"];
+  return { route, fundingType, fundingSource, obligations, availableFundingOptions: [...new Set(fundingPriority)].filter((item) => availableFundingOptions.includes(item)), requirements, fee, feeProvenance: "游戏估算", passScore, admissionAssessmentName, assessmentRequired };
 }
 
 function academyFundingProblem(game: StoredGame, fundingType: AcademyApplicationView["fundingType"], action = ""): string | undefined {
   const guardian = game.view.relations.some((item) => item.category === "亲属" || /监护|父|母|祖|村长|里正/.test(`${item.relation}${item.name}`));
   if (fundingType === "工读抵扣" && ((game.view.era ?? 1) !== 1 || !guardian)) return "工读路线只在斗一当前基层学院条件下开放，并且必须有村庄、监护人或地方责任人担保";
-  if (fundingType === "家族资助" && !guardian) return "当前没有能代表家庭或家族承担费用并签字的监护人";
+  if (fundingType === "家族资助" && (!guardian || !hasEstablishedFamilyFunding(game))) return "当前没有能代表有稳定资源的家族承担费用并签字的监护人；有普通家人不等于自动有“家族资助”";
   if (fundingType === "学院奖助" && (game.view.character?.innateSoulPower ?? 0) < 7) return "当前公开天赋未达到学院受理竞争性奖助评审的最低范围，仍可走普通录取或其他有来源的资助";
-  if (fundingType === "宗门委培") {
+  if (fundingType === "所属机构委培") {
     const sponsors = game.view.affiliations.filter((item) => !/学院/.test(item.name));
     if (String(game.world.flags.openingMode ?? "") !== "internal" && !sponsors.length) return "当前没有已经承担培养责任的宗门或机构，不能临时报一个不存在的委培名额";
     if (sponsors.length > 1 && !sponsors.some((item) => action.includes(item.name))) return `当前有${sponsors.map((item) => item.name).join("、")}多个可能的委培方，必须明确由谁签字和承担责任`;
@@ -2410,21 +2457,39 @@ function academyResolution(game: StoredGame, action: string): ActionResolution {
   const era = game.view.era ?? 1;
   if (/不存在的学院|随便一所学院|任意学院|虚构学院/.test(action)) return impossible("学院申请必须指向当前位置真实存在的学院，程序不能把占位说法自动替换成录取机构。", ["查看当前位置可申请的学院", "明确学院名称", "先和监护人比较培养路线"]);
   if (character.innateSoulPower <= 0) return impossible("学院要求至少能够稳定感应魂力。", ["申请重新检测", "寻找其他修行道路", "打听理论研究者"]);
+  const opening = String(game.world.flags.openingMode ?? "");
+  const explicitlyNamedAcademy = /史莱克学院|诺丁初级魂师学院|天斗皇家学院|天魂皇家学院|日月皇家魂导师学院|东海学院|联邦星际学院/.test(action);
+  if (opening === "beast") return impossible("当前仍在魂兽领地，这里没有人类学院可直接申请；必须先决定是否离开兽群，再解决人类身份、监护和路线。", ["与岩叔商量接触人类的边界", "调查离开领地的安全路线", "暂时留在兽群学习生存与武魂收放"]);
+  if (opening === "unbound" && !game.view.inventory.some((item) => /临时来处证明|身份凭据/.test(item))) return impossible("孩子还没有住处、监护人或可核对的来处证明，学院不能先替他编出一份学籍。", ["请负责觉醒的魂师出具临时来处证明", "问清今晚住处与暂时监护", "只调查学院在哪座城，不提交申请"]);
+  if (opening === "internal" && !explicitlyNamedAcademy) return impossible("当前身份已有所属势力的内部培养责任；不能把“调查附近学院”直接写成宗门住处里凭空出现一所初级学院。", [`询问${String(game.world.flags.openingInstitutionName ?? "所属势力")}内部培养方案`, "明确调查一所外部学院", "比较内部培养与外出入学的条件"]);
   const target = academyAtCurrentLocation(game, action);
   const academyName = target.name;
-  if (!target.local) return impossible(`${academyName}不在当前位置，不能用一句“报名”跳过路程、同行长辈和真实到校。`, [`调查前往${academyName}的路线`, "比较当前位置可报学院", "和家里商量跨城食宿"]);
+  if (!target.local) return impossible("当前住处周边没有已确认可直接报名的初级魂师学院，不能把臧在森林、宗门、药谷或乡村的住处名字后面直接拼上“初级魂师学院”。", ["向地方负责人打听最近学院所在城镇", "调查前往城镇的路程与成年同行者", "暂时沿当前家庭或势力路线训练"]);
   if (game.view.affiliations.some((item) => item.name === academyName)) return impossible(`我已经是${academyName}的学员。`, ["参加课程", "寻找导师", "认识同学"]);
   let application = game.view.academyApplication;
   if (!application || application.academyName !== academyName || ["未通过", "已入学", "已撤回"].includes(application.stage)) {
     const availableFunding = academyAvailableFunding(game);
-    const requestedFunding = academyFundingFromAction(action) ?? (availableFunding.includes("公共义务教育") ? "公共义务教育" : "家庭自费");
+    const opening = String(game.world.flags.openingMode ?? "");
+    const registeredSponsors = game.view.affiliations.filter((item) => !/学院/.test(item.name));
+    const defaultFunding: AcademyApplicationView["fundingType"] = availableFunding.includes("公共义务教育") ? "公共义务教育"
+      : registeredSponsors.length === 1 && availableFunding.includes("所属机构委培") ? "所属机构委培"
+        : opening === "noble" && availableFunding.includes("家族资助") ? "家族资助"
+          : character.innateSoulPower >= 7 && availableFunding.includes("学院奖助") ? "学院奖助" : "家庭自费";
+    const requestedFunding = academyFundingFromAction(action) ?? defaultFunding;
     const fundingProblem = academyFundingProblem(game, requestedFunding, action);
     if (fundingProblem) return impossible(`${fundingProblem}。`, availableFunding.slice(0, 3).map((item) => `改走${item}路线`));
     const profile = academyApplicationProfile(game, academyName, requestedFunding, action);
     if (/史莱克/.test(academyName) && (game.view.era ?? 1) === 1 && (character.age > 12 || character.soulRank < 21)) return impossible("当前史莱克学院的选拔门槛不是普通初级学院报名：年龄不得超过十二岁，魂力至少二十一级；现在只能先走其他学院或继续修炼。", ["申请当地初级魂师学院", "继续修炼到二十一级", "核对其他学院条件"]);
-    application = game.view.academyApplication = { academyId: target.id, academyName, stage: "材料准备", ...profile, evidence: [`已领取${academyName}报名条件；暂选${profile.fundingType}`] };
+    application = game.view.academyApplication = { academyId: target.id, academyName, academySource: target.source, stage: "材料准备", ...profile, evidence: [`已领取${academyName}报名条件；暂选${profile.fundingType}`, `学院名与费用来源：${target.source}、${profile.feeProvenance}`] };
     ensureTask(game, { id: `academy-application-${target.id}`, title: `申请${academyName}`, kind: "计划", detail: `${profile.requirements.join("；")}。尚未录取。`, status: "进行中" });
-    return { intent: "询问学院入学条件", minutes: 60, ruleSummary: `${academyName}说明了${profile.route}的入学办法；${profile.fundingType}由${profile.fundingSource}承担。当前只是问清条件，还没有取得住处或学员身份。`, fallbackNarrative: `接待老师先看觉醒证明，又问是谁带孩子来的、住校的钱准备从哪里出。工读、家里付钱、学院帮助和宗门出钱不是一回事，他逐项说清，没有因为孩子口袋里钱少就替人做决定。`, suggestions: [`准备${academyName}需要的证明`, `比较${profile.availableFundingOptions.slice(0, 3).join("、")}`, "暂缓申请并保留选择权"], systemMessages: [`入学申请 · ${academyName} · ${profile.route} · ${profile.fundingType}`] };
+    const fundingConsequence = profile.fundingType === "学院奖助" && character.innateSoulPower === 10
+      ? "学院查验先天满魂力记录后，愿意免去普通入学费并进入基础食宿奖助复核；后续培养、纪律与猎魂责任仍需面谈"
+      : profile.fundingType === "家族资助" ? "家族资助已能承担普通入学与基础食宿；玩家要谈的是家族要求、培养路线和是否另选学院"
+        : `${profile.fundingType}由${profile.fundingSource}承担`;
+    const fundingNarrative = profile.fundingType === "家族资助"
+      ? `接待老师看完家族身份与觉醒记录，没有把普通入学费当成眼前门槛。他要求陪同长辈说清谁承担食宿和猎魂损耗，也提醒孩子：家里愿意出钱，不等于他必须接受家里挑的每一条路。`
+      : character.innateSoulPower === 10 ? `接待老师看完觉醒记录，没有再问孩子能不能凑齐普通入学费。他先把可以免掉的部分圈出来，又另列了食宿、训练、第一魂环帮助和奖助要求：“天赋让学院愿意出钱，不等于这些条件可以不谈。”` : `接待老师先看觉醒证明，再把当地能办的入学、食宿与资助条件逐项说清。他只承诺自己有权办的事，没有替家族、学院高层或孩子做后续决定。`;
+    return { intent: "询问学院入学条件", minutes: 60, ruleSummary: `${academyName}说明了${profile.route}的入学办法；${fundingConsequence}。当前只是问清条件，还没有接受培养条件或取得学员身份。${target.source === "同人场景" ? "该校名只是当地学院的保守场景称呼，不宣称为原著正式校名。" : ""}`, fallbackNarrative: fundingNarrative, suggestions: [`准备${academyName}需要的证明`, `比较${profile.availableFundingOptions.slice(0, 3).join("、")}`, "问清资助要求与退出条件"], systemMessages: [`入学申请 · ${academyName} · ${profile.route} · ${profile.fundingType}`] };
   }
   if (/放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action)) {
     application.stage = "已撤回";
@@ -2991,7 +3056,7 @@ function academyStudyResolution(game: StoredGame, action: string): ActionResolut
     }
     const dutyPattern = application.fundingType === "工读抵扣" ? /工读|排班|校内劳动|打扫/
       : application.fundingType === "学院奖助" ? /奖助|成绩要求|资助要求/
-        : application.fundingType === "宗门委培" ? /宗门|委培|培养情况|阶段汇报/
+        : application.fundingType === "所属机构委培" ? /所属机构|宗门|学院|武魂殿|委培|培养情况|阶段汇报/
           : application.fundingType === "家族资助" ? /家族|费用用途|家里|监护人.*账/
             : undefined;
     if (dutyPattern?.test(action)) {
@@ -3465,6 +3530,11 @@ function professionResolution(game: StoredGame, action: string): ActionResolutio
     [/炼药|丹药|药剂/, "炼药"], [/锻造|炼器|打造/, "锻造与炼器"], [/魂导器|魂导师/, "魂导器研究"], [/阵法|阵纹/, "阵法"], [/医术|治疗/, "医术"], [/毒术|制毒/, "毒术"], [/商业|经商/, "商业"], [/驯兽|驯养/, "驯兽"], [/学术|理论|研究魂兽/, "魂师学术"],
   ] as const;
   const name = routes.find(([pattern]) => pattern.test(action))?.[1] ?? "综合研究";
+  const soulGuideTheoryAction = name === "魂导器研究" && (game.view.era ?? 1) >= 2 && /学习|研究|临摹|练习|推演/.test(action) && !/制作|打造|组装/.test(action);
+  const hasSoulGuideTheorySource = game.view.affiliations.some((item) => /学院|魂导|日月|唐门|传灵塔/.test(item.name))
+    || game.view.relations.some((item) => /魂导师|魂导老师|授课魂导师/.test(`${item.name}${item.relation}`))
+    || game.view.inventory.some((item) => /魂导.*(?:教材|图样|阵法图|课程记录)|核心阵法.*(?:图|教材)/.test(item));
+  if (soulGuideTheoryAction && !hasSoulGuideTheorySource) return impossible("当前没有可核对的魂导课程、授课魂导师或已持有图样，不能凭一句“学习核心阵法”自动变出旧图册并增加熟练度。", ["调查有来源的魂导器课程", "寻找能证明资质的魂导师", "购买或借阅可追溯的一级阵法教材"]);
   let profession = game.view.professions.find((item) => item.name === name);
   if (!profession) { profession = { id: name, name, level: "学徒", progress: 0, experiments: 0, failures: 0, knownMethods: [] }; game.view.professions.push(profession); }
   if (name === "魂导器研究" && (game.view.era ?? 1) >= 2) {
@@ -3537,6 +3607,27 @@ function professionResolution(game: StoredGame, action: string): ActionResolutio
   if (success) game.view.inventory.push(name === "炼药" ? "自制恢复药散" : name === "锻造与炼器" ? "试制魂力工具" : `${name}实验成果`);
   game.world.fatiguePoints += 14;
   return { intent: "生活职业研究", minutes: speedMinutes(game, 240, 1440), ruleSummary: `${name}${success ? "实验成功" : hasMaterial ? "实验失败并记录原因" : "因缺少材料只完成纸面推演"}；熟练进度增加${gain}，材料适配与失败记录均已保存。`, fallbackNarrative: success ? `这一次材料没有在中途失控。成品算不上精致，至少每一步都能在斗罗大陆现有的工具和魂力条件下重做。` : `做到中段时结果就偏了。我没把失败归给运气，把火候、魂力和材料变化逐项记下，剩下的残料已经不能再用。`, suggestions: success ? ["测试成品效果", "记录完整步骤", "请专业人士复核"] : ["寻找合适材料", "请教专业人士", "根据失败记录修改步骤"] };
+}
+
+function technicalTrainingInvestigationResolution(game: StoredGame, action: string): ActionResolution {
+  const era = game.view.era ?? 1;
+  const age = game.view.character?.age ?? 6;
+  if (/魂导器|魂导师|核心阵法/.test(action)) {
+    if (era < 2) return impossible("当前时代没有斗二以后成熟的魂导课程与魂导师认证体系。", ["调查当代已有魂导器", "学习铸造或机关基础", "核对技术年代"]);
+    recordIntelligence(game, { subjectType: "事件", subjectId: `soul-guide-course-${game.view.locationId ?? "local"}`, title: "魂导器课程门槛", detail: "学习需要有来源的学院、工坊或魂导师，以及教材、图样与材料；调查本身不生成课程资格。", source: "当地公开课程与从业条件交叉询问", confidence: 78, status: "推测" });
+    return { intent: "调查魂导器课程", minutes: 90, ruleSummary: "已确认魂导器课程必须指向真实学院、工坊或授课魂导师，并有可追溯教材与材料。当前只得到门槛情报，没有凭空获得图册、学徒班或熟练度。", fallbackNarrative: "他没把“城里有人会”当成报名地址。公开告示、工坊门牌和能说清授课人的消息分开核对后，他只记下已经确认的门槛，没有为了开课程编一位老师。", suggestions: ["查找有署名的魂导课程告示", "向已认证魂导师询问入门条件", "暂不花钱，先核对教材与图样来源"] };
+  }
+  if (/机甲/.test(action)) {
+    if (era < 3) return impossible("当前时代没有现代机甲训练体系。", ["核对技术年代", "训练武魂实战", "研究当代魂导器"]);
+    recordIntelligence(game, { subjectType: "事件", subjectId: `mecha-training-${game.view.locationId ?? "local"}`, title: "机甲训练门槛", detail: `当前${age}岁只能核对基础安全、体能与魂力控制要求；真正模拟记录必须由有资质机构、监护人和适龄课程共同确认。`, source: "机甲训练机构公开安全要求", confidence: 82, status: "确定" });
+    return { intent: "调查机甲训练条件", minutes: 90, ruleSummary: `已核对机甲训练的机构、监护与安全门槛。角色当前${age}岁，调查不会自动变成免费进舱或第一次驾驶记录；正式模拟仍需有资质课程和监护。`, fallbackNarrative: "他先看的是训练场署名、课程年龄和监护要求，没有因为说出十级魂力就被塞进免费模拟舱。能证实的只是准入门槛，还不是训练成绩。", suggestions: ["询问监护人是否愿意承担适龄课程", "查找有资质机构的公开招生条件", "先练体能与魂力控制，不伪造模拟记录"] };
+  }
+  if (/星舰|舰船|随舰|舰桥/.test(action)) {
+    if (era < 4) return impossible("当前时代没有斗四星舰岗位体系。", ["核对技术年代", "学习当代交通与战船常识", "训练当前可用能力"]);
+    recordIntelligence(game, { subjectType: "事件", subjectId: `starship-training-${game.view.locationId ?? "local"}`, title: "星舰岗位训练门槛", detail: `当前${age}岁只能接触年龄适配的安全常识与基础课程；正式岗位训练需长期学习、专业资格、军籍或学院记录，儿童娱乐模拟不计入。`, source: "当代学院与现役岗位公开要求", confidence: 85, status: "确定" });
+    return { intent: "调查星舰岗位训练要求", minutes: 90, ruleSummary: `已确认星舰岗位需长期学习、专业资格与可追溯训练记录。角色当前${age}岁，只能进行年龄适配的安全常识学习，不会把任意儿童年龄写成原著统一准入线，也不把娱乐模拟算成驾驶记录。`, fallbackNarrative: "他问到的不是一道能立刻跨过的年龄线，而是一条很长的课程、资格与岗位记录。当前能做的只是安全启蒙，没人会因为孩子问得认真就偷开舱门。", suggestions: ["向监护人询问当前可学的安全常识", "查看学院后续星际基础课程", "暂不碰未授权设备，保留长期岗位目标"] };
+  }
+  return impossible("尚未识别要调查的技术训练类型。", ["说明要查的课程或岗位", "核对当前时代", "暂停调查"]);
 }
 
 function eraThreeCareerResolution(game: StoredGame, action: string): ActionResolution {
@@ -3929,6 +4020,10 @@ function mechaResolution(game: StoredGame, action: string): ActionResolution {
   const mecha = game.view.mecha ??= { license: "无", simulatorProgress: 0, simulatorSessions: 0, practicalPasses: 0 };
   const licenses = ["无", "白级", "黄级", "紫级", "黑级"] as const;
   if (/模拟|训练|课程|练习/.test(action) && !/购买|订购/.test(action)) {
+    const character = game.view.character!;
+    if (character.age < 10) return impossible("当前仍是幼龄基础教育阶段，只能练体能、魂力控制和机甲安全常识；不能因为十级魂力就免费进入正式模拟舱。何时进入正式模拟课程由年龄、基础教育、监护和有资质机构共同评估，不生成原著未明说的全大陆统一年龄。", ["进行年龄适配的基础体能训练", "学习机甲安全与操作常识", "向监护人询问未来适龄课程"]);
+    const supervisedAccess = game.view.affiliations.some((item) => /学院|联邦|军|机甲|史莱克/.test(item.name)) || game.view.relations.some((item) => /机甲.*(?:老师|教官|导师|训练员)/.test(`${item.name}${item.relation}`));
+    if (!supervisedAccess) return impossible("当前没有有资质的机甲训练机构、监护记录或授课人，不能在旧货栈、卧室或无人看守的房间凭空造出模拟舱。", ["调查有资质的机甲课程", "寻找认证训练员", "先练体能与魂力控制"]);
     const perception = game.view.character!.abilityDescriptors.perception === "顶尖" ? 6 : game.view.character!.abilityDescriptors.perception === "优秀" ? 3 : 0;
     const gain = integer(actionRandom(game), 9, 17) + perception;
     mecha.simulatorProgress = Math.min(100, mecha.simulatorProgress + gain);
@@ -4009,7 +4104,7 @@ function mechaResolution(game: StoredGame, action: string): ActionResolution {
 function starshipResolution(game: StoredGame, action: string): ActionResolution {
   if ((game.view.era ?? 1) < 4) return impossible("当前时代尚未形成可供个人训练与远航的星舰体系。", ["核对技术年代", "训练机甲与魂导器", "研究早期航天资料"]);
   const character = game.view.character!;
-  if (/模拟|训练|课程|推演/.test(action) && character.age < 7) return impossible("七岁前只能接触星舰常识和安全启蒙，不能把儿童娱乐模拟算作战舰驾驶训练记录。", ["学习星舰基础常识", "参观民用飞船", "等待进入基础驾驶课程"]);
+  if (/模拟|训练|课程|推演/.test(action) && character.age < 12) return impossible("当前仍是基础教育阶段，只能接触年龄适配的星舰常识和安全启蒙；未授权娱乐模拟不计入驾驶记录。何时进入正式基础驾驶课程由学院阶段、课程记录和有资质机构评估，不冒充原著统一规定。", ["学习星舰安全与岗位常识", "查看学院后续星际基础课程", "不碰未授权设备，先完成当前培养安排"]);
   const starship = game.view.starship ??= { license: "无", simulatorProgress: 0, simulatorSessions: 0, crew: [], missionsCompleted: 0, crewDrills: 0, crewCoordination: 0, crewEvidence: [] };
   starship.loggedFlightHours ??= 0;
   starship.crewDrills ??= 0;
@@ -4402,69 +4497,393 @@ function consumeHeirloomUse(active: NonNullable<StoredGame["view"]["activeHeirlo
   active.status = active.remainingUses > 0 ? "等待触发" : "本局已触发";
 }
 
+function repairHeirloomResolution(game: StoredGame): ActionResolution {
+  const active = game.view.activeHeirloom!;
+  const definition = heirloomByName(active.name);
+  const mechanics = definition?.artifactMechanics;
+  if (!mechanics) return impossible(`${active.name}没有需要维修或装填的机械结构。`, ["查看遗物状态", "继续当前行动"]);
+  const needsDurability = (active.durability ?? mechanics.durabilityMax) < mechanics.durabilityMax;
+  const needsAmmo = mechanics.ammoMax !== undefined && (active.ammo ?? active.remainingUses) < mechanics.ammoMax;
+  if (!needsDurability && !needsAmmo) return impossible(`${active.name}当前耐久和弹药均完整。`, ["继续使用遗物", "查看遗物状态"]);
+  if (game.view.character!.coins < mechanics.repairCost) return impossible(`维修${active.name}需要${mechanics.repairCost}金魂币采购相容材料和支付工费。`, ["打工赚钱", "出售普通材料", "暂缓维修"]);
+  game.view.character!.coins -= mechanics.repairCost;
+  recordEconomyTransaction(game, "支出", mechanics.repairCost, "魂导器/机括维修匠人", `维修${active.name}并补齐可复原弹药`);
+  active.durability = mechanics.durabilityMax;
+  active.maxDurability = mechanics.durabilityMax;
+  if (mechanics.ammoMax !== undefined) { active.ammo = mechanics.ammoMax; active.remainingUses = mechanics.ammoMax; active.status = "等待触发"; }
+  active.historicalState = `${active.historicalState ?? "传世物品"}·本代完成相容修复`;
+  return { intent: "维修遗物", minutes: speedMinutes(game, 480, 1440), ruleSummary: `支付${mechanics.repairCost}金魂币完成${active.name}维修：耐久${active.durability}/${active.maxDurability}${mechanics.ammoMax !== undefined ? `，弹药${active.ammo}/${mechanics.ammoMax}` : ""}。修复记录保留在本代历史状态中。`, fallbackNarrative: `匠人没有把旧物修得像刚出炉一样，只换掉已经无法承力的部件，再把裂纹和新铆钉逐项记下。它能继续用，年代留下的痕迹也没有被抹掉。`, suggestions: ["检查修复后的遗物", "准备下一次使用", "记录维修材料来源"] };
+}
+
+function soulBoneGameplayResolution(game: StoredGame, action: string): ActionResolution {
+  const character = game.view.character!;
+  character.soulBones ??= [];
+  if (/检查|搜寻|寻找|查看/.test(action) && /魂骨/.test(action)) {
+    const hunting = game.view.hunting;
+    if (!hunting?.targetName || !["吸收", "后果", "完成"].includes(hunting.stage)) return impossible("只有击败并实际检查魂兽遗体后，才能判断是否掉落魂骨。", ["完成当前猎魂战斗", "检查已击败魂兽", "继续追踪目标"]);
+    const dropKey = `soulBoneDropChecked:${hunting.targetBeastId ?? hunting.targetName}:${hunting.ringIndex}`;
+    if (game.world.flags[dropKey]) return impossible("这头魂兽的魂骨掉落已经检查过，不能重复搜索刷取。", ["处理已有魂骨", "开始吸收魂环", "返回聚居地"]);
+    game.world.flags[dropKey] = true;
+    const beast = soulBeastById(hunting.targetBeastId ?? "");
+    const years = hunting.targetYears ?? beast?.ageRange[0] ?? 100;
+    const random = actionRandom(game);
+    const forced = game.world.flags.forcedSoulBoneDrop === true;
+    delete game.world.flags.forcedSoulBoneDrop;
+    const dropChance = years >= 100000 ? 1 : Math.min(.18, .001 + years / 400000 + (beast?.danger ?? 2) * .002);
+    if (!forced && random() >= dropChance) return { intent: "检查魂骨掉落", minutes: 30, ruleSummary: `完成遗体检查，没有发现魂骨；本次掉落判定已锁定，概率约${(dropChance * 100).toFixed(2)}%。`, fallbackNarrative: `${character.name}把最可能凝聚魂骨的位置逐一检查完，最后只找到普通骨骼和残留魂力。没有就是没有，这具遗体不会因为再翻一遍就多出魂骨。`, suggestions: ["开始吸收魂环", "处理魂兽材料", "让同行者警戒"] };
+    const normalSlots = ["头部", "躯干", "左臂", "右臂", "左腿", "右腿"] as const;
+    const slot = years >= 100000 && random() < .18 ? "外附" as const : pick(random, [...normalSlots]);
+    const scale = Math.max(1, Math.round(Math.log10(Math.max(10, years))));
+    const attributes = slot === "头部" ? { physique: scale, spirit: scale * 4, perception: scale * 3 }
+      : slot === "躯干" ? { physique: scale * 4, spirit: scale * 2, perception: scale }
+        : /臂/.test(slot) ? { physique: scale * 3, spirit: scale, perception: scale }
+          : slot === "外附" ? { physique: scale * 3, spirit: scale * 2, perception: scale * 2 }
+            : { physique: scale * 2, spirit: scale, perception: scale * 3 };
+    const effectKind = slot === "头部" ? "控制" as const : slot === "躯干" ? "防御" as const : /臂/.test(slot) ? "攻击" as const : "位移" as const;
+    const skillBase = beast?.possibleSkills[0] ?? (effectKind === "攻击" ? "魂骨重击" : effectKind === "防御" ? "魂骨守护" : effectKind === "控制" ? "精神震慑" : "疾行");
+    const name = `${years}年${hunting.targetName}${slot}魂骨`;
+    const bone = { id: `soul-bone-${game.actionIndex}-${hunting.targetBeastId ?? "unknown"}-${slot}`, name, slot, years, source: `${hunting.targetName}掉落`, provenance: "原著类别·同人具体魂骨" as const, fusionState: "待融合" as const, attributeBonuses: attributes, skills: [{ name: `${hunting.targetName}·${skillBase}`, effect: `${slot}魂骨依据${hunting.targetName}特性形成的${effectKind}魂骨技。`, actionCommand: `发动魂骨技${hunting.targetName}·${skillBase}`, fatigueCost: Math.max(8, scale * 4), soulPowerCost: Math.max(12, scale * 6), cooldownActions: Math.max(2, 6 - scale), cooldownUntilAction: 0, effectKind, power: Math.max(12, scale * 8) }], exposed: false, originBeastId: hunting.targetBeastId, originBeastName: hunting.targetName };
+    character.soulBones.push(bone);
+    game.view.inventory.push(`未融合魂骨：${name}`);
+    game.world.metrics.discoveries += 1;
+    return { intent: "获得魂骨", minutes: 60, ruleSummary: `发现${name}，部位${slot}、年限${years}；属性增幅体魄+${attributes.physique}、精神+${attributes.spirit}、感知+${attributes.perception}，附带魂技“${bone.skills[0].name}”。魂骨尚未融合。`, fallbackNarrative: `遗体深处有一块骨骼始终没有失去魂力光泽。${character.name}把它完整取出时，${slot}位置随之传来一阵共鸣；真正融合以前，谁也不能把那股力量算成自己的。`, suggestions: [`融合${name}`, "先请可信魂师检查魂骨", "隐藏魂骨并处理魂环"], systemMessages: [`魂骨掉落 · ${slot} · ${years}年`, `魂骨技 · ${bone.skills[0].name}`] };
+  }
+  if (/融合/.test(action) && /魂骨/.test(action)) {
+    const bone = character.soulBones.find((item) => item.fusionState === "待融合" && action.includes(item.name)) ?? character.soulBones.find((item) => item.fusionState === "待融合");
+    if (!bone) return impossible("当前没有待融合魂骨。", ["查看魂骨列表", "检查魂骨来源", "继续当前行动"]);
+    const conflict = character.soulBones.find((item) => item.id !== bone.id && item.fusionState === "已融合" && item.slot === bone.slot && bone.slot !== "外附");
+    if (conflict) return impossible(`${bone.slot}部位已经融合${conflict.name}，不能再融合${bone.name}。`, ["保留已融合魂骨", "出售或封存新魂骨", "查看其他部位"]);
+    bone.fusionState = "已融合";
+    bone.fusedAtAction = game.actionIndex;
+    game.view.inventory = game.view.inventory.filter((item) => item !== `未融合魂骨：${bone.name}`);
+    game.world.healthPoints = Math.max(20, game.world.healthPoints - Math.min(25, 6 + Math.floor(bone.years / 10000) * 3));
+    game.world.fatiguePoints += 35 + Math.min(40, Math.floor(bone.years / 5000));
+    return { intent: "融合魂骨", minutes: speedMinutes(game, 360, 1440), ruleSummary: `完成${bone.name}融合，占用${bone.slot}部位；体魄+${bone.attributeBonuses.physique}、精神+${bone.attributeBonuses.spirit}、感知+${bone.attributeBonuses.perception}，解锁魂技“${bone.skills[0]?.name ?? "未确认"}”。`, fallbackNarrative: `${bone.name}在魂力牵引下贴向对应部位。骨骼像被从内部撑开，直到那块魂骨与身体原有骨骼严丝合缝，魂技的运转路径才真正留下来。`, suggestions: [bone.skills[0]?.actionCommand ?? "测试魂骨技", "休息恢复融合消耗", "决定是否公开魂骨"] };
+  }
+  const skillOwner = character.soulBones.find((bone) => bone.fusionState === "已融合" && bone.skills.some((skill) => action.includes(skill.actionCommand) || action.includes(skill.name)));
+  const skill = skillOwner?.skills.find((item) => action.includes(item.actionCommand) || action.includes(item.name));
+  if (skillOwner && skill) {
+    if (game.actionIndex < skill.cooldownUntilAction) return impossible(`${skill.name}仍在冷却，要到行动${skill.cooldownUntilAction}后才能发动。`, ["使用普通魂技", "等待冷却", "查看魂骨状态"]);
+    if (game.world.fatiguePoints + skill.fatigueCost > 120) return impossible(`当前疲劳不足以承受${skill.name}的魂力负担。`, ["休息恢复", "使用普通魂技", "暂缓发动魂骨技"]);
+    if (["攻击", "防御", "控制", "位移"].includes(skill.effectKind ?? "") && !game.view.combat) return impossible(`${skill.name}需要明确战斗目标或战斗位置。`, ["进入战斗后发动", "查看魂骨技能", "继续当前行动"]);
+    ensureSoulPowerPool(game);
+    const soulPowerCost = skill.soulPowerCost ?? Math.max(10, skill.fatigueCost);
+    if ((character.soulPowerCurrent ?? 0) < soulPowerCost) return impossible(`当前魂力不足以发动${skill.name}，需要${soulPowerCost}点，现有${character.soulPowerCurrent ?? 0}点。`, ["冥想恢复魂力", "使用普通魂技", "等待冷却"]);
+    character.soulPowerCurrent = Math.max(0, (character.soulPowerCurrent ?? 0) - soulPowerCost);
+    game.world.fatiguePoints += skill.fatigueCost;
+    skill.cooldownUntilAction = game.actionIndex + skill.cooldownActions;
+    skillOwner.exposed = true;
+    game.world.flags.heirloomExposureRisk = Math.min(100, Number(game.world.flags.heirloomExposureRisk ?? 0) + 8);
+    let result = "";
+    if (skill.effectKind === "攻击") { const hp = Number(game.world.flags.combatEnemyHp ?? 80) - (skill.power ?? 20); game.world.flags.combatEnemyHp = hp; game.view.combat!.enemyCondition = hp <= 0 ? "失去战斗能力" : hp < 30 ? "重伤" : "受伤"; result = `造成${skill.power ?? 20}点魂骨技伤害`; }
+    else if (skill.effectKind === "防御") { game.view.combat!.guard = Math.max(game.view.combat!.guard ?? 0, 3); result = "获得3层魂骨防御"; }
+    else if (skill.effectKind === "控制") { game.view.combat!.controlStatus = "魂骨控制生效，目标下一次抗性提高"; game.view.combat!.controlResistance = Math.min(100, (game.view.combat!.controlResistance ?? 20) + 18); result = "完成一次魂骨控制"; }
+    else if (skill.effectKind === "位移") { game.view.combat!.distance = "远距离"; result = "移动到远距离可达位置"; }
+    else if (skill.effectKind === "治疗") { game.world.healthPoints = Math.min(100, game.world.healthPoints + (skill.power ?? 20)); result = `恢复${skill.power ?? 20}点健康`; }
+    else { game.world.trainingPoints += skill.power ?? 20; result = `获得${skill.power ?? 20}点增幅成长`; }
+    return { intent: "发动魂骨技", minutes: 5, ruleSummary: `发动${skillOwner.name}魂技“${skill.name}”：${result}；魂力-${soulPowerCost}（剩余${character.soulPowerCurrent}/${character.soulPowerMax}）、疲劳+${skill.fatigueCost}，冷却至行动${skill.cooldownUntilAction}，魂骨暴露风险上升。`, fallbackNarrative: `${skillOwner.slot}位置先传来一阵热意，随后才是魂技真正成形。${character.name}没有把它当成不耗魂力的额外按钮，发动一次之后，呼吸立刻沉了几分。`, suggestions: ["使用普通魂技衔接", "观察魂骨技效果", "控制暴露范围"] };
+  }
+  return impossible("没有匹配到可执行的魂骨行动。", ["检查魂骨掉落", "融合待融合魂骨", "查看已融合魂骨技能"]);
+}
+
+function overlimitBestowedSkill(character: NonNullable<StoredGame["view"]["character"]>, ringIndex: number): { name: string; description: string } {
+  const soul = character.martialSoul;
+  const text = `${soul.name}${soul.category}${soul.description}`;
+  const route = /蓝银|藤|草|植物/.test(text) ? "森罗缠界"
+    : /剑/.test(text) ? "断界剑芒"
+      : /锤/.test(text) ? "震岳碎甲"
+        : /枪|矛|戟/.test(text) ? "贯星破阵"
+          : /弓|弩/.test(text) ? "追魂贯矢"
+            : /龙/.test(text) ? "龙威裂域"
+              : /凤凰|凤/.test(text) ? "凤焰涅羽"
+                : /虎/.test(text) ? "虎啸破军"
+                  : /猫|豹/.test(text) ? "幽影连闪"
+                    : /兔/.test(text) ? "柔骨瞬杀"
+                      : /狐|魅惑|幻/.test(text) ? "九幻迷心"
+                        : /食物/.test(text) ? "魂力盛宴"
+                          : /治疗|辅助|增幅|塔/.test(text) ? "全域增幅"
+                            : /眼|眸|精神/.test(text) ? "精神视界"
+                              : /本体|骨|身体/.test(text) ? "本体金身"
+                                : /冰|火|雷|风|水|土|光|暗|元素/.test(text) ? "元素爆发"
+                                  : "血脉威压";
+  const position = ringIndex === 1 ? "根基式" : ringIndex === 2 ? "控制式" : ringIndex === 3 ? "爆发式" : ringIndex === 4 ? "群战式" : ringIndex === 5 ? "核心式" : ringIndex === 6 ? "领域式" : ringIndex === 7 ? "武魂真身" : ringIndex === 8 ? "终式" : "封号终式";
+  const name = ringIndex === 7 ? `${soul.name}真身` : `${soul.name}·${route}`;
+  return {
+    name,
+    description: `同人超限神赐魂环依据${soul.name}的具体形态生成${position}${route}魂技；第${ringIndex}环的功能位置已经写入能力结构，威力仍受魂力等级、控制、体力和实战熟练限制。`,
+  };
+}
+
+function overlimitRingProfile(character: NonNullable<StoredGame["view"]["character"]>, ringIndex: number) {
+  const soul = character.martialSoul;
+  const quality = soul.grade === "神话" ? .8 : soul.grade === "传奇" ? .62 : soul.grade === "稀有" ? .4 : soul.grade === "优秀" ? .22 : soul.grade === "平凡" ? .08
+    : soul.rarity === "七彩" ? .85 : soul.rarity === "红色" ? .72 : soul.rarity === "金色" ? .55 : soul.rarity === "紫色" ? .32 : soul.rarity === "蓝色" ? .16 : .05;
+  const physique = character.abilityDescriptors.physique === "顶尖" ? .45 : character.abilityDescriptors.physique === "优秀" ? .25 : .08;
+  const spirit = character.abilityDescriptors.spirit === "顶尖" ? .35 : character.abilityDescriptors.spirit === "优秀" ? .2 : .06;
+  const soulText = `${soul.name}${soul.category}${soul.description}`;
+  const bloodline = /祖龙|龙王|神级|神祇|六翼天使|帝皇|极致|终极/.test(soulText) ? .5 : /龙|凤凰|天使|泰坦|皇|王|血脉/.test(soulText) ? .28 : 0;
+  const soulBone = Math.min(.35, (character.soulBones ?? []).filter((bone) => bone.fusionState === "已融合").reduce((sum, bone) => sum + (bone.attributeBonuses.physique + bone.attributeBonuses.spirit) / 160, 0));
+  const ringPenalty = Math.min(.4, Math.max(0, ringIndex - 1) * .05);
+  const multiplier = Math.max(1.8, Math.min(3.8, 2 + quality + physique + spirit + bloodline + soulBone - ringPenalty));
+  return { ordinaryLimit: RING_LIMITS[Math.min(ringIndex, RING_LIMITS.length - 1)] ?? 423, multiplier: Number(multiplier.toFixed(2)), martialSoulQualityBonus: quality, physiqueBonus: physique, spiritBonus: spirit, bloodlineBonus: bloodline, soulBoneBonus: Number(soulBone.toFixed(2)), ringPositionPenalty: ringPenalty };
+}
+
+function overlimitFactionReaction(game: StoredGame) {
+  const era = game.view.era ?? 1;
+  const context = `${game.view.affiliations.map((item) => item.name).join("、")}${String(game.world.flags.openingInstitutionName ?? "")}${game.view.location ?? ""}`;
+  if (era === 1 && /武魂殿|教皇殿|长老殿/.test(context)) return { faction: "武魂殿", authority: "主持觉醒的执事逐级报到主教或长老体系", immediate: "封存原始测试、换水晶复测魂力与年龄，并核对魂环并非猎杀所得", resource: "提出直属培养、猎魂队、学院名额与安全住处", secrecy: "限制现场名单并追查消息是否外泄", risk: "派系会同时评估拉拢、控制和未来威胁", pressure: 5, suggestions: ["要求武魂殿写明培养与服务条件", "只接受复测并拒绝立即归属", "核对现场名单和消息上报范围"] };
+  if (era === 1 && /七宝琉璃宗/.test(context)) return { faction: "七宝琉璃宗", authority: "内院教习、内务堂与有权长老共同复核", immediate: "核对超限魂技能否与辅助体系配合，并保护魂环来源秘密", resource: "开放拟态环境、客卿教习和有条件猎魂资源", secrecy: "先在内院封存记录，外传需要宗主层许可", risk: "资源投入会绑定贡献、客卿责任和派系竞争", pressure: 4, suggestions: ["测试超限魂技与七宝辅助的配合", "谈清拟态场地与客卿责任", "要求内务堂封存魂环来源"] };
+  if (era === 1 && /蓝电霸王龙宗/.test(context)) return { faction: "蓝电霸王龙宗", authority: "宗族长老与雷池教习复核血脉和承载", immediate: "检查龙化、经脉负担和魂技是否来自宗族武魂路线", resource: "提供雷属性拟态、同辈实战与宗族传承候选资格", secrecy: "将记录锁在嫡系与外堂两套权限之间", risk: "超限配置会加剧嫡旁系资源竞争", pressure: 4, suggestions: ["接受一次龙化与经脉复核", "比较嫡系传承和外部学院路线", "追问旁支会失去哪些资源"] };
+  if (era === 1 && /昊天宗/.test(context)) return { faction: "昊天宗", authority: "封山支脉长辈先核实，再决定是否送上山门", immediate: "检查器武魂承载、锤法基础和魂环来源是否暴露宗门", resource: "提供封闭训练、锻体和有限传承考察", secrecy: "优先维护封山位置与支脉身份", risk: "是否上报会引发返宗资格和宗门安全冲突", pressure: 4, suggestions: ["请支脉长辈测试承载与锻体", "谈清上报山门的风险", "暂不让外部武魂殿查看魂环"] };
+  if (era === 1 && /星罗|朱氏|戴氏|公爵/.test(context)) return { faction: "星罗帝国权贵体系", authority: "家族教官、宗正或军务体系按身份复核", immediate: "把超限魂环纳入继承、联姻和军事实力评估", resource: "提供实战教官、家族预算和战队位置", secrecy: "记录由家族和帝国各存一份，双方会争夺解释权", risk: "同辈竞争者可能转向监视、结盟或清除准备", pressure: 5, suggestions: ["要求家族列出资源和继承代价", "选择先进入学院证明实战", "防备同辈提前取得完整记录"] };
+  if (era === 2 && /日月|明德堂/.test(context)) return { faction: "日月帝国魂导师体系", authority: "学院魂导师、实验记录官与帝国人员分层复核", immediate: "测试魂环稳定性、精神承载及其与魂导器路线的兼容", resource: "提供魂导课程、实验额度和保密培养合同", secrecy: "将来源列为受限研究材料而非公开新闻", risk: "研究价值会带来合同约束、国家立场和样本争夺", pressure: 5, suggestions: ["要求只测试稳定性不交出来源", "比较武魂系与魂导系培养条件", "核对研究合同的退出代价"] };
+  if (era === 2 && /史莱克/.test(context)) return { faction: "史莱克学院", authority: "武魂系、魂导系与学院高层分别提出复核意见", immediate: "先治疗适应伤势，再验证魂技、实战和武魂路线", resource: "争取核心弟子、双系培养或监察保护", secrecy: "学院内部按教师权限分层，避免圣灵教获得完整消息", risk: "两系资源竞争与邪魂师觊觎会同时上升", pressure: 4, suggestions: ["参加武魂系稳定性测试", "比较武魂系与魂导系资源", "要求学院制定防止圣灵教获知的方案"] };
+  if (era === 3 && /传灵塔/.test(context)) return { faction: "传灵塔", authority: "传灵师、魂灵研究人员与监察岗位共同核验", immediate: "确认魂环没有魂兽/魂灵来源记录，并检查精神与魂环稳定性", resource: "提供魂灵适配、升灵台名额和研究保护", secrecy: "异常记录进入传灵塔内部审计，不能直接公开", risk: "研究、商业和派系利益会争夺异常魂环解释权", pressure: 5, suggestions: ["只提交魂环稳定性数据", "谈判升灵台与魂灵资源", "要求说明内部谁能查看记录"] };
+  if (era === 3 && /史莱克/.test(context)) return { faction: "史莱克学院", authority: "班主任、外院教务与内院观察人员逐层复核", immediate: "通过实战和精神检测确认超限魂环可控", resource: "提供核心班、斗铠路线与团队培养", secrecy: "先保护学生，再决定是否与传灵塔共享数据", risk: "学院保护也意味着更严格的责任和考核", pressure: 4, suggestions: ["用实战证明魂环可控", "谈清核心班和斗铠资源", "拒绝未经同意向传灵塔共享"] };
+  if (era === 4 && /舰队|军/.test(context)) return { faction: "斗罗联邦舰队", authority: "军属觉醒中心、医务与军务保密岗位共同处置", immediate: "检查血脉、精神、岗位安全和魂环是否影响服役档案", resource: "提供少年培养、模拟课程和受限医学观察", secrecy: "按军务等级封存，任何跨部门调阅都留痕", risk: "舰队会评估培养价值，也会防范未知力量影响指挥安全", pressure: 4, suggestions: ["要求医务与军务检查分开记录", "询问少年培养与未来服役条件", "限制异常魂环进入跨部门档案"] };
+  if (era === 4 && /史莱克/.test(context)) return { faction: "史莱克学院星际体系", authority: "学院教务、血脉研究与星际课程负责人分项复核", immediate: "确认魂环、血脉和精神力是否稳定，并评估团队位置", resource: "提供少年班、模拟舱和星际课程观察资格", secrecy: "学院只向必要教师开放来源，避免研究数据外流", risk: "异常会同时吸引学院保护、联邦关注与研究竞争", pressure: 4, suggestions: ["完成血脉与精神稳定性检查", "比较少年班和普通学院路线", "要求学院限制研究数据外流"] };
+  const defaultFaction = era === 1 ? "地方武魂殿与当地学院" : era === 2 ? "当地学院与帝国魂师机构" : era === 3 ? "当地学院与传灵塔人员" : "当地学院与联邦儿童觉醒机构";
+  return { faction: defaultFaction, authority: "现场负责人员先复测，再逐级上报有权机构", immediate: "核验年龄、魂力、魂环稳定性和公开来源", resource: "提供学院名额、训练机会和有条件保护", secrecy: "控制现场见证名单并记录传播来源", risk: "只有收到可靠消息的势力才能进一步争取或评估威胁", pressure: 3, suggestions: ["完成一次公开稳定性复测", "比较学院和当地机构的培养条件", "限制魂环消息继续外传"] };
+}
+
+function overlimitSecondaryFactions(game: StoredGame, primary: string): string[] {
+  const byEra = (game.view.era ?? 1) === 1 ? ["武魂殿", "七宝琉璃宗", "天斗帝国学院体系", "星罗帝国权贵体系"]
+    : (game.view.era ?? 1) === 2 ? ["史莱克学院", "日月帝国魂导师体系", "本体宗", "圣灵教暗线"]
+      : (game.view.era ?? 1) === 3 ? ["史莱克学院", "传灵塔", "唐门", "斗罗联邦"]
+        : ["史莱克学院星际体系", "斗罗联邦", "斗罗联邦舰队", "血脉研究机构"];
+  return byEra.filter((name) => !primary.includes(name) && !name.includes(primary)).slice(0, 3);
+}
+
+function advanceOverlimitCompetition(game: StoredGame): void {
+  if (!game.world.flags.overlimitRingPublic || !game.world.flags.overlimitCompetitionPlan) return;
+  let plan: Array<{ faction: string; dueOrdinal: number; fired: boolean }> = [];
+  try { plan = JSON.parse(String(game.world.flags.overlimitCompetitionPlan)) as typeof plan; } catch { return; }
+  const ordinal = (game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
+  for (const item of plan) {
+    if (item.fired || ordinal < item.dueOrdinal) continue;
+    item.fired = true;
+    const id = `overlimit-secondary-${item.faction}-${item.dueOrdinal}`;
+    const hostile = /圣灵教|暗线|研究机构/.test(item.faction);
+    const detail = hostile
+      ? `${item.faction}从二手消息中确认异常魂环可能具有研究或威胁价值，先派人核对身份、路线与保护力量；尚未取得精确魂技和来源。`
+      : `${item.faction}通过延迟传播的公开记录得知超限魂环，准备提出训练、资源、研究或归属条件；必须先建立可达接触渠道，不能远程完成招募。`;
+    if (!game.world.dynamicEvents.some((event) => event.id === id)) game.world.dynamicEvents.push({ id, title: hostile ? `${item.faction}开始秘密评估超限魂环` : `${item.faction}准备接触超限魂环持有者`, kind: "势力", locationId: game.view.locationId ?? "notting-city", participantIds: [], detail, stakes: hostile ? 5 : 4, status: "可介入", createdYear: game.view.worldTime?.year ?? 0, createdDay: game.view.worldTime?.day ?? 1, expiresOrdinal: ordinal + 30 });
+    recordIntelligence(game, { subjectType: "势力", subjectId: id, title: `${item.faction}对超限魂环作出延迟反应`, detail, source: "公开记录、商旅或机构通报形成的传播链", confidence: hostile ? 62 : 72, status: hostile ? "推测" : "确定" });
+    if (hostile) game.world.flags.talentHostileRisk = Math.min(10, Number(game.world.flags.talentHostileRisk ?? 0) + 1);
+  }
+  game.world.flags.overlimitCompetitionPlan = JSON.stringify(plan);
+}
+
+function revealOverlimitRingResolution(game: StoredGame): ActionResolution {
+  const character = game.view.character!;
+  const ring = character.soulRings.find((item) => item.beastId === "fanfic-overlimit-bestowed-ring");
+  if (!ring || !game.world.flags.overlimitRingSecret) return impossible("当前没有仍由主角独自掌握的超限神赐魂环秘密。", ["查看当前魂环", "测试已有魂技", "继续隐藏其他秘密"]);
+  const reaction = overlimitFactionReaction(game);
+  delete game.world.flags.overlimitRingSecret;
+  game.world.flags.overlimitRingPublic = `${character.martialSoul.name}第${ring.index}魂环·${ring.years}年·${ring.color}色`;
+  game.world.flags.talentResourcePriority = Math.max(85, Number(game.world.flags.talentResourcePriority ?? 0));
+  game.world.flags.talentRecruitmentPressure = Math.max(reaction.pressure, Number(game.world.flags.talentRecruitmentPressure ?? 0));
+  game.world.flags.talentHostileRisk = Math.max(Math.max(2, reaction.pressure - 1), Number(game.world.flags.talentHostileRisk ?? 0));
+  game.world.flags.overlimitPrimaryResponder = reaction.faction;
+  game.world.flags.overlimitReactionRoute = `${reaction.authority}；${reaction.immediate}；${reaction.resource}；${reaction.secrecy}；${reaction.risk}`;
+  character.reputation = `${character.reputation}；公开超限第${ring.index}魂环`.replace(/^；/, "");
+  const ordinal = (game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
+  const eventId = `overlimit-ring-attention-${character.activeMartialSoulIndex}-${ring.index}`;
+  game.world.flags.overlimitCompetitionPlan = JSON.stringify(overlimitSecondaryFactions(game, reaction.faction).map((faction, index) => ({ faction, dueOrdinal: ordinal + [3, 7, 14][index], fired: false })));
+  if (!game.world.dynamicEvents.some((event) => event.id === eventId)) game.world.dynamicEvents.push({
+    id: eventId,
+    title: "超限魂环引发复测与培养争夺",
+    kind: "势力",
+    locationId: game.view.locationId ?? inferLocationId(game.view.location ?? "") ?? "notting-city",
+    participantIds: Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => npc.id),
+    detail: `${character.name}公开展示第${ring.index}魂环约${ring.years}年的异常配置。主要响应方：${reaction.faction}。权限链：${reaction.authority}。立即行动：${reaction.immediate}。资源条件：${reaction.resource}。保密：${reaction.secrecy}。风险：${reaction.risk}。远方势力只能在消息传播后介入。`,
+    stakes: 5,
+    status: "可介入",
+    createdYear: game.view.worldTime?.year ?? 0,
+    createdDay: game.view.worldTime?.day ?? 1,
+    expiresOrdinal: ordinal + 30,
+  });
+  ensureTask(game, { id: `${eventId}-retest`, title: `${reaction.faction}复核超限魂环`, kind: "计划", detail: `${reaction.immediate}；尚未自动接受任何培养归属。`, status: "进行中" });
+  ensureTask(game, { id: `${eventId}-terms`, title: `比较${reaction.faction}提出的培养与保密条件`, kind: "计划", detail: `${reaction.resource}；${reaction.secrecy}；玩家仍可接受、谈判、拒绝或转向其他路线。`, status: "进行中" });
+  recordIntelligence(game, { subjectType: "事件", subjectId: eventId, title: "超限魂环已经公开", detail: `第${ring.index}魂环约${ring.years}年、魂技${ring.skillName}已经被现场目击；${reaction.faction}成为当前主要响应方。后续关注必须沿实际见证与传播链发生。`, source: "玩家主动公开展示", confidence: 100, status: "确定" });
+  return {
+    intent: "公开超限魂环",
+    minutes: 30,
+    ruleSummary: `主动公开第${ring.index}魂环：约${ring.years}年${ring.color}色，魂技“${ring.skillName}”。${reaction.faction}按“${reaction.authority}”进入复测、培养和保密处置；消息尚未传播到的远方势力不能立刻知情。`,
+    fallbackNarrative: `${character.name}没有只报一个年限，而是当场放出武魂。第${ring.index}圈${ring.color}光升起时，原本还在说话的人先停了声；负责记录的人没有急着下结论，先换了测试水晶，又让人关上门核对年龄和魂力。`,
+    suggestions: reaction.suggestions,
+    systemMessages: [`超限魂环公开 · ${ring.years}年 · ${ring.skillName}`, `主要响应 · ${reaction.faction}`, `处置链 · ${reaction.immediate}`],
+  };
+}
+
 function heirloomActionResolution(game: StoredGame): ActionResolution | undefined {
   const active = game.view.activeHeirloom;
   if (!active?.actionCommand) return undefined;
   if (active.remainingUses < 1) return impossible(`${active.name}在本局的发动次数已经耗尽。`, ["查看遗物栏位", "继续当前计划", "检查任务"]);
   const definition = heirloomByName(active.name);
   if (!definition) return impossible("这件遗物的效果资料缺失。");
-  if (definition.effectKind === "anomalyCompass") {
-    game.world.flags.heirloomCompassRoute = true;
+  if (definition.soulBone) {
+    const character = game.view.character!;
+    character.soulBones ??= [];
+    const bone = character.soulBones.find((item) => item.id === definition.id);
+    if (!bone) return impossible("魂骨状态记录缺失，不能绕过融合过程直接发动魂技。", ["查看魂骨状态", "重新载入存档", "暂不发动魂技"]);
+    if (active.actionCommand === definition.soulBone.fusionCommand) {
+      if (bone.fusionState === "已融合") return impossible(`${bone.name}已经完成融合，不能重复融合。`, [bone.skills[0]?.actionCommand ?? "查看魂骨技能", "查看魂骨状态", "继续当前行动"]);
+      const conflict = character.soulBones.find((item) => item.id !== bone.id && item.fusionState === "已融合" && item.slot === bone.slot && bone.slot !== "外附");
+      if (conflict) return impossible(`${bone.slot}部位已经融合${conflict.name}；正常六部位不能重复占用，必须放弃其中一块。`, ["保留当前已融合魂骨", "查看其他魂骨部位", "暂不融合新魂骨"]);
+      bone.fusionState = "已融合";
+      bone.fusedAtAction = game.actionIndex;
+      game.world.healthPoints = Math.max(20, game.world.healthPoints - 10);
+      game.world.fatiguePoints += 50;
+      game.world.flags.soulBonePhysiqueBonus = Number(game.world.flags.soulBonePhysiqueBonus ?? 0) + bone.attributeBonuses.physique;
+      game.world.flags.soulBoneSpiritBonus = Number(game.world.flags.soulBoneSpiritBonus ?? 0) + bone.attributeBonuses.spirit;
+      game.world.flags.soulBonePerceptionBonus = Number(game.world.flags.soulBonePerceptionBonus ?? 0) + bone.attributeBonuses.perception;
+      active.soulBoneFusionState = "已融合";
+      active.actionCommand = bone.skills[0]?.actionCommand;
+      return { intent: "融合魂骨", minutes: speedMinutes(game, 360, 1440), ruleSummary: `完成${bone.name}融合，占用${bone.slot}部位；体魄+${bone.attributeBonuses.physique}、精神+${bone.attributeBonuses.spirit}、感知+${bone.attributeBonuses.perception}。健康-10、疲劳+50；魂技“${bone.skills[0]?.name ?? "未确认"}”已经可以发动。`, fallbackNarrative: `${bone.name}贴上身体后没有立刻消失。骨骼先传来一阵挤压般的闷痛，魂力反复冲过同一处，直到那块魂骨真正嵌进原有骨骼，属于它的魂技才变得清晰。`, suggestions: [bone.skills[0]?.actionCommand ?? "测试魂骨技能", "休息恢复融合消耗", "决定是否公开魂骨"], systemMessages: [`魂骨融合 · ${bone.slot} · ${bone.years}年`, `魂骨技 · ${bone.skills[0]?.name ?? "未确认"}`] };
+    }
+    if (bone.fusionState !== "已融合") return impossible(`${bone.name}尚未融合，不能直接发动魂骨技能。`, [definition.soulBone.fusionCommand, "查看融合风险", "暂时保留魂骨"]);
+    const skill = bone.skills.find((item) => active.actionCommand === item.actionCommand || item.actionCommand && active.actionCommand?.includes(item.actionCommand));
+    if (!skill) return impossible("当前魂骨没有与这个命令对应的魂骨技能。", ["查看魂骨技能", "查看遗物栏位", "继续当前行动"]);
+    if (game.actionIndex < skill.cooldownUntilAction) return impossible(`${skill.name}仍在冷却，要到第${skill.cooldownUntilAction}次行动后才能再次发动。`, ["继续普通行动等待冷却", "查看魂骨状态", "使用其他能力"]);
+    if (definition.effectKind === "causalReview" && game.world.flags.heirloomCausalProtection) return impossible("护心骨甲已经处于待触发状态，不能重复叠加。", ["继续当前高风险行动", "等待护心骨甲触发", "暂缓冒险"]);
+    if (definition.effectKind === "memoryAnchor" && Number(game.world.flags.heirloomFocusActions ?? 0) > 0) return impossible("凝神增幅的五次成长尚未结算完，不能重复叠加。", ["完成一次修炼", "完成一次研究", "查看剩余增幅次数"]);
+    ensureSoulPowerPool(game);
+    const soulPowerCost = skill.soulPowerCost ?? Math.max(10, skill.fatigueCost);
+    if ((character.soulPowerCurrent ?? 0) < soulPowerCost) return impossible(`当前魂力不足以发动${skill.name}，需要${soulPowerCost}点，现有${character.soulPowerCurrent ?? 0}点。`, ["冥想恢复魂力", "使用普通魂技", "等待冷却"]);
+    character.soulPowerCurrent = Math.max(0, (character.soulPowerCurrent ?? 0) - soulPowerCost);
+    game.world.fatiguePoints += skill.fatigueCost;
+    skill.cooldownUntilAction = game.actionIndex + skill.cooldownActions;
+    bone.exposed = true;
+  }
+  if (definition.effectKind === "soulMasterLedger") {
+    const ordinal = (game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1);
+    const last = Number(game.world.flags.heirloomSubsidyLastOrdinal ?? -1000);
+    if (ordinal - last < 30) return impossible(`距离上次领取魂师补贴还不足30天，尚需${30 - (ordinal - last)}天。`, ["等待补贴日期", "继续修炼", "查看魂师手札"]);
+    const tier = Math.floor(game.view.character!.soulRank / 10);
+    if (tier < 1 || game.view.character!.soulRings.length < tier) return impossible("尚未取得对应魂环并完成魂师等级注册，不能领取这一阶段的魂师补贴。", ["获得对应魂环", "完成魂师注册", "继续当前成长"]);
+    const amount = tier >= 3 ? 100 : tier === 2 ? 10 : 1;
+    game.view.character!.coins += amount;
+    recordEconomyTransaction(game, "收入", amount, "武魂殿魂师补贴", `凭魂师手札领取第${tier}阶段月补贴`);
+    game.world.flags.heirloomSubsidyLastOrdinal = ordinal;
     consumeHeirloomUse(active);
-    return { intent: "使用遗物", minutes: 5, ruleSummary: `星痕罗盘已为下一次普通旅行压出捷径，届时耗时降低85%；剩余${active.remainingUses}次。`, fallbackNarrative: `罗盘里的指针沿着大陆轮廓转了一圈，最后把几条旧路叠成一道细亮的线。下一次上路时，只要沿着它走，就能省下大半绕行时间。`, suggestions: ["选择已知地点立即出发", "先处理随身负重", "把捷径留给下一次远行"] };
+    return { intent: "使用遗物", minutes: 30, ruleSummary: `凭魂师手札领取${amount}金魂币月补贴，经济流水已登记；剩余可领取月份${active.remainingUses}次。`, fallbackNarrative: `柜台后的工作人员核对魂师编号、等级和上次领取日期，确认无误后才把补贴推过来。钱不多不少，和手札上登记的等级一致。`, suggestions: ["收好补贴", "核对下次领取日期", "购买当前急需物资"] };
+  }
+  if (definition.effectKind === "seaVessel") {
+    if ((active.durability ?? 0) < (definition.artifactMechanics?.durabilityCost ?? 0)) return impossible("龙渊艇当前耐久不足以安全展开，必须先维修。", ["维修龙渊艇", "改乘普通船只", "暂缓海上旅行"]);
+    game.world.flags.heirloomSeaVesselReady = true;
+    consumeHeirloomUse(active);
+    return { intent: "使用遗物", minutes: 20, ruleSummary: `龙渊艇已经注入魂力并展开，下一次海上旅行耗时降低70%，并抵挡一次不超过百年魂兽级别的环境攻击；剩余${active.remainingUses}次。`, fallbackNarrative: `透明艇身在海边展开，内部空间足够容纳同行者和补给。它能下潜避开风浪，却没有人把它当成可以闯进深海的战舰。`, suggestions: ["检查同行者与海图", "开始海上旅行", "避开高阶海魂兽活动区"] };
+  }
+  if (definition.effectKind === "foundationHerb") {
+    game.world.trainingPoints += 120;
+    game.world.healthPoints = 100;
+    game.world.fatiguePoints = 0;
+    consumeHeirloomUse(active);
+    return { intent: "使用遗物", minutes: 1440, ruleSummary: "服用并完整炼化九品紫芝：训练进度+120、健康恢复至满、疲劳清零；若到达十级瓶颈仍必须取得魂环。", fallbackNarrative: `药力起初并不猛烈，只是一层层渗进四肢。${game.view.character!.name}运转整整一天，直到经脉里的温热不再乱窜，才敢停下。`, suggestions: ["检查魂力是否到达瓶颈", "休息观察药力", "记录身体变化"] };
+  }
+  if (definition.effectKind === "crystalHerb") {
+    const guardian = game.view.relations.find((relation) => /导师|老师|监护|父|母|魂师|医师|药师/.test(`${relation.relation}${relation.impression}`));
+    if (!guardian && game.view.character!.age < 12) return impossible("水晶血龙参药性霸道，当前没有可信成年人或医师护法，不能让幼童独自吞服。", ["邀请可信导师或监护人护法", "请药师检查服用方法", "暂时封存药材"]);
+    game.world.trainingPoints += 180;
+    game.world.healthPoints = 100;
+    game.world.fatiguePoints = 0;
+    game.view.character!.injuries = [];
+    game.world.flags.crystalGinsengAdaptationUntil = ((game.view.worldTime?.year ?? 0) * 360 + (game.view.worldTime?.day ?? 1)) + 3;
+    consumeHeirloomUse(active);
+    return { intent: "使用遗物", minutes: 3 * 1440, ruleSummary: `在${guardian?.name ?? "成年护法者"}护法下炼化水晶血龙参：普通伤势清除、健康回满、疲劳清零、训练进度+180；三日内处于霸道药力适应期。`, fallbackNarrative: `参须入口后，药力几乎立刻冲进经脉。${guardian?.name ?? "护法者"}一直守在旁边，直到${game.view.character!.name}连续三天把散乱药力压回魂力循环，才允许他起身。`, suggestions: ["检查药力适应结果", "暂缓高强度战斗", "记录魂力与身体变化"] };
+  }
+  if (definition.effectKind === "flyingClaw") {
+    if ((active.durability ?? 0) < (definition.artifactMechanics?.durabilityCost ?? 0)) return impossible("飞天神爪钢索和机括耐久不足，继续使用可能当场断裂。", ["维修飞天神爪", "改走普通路线", "暂缓移动"]);
+    if (game.view.combat) {
+      game.view.combat.distance = "远距离";
+      game.view.combat.guard = Math.max(2, game.view.combat.guard ?? 0);
+    } else game.world.flags.heirloomClimbBypass = true;
+    consumeHeirloomUse(active);
+    active.durability = Math.max(0, (active.durability ?? 0) - (definition.artifactMechanics?.durabilityCost ?? 0));
+    return { intent: "使用遗物", minutes: 5, ruleSummary: game.view.combat ? `飞天神爪抓住可达掩体，将战斗距离拉到远距离并获得2层防守准备；剩余${active.remainingUses}次。` : `飞天神爪已准备跨越下一处普通攀爬障碍；不能跨越封锁或空间距离。剩余${active.remainingUses}次。`, fallbackNarrative: `金属爪咬进硬物，钢索骤然绷直。那股拉力只能把人送到真实抓住的地方，却足以越过靠徒手很难攀上的一段。`, suggestions: game.view.combat ? ["从远距离观察敌人", "使用远程魂技", "寻找撤退路线"] : ["跨越眼前障碍", "检查钢索落点", "收回飞天神爪"] };
+  }
+  if (definition.effectKind === "crossbow") {
+    const combat = game.view.combat;
+    if (!combat) return impossible("诸葛神弩必须在明确战斗目标出现后发射，不能朝未知方向浪费弩箭。", ["进入战斗后使用", "检查机璜与弩箭", "暂不发射"]);
+    if ((active.ammo ?? active.remainingUses) < 1) return impossible("诸葛神弩没有已经上好机璜的弩箭组。", ["维修并重新装填诸葛神弩", "使用普通攻击", "暂时撤退"]);
+    if ((active.durability ?? 0) < (definition.artifactMechanics?.durabilityCost ?? 0)) return impossible("诸葛神弩机括耐久不足，强行发射可能炸裂。", ["维修诸葛神弩", "使用普通攻击", "暂时撤退"]);
+    let enemyHp = Number(game.world.flags.combatEnemyHp ?? 80);
+    const damage = Math.max(60, 45 + game.view.character!.soulRank * 2);
+    enemyHp -= damage;
+    game.world.flags.combatEnemyHp = enemyHp;
+    combat.enemyCondition = enemyHp <= 0 ? "失去战斗能力" : enemyHp < 30 ? "重伤" : "受伤";
+    if (enemyHp <= 0 && game.view.hunting) { game.view.hunting.stage = "吸收"; game.view.hunting.trailProgress = "目标被诸葛神弩击败"; game.view.combat = undefined; }
+    consumeHeirloomUse(active);
+    active.ammo = active.remainingUses;
+    active.durability = Math.max(0, (active.durability ?? 0) - (definition.artifactMechanics?.durabilityCost ?? 0));
+    return { intent: "使用遗物", minutes: 5, ruleSummary: `诸葛神弩完成一次机括齐射，造成${damage}点穿透伤害；目标${combat.enemyCondition}，剩余弩箭组数${active.remainingUses}。`, fallbackNarrative: `机璜声只响了一次，弩箭却在同一瞬间破匣而出。${combat.enemyName}来不及完全避开，正面防御被连续撞出一串闷响。`, suggestions: enemyHp <= 0 ? ["检查目标状态", "让同行者警戒", "处理弩箭与机璜"] : ["趁目标受伤继续攻击", "拉开距离重新上弦", "保留剩余弩箭"] };
   }
   if (definition.effectKind === "causalReview") {
     game.world.flags.heirloomCausalProtection = true;
+    game.world.flags.heirloomCausalSnapshot = JSON.stringify({
+      health: game.world.healthPoints,
+      fatigue: game.world.fatiguePoints,
+      injuries: [...game.view.character!.injuries],
+    });
+    game.world.flags.heirloomExposureRisk = Math.min(100, Number(game.world.flags.heirloomExposureRisk ?? 0) + 20);
     consumeHeirloomUse(active);
-    return { intent: "使用遗物", minutes: 5, ruleSummary: "因果残线已护住下一次非死亡失败；届时健康恢复至满值、疲劳清零并移除最近两项伤势，但不改变胜负。", fallbackNarrative: "细线钻进手腕后便看不见了。它没有替我抹掉已经做过的选择，只在最坏的结果旁边留出一条能保住身体的窄缝。", suggestions: ["继续当前高风险行动", "先确认失败代价", "把保护留给关键尝试"] };
+    return { intent: "使用遗物", minutes: 5, ruleSummary: "外附魂骨·护心甲已经蓄住一次防御魂骨技；下一次非死亡重创会护住发动时的健康、疲劳与既有伤势，但不返还魂币和物品，也不改变胜负、关系或世界事件。魂骨暴露风险+20。", fallbackNarrative: "胸骨外侧浮出一层贴身骨甲，魂力沿肋骨合拢，又迅速隐回皮肤下。它能挡住一次冲进躯干和经脉的重创，却挡不住已经作出的选择。", suggestions: ["继续当前高风险行动", "先确认失败代价", "隐藏魂骨并暂缓冒险"] };
   }
-  const snapshot = `${game.view.worldTime?.year ?? 0}年第${game.view.worldTime?.day ?? 1}日，${game.view.location}；目标：${game.view.chapterObjective?.title ?? game.view.lifeGoal ?? "尚未确定"}；未决：${game.storyMemory.openThreads.slice(0, 4).join("、") || "无"}`;
-  game.storyMemory.openThreads = [`岁月锚点：${snapshot}`, ...game.storyMemory.openThreads].slice(0, 12);
-  game.world.flags.heirloomTimeAnchorActions = 5;
+  if (definition.effectKind === "overlimitRing") {
+    const character = game.view.character!;
+    ensureMartialSoulAccounts(game);
+    const ringIndex = character.soulRings.length + 1;
+    const requiredRingIndex = Math.floor(character.soulRank / 10);
+    if (character.soulRank <= 0 || character.soulRank % 10 !== 0 || ringIndex !== requiredRingIndex) return impossible("当前主修武魂尚未处在缺少下一魂环的十级瓶颈，不能提前塞入魂环或覆盖已有魂环。", ["修炼到下个十级瓶颈", "切换需要魂环的武魂", "查看当前魂环配置"]);
+    const profile = overlimitRingProfile(character, ringIndex);
+    const years = Math.min(100000, Math.max(ringIndex === 1 ? 1000 : profile.ordinaryLimit + 1, Math.round(profile.ordinaryLimit * profile.multiplier)));
+    const skill = overlimitBestowedSkill(character, ringIndex);
+    const ring: SoulRingView = {
+      index: ringIndex,
+      beastId: "fanfic-overlimit-bestowed-ring",
+      beastName: "同人机缘·超限神赐魂环",
+      years,
+      color: ringColor(years),
+      skillName: skill.name,
+      skillDescription: skill.description,
+      sourceType: "同人超限神赐",
+      overlimitProfile: profile,
+    };
+    character.soulRings.push(ring);
+    character.soulRingSets[character.activeMartialSoulIndex] = character.soulRings;
+    character.soulRank += 1;
+    const healthCost = Math.max(12, Math.round(10 + Math.max(0, profile.multiplier - 2) * 10));
+    const fatigueCost = Math.round(45 + profile.multiplier * 8);
+    game.world.healthPoints = Math.max(20, game.world.healthPoints - healthCost);
+    game.world.fatiguePoints += fatigueCost;
+    character.injuries.push(`超限神赐魂环适应期：${profile.multiplier}倍承载洗礼后经脉胀痛，需休养后再高强度修炼`);
+    game.world.flags.overlimitRingSecret = `${character.martialSoul.name}第${ringIndex}魂环·${years}年·仅主角已确认`;
+    game.world.flags.heirloomExposureRisk = Math.min(100, Number(game.world.flags.heirloomExposureRisk ?? 0) + 10);
+    recordIntelligence(game, { subjectType: "物品", subjectId: `overlimit-ring-${character.activeMartialSoulIndex}-${ringIndex}`, title: `${character.martialSoul.name}获得超限神赐魂环`, detail: `第${ringIndex}魂环约${years}年，魂技${skill.name}；来源是明确的同人超限机缘，不对应任何被猎杀魂兽。`, source: active.name, confidence: 100, status: "确定" });
+    const task = game.view.tasks.find((item) => item.id === `ring-${character.activeMartialSoulIndex}-${ringIndex}`);
+    if (task) { task.status = "完成"; task.progressEvidence = [...(task.progressEvidence ?? []), `${active.name}直接赋予${years}年魂环与魂技${skill.name}`]; }
+    if (game.view.hunting) { game.view.hunting.stage = "完成"; game.view.hunting.result = `同人机缘直接赋环：${years}年，${skill.name}`; }
+    consumeHeirloomUse(active);
+    return {
+      intent: "使用遗物",
+      minutes: speedMinutes(game, 180, 720),
+      ruleSummary: `同人超限神赐魂环直接完成第${ringIndex}魂环赋予：常规参考上限${profile.ordinaryLimit}年，按武魂品质、体魄、精神、血脉、魂骨与环位结算为${profile.multiplier}倍，获得${years}年${ring.color}色魂环和魂技“${skill.name}”，魂力升至${character.soulRank}级；无需猎杀魂兽。健康-${healthCost}、疲劳+${fatigueCost}并进入超限适应期。该机缘不是原著常规资源，公开后会引发复测、争取与威胁评估。`,
+      fallbackNarrative: `金色光粒没有从魂兽尸体上升起，而是直接围住了${character.name}。第一轮压力压进经脉时，他几乎咬破舌尖；等那圈${ring.color}光真正落稳，${skill.name}已经随着武魂一同刻进魂力。屋里没有死去的魂兽，只有他自己清楚这枚魂环超出了常规年限。`,
+      suggestions: ["独自测试新魂技", "先休养超限适应伤势", "决定是否向监护人公开异常魂环"],
+      systemMessages: [`同人超限魂环 · 第${ringIndex}环 · ${years}年 · ${ring.color}色`, `魂技 · ${skill.name}`, `秘密范围 · 仅主角已确认`],
+    };
+  }
+  const snapshot = `${game.view.worldTime?.year ?? 0}年第${game.view.worldTime?.day ?? 1}日，${game.view.location}；目标：${game.view.chapterObjective?.title ?? game.view.lifeGoal ?? "尚未确定"}`;
+  game.storyMemory.openThreads = [`凝神魂骨技训练记录：${snapshot}`, ...game.storyMemory.openThreads].slice(0, 12);
+  game.world.flags.heirloomFocusActions = 5;
+  game.world.flags.heirloomExposureRisk = Math.min(100, Number(game.world.flags.heirloomExposureRisk ?? 0) + 20);
   consumeHeirloomUse(active);
-  return { intent: "使用遗物", minutes: 5, ruleSummary: `岁月锚钉已固定当前节点；接下来5次非战斗行动耗时降低80%，并持续写入长期记忆。`, fallbackNarrative: `钉身上的日期刻痕一寸寸发热。周围没有停下，只是接下来要做的几件事忽然多出了从容周转的余地。`, suggestions: ["推进当前人生目标", "处理一项关系承诺", "完成一次成长行动"] };
+  return { intent: "使用遗物", minutes: 5, ruleSummary: "万年头部魂骨·凝神已经发动；接下来5次修炼、课程、研究或制作会得到25点对应成长。真实时间不变，魂骨暴露风险+20。", fallbackNarrative: "额骨深处传来一阵清凉，杂乱的念头被压到边缘。钟声和脚步都没有变慢，只是接下来几次练习里，注意力能更久地停在同一个错误上。", suggestions: ["完成一次修炼", "参加当前课程", "研究一项已有材料"] };
 }
 
 function applyHeirloomEffect(game: StoredGame, action: string, resolution: ActionResolution): void {
-  const active = game.view.activeHeirloom;
-  if (!active || active.remainingUses < 1 || /无法完成|规则阻止/.test(resolution.intent)) return;
-  const definition = heirloomByName(active.name);
-  if (!definition || definition.actionCommand) return;
-  let message = "";
-  switch (definition.effectKind) {
-    case "huntIntel":
-      if (!/魂兽|猎魂|追踪/.test(`${action}${resolution.intent}`)) return;
-      game.world.metrics.discoveries += 5;
-      recordIntelligence(game, { subjectType: "物品", subjectId: `heirloom-hunt-${game.actionIndex}`, title: `${active.name}补充的生态线索`, detail: "旧记录标出目标常用的饮水方向、活动时段与撤退路径，需要结合现场痕迹复核。", source: active.name, confidence: 78, status: "确定" });
-      message = "额外取得一条高可信魂兽生态线索，发现进度 +5"; break;
-    case "travelGuide":
-      if (resolution.intent !== "旅行") return;
-      { const saved = Math.max(1, Math.round(resolution.minutes * .7)); resolution.minutes -= saved; message = `核验旧路，旅行耗时减少 ${saved} 分钟`; } break;
-    case "trainingCalm":
-      if (!/修炼|训练/.test(resolution.intent)) return;
-      game.world.fatiguePoints = Math.max(0, game.world.fatiguePoints - 50); game.world.healthPoints = Math.min(100, game.world.healthPoints + 15); message = "呼吸稳定，疲劳降低50点并恢复15点健康"; break;
-    case "tradeInsight":
-      if (!/购买|交易|经济|询价|市场/.test(`${action}${resolution.intent}`)) return;
-      game.view.character!.coins += 30; message = "识别正规商路价格并返还30金魂币"; break;
-    case "factionIntroduction":
-      if (!/入学|加入势力|势力申请|学院/.test(`${action}${resolution.intent}`)) return;
-      { const relation = game.view.relations.find((item) => item.category === "势力"); if (relation) { relation.dimensions ??= relationDimensions(relation.strength); relation.dimensions.respect = Math.min(100, relation.dimensions.respect + 50); relation.dimensions.trust = Math.min(100, relation.dimensions.trust + 25); } message = "获得正式面谈，接待者敬重+50、信任+25（不保证录取）"; } break;
-    case "mentalRescue":
-      if (game.world.fatiguePoints < 50) return;
-      game.world.fatiguePoints = Math.max(0, game.world.fatiguePoints - 80); game.world.healthPoints = Math.min(100, game.world.healthPoints + 30); message = "温魂灯芯亮起，疲劳降低80点并恢复30点健康"; break;
-    case "ringAssessment":
-      return;
-    case "promiseWitness":
-      if (resolution.intent !== "作出承诺") return;
-      game.world.flags.heirloomPromiseEvidence = `行动${game.actionIndex}：${action.slice(0, 100)}`; { const target = game.view.relations.find((item) => action.includes(item.name)); if (target) { target.dimensions ??= relationDimensions(target.strength); target.dimensions.trust = Math.min(100, target.dimensions.trust + 35); } } message = "承诺形成额外履约证据，承诺对象信任+35"; break;
-    case "craftSalvage":
-      if (!/制作|锻造|炼制/.test(`${action}${resolution.intent}`) || !/失败|报废|崩裂/.test(resolution.ruleSummary)) return;
-      game.view.inventory.push("遗物回收材料", "遗物回收材料", "遗物回收材料", "遗物回收材料"); { const profession = game.view.professions.find((item) => /锻造|炼器|制作/.test(item.name)); if (profession) profession.progress = Math.min(100, profession.progress + 15); } message = "从失败成品中回收4份材料，相关职业进度+15"; break;
-    default: return;
-  }
-  consumeHeirloomUse(active);
-  resolution.systemMessages = [...(resolution.systemMessages ?? []), `${active.name} · ${message} · 剩余${active.remainingUses}次`];
-  resolution.ruleSummary += ` 遗物触发：${message}。`;
+  void game; void action; void resolution;
 }
 
 function updatePersonality(game: StoredGame, action: string): void {
@@ -4523,10 +4942,14 @@ export function classifyCoreActionRoute(game: StoredGame, input: string): CoreAc
     && hiddenSoulNames.length > 0;
   const mentorIndependentPractice = mentor?.stage === "已拜师" && /独立复练|按.*课程记录.*复练|复盘.*导师.*独立/.test(action);
   const mentorHuntSupport = Boolean(huntingActive && /请求.*(?:导师|师父).*(?:指导|负责).*(?:魂环|首环)|(?:导师|师父)承担.*(?:猎魂|首环)/.test(action));
-  const establishedMentor = mentor?.stage === "已拜师" && !mentorIndependentPractice && !mentorHuntSupport && (action.includes(mentor.mentorName) || /师父|导师/.test(action)) && /课程|训练|练习|授业|修行|魂环|猎魂|资源|训练场|条件|禁忌|规矩|请教|询问|评估/.test(action);
+  const huntOperationalStage = Boolean(game.view.hunting && ["准备", "旅行", "追踪", "战斗", "吸收", "后果"].includes(game.view.hunting.stage));
+  const mentorNamedHuntPreparation = huntingActive && (/同行|组队|补给|手令|入林凭证|出发|启程|追踪|战斗|吸收|返回|进入.*(?:森林|栖息地)/.test(action) || (huntOperationalStage && /猎魂|魂兽|魂环|首环/.test(action)));
+  const establishedMentor = mentor?.stage === "已拜师" && !mentorIndependentPractice && !mentorHuntSupport && !mentorNamedHuntPreparation && (action.includes(mentor.mentorName) || /师父|导师/.test(action)) && /课程|训练|练习|授业|修行|魂环|猎魂|资源|训练场|条件|禁忌|规矩|请教|询问|评估/.test(action);
   const nonLethalHunt = huntingActive && /献祭|自愿融合|交换|救助|治疗魂兽|交流|沟通|取得信任|残魂传承|转化魂环/.test(action);
-  const hunt = huntingActive && (game.view.hunting?.stage === "战斗" || /猎魂|魂兽|魂环|首环|目标|追踪|出发|准备|吸收|返回|带队责任|护送责任|家庭筹备|独行筹备/.test(action));
-  const academyApplication = Boolean(game.view.academyApplication && !["已入学", "未通过", "已撤回"].includes(game.view.academyApplication.stage) && /学院|报名|材料|证明|来处|监护|担保|工读|家族资助|家族承担|学院奖助|奖学|宗门委培|宗门资助|义务教育|家庭自费|普通自费|入学考核|分班测试|录取|报到|进入学院|接受.*入学|食宿|放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action));
+  const huntContext = /猎魂|魂兽|魂环|首环|带队责任|护送责任|家庭筹备|独行筹备/.test(action);
+  const huntStageAction = /追踪|吸收/.test(action) || (/(?:目标|出发|准备|返回)/.test(action) && /猎魂|魂兽|魂环|首环|补给|同行|手令|栖息地/.test(action));
+  const hunt = huntingActive && (game.view.hunting?.stage === "战斗" || huntContext || huntStageAction);
+  const academyApplication = Boolean(game.view.academyApplication && !["已入学", "未通过", "已撤回"].includes(game.view.academyApplication.stage) && /学院|报名|材料|证明|来处|监护|担保|工读|家族资助|家族承担|学院奖助|奖学|所属机构委培|宗门委培|宗门资助|义务教育|家庭自费|普通自费|入学考核|分班测试|录取|报到|进入学院|接受.*入学|食宿|放弃.*(?:资格|名额|申请)|撤回.*申请|暂缓申请/.test(action));
   const academyLife = Boolean(game.view.academyLife && /宿舍|课表|安置|安顿|报到|校服|上课|课程|学院学习|体能课|魂师基础|同学|同桌|舍友|认识|交谈|切磋|共同训练|小组练习|一起吃饭|阶段考核|新生考核|班级实战|基础课程与实战检查|工读|排班|校内劳动|奖助|宗门|委培|培养情况|家族|费用用途/.test(action));
   const mentorPursuit = Boolean(mentor && !["已拜师", "被拒绝", "已结束"].includes(mentor.stage) && (action.includes(mentor.mentorName) || /导师|拜师|师徒|试学|考察|考验|授业/.test(action))) || /拜师|拜.*为师|收我为徒|请.*指导|寻找.*导师/.test(action);
   const knownConversation = /问|询问|请教|交谈|告诉|拜访|商量|说服|请求|申请/.test(action) && relationTargetsForAction(game, action).length === 1;
@@ -4544,6 +4967,7 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   if (!game.view.character) return impossible("角色尚未完成觉醒。");
   if (game.view.status === "ended") return impossible("这一局已经结束。");
   ensureMartialSoulAccounts(game);
+  ensureSoulPowerPool(game);
   ensureLocalPeople(game);
 
   let resolution: ActionResolution;
@@ -4551,9 +4975,13 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
   let openingFollowup: ActionResolution | undefined;
   const routing = classifyCoreActionRoute(game, action);
   const activeHeirloom = game.view.activeHeirloom;
-  if (activeHeirloom?.actionCommand && action.includes(activeHeirloom.actionCommand)) resolution = heirloomActionResolution(game)!;
+  if (/公开|展示|告诉.*(?:老师|导师|长老|家人|监护人)|让.*看/.test(action) && /超限魂环|神赐魂环|异常魂环|第一魂环|第二魂环|第三魂环/.test(action) && game.world.flags.overlimitRingSecret) resolution = revealOverlimitRingResolution(game);
+  else if (activeHeirloom?.actionCommand && action.includes(activeHeirloom.actionCommand)) resolution = heirloomActionResolution(game)!;
+  else if (activeHeirloom && /维修|修理|重新装填/.test(action) && (action.includes(activeHeirloom.name) || /遗物|魂导器|暗器/.test(action))) resolution = repairHeirloomResolution(game);
+  else if (/魂骨/.test(action) && /检查|搜寻|寻找|查看|融合|发动|使用|施展/.test(action)) resolution = soulBoneGameplayResolution(game, action);
   else if (guarded) resolution = guarded;
   else if (/切换|换成|改用|主修/.test(action) && /武魂/.test(action)) resolution = switchMartialSoulResolution(game, action);
+  else if (/调查|打听|查询|核对|问清|询问/.test(action) && /魂导器课程|魂导师课程|核心阵法.*(?:课程|学习条件)|机甲.*(?:报名|训练条件|要求)|星舰.*(?:岗位|训练要求|课程)/.test(action)) resolution = technicalTrainingInvestigationResolution(game, action);
   else if (/升灵台/.test(action)) resolution = spiritAscensionResolution(game, action);
   else if (/(?:学习|练习|实训|认证|考核|委托|订单|接单).*(?:斗铠设计|机甲设计|机甲制造|机甲维修|机甲修理|锻造师)|(?:斗铠设计师|机甲设计师|机甲制造师|机甲修理师|锻造师).*(?:学习|练习|实训|认证|考核|委托|订单|接单)/.test(action)) resolution = eraThreeCareerResolution(game, action);
   else if (/魂灵/.test(action)) resolution = soulSpiritResolution(game, action);
@@ -4626,33 +5054,56 @@ export function resolveAction(game: StoredGame, input: string): ActionResolution
 
   applyHeirloomEffect(game, action, resolution);
 
-  if (game.world.flags.heirloomCompassRoute && resolution.intent === "旅行") {
-    const saved = Math.max(1, Math.round(resolution.minutes * .85));
+  if (game.world.flags.heirloomSeaVesselReady && resolution.intent === "旅行" && /海|岛|航|瀚海/.test(`${action}${resolution.ruleSummary}${game.view.location ?? ""}`)) {
+    const saved = Math.max(1, Math.round(resolution.minutes * .7));
     resolution.minutes -= saved;
-    game.world.flags.heirloomCompassRoute = false;
-    resolution.ruleSummary += ` 星痕罗盘捷径额外节省${saved}分钟。`;
-    resolution.systemMessages = [...(resolution.systemMessages ?? []), `星痕罗盘 · 捷径节省${saved}分钟`];
+    game.world.flags.heirloomSeaVesselReady = false;
+    game.world.flags.dragonAbyssBoatDefense = 1;
+    if (game.view.activeHeirloom?.id === "heirloom-worn-map") game.view.activeHeirloom.durability = Math.max(0, (game.view.activeHeirloom.durability ?? 0) - (heirloomByName(game.view.activeHeirloom.name)?.artifactMechanics?.durabilityCost ?? 0));
+    resolution.ruleSummary += ` 龙渊艇完成海上航行，节省${saved}分钟并保留一次百年魂兽级环境防护。`;
+    resolution.systemMessages = [...(resolution.systemMessages ?? []), `龙渊艇 · 海上航时-70% · 环境防护1次`];
   }
-  const timeAnchorActions = Number(game.world.flags.heirloomTimeAnchorActions ?? 0);
-  if (timeAnchorActions > 0 && !/战斗|使用遗物|规则阻止|无法完成/.test(resolution.intent)) {
-    const saved = Math.max(1, Math.floor(resolution.minutes * .8));
-    resolution.minutes -= saved;
-    game.world.flags.heirloomTimeAnchorActions = timeAnchorActions - 1;
-    resolution.ruleSummary += ` 岁月锚钉令本次非战斗行动节省${saved}分钟。`;
-    resolution.systemMessages = [...(resolution.systemMessages ?? []), `岁月锚钉 · 节省${saved}分钟 · 还剩${timeAnchorActions - 1}次行动`];
+  if (game.world.flags.heirloomClimbBypass && /攀|崖|山壁|高墙|沟壑/.test(action) && !/规则阻止|无法完成/.test(resolution.intent)) {
+    game.world.flags.heirloomClimbBypass = false;
+    resolution.ruleSummary += " 飞天神爪跨过一处真实可抓附的普通攀爬障碍。";
+    resolution.systemMessages = [...(resolution.systemMessages ?? []), "飞天神爪 · 攀爬障碍已跨越"];
+  }
+  const focusActions = Number(game.world.flags.heirloomFocusActions ?? 0);
+  if (focusActions > 0 && /修炼|训练|课程|调查|研究|制作|锻造|炼制/.test(resolution.intent) && !/战斗|使用遗物|规则阻止|无法完成/.test(resolution.intent)) {
+    if (/制作|锻造|炼制/.test(resolution.intent)) {
+      const profession = game.view.professions.find((item) => /锻造|炼器|制作/.test(item.name));
+      if (profession) profession.progress = Math.min(100, profession.progress + 25);
+      else game.world.trainingPoints += 25;
+    } else if (/调查|研究/.test(resolution.intent)) game.world.metrics.discoveries += 25;
+    else game.world.trainingPoints += 25;
+    game.world.flags.heirloomFocusActions = focusActions - 1;
+    resolution.ruleSummary += " 凝神魂骨技令本次有效成长额外增加25点；真实耗时不变。";
+    resolution.systemMessages = [...(resolution.systemMessages ?? []), `万年头部魂骨·凝神 · 对应成长+25 · 还剩${focusActions - 1}次`];
   }
   if (game.world.flags.heirloomCausalProtection && game.world.healthPoints > 0 && !game.view.runProgress.ending && resolution.intent !== "使用遗物" && /失败|受伤/.test(`${resolution.intent}${resolution.ruleSummary}`)) {
-    game.world.healthPoints = 100;
-    game.world.fatiguePoints = 0;
-    const removedInjuries = game.view.character!.injuries.splice(Math.max(0, game.view.character!.injuries.length - 2));
+    let snapshot: { health?: number; fatigue?: number; injuries?: string[] } | undefined;
+    try { snapshot = JSON.parse(String(game.world.flags.heirloomCausalSnapshot ?? "")) as typeof snapshot; } catch { snapshot = undefined; }
+    game.world.healthPoints = typeof snapshot?.health === "number" ? snapshot.health : 100;
+    game.world.fatiguePoints = typeof snapshot?.fatigue === "number" ? snapshot.fatigue : 0;
+    if (Array.isArray(snapshot?.injuries)) game.view.character!.injuries = [...snapshot.injuries];
     game.world.flags.heirloomCausalProtection = false;
-    resolution.ruleSummary += ` 因果残线截断身体后果：健康恢复至满值、疲劳清零${removedInjuries.length ? `并移除“${removedInjuries.join("、")}”` : ""}；原本的胜负与结果不变。`;
-    resolution.systemMessages = [...(resolution.systemMessages ?? []), "因果残线 · 截断一次非死亡失败的身体后果"];
+    delete game.world.flags.heirloomCausalSnapshot;
+    resolution.ruleSummary += " 外附魂骨·护心甲挡住了这次重创的身体后果；魂币、物品、胜负、关系和世界结果不变。";
+    resolution.systemMessages = [...(resolution.systemMessages ?? []), "外附魂骨·护心甲 · 挡住一次非死亡重创的身体后果"];
   }
+
+  ensureSoulPowerPool(game);
+  const soulPowerBeforeRecovery = game.view.character!.soulPowerCurrent ?? 0;
+  const soulPowerMaximum = game.view.character!.soulPowerMax ?? 0;
+  if (/休息|恢复|疗伤/.test(resolution.intent)) game.view.character!.soulPowerCurrent = Math.min(soulPowerMaximum, soulPowerBeforeRecovery + Math.round(soulPowerMaximum * .6));
+  else if (/修炼|冥想|导师正式课程|学院基础课程/.test(resolution.intent)) game.view.character!.soulPowerCurrent = Math.min(soulPowerMaximum, soulPowerBeforeRecovery + Math.round(soulPowerMaximum * .25));
+  const soulPowerRecovered = (game.view.character!.soulPowerCurrent ?? 0) - soulPowerBeforeRecovery;
+  if (soulPowerRecovered > 0) resolution.systemMessages = [...(resolution.systemMessages ?? []), `魂力恢复 · +${soulPowerRecovered} · ${game.view.character!.soulPowerCurrent}/${soulPowerMaximum}`];
 
   resolution.appliedRuleIds ??= selectNarrativeRules(game, action, resolution).map((rule) => rule.id);
 
   const worldMessages = advanceWorldTime(game, resolution.minutes);
+  advanceOverlimitCompetition(game);
   resolution.systemMessages = [...(resolution.systemMessages ?? []), ...worldMessages];
   if (worldMessages.some((message) => /事件|异响|失踪|招募|挑战/.test(message))) resolution.suggestions = ["查看新事件", ...resolution.suggestions].slice(0, 3);
   updatePersonality(game, action);

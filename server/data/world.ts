@@ -277,7 +277,7 @@ export const CANON_EVENTS: CanonEventDefinition[] = [
   { id: "pope-palace-conflict", year: 8, day: 300, title: "教皇殿前的冲突", locationId: "spirit-city", participantIds: ["tang-san", "xiao-wu", "tang-hao", "bibi-dong", "gui-mei", "yue-guan"], inertia: 5, publicSummary: "大赛结束后的冲突使多方关系骤然紧张，公开消息受到严格控制。" },
   { id: "five-year-reunion", year: 13, day: 60, title: "史莱克五年之约", locationId: "heaven-dou-city", participantIds: ["tang-san", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 4, publicSummary: "昔日史莱克学员约定重聚。" },
   { id: "tang-sect-founded", year: 14, day: 120, title: "唐门在天斗城正式立足", locationId: "heaven-dou-city", participantIds: ["tang-san", "tai-tan", "bai-he", "niu-gao", "yang-wudi", "ning-rongrong"], inertia: 4, publicSummary: "多个单属性家族完成去向选择，新兴唐门开始正式运作。" },
-  { id: "seven-treasure-attack", year: 15, day: 30, title: "七宝琉璃宗遇袭", locationId: "seven-treasure-fort", participantIds: ["ning-fengzhi", "chen-xin", "bibi-dong"], inertia: 5, visibility: "公开", publicSummary: "上三宗遭到突然袭击，大陆魂师势力开始重新站队。" },
+  { id: "seven-treasure-attack", year: 13, title: "七宝琉璃宗遇袭", locationId: "seven-treasure-fort", participantIds: ["ning-fengzhi", "chen-xin", "bibi-dong"], inertia: 5, visibility: "公开", publicSummary: "上三宗遭到突然袭击，大陆魂师势力开始重新站队。" },
   { id: "heaven-dou-coup", year: 17, title: "天斗皇室局势突变", locationId: "heaven-dou-city", participantIds: ["qian-renxue", "xue-ye", "xue-xing", "tang-san", "dugu-bo"], inertia: 5, publicSummary: "围绕皇位与太子身份的争夺公开化，天斗城进入戒严。" },
   { id: "continental-war", year: 18, title: "武魂帝国成立与大陆战争爆发", locationId: "spirit-city", participantIds: ["tang-san", "bibi-dong", "qian-renxue"], inertia: 5, visibility: "公开", publicSummary: "武魂殿改组后的帝国与两大帝国进入公开战争。" },
   { id: "suotuo-spirit-arena", year: 6, day: 60, title: "史莱克学员进入索托大斗魂场", locationId: "suotuo-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 3, publicSummary: "一支年轻魂师队伍在索托大斗魂场连续参赛。" },
@@ -290,7 +290,7 @@ export const CANON_EVENTS: CanonEventDefinition[] = [
   { id: "gengxin-forging", year: 14, day: 180, title: "唐门接触铁匠协会", locationId: "gengxin-city", participantIds: ["tang-san", "tai-tan", "lou-gao"], inertia: 3, publicSummary: "暗器设计与大陆最高水平的锻造技艺开始接触。" },
   { id: "sea-voyage", year: 15, title: "史莱克众人由瀚海城出海", locationId: "vast-sea-city", participantIds: ["tang-san", "xiao-wu", "dai-mubai", "zhu-zhuqing", "ning-rongrong", "ao-si-ka", "ma-hongjun"], inertia: 4, publicSummary: "一支年轻魂师队伍从瀚海城驶向危险远海。" },
   { id: "sea-god-trials", year: 16, title: "海神岛考核开启", locationId: "sea-god-island", participantIds: ["tang-san", "bo-saixi", "xiao-bai"], inertia: 5, publicSummary: "海神岛为大陆来客开启不同等级的考核。" },
-  { id: "soul-hunt-operation", year: 15, day: 20, title: "武魂殿猎魂行动启动", participantIds: ["bibi-dong", "ning-fengzhi", "chen-xin", "gu-rong", "yu-tianheng"], inertia: 5, visibility: "公开", publicSummary: "针对上三宗的大规模袭击同时展开，宗门格局受到重创。" },
+  { id: "soul-hunt-operation", year: 13, title: "武魂殿猎魂行动启动", participantIds: ["bibi-dong", "ning-fengzhi", "chen-xin", "gu-rong", "yu-tianheng"], inertia: 5, visibility: "公开", publicSummary: "针对上三宗的大规模袭击同时展开，宗门格局受到重创。" },
 ];
 
 export const SOUL_BEASTS: SoulBeastDefinition[] = [
@@ -363,6 +363,7 @@ const HIDDEN_CANON_CHARACTER_IDS = new Set([
   "qian-renxue", "qian-daoliu", "tang-chen", "a-yin", "da-ming", "er-ming",
   "di-tian", "bi-ji", "zi-ji", "xiong-jun", "wan-yao-wang", "chi-wang", "tian-meng",
   "snow-empress", "ice-empress",
+  "bai-xiuxiu-dragon",
 ]);
 for (const character of CANON_CHARACTERS) {
   if (HIDDEN_CANON_CHARACTER_IDS.has(character.id)) character.hidden = true;
@@ -372,7 +373,7 @@ appendUnique(FACTIONS, EXPANDED_FACTIONS, (item) => item.id);
 appendUnique(LOCATIONS, EXPANDED_LOCATIONS, (item) => item.id);
 appendUnique(CANON_CHARACTERS, EXPANDED_CHARACTERS, (item) => item.id);
 const REDUNDANT_EXPANDED_EVENT_IDS = new Set([
-  "shrek-entry-test", "shrek-soto-arena", "imperial-team-match", "d1-golden-triangle-reunion",
+  "shrek-entry-test", "shrek-soto-arena", "imperial-team-match", "d1-golden-triangle-reunion", "d1-haotian-return",
   "tournament-qualifiers", "xiao-wu-identity-exposed", "tang-hao-rescue",
 ]);
 appendUnique(CANON_EVENTS, EXPANDED_EVENTS.filter((event) => !REDUNDANT_EXPANDED_EVENT_IDS.has(event.id)), (item) => item.id);
@@ -390,31 +391,50 @@ export function canonEventSimulationDay(event: CanonEventDefinition): number {
   const cached = estimatedCanonDayCache.get(event.id);
   if (cached !== undefined) return cached;
   const peers = CANON_EVENTS.filter((item) => item.year === event.year && item.dayProvenance !== "原著");
-  const sourceOrder = new Map(CANON_EVENTS.map((item, index) => [item.id, canonEventSourceAnchor(item.id)?.relativeOrder ?? 10_000 + index]));
-  const usedExactDays = new Set(CANON_EVENTS.filter((item) => item.year === event.year && item.dayProvenance === "原著" && item.day !== undefined).map((item) => item.day!));
   const peerIds = new Set(peers.map((item) => item.id));
-  const roots = peers.filter((item) => !canonEventHardPrerequisites(item.id).some((id) => CANON_EVENTS.find((candidate) => candidate.id === id)?.year === item.year)).sort((left, right) => (sourceOrder.get(left.id) ?? 0) - (sourceOrder.get(right.id) ?? 0));
-  roots.forEach((item, index) => {
-    const sourceAnchored = Boolean(canonEventSourceAnchor(item.id));
-    let estimate = sourceAnchored ? (roots.length === 1 ? 180 : Math.round(35 + index * (290 / Math.max(1, roots.length - 1)))) : item.day ?? (roots.length === 1 ? 180 : Math.round(35 + index * (290 / Math.max(1, roots.length - 1))));
-    while (usedExactDays.has(estimate) || [...estimatedCanonDayCache.entries()].some(([id, day]) => CANON_EVENTS.find((candidate) => candidate.id === id)?.year === item.year && day === estimate)) estimate += 1;
-    estimatedCanonDayCache.set(item.id, Math.min(350, estimate));
-  });
+  const baseEstimates = new Map<string, number>();
+  const anchoredGroups = [...new Set(peers.map((item) => canonEventSourceAnchor(item.id)?.relativeOrder).filter((value): value is number => value !== undefined))].sort((left, right) => left - right);
+  for (const item of peers) {
+    const sourceOrder = canonEventSourceAnchor(item.id)?.relativeOrder;
+    if (sourceOrder === undefined) continue;
+    const midpoint = anchoredGroups.length === 1 ? sourceOrder : ((anchoredGroups[0] ?? sourceOrder) + (anchoredGroups.at(-1) ?? sourceOrder)) / 2;
+    baseEstimates.set(item.id, Math.max(20, Math.min(340, Math.round(180 + sourceOrder - midpoint))));
+  }
+  const unanchored = peers.filter((item) => !canonEventSourceAnchor(item.id));
+  unanchored.forEach((item, index) => baseEstimates.set(item.id, item.day ?? (unanchored.length === 1 ? 180 : Math.round(35 + index * (290 / Math.max(1, unanchored.length - 1))))));
+  const scheduled = new Map<string, number>();
   const schedule = (item: CanonEventDefinition, seen = new Set<string>()): number => {
-    const existing = estimatedCanonDayCache.get(item.id);
+    const existing = scheduled.get(item.id);
     if (existing !== undefined) return existing;
-    if (seen.has(item.id)) return 180;
+    if (seen.has(item.id)) return baseEstimates.get(item.id) ?? 180;
     const nextSeen = new Set(seen); nextSeen.add(item.id);
     const prerequisites = canonEventHardPrerequisites(item.id).map((id) => CANON_EVENTS.find((candidate) => candidate.id === id)).filter((candidate): candidate is CanonEventDefinition => Boolean(candidate && candidate.year === item.year));
-    let estimate = prerequisites.length ? Math.max(item.day ?? 1, Math.max(...prerequisites.map((required) => required.dayProvenance === "原著" && required.day !== undefined ? required.day : peerIds.has(required.id) ? schedule(required, nextSeen) : 1)) + 1) : item.day ?? 180;
-    const scheduledSibling = (canonEventDependencyRule(item.id)?.siblings ?? []).map((id) => estimatedCanonDayCache.get(id)).find((day): day is number => day !== undefined);
-    if (scheduledSibling !== undefined) estimate = scheduledSibling;
-    else while (usedExactDays.has(estimate) || [...estimatedCanonDayCache.entries()].some(([id, day]) => CANON_EVENTS.find((candidate) => candidate.id === id)?.year === item.year && day === estimate)) estimate += 1;
-    estimate = Math.min(359, estimate);
-    estimatedCanonDayCache.set(item.id, estimate);
+    const prerequisiteEnd = Math.max(0, ...prerequisites.map((required) => required.dayProvenance === "原著" && required.day !== undefined ? required.day : peerIds.has(required.id) ? schedule(required, nextSeen) : 0));
+    const estimate = Math.min(359, Math.max(baseEstimates.get(item.id) ?? 180, prerequisiteEnd ? prerequisiteEnd + 1 : 1));
+    scheduled.set(item.id, estimate);
     return estimate;
   };
-  for (const item of peers.sort((left, right) => (sourceOrder.get(left.id) ?? 0) - (sourceOrder.get(right.id) ?? 0))) schedule(item);
+  for (const item of peers) schedule(item);
+  for (const item of peers) {
+    const siblingIds = (canonEventDependencyRule(item.id)?.siblings ?? []).filter((id) => peerIds.has(id));
+    if (!siblingIds.length) continue;
+    const sharedDay = Math.max(scheduled.get(item.id) ?? 1, ...siblingIds.map((id) => scheduled.get(id) ?? 1));
+    scheduled.set(item.id, sharedDay);
+    for (const id of siblingIds) scheduled.set(id, sharedDay);
+  }
+  const occupied = new Map<number, string[]>();
+  for (const item of peers) {
+    let day = scheduled.get(item.id) ?? 180;
+    let owners = occupied.get(day) ?? [];
+    while (owners.length && !owners.every((id) => (canonEventDependencyRule(item.id)?.siblings ?? []).includes(id))) {
+      day = Math.min(359, day + 1);
+      owners = occupied.get(day) ?? [];
+      if (day === 359 && owners.length) break;
+    }
+    scheduled.set(item.id, day);
+    occupied.set(day, [...owners, item.id]);
+  }
+  for (const [id, day] of scheduled) estimatedCanonDayCache.set(id, day);
   return estimatedCanonDayCache.get(event.id) ?? 180;
 }
 

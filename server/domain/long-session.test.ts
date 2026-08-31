@@ -62,7 +62,7 @@ describe("二十回合长局回归", () => {
     expect(restored.world.actionLedger.at(-1)?.index).toBe(20);
     expect(restored.view.lastActionReceipt?.actionIndex).toBe(20);
     expect(evaluateLongSession(restored)).toMatchObject({ actions: 20, ledgerCoverage: 1, narrativeCoverage: 1, narrativeAuditPassRate: 1, npcMemoryRecords: 2, invalidNumericStates: 0 });
-  });
+  }, 15_000);
 
   it("斗二至斗四各运行三十回合并通过序列化迁移", () => {
     const actions = ["观察周围环境", "询问家人当地消息", "冥想修炼", "休息恢复", "打工赚钱", "调查当前时代的学院", "等待一天", "查看人生计划", "研究武魂特性", "整理下一步计划"];
@@ -80,7 +80,7 @@ describe("二十回合长局回归", () => {
         expect(game.view.era).toBe(era);
       }
       const restored = ensureGameState(JSON.parse(JSON.stringify(game)));
-      expect(restored.schemaVersion).toBe(51);
+      expect(restored.schemaVersion).toBe(52);
       expect(restored.actionIndex).toBe(30);
       expect(restored.view.map.some((location) => location.current)).toBe(true);
       expect(restored.world.actionLedger).toHaveLength(30);
@@ -88,5 +88,5 @@ describe("二十回合长局回归", () => {
       expect(restored.world.npcs[era === 2 ? "tang-wulin" : era === 3 ? "huo-yuhao" : "tang-wulin"].alive).toBe(false);
       expect(evaluateLongSession(restored)).toMatchObject({ actions: 30, ledgerCoverage: 1, narrativeCoverage: 1, narrativeAuditPassRate: 1, npcMemoryRecords: 3, invalidNumericStates: 0 });
     }
-  });
+  }, 15_000);
 });

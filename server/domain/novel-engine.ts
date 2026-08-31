@@ -1,4 +1,5 @@
 import type { ActionResolution, StoredGame } from "./model.js";
+import { retrieveFanficCraftRules } from "../data/fanfic-craft-rules.js";
 
 export type NovelModuleId = "continuity" | "world" | "expand" | "human" | "dialogue" | "fanfic" | "goldfinger" | "character" | "emotion";
 
@@ -98,15 +99,33 @@ export function buildNovelEnginePack(game: StoredGame, playerInput: string, reso
   if (game.view.character?.specialSystem || /金手指|系统|传承|修仙|异界|血脉|吞噬|复制|模拟|签到|空间|功法|炼丹|炼器|阵法/.test(scene)) addModule(modules, "goldfinger", "行动涉及特殊体系、外来力量或成长捷径");
 
   const activeModules = [...modules].map(([id, reason]) => ({ id, reason }));
+  const craftRules = retrieveFanficCraftRules(scene);
   const prompt = [
     "内部小说引擎已启用。以下内容只约束写法，不得出现在正文中，也不得覆盖 fixedRuleResult。",
     ...activeModules.flatMap(({ id }) => [`[${id}]`, ...MODULE_RULES[id].map((rule) => `- ${rule}`)]),
+    "[fanfic-craft-reference]",
+    "以下是从公开免费同人样本提炼的结构规则，只学习节奏与因果，不模仿或复述样本文字：",
+    ...craftRules.map((rule) => `- ${rule.instruction}`),
   ].join("\n");
   return { enabled: true, activeModules, prompt };
 }
 
 function narrationOutsideDialogue(text: string): string {
   return text.split(/([“][\s\S]*?[”])/g).filter((_part, index) => index % 2 === 0).join("");
+}
+
+function normalizedMoneyClaims(text: string): string[] {
+  const digits: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  const numberValue = (token: string): number => {
+    if (/^\d+$/.test(token)) return Number(token);
+    if (token.includes("千")) { const [head, rest = ""] = token.split("千"); return (digits[head] ?? 1) * 1_000 + (rest ? numberValue(rest.replace(/^零/, "")) : 0); }
+    if (token.includes("百")) { const [head, rest = ""] = token.split("百"); return (digits[head] ?? 1) * 100 + (rest ? numberValue(rest.replace(/^零/, "")) : 0); }
+    if (token.includes("十")) { const [head, rest = ""] = token.split("十"); return (head ? digits[head] ?? 0 : 1) * 10 + (rest ? digits[rest] ?? 0 : 0); }
+    return digits[token] ?? Number.NaN;
+  };
+  return [...text.matchAll(/([零一二两三四五六七八九十百千\d]+)\s*个?\s*(铜魂币|银魂币|金魂币)/g)]
+    .map((match) => `${numberValue(match[1])}:${match[2]}`)
+    .filter((claim) => !claim.startsWith("NaN:"));
 }
 
 export function auditNovelEngineNarrative(game: StoredGame, text: string, pack: NovelEnginePack): string[] {
@@ -116,7 +135,11 @@ export function auditNovelEngineNarrative(game: StoredGame, text: string, pack: 
   if (/(玩家|主角|程序判定|固定结果|规则包|小说引擎|写作模块|语言模型|系统替|AI|技能)/i.test(outside)) issues.push("正文泄露后台叙事机制");
   if (/[✦✨◆●▪★◇❖➤]/.test(text)) issues.push("正文含有装饰符号");
   if (/(他|她|\S{1,4})(感到|感觉到|内心充满|心中涌起)(非常|无比|极其|十分)?(愤怒|悲伤|痛苦|震惊|失望|委屈|喜悦)/.test(outside)) issues.push("正文直接喊出情绪而没有外显");
-  if (/生活总是|人生就是|命运总会|这是一个.{0,12}的时代/.test(outside)) issues.push("正文出现空泛升华");
+  if (/把.{0,8}(?:旧布包|布面书袋).{0,8}往肩上一甩|拍了拍裤腿.{0,4}灰|声音不大.{0,4}(?:很稳|但稳)|没料到.{0,6}岁的孩子会这样问|步子比来时.{0,4}(?:稳|慢)|这只是个开始|只是个开始/.test(text)) issues.push("正文使用跨场景重复的AI库存动作或转折");
+  if (/(唐神王|取死之道|已有成神之姿|开历史倒车|某位带队斗罗|论坛都说|原著党|黑粉|舔唐三|不愧是主角团)/.test(text)) issues.push("正文把读者梗、论坛黑称或作者吐槽塞进故事世界");
+  if (/(院长|宗主|封号斗罗|超级斗罗|教皇|海神阁阁主).{0,18}(亲自|立即|当天|直接).{0,18}(上门|赶来|收徒|邀请|送来)/.test(text) && !/(目击|复测|上报|传讯|推荐信|邀请函|约定|登记)/.test(text)) issues.push("高位人物反应缺少目击、上报、路程或权限链");
+  const ending = outside.slice(-100);
+  if (/生活总是|人生就是|命运总会|这是一个.{0,12}的时代|命运的齿轮|时代的浪潮|路还很长|这条路.{0,8}(?:才刚开始|还要走很久)|至少.{0,12}(?:知道|明白)了/.test(ending)) issues.push("正文出现空泛升华或总结式收尾");
   if ((pack.activeModules.some((module) => module.id === "goldfinger")) && /(?:从此|现在|已经|可以|能够|变得).{0,12}(?:毫无代价|无需任何代价|无条件使用|无限使用|立刻掌握全部|自动完成)/.test(text)) issues.push("特殊体系被写成无代价万能能力");
   if (game.view.character && new RegExp(`${game.view.character.name}.{0,16}(替玩家|自行决定重大选择)`).test(outside)) issues.push("正文替玩家作出重大决定");
   return issues;
@@ -124,11 +147,11 @@ export function auditNovelEngineNarrative(game: StoredGame, text: string, pack: 
 
 const ACTION_FULFILLMENT_FAMILIES: Array<{ input: RegExp; evidence: RegExp; label: string }> = [
   { input: /测试|试验|试用|感应|召出|催动/, evidence: /测试|试了|试着|感应|显形|浮现|召出|催动|运转|收回/, label: "测试或试用" },
-  { input: /修炼|冥想|练功|复练/, evidence: /修炼|冥想|运转魂力|练了|复练|周天/, label: "修炼" },
-  { input: /休息|睡觉|疗伤|恢复/, evidence: /休息|睡|合眼|疗伤|处理伤势|恢复/, label: "休息或恢复" },
+  { input: /修炼|冥想|练功|复练|体能训练|基础训练/, evidence: /修炼|冥想|运转魂力|引导魂力|魂力.{0,10}(?:流转|流动|沿着|运行)|盘膝|吐纳|闭目调息|跑步|负重|拉伸|深蹲|俯卧|练体能|练了|复练|周天/, label: "修炼" },
+  { input: /休息|睡觉|疗伤|恢复/, evidence: /休息|睡|合眼|闭上眼|躺下|上床|歇下|歇息|放松|疗伤|处理伤势|恢复/, label: "休息或恢复" },
   { input: /前往|去往|出发|赶路|回到|回住处/, evidence: /前往|去往|出发|赶路|回到|走进|抵达|进了/, label: "移动" },
   { input: /询问|打听|请教|交谈|告诉|问清/, evidence: /问|询问|打听|请教|交谈|告诉|回答|说/, label: "交谈或询问" },
-  { input: /调查|搜索|查找|核验|研究/, evidence: /调查|搜索|查找|核验|翻查|研究|确认/, label: "调查或核验" },
+  { input: /调查|搜索|查找|核验|研究/, evidence: /调查|搜索|查找|核验|翻查|翻看|研究|确认|走访|询问|打听|问过|查看|核对|查阅|问清|走到.{0,10}(?:告示|报名处|柜台|窗口)|(?:告示|价目|报名表).{0,10}(?:读完|看完|记下)/, label: "调查或核验" },
   { input: /购买|采购|买下|付钱/, evidence: /购买|买下|采购|付了|付款|成交/, label: "购买" },
   { input: /攻击|战斗|防御|闪避|逃跑|刺杀/, evidence: /攻击|出手|战斗|防御|挡住|闪避|躲开|逃/, label: "战斗动作" },
   { input: /猎魂|猎杀魂兽|追踪魂兽|吸收魂环/, evidence: /猎魂|魂兽|追踪|猎杀|魂环|吸收/, label: "猎魂" },
@@ -165,6 +188,7 @@ function auditPlayerActionOwnership(text: string, playerInput: string, resolutio
     { decision: /决定|答应|同意|选择|打算/, action: /加入.{0,8}(?:学院|宗门|势力)/, allowed: /加入|入学|投靠/ },
     { decision: /决定|答应|同意|选择|打算/, action: /(?:公开|说出|透露).{0,8}(?:武魂|秘密|身份)/, allowed: /公开|说出|透露/ },
     { decision: /决定|答应|同意|选择|打算/, action: /(?:去往|前往|赶去).{0,10}(?:议事堂|学院|宗门|猎魂地点|魂兽森林)/, allowed: /去往|前往|赶去|出发|回住处/ },
+    { decision: /决定|打算|想/, action: /去不去(?:学院)?|是否入学|要不要入学/, allowed: /接受.*入学|决定.*入学|拒绝.*入学|去不去/ },
   ].find((item) => text.split(/[。！？\n]/).some((sentence) => item.decision.test(sentence) && item.action.test(sentence)) && !item.allowed.test(authorized));
   if (unauthorizedDecision) issues.push("正文替玩家作出了程序结果之后的新增重大决定");
   return issues;
@@ -196,12 +220,61 @@ export function auditResolutionAlignment(text: string, resolution: ActionResolut
   const requirement = requiredByIntent.find(([intent]) => intent.test(resolution.intent));
   const issues = requirement && !requirement[1].test(text) ? [requirement[2]] : [];
   issues.push(...auditPlayerActionOwnership(text, playerInput, resolution));
+  if (/修炼|冥想/.test(resolution.intent) && !/猎魂|第一魂环|魂兽/.test(resolution.ruleSummary) && /带(?:你|他|她).{0,8}猎魂|帝国那边回话|帝国回函|猎魂区.{0,18}(?:名字|路线|等级)|我可以带(?:你|他|她)去猎魂/.test(text)) issues.push("单纯修炼回合凭空推进了猎魂支持、回函或路线");
+  if (/休息|恢复|家庭与日常生活|打工|普通调查|调查指定对象/.test(resolution.intent)
+    && !/会议|录取|拜师|猎魂邀请|培养安排|复测/.test(resolution.ruleSummary)
+    && /(?:被叫去|传唤到|赶到|走进).{0,12}(?:议事堂|培养会议)|(?:录取通知|导师邀请|猎魂邀请|帝国回函).{0,12}(?:送到|递来|摆在)/.test(text)) {
+    issues.push("普通行动被无关会议、录取、导师或猎魂新任务抢走");
+  }
+  if (/无法完成|规则阻止/.test(resolution.intent) && /不能|不计入|没有资格|未授权/.test(resolution.ruleSummary)) {
+    if (/进入|坐进|钻进|爬进/.test(text) && /模拟舱|驾驶舱/.test(text) && /推动操纵杆|开始模拟|完成第.{0,4}次训练|进度.{0,8}%/.test(text)) issues.push("规则已阻止训练，正文却仍让玩家进舱操作或生成训练记录");
+    if (/抽出|递给|扔到.{0,6}面前|揣进怀里|带回家/.test(text) && /教材|薄册|课程表|训练册/.test(text) || /报名费.{0,12}(?:魂币|金魂币)|可以帮你引荐|先给你免费/.test(text)) issues.push("被阻止的训练回合凭空获得教材、报价、引荐或免费特例");
+    if (/正要找你|上头让我|跟我回.{0,10}觉醒|回觉醒室.{0,12}补测|记录要补全/.test(text)) issues.push("被阻止的日常行动被无关NPC来访和觉醒补测抢走");
+  }
+  if (!/不可变更|退出赔付|违约赔付|中途退出/.test(resolution.ruleSummary) && /定了就不能改|中途退出要赔|退出必须赔/.test(text)) issues.push("正文凭空为奖助、学院或培养路线新增不可变更与赔付合同");
   if (game) {
     const knownNames = new Set([game.view.character?.name ?? "", ...game.view.relations.map((item) => item.name), ...game.view.knownFigures.map((item) => item.name), ...Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer).map((npc) => npc.name)]);
     const inventedRoleName = [...text.matchAll(/([\u4e00-\u9fff]{1,3})(长老|老师|导师|教官|执事|主教|院长)/g)]
-      .map((match) => `${match[1]}${match[2]}`)
-      .find((name) => !/一名|那名|那位|这名|这位|负责|守碑|传功|学院|宗门|当班/.test(name) && ![...knownNames].some((known) => known.includes(name) || name.includes(known)) && !resolution.ruleSummary.includes(name) && !playerInput.includes(name));
+      .map((match) => {
+        const rawPrefix = match[1];
+        const strippedPrefix = rawPrefix.replace(/^(?:(?:问问|询问|请教|寻找|找到|一名|一位|一个|那名|那位|这名|这位|定下|决定|安排|没有|并无|自然有|本来有|他|她|我|你|去|来|再|先|想|要|能|会|把|找|问|请|向|看|见|跟|和|替|帮|给|带))+/, "");
+        const precedingCharacter = match.index === undefined || match.index === 0 ? "" : text[match.index - 1];
+        if (/^[\u4e00-\u9fff]$/.test(precedingCharacter) && strippedPrefix === rawPrefix) return "";
+        if (!strippedPrefix || /^(有|由|让|能|会|需|要|没有|并无|私人|家族|武魂殿|决定|选择|合适|适合|负责|学院|宗门|当班|巡查)/.test(strippedPrefix)) return "";
+        return `${strippedPrefix}${match[2]}`;
+      })
+      .find((name) => {
+        if (!name || /守碑|传功|那天|当天|今天|昨天|明天/.test(name)) return false;
+        if ([...knownNames].some((known) => known.includes(name) || name.includes(known)) || resolution.ruleSummary.includes(name) || playerInput.includes(name)) return false;
+        const role = name.match(/(长老|老师|导师|教官|执事|主教|院长)$/)?.[1] ?? "";
+        const prefix = role ? name.slice(0, -role.length) : "";
+        const isKnownRoleAlias = Boolean(prefix && (game.view.relations.some((relation) => relation.name.startsWith(prefix) && `${relation.relation}${relation.impression}${relation.faction ?? ""}`.includes(role))
+          || (/老师|导师/.test(role) && (game.view.mentorPursuit?.mentorName.startsWith(prefix) || game.view.academyLife?.teacherName.startsWith(prefix)))));
+        return !isKnownRoleAlias;
+      });
     if (inventedRoleName) issues.push(`正文凭空增加未登记人物${inventedRoleName}`);
+    const workStudyEstablished = game.view.academyApplication?.fundingType === "工读抵扣" || game.view.affiliations.some((item) => /工读/.test(`${item.role}${item.reputation}`));
+    if (!workStudyEstablished && /(?:按规矩|必须|只能|得).{0,12}(?:先.{0,8})?(?:谈|争|申请|找).{0,8}工读名额|先找.{0,12}工读名额/.test(text)) issues.push("正文把尚未选择的工读路线写成默认前置");
+    if (!/安排猎魂|承担猎魂|带队猎魂/.test(resolution.ruleSummary) && /(?:等|由|让).{0,8}(?:武魂分殿|地方分殿|武魂殿).{0,8}(?:安排|负责|带队).{0,6}猎魂/.test(text)) issues.push("正文凭空承诺武魂殿安排猎魂");
+    if (/武魂殿.{0,10}(?:管不了|不管|无权管).{0,8}猎魂|猎魂.{0,8}(?:只能|必须|全得).{0,12}(?:靠|找)(?:宗门|学院)/.test(text)) issues.push("正文把武魂殿凭证职责或其他猎魂路线错误排除");
+    const familyFacts = `${game.view.character?.originSummary ?? ""}${game.view.character?.knownBackground ?? ""}${game.view.relations.map((item) => `${item.relation}${item.name}`).join("；")}`;
+    if (/爹娘|父母|双亲|爸妈/.test(text) && !(/父/.test(familyFacts) && /母/.test(familyFacts))) issues.push("正文把未登记的双亲写进当前家庭");
+    const innateDigits: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+    const claimedInnate = text.match(/先天(?:魂力)?(?:为|是|只有|达到|到了|魂力)?\s*([0-9]+|[零一二两三四五六七八九十])\s*级/)?.[1];
+    const claimedInnateValue = claimedInnate ? (/^\d+$/.test(claimedInnate) ? Number(claimedInnate) : innateDigits[claimedInnate]) : undefined;
+    if (claimedInnateValue !== undefined && claimedInnateValue !== game.view.character?.innateSoulPower) issues.push("正文写错当前角色的先天魂力");
+    if (/程序没有|当前只是|本次没有自动|只是具体条件|不等于已经无条件|没有自动获得/.test(text)) issues.push("正文照抄规则结算或审校口吻");
+    const authorizedMoney = `${playerInput} ${resolution.ruleSummary} 当前钱袋${game.view.character?.coins ?? 0}铜魂币 ${game.view.academyApplication ? `学院程序费用${game.view.academyApplication.fee}铜魂币` : ""}`;
+    const allowedMoneyClaims = new Set(normalizedMoneyClaims(authorizedMoney));
+    if (normalizedMoneyClaims(text).some((claim) => !allowedMoneyClaims.has(claim))) issues.push("正文凭空补造程序未结算的精确金额");
+    if (!/(?:明天|后天|今晚|今日|今天|下午|傍晚|辰时|午时|申时)/.test(`${playerInput} ${resolution.ruleSummary}`)
+      && /(?:明天|后天|今晚|今日|今天|下午|傍晚|辰时|午时|申时).{0,18}(?:来找|再来|见面|报到|集合|开课|试学|训练)/.test(text)) issues.push("正文凭空约定程序未结算的未来时间");
+    const claimedDay = text.match(/第([0-9一二三四五六七八九十两百]+)日/)?.[1];
+    if (claimedDay) {
+      const digits: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+      const parsedDay = /^\d+$/.test(claimedDay) ? Number(claimedDay) : claimedDay === "十" ? 10 : claimedDay.startsWith("十") ? 10 + (digits[claimedDay[1]] ?? 0) : claimedDay.endsWith("十") ? (digits[claimedDay[0]] ?? 0) * 10 : digits[claimedDay];
+      if (parsedDay && parsedDay !== (game.view.worldTime?.day ?? 1) && !/记录|日记|档案|旧事|回想/.test(text.slice(Math.max(0, (text.indexOf(`第${claimedDay}日`) - 30)), text.indexOf(`第${claimedDay}日`) + 40))) issues.push("正文凭空写入与当前世界时间不符的日序");
+    }
 
     const originalSouls = game.view.character?.martialSouls.filter((soul) => soul.sourceEra === "原创" || soul.sourceEra === "局外") ?? [];
     const allowedMechanics = `${resolution.ruleSummary} ${originalSouls.map((soul) => soul.description).join(" ")}`;

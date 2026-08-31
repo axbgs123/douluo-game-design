@@ -365,7 +365,7 @@ export function storyArcSuggestions(game: StoredGame): string[] {
     const peer = game.view.academyLife?.peers[0];
     return boundedSuggestions([game.view.academyLife?.stage === "入学安顿" ? game.view.academyLife.arrivalAction : "完成下一项课程或导师训练", peer ? `回应${peer.name}的同组训练请求` : "和导师谈上次训练的偏差", "问清隐藏武魂会被谁知道"]);
   }
-  if (arc.earlyGrowthPhase === "培养路线") return boundedSuggestions(["推进学院申请或导师试学", "和监护人比较费用与长期责任", "保留拒绝当前路线的选择"]);
+  if (arc.earlyGrowthPhase === "培养路线") return boundedSuggestions(["推进学院申请或导师试学", "和监护人比较费用与长期责任", "拒绝当前培养条件，暂不作出归属承诺"]);
   const era = game.view.era ?? 1;
   const profile = ERA_OPENING[era];
   const pendingNpc = arc.npcScenes.find((scene) => scene.status === "等待回应");

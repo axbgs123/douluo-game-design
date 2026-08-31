@@ -219,6 +219,9 @@ export function violatesCanonChronology(text: string, year: number): boolean {
   if (year < 8 && /(全大陆高级魂师学院精英大赛|魂师大赛).{0,20}(已经|夺冠|结束|决赛)/.test(compact)) return true;
   if (year < 12 && /(唐门).{0,12}(已经建立|成立|宗主|总部|弟子招募)/.test(compact)) return true;
   const era = year >= 25_000 ? 4 : year >= 15_000 ? 3 : year >= 5_000 ? 2 : 1;
+  const activeSpiritHallInstitution = /(?:武魂殿.{0,4}执事|武魂殿分殿).{0,16}(?:负责|主持|登记|上报|招揽|询问|找|拜访|请教|走来|来访)|(?:负责|主持|登记|上报|招揽|询问|找|拜访|请教|穿着).{0,16}(?:武魂殿.{0,4}执事|武魂殿分殿|武魂殿制服)|穿着武魂殿制服|胸前别着武魂殿徽章/.test(compact);
+  if (era >= 2 && activeSpiritHallInstitution && !/(?:旧|当年|历史|遗址|记录|曾经).{0,12}(?:武魂殿执事|武魂殿分殿)/.test(compact)) return true;
+  if (era >= 2 && /素云涛/.test(compact) && !/旧|当年|历史|记载|故事/.test(compact)) return true;
   const unavailableTechnology = era === 1
     ? "斗铠|机甲|星舰|宇宙飞船|传灵塔|升灵台|定装魂导炮|魂导汽车|记者|责任编辑|编辑部|媒体联盟|新闻机构|报社|报刊|报纸|新闻台|媒体报道"
     : era === 2
@@ -258,9 +261,35 @@ export function auditNarrative(game: StoredGame, text: string, options: { exclud
   const outside = narrationOutsideDialogue(text);
   if (/(^|[。！？\n])\s*我/.test(outside) || /我的/.test(outside)) issues.push("正文出现第一人称叙述");
   if (/(玩家|主角|程序判定|固定结果|规则包|小说引擎|写作模块|语言模型|系统替|AI)/i.test(outside)) issues.push("正文泄露后台叙事称谓");
-  if (/(^|[。！？\n])\s*(首先|其次|最后)[，,:：]|值得注意的是|这意味着|本质上|总而言之|综上所述|不是.{0,18}而是/.test(text)) issues.push("正文含有模板化表达");
+  const contrastTemplates = text.match(/不是.{0,18}而是/g) ?? [];
+  if (/(^|[。！？\n])\s*(首先|其次|最后)[，,:：]|值得注意的是|这意味着|本质上|总而言之|综上所述/.test(text) || contrastTemplates.length >= 2) issues.push("正文含有模板化表达");
   if (violatesCanonChronology(text, game.view.worldTime?.year ?? 0)) issues.push("正文违反当前时代或原作时间线");
+  const openingInstitution = String(game.world.flags.openingInstitutionName ?? "");
+  const openingInstitutionIsCanon = FACTIONS.some((faction) => faction.name === openingInstitution && faction.provenance !== "原创");
+  const originalEntityNames = [...new Set([
+    game.view.character?.originName,
+    !openingInstitutionIsCanon ? openingInstitution : undefined,
+    ...(game.view.character?.martialSouls ?? []).filter((soul) => soul.sourceEra === "原创" || soul.sourceEra === "局外").map((soul) => soul.name),
+  ].filter((name): name is string => Boolean(name && name.length >= 2)))];
+  const canonClaim = "(?:原著(?:中|里|明确|记载)?|原作(?:中|里|明确|记载)?|原文|正史|大陆(?:公认|皆知)|史书(?:明确)?记载|典籍(?:明确)?记载)";
+  if (originalEntityNames.some((name) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`${canonClaim}.{0,20}${escaped}|${escaped}.{0,20}${canonClaim}`).test(text);
+  })) issues.push("正文把同人原创身世、机构或武魂写成原著既有事实");
+  const displacedRelic = game.view.activeHeirloom;
+  if (displacedRelic?.canonImpact && displacedRelic.displacedOwnerNames?.some((owner) => {
+    const escapedOwner = owner.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedRelic = displacedRelic.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?:${escapedOwner}.{0,20}(?:持有|拿出|得到|获得|收起|使用|驾驶|送出|送给).{0,16}${escapedRelic}|${escapedRelic}.{0,16}(?:被|由).{0,8}${escapedOwner}.{0,8}(?:持有|拿出|得到|获得|收起|使用|驾驶|送出|送给))`).test(text);
+  })) issues.push(`正文忽略唯一物所有权偏转，让原著旧持有人重新拥有${displacedRelic.name}`);
+  const hostileEscalationEstablished = Number(game.world.flags.talentThreatStage ?? 0) >= 2
+    || game.world.dynamicEvents.some((event) => /暗杀|绑架|刺客|杀手/.test(`${event.title}${event.detail}`) && event.status === "可介入")
+    || game.world.intelligenceRecords.some((record) => record.confidence >= 60 && /暗杀|绑架|刺客|杀手/.test(`${record.title}${record.detail}`));
+  if (!hostileEscalationEstablished && /(?:远方势力|陌生刺客|蒙面杀手|黑衣杀手).{0,24}(?:潜入|袭来|破门|动手|截杀|掳走)|(?:潜入|袭来|破门|截杀|掳走).{0,24}(?:刺客|杀手)/.test(text)) {
+    issues.push("正文在消息传播、威胁评估和行动资源成立前凭空发动远程暗杀或绑架");
+  }
   if ((game.view.era ?? 1) === 1 && /识海|精神之海|意识海/.test(text) && !allowsForeignCultivationVocabulary(game)) issues.push("斗一正文倒灌了后世精神空间术语");
+  if ((game.view.era ?? 1) === 1 && /魂导笔|半月板|膝盖内扣/.test(text)) issues.push("斗一正文使用了后世教具或现代训练医学术语");
   const hasUnlockedPlotMemory = /剧情记忆|原作记忆|穿越者.*记得|现代世界.*原作/.test(`${game.view.character?.selfKnowledge ?? ""}${game.view.character?.knownBackground ?? ""}`);
   if (!hasUnlockedPlotMemory) {
     const unknownCanonFigure = CANON_CHARACTERS.find((definition) => {
@@ -306,14 +335,16 @@ export function auditNarrative(game: StoredGame, text: string, options: { exclud
   const repeatedSentences = text.split(/[。！？\n]/).map((item) => item.replace(/\s+/g, "").trim()).filter((item) => item.length >= 16 && recentNarrative.replace(/\s+/g, "").includes(item));
   if (new Set(repeatedSentences).size >= 2) issues.push("正文重复近期已经出现的多句完整叙述");
   if ((game.view.academyLife || game.view.hunting?.support || game.view.mentorPursuit?.stage === "已拜师") && /(?:再次|又一次|重新).{0,8}(?:复测觉醒|登记觉醒|核对觉醒水晶)/.test(text)) issues.push("成长阶段已经推进，正文却重复觉醒复测流程");
-  if (/先天满魂力|水晶球.{0,20}(?:冲到顶|完全亮起)/.test(text) && !/停笔|复测|上报|登记|招揽|议论|围观|惊|愣|僵|变色|叫停/.test(text)) {
+  const liveAwakeningScene = /(?:走进|踏进|站进|进入).{0,12}(?:觉醒室|觉醒阵)|(?:主持|开始|进行).{0,8}觉醒|手掌.{0,12}水晶|水晶球.{0,20}(?:冲到顶|完全亮起)/.test(text);
+  const rememberedAwakeningScene = /(?:想起|记得|回想|回忆).{0,36}(?:觉醒那天|水晶球|先天满魂力)|(?:当年|那天|旧记录).{0,24}(?:觉醒|水晶球|先天满魂力)/.test(text);
+  if (liveAwakeningScene && !rememberedAwakeningScene && /先天满魂力|水晶球.{0,20}(?:冲到顶|完全亮起)/.test(text) && !/停笔|复测|上报|登记|招揽|议论|围观|惊|愣|僵|变色|叫停/.test(text)) {
     issues.push("异常觉醒结果没有引发负责觉醒的人、同行长辈或围观者的具体反应");
   }
   if (text.length > 4800) issues.push("单次正文过长");
   return issues;
 }
 
-const GENERIC_SUGGESTION = /^(?:查看地图|查看新事件|观察周围|继续行动|想办法|保持谨慎|深入了解|进一步探索|先做准备|暂时退开|了解情况|把眼前的事情做完|回应身边正在等的人|转去推进当前人生目标)[。！]?$/;
+const GENERIC_SUGGESTION = /^(?:查看地图|查看新事件|观察周围|继续行动|想办法|保持谨慎|深入了解|进一步探索|先做准备|暂时退开|了解情况|把眼前的事情做完|回应身边正在等的人|转去推进当前人生目标|保留拒绝当前路线的选择)[。！]?$/;
 
 function normalizedSuggestion(value: string): string {
   return value.replace(/[，。！？、；：\s]/g, "").replace(/^(?:先|尝试|主动|立即|继续)/, "");
@@ -584,8 +615,25 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
     game.view.mentorPursuit ? `导师关系：${game.view.mentorPursuit.mentorName}·${game.view.mentorPursuit.stage}，未到已拜师不得写成师徒` : undefined,
   ].filter((item): item is string => Boolean(item));
   const originalEntities = (game.view.character?.martialSouls ?? []).filter((soul) => (soul.sourceEra === "原创" || soul.sourceEra === "局外") && (publicNames.includes(soul.name) || playerInput.includes(soul.name) || resolution.ruleSummary.includes(soul.name)));
-  const originalEntityFacts = originalEntities.map((soul) => `${soul.name}：${soul.category}；${soul.description}`);
+  const originalOriginFact = game.view.character
+    ? `玩家身世“${game.view.character.originName}”及其具体家庭、监护关系、微地点与原创机构：同人原创存档事实；在本局真实成立，但不能宣称原著出现过该玩家身份或这些新增细节`
+    : undefined;
+  const activeHeirloomFact = game.view.activeHeirloom
+    ? `本局遗物“${game.view.activeHeirloom.name}”：来源边界${game.view.activeHeirloom.provenance ?? "未登记"}；${game.view.activeHeirloom.description}；效果仅限“${game.view.activeHeirloom.effect}”${game.view.activeHeirloom.canonImpact ? `；唯一物所有权偏转：${game.view.activeHeirloom.canonImpact}，原著旧持有人不能在未重新取得前同时持有` : ""}；具体同人新增名称不得冒充原著实体`
+    : undefined;
+  const originalEntityFacts = [originalOriginFact, activeHeirloomFact, ...originalEntities.map((soul) => `${soul.name}：${soul.category}；${soul.description}`)].filter((item): item is string => Boolean(item));
   const privateSoulName = hiddenNames.find((name) => playerInput.includes(name) || resolution.ruleSummary.includes(name)) ?? hiddenNames[0];
+  const actionExecutionBeat = /修炼|冥想|练功|复练/.test(playerInput)
+    ? "开篇让主角实际盘膝、调息或引导魂力运行，并在前两段出现身体与魂力反馈"
+    : /接受.*入学|确认.*入学|正式入学/.test(playerInput)
+      ? "开篇让主角亲口确认接受入学安排，并立即呈现登记、费用来源或负责老师中的程序结果"
+      : /拜师|拜.*为师/.test(playerInput)
+        ? "开篇让主角当面提出并完成本次拜师确认，再写导师依据试学证据作出的回应"
+        : /调查|搜索|查找|核验/.test(playerInput)
+          ? "开篇让主角亲自走访、翻查、询问或交叉核对，并在前半段取得程序已经结算的调查结果"
+          : /询问|问清|请教|商量/.test(playerInput)
+            ? "开篇让主角向明确对象问出本次问题，并在前半段得到符合对方知识和权限的回答"
+            : `开篇直接执行“${playerInput.trim()}”，不要先写另一个场景或上一轮回顾`;
   const generationContract: NarrativeLogicPacket["generationContract"] = privateSolitaryAction ? {
     sceneGoal: `只完成${privateSoulName ? `隐藏武魂${privateSoulName}` : "隐藏力量"}的本次私下短测，不处理培养会议或其他任务`,
     requiredBeats: [
@@ -601,7 +649,7 @@ export function buildNarrativeLogicPacket(game: StoredGame, playerInput: string,
     originalEntityBoundary: originalEntityFacts.length ? `以下是同人原创/局外实体而非原著实体，只能按已声明事实描写：${originalEntityFacts.join("；")}` : "本场没有需要扩写的原创实体；不得自行创建原著不存在的体系",
   } : {
     sceneGoal: `完成玩家行动“${playerInput.trim()}”及程序固定结果，不扩展下一项重大行动`,
-    requiredBeats: ["正文前半段呈现玩家动作的可见执行证据", "呈现fixedConsequence对应的结果证据", "只写现场人物基于亲历、利益和权限产生的直接反应", "结尾停在本次状态变化或玩家可决定的下一步"],
+    requiredBeats: [actionExecutionBeat, "呈现fixedConsequence对应的结果证据", "只写现场人物基于亲历、利益和权限产生的直接反应", "结尾停在本次状态变化或玩家可决定的下一步"],
     allowedFacts: [resolution.ruleSummary, ...originalEntityFacts, `随身物品仅限：${game.view.inventory.join("、") || "无"}`, ...sceneKnowledge.entries.slice(0, 12).map((entry) => `${entry.name}：${entry.fact}`)],
     forbiddenClaims: ["改变程序胜负、时间、资源、关系、伤势或任务结果", "新增未持有物品、未结算能力或未知NPC", "让原创实体冒充原著实体或大陆公认体系", "替玩家执行fixedConsequence之后的新决定"],
     endingBoundary: "完成本次结果后停止；下一项重大行动只能成为建议，不能写进正文已经发生",
@@ -667,6 +715,9 @@ export function auditNarrativeLogicPacket(packet: NarrativeLogicPacket): string[
 }
 
 export function sanitizeNarrativeSuggestions(game: StoredGame, suggestions: string[], fallback: string[]): string[] {
+  const childManagerLanguage = (game.view.character?.age ?? 99) <= 10
+    ? /主持.{0,8}(?:会议|听证|谈判)|部署.{0,8}(?:全局|人手|资源)|审批|资源配置|问责机制|治理方案|召集.{0,8}(?:高层|长老会)|接管.{0,8}(?:机构|部门)/
+    : /$a/;
   const sanitize = (items: string[]) => items
     .map((item) => item.trim())
     .filter(Boolean)
@@ -675,19 +726,31 @@ export function sanitizeNarrativeSuggestions(game: StoredGame, suggestions: stri
     .filter((item) => !violatesCanonChronology(item, game.view.worldTime?.year ?? 0))
     .filter((item) => !/直接获得|必定成功|保证成功|无代价|立刻成神/.test(item))
     .filter((item) => !/指出第一处缺陷/.test(item))
+    .filter((item) => !childManagerLanguage.test(item))
     .filter((item) => !GENERIC_SUGGESTION.test(item))
     .filter((item) => !leaksUnavailableKnowledge(game, item));
   const liveAi = sanitize(suggestions);
   const arcSuggestions = sanitize(storyArcSuggestions(game));
   const grounded = sanitize(groundedNarrativeSuggestions(game));
   const ordered = [...liveAi, ...arcSuggestions, ...grounded, ...sanitize(fallback)];
-  const result: string[] = [];
+  const unique: string[] = [];
   for (const item of ordered) {
-    if (result.some((existing) => isNearDuplicate(existing, item))) continue;
-    result.push(item);
-    if (result.length === 3) break;
+    if (unique.some((existing) => isNearDuplicate(existing, item))) continue;
+    unique.push(item);
   }
-  return result;
+  const vector = (item: string) => /隐藏|保密|拒绝|撤回|暂缓|退路|撤退|风险|暴露/.test(item) ? "risk"
+    : /和|向|请|询问|商量|告诉|联系|拜访|谈清|追问/.test(item) ? "relation"
+      : /修炼|训练|学习|课程|测试|魂环|材料|制作|准备|核对|调查|比较/.test(item) ? "growth" : "other";
+  const result: string[] = [];
+  for (const kind of ["growth", "relation", "risk"]) {
+    const item = unique.find((candidate) => vector(candidate) === kind && !result.includes(candidate));
+    if (item) result.push(item);
+  }
+  for (const item of unique) {
+    if (result.length >= 3) break;
+    if (!result.includes(item)) result.push(item);
+  }
+  return result.slice(0, 3);
 }
 
 function consequenceTone(result: ActionResolution): StoryConsequenceView["tone"] {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { awakenCharacter, createEraSuccessor, createGame, finalizeCharacterShaping, META_ORIGIN_POOL, rerollCandidates, selectCandidate } from "./domain/generator.js";
 import { createHiddenWorld, ensureGameState } from "./domain/world.js";
+import { CANON_EVENTS, canonEventSimulationDay } from "./data/world.js";
 
 const testDirectoryPrefix = join(tmpdir(), "douluo-db-test-");
 const testDirectory = mkdtempSync(testDirectoryPrefix);
@@ -49,6 +50,16 @@ describe("存档数据库", () => {
     const result = database.drawMetaMartialSoul(() => 0.01);
     expect(result.kind).toBe("heirloom");
     if (result.kind === "heirloom") expect(result.meta.unlockedHeirlooms).toContain(result.drawn.name);
+  });
+
+  it("migrates generic legacy relic names to Douluo-grounded definitions", () => {
+    const meta = database.getMetaProgression();
+    meta.unlockedHeirlooms = ["因果残线", "岁月锚钉", "魂环量尺", "高阶魂师引荐函"];
+    meta.equippedHeirloom = "因果残线";
+    database.saveMetaProgression(meta);
+    const migrated = database.getMetaProgression();
+    expect(migrated.unlockedHeirlooms).toEqual(expect.arrayContaining(["外附魂骨·护心甲", "万年头部魂骨·凝神", "武魂殿猎魂森林手令", "同人机缘·超限神赐魂环"]));
+    expect(migrated.equippedHeirloom).toBe("外附魂骨·护心甲");
   });
 
   it("summons only purple-or-better origins, includes rainbow origins, and applies the full origin to a reusable opening", () => {
@@ -244,7 +255,8 @@ describe("存档数据库", () => {
 
   it("retrieves era-valid canon personality, timeline, faction, and social logic without leaking unknown characters", () => {
     const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "canon-vector-retrieval" });
-    game.view.worldTime = { era: "斗罗大陆", year: 0, day: 31, time: "08:00", season: "春" };
+    game.world.firedCanonEvents.push("xiao-wu-notting-meeting");
+    game.view.worldTime = { era: "斗罗大陆", year: 0, day: canonEventSimulationDay(CANON_EVENTS.find((event) => event.id === "xiao-wu-notting-meeting")!), time: "08:00", season: "秋" };
     game.view.knownFigures.push({ id: "tang-san", name: "唐三", knownPower: "觉醒阶段", location: "圣魂村", status: "已知", source: "亲眼见过" });
     game.view.knownFigures.push({ id: "xiao-wu", name: "小舞", knownPower: "新生", location: "诺丁学院", status: "已知", source: "亲眼见过" });
     const knowledge = database.retrieveCanonKnowledge(game, "唐三原作0年先天满魂力觉醒阶段的实力、性格、目标；唐三和小舞如何相处；与唐三建立信任的人际逻辑", 20);
@@ -255,6 +267,21 @@ describe("存档数据库", () => {
     const academyKnowledge = database.retrieveCanonKnowledge(game, "诺丁学院工读生和普通学员的宿舍、班主任、课程与第一魂环猎魂手令", 20);
     expect(academyKnowledge.some((item) => item.kind === "academy-system" && item.subjectId === "d1-early-academy" && item.metadata.provenance === "原著归纳")).toBe(true);
     expect(database.getModelUsage().canonKnowledgeVectors).toBeGreaterThan(100);
+  });
+
+  it("地方场景的原著召回优先当前地点与机构，不被全大陆大势力占满", () => {
+    const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "local-canon-retrieval-diversity" });
+    game.view.locationId = "star-luo-city";
+    game.view.location = "星罗城南贵族别院";
+    game.world.flags.openingInstitutionName = "星罗帝国";
+    const knowledge = database.retrieveCanonKnowledge(game, "询问星罗城当地初级魂师学院的入学、食宿、监护与第一魂环帮助", 10);
+    const factions = knowledge.filter((item) => item.kind === "faction");
+    expect(knowledge.some((item) => item.kind === "academy-system")).toBe(true);
+    expect(factions.some((item) => item.subjectId === "star-luo")).toBe(true);
+    expect(knowledge.find((item) => item.kind === "academy-system")?.metadata.retrievalReason).toContain("学院");
+    expect(factions.find((item) => item.subjectId === "star-luo")?.metadata.retrievalReason).toContain("当前");
+    expect(factions.length).toBeLessThanOrEqual(2);
+    expect(factions.filter((item) => ["seven-treasure", "blue-lightning", "clear-sky", "heaven-dou"].includes(item.subjectId ?? "")).length).toBeLessThanOrEqual(1);
   });
 
   it("uses conservative temperament anchors instead of later-developed full personalities", () => {
@@ -292,6 +319,30 @@ describe("存档数据库", () => {
     expect(database.retrieveCanonKnowledge(era4, "龙马联邦和天龙会", 20).some((item) => ["dragon-horse-federation", "sky-dragon-guild"].includes(item.subjectId ?? ""))).toBe(false);
     era4.world.intelligenceRecords.push({ id: "known-dragon-horse", subjectType: "势力", subjectId: "dragon-horse-federation", title: "龙马联邦", detail: "可靠星图确认该外部文明联盟存在。", source: "联邦高权限星图", confidence: 90, status: "确定", year: 30000, day: 1 });
     expect(database.retrieveCanonKnowledge(era4, "龙马联邦", 20).some((item) => item.subjectId === "dragon-horse-federation")).toBe(true);
+  });
+
+  it("uses dedicated low-importance life stages without leaking later factions or cover identities", () => {
+    const beforeTangSect = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "low-importance-stage-before" });
+    beforeTangSect.view.worldTime = { era: "唐门筹备前", year: 13, day: 1, time: "08:00", season: "春" };
+    beforeTangSect.world = createHiddenWorld(13, "longxing-city");
+    beforeTangSect.world.npcs["bai-he"].knownToPlayer = true;
+    beforeTangSect.view.knownFigures.push({ id: "bai-he", name: "白鹤", knownPower: "实力未核实", location: "龙兴城", status: "已知", source: "宗族会面" });
+    const before = database.retrieveCanonKnowledge(beforeTangSect, "白鹤现在的宗族职责和势力归属", 20).filter((item) => item.subjectId === "bai-he");
+    expect(before.length).toBeGreaterThan(0);
+    expect(before.every((item) => !item.text.includes("唐门"))).toBe(true);
+    expect(before.some((item) => item.text.includes("敏之一族"))).toBe(true);
+
+    const afterTangSect = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "low-importance-stage-after" });
+    afterTangSect.view.worldTime = { era: "唐门初立", year: 14, day: 1, time: "08:00", season: "春" };
+    afterTangSect.world = createHiddenWorld(14, "heaven-dou-city");
+    afterTangSect.world.npcs["bai-he"].knownToPlayer = true;
+    afterTangSect.view.knownFigures.push({ id: "bai-he", name: "白鹤", knownPower: "实力未核实", location: "天斗城", status: "已知", source: "唐门事务" });
+    const after = database.retrieveCanonKnowledge(afterTangSect, "白鹤在唐门的现在职责", 20).filter((item) => item.subjectId === "bai-he");
+    expect(after.some((item) => item.text.includes("唐门敏堂"))).toBe(true);
+
+    const hiddenCover = createGame({ era: 4, gender: "男", difficulty: "标准", seed: "hidden-cover-stage" });
+    hiddenCover.view.worldTime = { era: "斗四学院阶段", year: 30_010, day: 1, time: "08:00", season: "春" };
+    expect(database.retrieveCanonKnowledge(hiddenCover, "蓝海族白秀秀身份与龙马星系潜伏", 20).some((item) => item.subjectId === "bai-xiuxiu-dragon")).toBe(false);
   });
 
   it("keeps hidden identities, injuries, exact power and divine progress out of ordinary character vectors", () => {
@@ -360,7 +411,9 @@ describe("存档数据库", () => {
     game.world.intelligenceRecords.push({ id: "known-five-year-training", subjectType: "事件", subjectId: "five-year-training", title: "史莱克七怪分头修行", detail: "从可靠消息确认众人已经分头修行。", source: "可靠告知", confidence: 85, year: 10, day: 300, status: "确定" });
     const event = database.retrieveCanonKnowledge(game, "史莱克七怪分头修行时间", 20).find((item) => item.subjectId === "five-year-training");
     expect(event?.metadata.datePrecision).toBe("原著年份");
+    expect(event?.metadata.sourceOrderStatus).toBe("项目归纳时段");
     expect(event?.text).toContain("具体日序未核实");
+    expect(event?.text).toContain("跨年过程");
     expect(event?.text).not.toContain("10年1日");
   });
 
@@ -382,7 +435,8 @@ describe("存档数据库", () => {
     game.world = createHiddenWorld(-5, "holy-soul-village");
     expect(game.world.npcRelations.some((item) => [item.leftId, item.rightId].includes("tang-san") && [item.leftId, item.rightId].includes("tang-hao") && item.kind === "亲近")).toBe(true);
     expect(game.world.npcRelations.some((item) => [item.leftId, item.rightId].includes("tang-san") && [item.leftId, item.rightId].includes("xiao-wu"))).toBe(false);
-    game.view.worldTime = { era: "斗罗大陆", year: 0, day: 31, time: "08:00", season: "春" };
+    game.world.firedCanonEvents.push("xiao-wu-notting-meeting");
+    game.view.worldTime = { era: "斗罗大陆", year: 0, day: canonEventSimulationDay(CANON_EVENTS.find((event) => event.id === "xiao-wu-notting-meeting")!), time: "08:00", season: "秋" };
     ensureGameState(game);
     expect(game.world.npcRelations.some((item) => [item.leftId, item.rightId].includes("tang-san") && [item.leftId, item.rightId].includes("xiao-wu"))).toBe(true);
   });
@@ -395,6 +449,31 @@ describe("存档数据库", () => {
     expect(resourceLogic.some((item) => item.metadata.ruleId === "talent-resource-priority")).toBe(true);
     expect(logic.some((item) => ["hostile-threat-assessment", "assassination-escalation"].includes(String(item.metadata.ruleId)))).toBe(true);
     expect(database.getModelUsage().worldLogicVectors).toBeGreaterThan(40);
+  });
+
+  it("世界逻辑召回先覆盖不同类别，再允许同类第二条", () => {
+    const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "world-logic-category-diversity" });
+    const logic = database.retrieveWorldLogic(game, "公开先天满魂力后的家庭、学院、资源、秘密传播、敌对风险与日常生活", 8);
+    const counts = logic.reduce<Record<string, number>>((result, item) => {
+      result[item.category] = (result[item.category] ?? 0) + 1;
+      return result;
+    }, {});
+    expect(new Set(logic.map((item) => item.category)).size).toBeGreaterThanOrEqual(4);
+    expect(Math.max(...Object.values(counts))).toBeLessThanOrEqual(2);
+    expect(logic.every((item) => typeof item.metadata.retrievalReason === "string")).toBe(true);
+  });
+
+  it("日常休息和普通学院咨询不会召回秘密、天赋或暗杀升级", () => {
+    const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "world-logic-intent-gate" });
+    const routine = database.retrieveWorldLogic(game, "休息一天恢复疲劳", 8);
+    expect(routine.length).toBeGreaterThan(0);
+    expect(routine.map((item) => item.category)).not.toEqual(expect.arrayContaining(["天赋反应", "培养争夺", "敌对风险", "秘密暴露", "社会反馈"]));
+    const academy = database.retrieveWorldLogic(game, "在星罗城当地初级学院询问食宿与第一魂环帮助", 8);
+    expect(academy.some((item) => item.category === "培养争夺" || item.category === "制度响应")).toBe(true);
+    expect(academy.some((item) => item.category === "敌对风险")).toBe(false);
+    const hidden = database.retrieveWorldLogic(game, "私下隐藏第二武魂，无人目击，保持秘密", 8);
+    expect(hidden.some((item) => item.category === "秘密暴露")).toBe(true);
+    expect(hidden.some((item) => item.category === "敌对风险")).toBe(false);
   });
 
   it("replaces a settled slot with its next-era successor and preserves a terminal checkpoint", () => {

@@ -112,8 +112,8 @@ export default function App() {
     } catch (caught) {
       setLastAction(input);
       setLastActionRequestId(requestId);
-      if (caught instanceof DOMException && caught.name === "AbortError") setError("已经停笔。刚才的行动没有发生。");
-      else setError("这段故事暂时没能续上，刚才的行动没有发生。");
+      if (caught instanceof DOMException && caught.name === "AbortError") setError("已经停笔，服务器没有提交这次行动；存档未推进，可以原样重试。");
+      else setError("连接中断，尚未收到服务器的提交确认；存档未推进，可以原样重试。");
     } finally {
       setBusy(false);
       setActionController(null);

@@ -37,6 +37,13 @@ describe("增强小说引擎", () => {
     expect(pack.prompt.length).toBeLessThan(6500);
   });
 
+  it("rejects summary endings and unrelated new tasks that steal an ordinary action", () => {
+    const game = awakened("ordinary-action-hijack-audit");
+    const pack = buildNovelEnginePack(game, "休息一会儿", { ...ordinaryResolution, intent: "休息恢复", ruleSummary: "休息后疲劳下降，没有触发其他安排。" });
+    expect(auditNovelEngineNarrative(game, "他合眼歇下。夜色沉下来，路还很长。", pack)).toContain("正文出现空泛升华或总结式收尾");
+    expect(auditResolutionAlignment("他刚躺下，学院录取通知便被人递来，催他马上去见导师。", { ...ordinaryResolution, intent: "休息恢复", ruleSummary: "休息后疲劳下降，没有触发其他安排。" }, "休息一会儿", game)).toContain("普通行动被无关会议、录取、导师或猎魂新任务抢走");
+  });
+
   it("compiles a hard causality and continuity contract before narration", () => {
     const game = awakened("logic-preflight");
     const knowledge = buildSceneKnowledgePack(game, "调查觉醒记录");
@@ -45,6 +52,8 @@ describe("增强小说引擎", () => {
     expect(packet.protagonistContract).toMatchObject({ desire: "调查觉醒记录", action: "调查", fixedConsequence: "看过负责觉醒的魂师留下的姓名，但没有取得原件。" });
     expect(packet.generationContract.requiredBeats).toHaveLength(4);
     expect(packet.generationContract.forbiddenClaims).toContain("新增未持有物品、未结算能力或未知NPC");
+    expect(packet.generationContract.originalEntityBoundary).toContain("同人原创存档事实");
+    expect(packet.generationContract.originalEntityBoundary).toContain(game.view.character!.originName);
     expect(packet.continuityContract.requiredStateChanges).toContain("时间推进 45 分钟");
     expect(packet.continuityContract.forbiddenInventions).toContain("让 NPC 知道隐藏武魂、系统、未来事件或未公开身份");
     expect(packet.reactionChain.requiredTraces.at(-1)).toContain("不强制制造谜题");
@@ -143,6 +152,18 @@ describe("增强小说引擎", () => {
     expect(auditNovelEngineNarrative(game, "他感到无比愤怒。", pack)).toContain("正文直接喊出情绪而没有外显");
     expect(auditNovelEngineNarrative(game, "印记从此可以毫无代价无限使用。", pack)).toContain("特殊体系被写成无代价万能能力");
     expect(auditNovelEngineNarrative(game, "印记目前不能无限使用，每次都会留下头痛。", pack)).not.toContain("特殊体系被写成无代价万能能力");
+    expect(auditNovelEngineNarrative(game, "他把布面书袋往肩上一甩，声音不大但很稳。", pack)).toContain("正文使用跨场景重复的AI库存动作或转折");
+  });
+
+  it("retrieves fanfic craft structure without importing fandom commentary or unearned authority arrivals", () => {
+    const game = awakened("fanfic-craft-reference");
+    const pack = buildNovelEnginePack(game, "公开千年第一魂环并询问学院培养条件", { ...ordinaryResolution, intent: "公开异常天赋", ruleSummary: "现场导师已经目击魂环并完成登记。" });
+    expect(pack.prompt).toContain("只学习节奏与因果，不模仿或复述样本文字");
+    expect(pack.prompt).toContain("高位人物不能因为作者知道就立刻上门");
+    expect(pack.prompt).toContain("资源必须有持有人和提供理由");
+    expect(auditNovelEngineNarrative(game, "他心想唐神王不过是在开历史倒车，自己绝不会去舔唐三。", pack)).toContain("正文把读者梗、论坛黑称或作者吐槽塞进故事世界");
+    expect(auditNovelEngineNarrative(game, "觉醒刚结束，海神阁阁主当天亲自上门收徒。", pack)).toContain("高位人物反应缺少目击、上报、路程或权限链");
+    expect(auditNovelEngineNarrative(game, "导师复测后把结果上报学院，三天后院长才带着培养条件来见他。", pack)).not.toContain("高位人物反应缺少目击、上报、路程或权限链");
   });
 
   it("rejects replacing a private hidden-soul test with an NPC cultivation meeting", () => {
@@ -169,11 +190,23 @@ describe("增强小说引擎", () => {
     expect(auditResolutionAlignment("门外忽然有人敲门，请他去议事堂。", ordinaryResolution, "独自在屋里测试新能力"))
       .toEqual(expect.arrayContaining(["正文没有出现玩家测试或试用行动的可见执行证据", "独处或保密行动被无依据的NPC来访、传唤或会议打断"]));
     expect(auditResolutionAlignment("他关好门，试着催动那股力量，确认能够收回后才停下。", ordinaryResolution, "独自在屋里测试新能力")).toEqual([]);
+    expect(auditResolutionAlignment("他盘膝坐好，引导魂力沿着熟悉的路线流转，直到呼吸重新平稳。", ordinaryResolution, "冥想修炼并记录魂力变化")).toEqual([]);
+    expect(auditResolutionAlignment("他躺下合上眼，等肩背慢慢放松下来，才把今天问清的事过了一遍。", ordinaryResolution, "休息并整理今天已经确认的事")).toEqual([]);
+    expect(auditResolutionAlignment("他跑完两圈，又做了一组拉伸，手臂发酸才停下。", ordinaryResolution, "完成一次基础体能训练")).toEqual([]);
+    const cultivation = { ...ordinaryResolution, intent: "修炼", ruleSummary: "魂力停在十级瓶颈，继续冥想不能突破。" };
+    expect(auditResolutionAlignment("他冥想结束时，教习带着帝国回函上门，说可以带他去猎魂区。", cultivation, "冥想修炼")).toContain("单纯修炼回合凭空推进了猎魂支持、回函或路线");
+    const blockedSimulator = { ...ordinaryResolution, intent: "无法完成", ruleSummary: "当前年龄不能进入模拟舱训练，未授权记录不计入。" };
+    expect(auditResolutionAlignment("他钻进模拟舱，推动操纵杆，屏幕显示进度十四。", blockedSimulator, "进行机甲模拟训练")).toContain("规则已阻止训练，正文却仍让玩家进舱操作或生成训练记录");
+    expect(auditResolutionAlignment("工坊主从柜台下抽出一本训练薄册递给他，又报出五十魂币的报名费。", blockedSimulator, "进行机甲模拟训练")).toContain("被阻止的训练回合凭空获得教材、报价、引荐或免费特例");
+    expect(auditResolutionAlignment("程肃说上头让我来找你，跟我回觉醒室把记录补全。", blockedSimulator, "进行星舰模拟训练")).toContain("被阻止的日常行动被无关NPC来访和觉醒补测抢走");
+    const scholarship = { ...ordinaryResolution, intent: "询问学院条件", ruleSummary: "只问清学院奖助与家族资助条件，尚未签约。" };
+    expect(auditResolutionAlignment("执事说，奖助定了就不能改，中途退出要赔。", scholarship, "询问学院奖助")).toContain("正文凭空为奖助、学院或培养路线新增不可变更与赔付合同");
     const delayed = `${"他被叫去议事堂听众人商量培养方案。".repeat(14)}回屋以后，他才试着催动那股力量。`;
     expect(auditResolutionAlignment(delayed, ordinaryResolution, "测试新能力")).toContain("玩家行动直到正文后半段才出现，前文已被其他剧情抢占");
     expect(auditResolutionAlignment("他问清费用后，又决定前往议事堂。", ordinaryResolution, "询问本月食宿费用"))
       .toContain("正文替玩家作出了程序结果之后的新增重大决定");
     expect(auditResolutionAlignment("他问清本月食宿要花多少钱，没有替自己决定下一步。", ordinaryResolution, "询问本月食宿费用")).toEqual([]);
+    expect(auditResolutionAlignment("他走到训练场发放登记表的地方，询问当班人员后核对了报名条件。", ordinaryResolution, "调查训练报名条件")).toEqual([]);
     expect(auditResolutionAlignment("两家从公开议题中选择优先项，再分别核验来源。", ordinaryResolution, "让媒体联盟共同核验优先议题")).toEqual([]);
   });
 
@@ -183,7 +216,29 @@ describe("增强小说引擎", () => {
     const general = { ...ordinaryResolution, intent: "一般行动", ruleSummary: "完成当前能力范围内的一般行动，没有获得确定性奖励。" };
     expect(auditResolutionAlignment("齐长老说先天道体吃根基，根基越厚，魂环品质就越高。", general, "询问测试结果", game))
       .toEqual(expect.arrayContaining(["正文凭空增加未登记人物齐长老", "正文为原创或局外武魂补造程序未声明的能力规律"]));
+    expect(auditResolutionAlignment("他去问问陌执事能不能改报名时间。", general, "询问报名时间", game)).toContain("正文凭空增加未登记人物陌执事");
+    expect(auditResolutionAlignment("他想找一位合适的老师，先问当班工作人员有哪些公开课程。", general, "询问公开课程", game)).toEqual([]);
+    expect(auditResolutionAlignment("他去看老师贴出的课程表，再核对自己能报哪一班。", general, "查看课程安排", game)).toEqual([]);
+    expect(auditResolutionAlignment("他向武魂殿巡查执事询问觉醒安排，对方只按名册核对当地时间。", general, "询问觉醒安排", game)).toEqual([]);
+    expect(auditResolutionAlignment("家族觉醒教官只负责记录结果，没有越权替他定路线。", general, "核对觉醒记录", game)).toEqual([]);
+    expect(auditResolutionAlignment("他问过才知道，自己并没有私人老师，现在也无人能决定导师人选。", general, "询问导师条件", game)).toEqual([]);
+    expect(auditResolutionAlignment("他问过才知道，现在没有导师愿意立刻收人。", general, "询问导师条件", game)).toEqual([]);
+    expect(auditResolutionAlignment("课程结束前不会定下导师，负责人只记录这次表现。", general, "参加导师课程", game)).toEqual([]);
     expect(auditResolutionAlignment("闻九只让他按已经确认的方法收回先天道体，没有补充新的能力结论。", general, "练习收放", game)).toEqual([]);
+    game.view.relations.push({ id: "known-han-deacon", name: "韩守成", relation: "武魂殿巡查执事", impression: "负责本地觉醒登记", strength: 20, category: "其他" });
+    expect(auditResolutionAlignment("韩执事合上名册，只说明自己能查到的登记办法。", general, "询问韩守成登记办法", game)).not.toContain("正文凭空增加未登记人物韩执事");
+    game.view.relations = game.view.relations.filter((relation) => !/母/.test(`${relation.relation}${relation.name}`));
+    game.view.character!.originSummary = "与父亲共同生活";
+    game.view.character!.knownBackground = "当前只登记父亲为监护人";
+    expect(auditResolutionAlignment("按规矩得先找学院谈工读名额，再等武魂分殿安排猎魂；这些要你爹娘一起听。", general, "询问学院和猎魂的一般办法", game))
+      .toEqual(expect.arrayContaining(["正文把尚未选择的工读路线写成默认前置", "正文凭空承诺武魂殿安排猎魂", "正文把未登记的双亲写进当前家庭"]));
+    game.view.character!.innateSoulPower = 10;
+    expect(auditResolutionAlignment("执事翻过记录，说他的先天魂力五级。", general, "核对觉醒记录", game)).toContain("正文写错当前角色的先天魂力");
+    expect(auditResolutionAlignment("执事说这些只是具体条件，不等于已经无条件送出。", general, "询问培养条件", game)).toContain("正文照抄规则结算或审校口吻");
+    expect(auditResolutionAlignment("门房说普通学员每年要交十个金魂币。", general, "询问学院费用", game)).toContain("正文凭空补造程序未结算的精确金额");
+    expect(auditResolutionAlignment("他听完条件，说想先看看学院，再决定去不去。", general, "准备学院证明", game)).toContain("正文替玩家作出了程序结果之后的新增重大决定");
+    expect(auditResolutionAlignment("赵执事说武魂殿管不了猎魂，只能靠宗门或学院。", general, "询问猎魂路线", game)).toContain("正文把武魂殿凭证职责或其他猎魂路线错误排除");
+    expect(auditResolutionAlignment("老师让他明天傍晚再来训练场试学。", general, "评估当前基础", game)).toContain("正文凭空约定程序未结算的未来时间");
   });
 
   it("compresses minor actions while preserving space for consequential scenes", () => {

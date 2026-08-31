@@ -5,7 +5,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { CheckpointSummary, MartialSoulCodexEntryView, MetaProgressionView, MetaSummonResultView, ModelUsageView, OriginCodexEntryView, RunSettlementView, SaveSummary, WorldCatalogStatsView } from "../shared/game.js";
 import type { MartialSoulTemplate } from "./domain/model.js";
 import { META_MARTIAL_SOULS, META_MARTIAL_SOUL_POOL_SIZE, metaSoulById } from "./data/meta-martial-souls.js";
-import { META_HEIRLOOMS } from "./data/meta-heirlooms.js";
+import { META_HEIRLOOMS, currentHeirloomName } from "./data/meta-heirlooms.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, LOCATIONS, SOUL_BEASTS, canonEventDateLabel, canonEventDatePrecision, locationActiveAtYear, locationProfileAtYear } from "./data/world.js";
 import { FANFICTION_RULES } from "./data/fanfiction-rules.js";
 import type { StoredGame } from "./domain/model.js";
@@ -16,7 +16,7 @@ import { WORLD_SOCIAL_LAWS } from "./data/world-social-laws.js";
 import { CANON_RELATIONSHIPS } from "./data/canon-relationships.js";
 import { WORLD_REACTION_LOGIC } from "./data/world-reaction-logic.js";
 import { CHARACTER_LIFE_STAGES } from "./data/character-life-stages.js";
-import { canonEventSourceAnchor } from "./data/canon-event-source-anchors.js";
+import { CANON_EVENT_SOURCE_UNCERTAINTIES, canonEventSourceAnchor } from "./data/canon-event-source-anchors.js";
 
 const databasePath = process.env.DOULUO_DATA_DIR
   ? resolve(process.env.DOULUO_DATA_DIR, "douluo.db")
@@ -669,11 +669,14 @@ function seedCanonKnowledge(): void {
       }
     }
     for (const event of CANON_EVENTS) {
+      const sourceAnchor = canonEventSourceAnchor(event.id);
+      const sourceUncertainty = CANON_EVENT_SOURCE_UNCERTAINTIES[event.id];
+      const sourceOrderNote = sourceAnchor ? "该事件与同期关键节点的原文章节相对顺序已核对，章节号不属于角色知识。" : sourceUncertainty ? `原文章节证据状态：${sourceUncertainty.status}；${sourceUncertainty.reason}` : "原文章节相对顺序尚未专项核对，只能使用保守游戏估算窗口。";
       const sourceKey = `event:${event.id}`; validKeys.push(sourceKey);
       storeCanonKnowledge({ sourceKey, era: eraAtYear(event.year), kind: "event", subjectId: event.id, subjectName: event.title,
         validFromYear: event.year, validUntilYear: 100_000, importance: event.inertia / 5,
-        text: `重要原著事件“${event.title}”的时间锚点为${canonEventDateLabel(event)}，地点${LOCATIONS.find((item) => item.id === event.locationId)?.name ?? event.locationId ?? "跨地区"}。原著公开结果：${event.publicSummary.replace(/[。；]+$/, "")}。日序不清且没有玩家因果足迹时，在推测窗口末端触发以保留完整准备时间；玩家实际改变参与者、关系、资源、地点或势力条件后改按存档因果推演，不再强制套用该窗口。`,
-        metadata: { datePrecision: canonEventDatePrecision(event), sourceOrderVerified: Boolean(canonEventSourceAnchor(event.id)), visibility: event.visibility ?? "公开", participantIds: event.participantIds, inertia: event.inertia, sourceType: "结构化原著事件" } });
+        text: `重要原著事件“${event.title}”的时间锚点为${canonEventDateLabel(event)}，地点${LOCATIONS.find((item) => item.id === event.locationId)?.name ?? event.locationId ?? "跨地区"}。原著公开结果：${event.publicSummary.replace(/[。；]+$/, "")}。${sourceOrderNote}日序不清且没有玩家因果足迹时，在推测窗口末端触发以保留完整准备时间；玩家实际改变参与者、关系、资源、地点或势力条件后改按存档因果推演，不再强制套用该窗口。`,
+        metadata: { datePrecision: canonEventDatePrecision(event), sourceOrderVerified: Boolean(sourceAnchor), sourceOrderStatus: sourceAnchor ? "原文章节顺序已核对" : sourceUncertainty?.status ?? "待核对", visibility: event.visibility ?? "公开", participantIds: event.participantIds, inertia: event.inertia, sourceType: "结构化原著事件" } });
     }
     for (const beast of SOUL_BEASTS) {
       const sourceKey = `soul-beast:${beast.id}`; validKeys.push(sourceKey);
@@ -719,9 +722,15 @@ export function retrieveCanonKnowledge(game: StoredGame, query: string, limit = 
   const publiclyLearnedFactions = FACTIONS.filter((faction) => game.world.intelligenceRecords.some((record) => record.subjectType === "势力" && record.subjectId === faction.id && record.confidence >= 60) || game.view.news.some((item) => `${item.title}${item.detail}`.includes(faction.name)) || game.view.canonInfluences.some((item) => item.affects.includes(faction.name))).map((faction) => faction.id);
   const knownFactionIds = new Set([...publicFactionIdsByEra[era], ...publiclyLearnedFactions, ...game.view.affiliations.map((item) => item.id), ...game.view.managedFactions.map((item) => item.id)]);
   const knownCanonEventIds = new Set(CANON_EVENTS.filter((event) => game.world.firedCanonEvents.includes(event.id) && (game.view.news.some((item) => item.id === event.id || item.title === event.title || item.detail.includes(event.title)) || game.world.intelligenceRecords.some((item) => item.subjectId === event.id || item.title === event.title || item.detail.includes(event.title)))).map((event) => event.id));
+  const currentLocationId = game.view.locationId;
+  const directlyRelevantFactionIds = new Set([
+    ...game.view.affiliations.map((item) => item.id),
+    ...game.view.managedFactions.map((item) => item.id),
+    ...FACTIONS.filter((faction) => game.view.relations.some((relation) => relation.faction === faction.name) || String(game.world.flags.openingInstitutionName ?? "").includes(faction.name) || faction.headquartersId === currentLocationId).map((faction) => faction.id),
+  ]);
   const queryVector = embedMemoryText(query);
   const rows = database.prepare(`SELECT kind, subject_id, subject_name, valid_from_year, text, metadata_json, vector_blob, importance FROM canon_knowledge_vectors WHERE (era = 0 OR era = ?) AND valid_from_year <= ? AND valid_until_year >= ?`).all(era, year, year) as Array<{ kind: string; subject_id?: string; subject_name: string; valid_from_year: number; text: string; metadata_json: string; vector_blob: Uint8Array; importance: number }>;
-  return rows.map((row) => ({ ...row, metadata: JSON.parse(row.metadata_json) as Record<string, unknown>, rawSimilarity: vectorSimilarity(queryVector, bytesToVector(row.vector_blob)) }))
+  const ranked = rows.map((row) => ({ ...row, metadata: JSON.parse(row.metadata_json) as Record<string, unknown>, rawSimilarity: vectorSimilarity(queryVector, bytesToVector(row.vector_blob)) }))
     .filter((row) => {
       if (row.kind === "relationship") {
         const fromId = String(row.metadata.fromId ?? ""); const toId = String(row.metadata.toId ?? "");
@@ -741,9 +750,47 @@ export function retrieveCanonKnowledge(game: StoredGame, query: string, limit = 
       if (row.kind === "academy-system") return /学院|入学|宿舍|班主任|同学|课程|考核|工读|魂环|猎魂|导师/.test(query);
       return false;
     }).map((row) => {
-      const score = row.rawSimilarity * .84 + row.importance * .16;
-      return { kind: row.kind, subjectId: row.subject_id, subjectName: row.subject_name, text: row.text, importance: row.importance, similarity: Number(score.toFixed(4)), metadata: row.metadata };
-    }).filter((item) => item.similarity > .1).sort((left, right) => right.similarity - left.similarity).slice(0, Math.max(1, Math.min(20, limit)));
+      const explicitlyMentioned = query.includes(row.subject_name);
+      const currentLocation = row.kind === "location" && row.subject_id === currentLocationId;
+      const localFaction = row.kind === "faction" && Boolean(row.subject_id && directlyRelevantFactionIds.has(row.subject_id));
+      const academyRelevant = row.kind === "academy-system" && /学院|入学|宿舍|同学|课程|考核|工读|魂环|猎魂|导师/.test(query);
+      const remoteDiscoveredLocation = row.kind === "location" && row.subject_id !== currentLocationId && !explicitlyMentioned;
+      const unrelatedPublicFaction = row.kind === "faction" && !localFaction && !explicitlyMentioned;
+      const localityAdjustment = explicitlyMentioned ? .28 : currentLocation ? .3 : localFaction ? .22 : academyRelevant ? .14 : unrelatedPublicFaction ? -.18 : remoteDiscoveredLocation ? -.08 : 0;
+      const score = row.rawSimilarity * .84 + row.importance * .16 + localityAdjustment;
+      const retrievalReason = explicitlyMentioned
+        ? "玩家本轮行动直接点名"
+        : currentLocation
+          ? "当前场景所在地"
+          : localFaction
+            ? "玩家当前所属、管理、往来或驻地势力"
+            : academyRelevant
+              ? "本轮涉及学院、导师或猎魂制度"
+              : unrelatedPublicFaction
+                ? "时代内公开但非本地势力；受跨地区名额限制"
+                : "通过时代、日期、玩家知识边界与场景相似度筛选";
+      return { kind: row.kind, subjectId: row.subject_id, subjectName: row.subject_name, text: row.text, importance: row.importance, similarity: Number(score.toFixed(4)), metadata: { ...row.metadata, retrievalReason }, explicitlyMentioned, currentLocation, localFaction };
+    }).filter((item) => item.similarity > .1).sort((left, right) => right.similarity - left.similarity);
+  const maximum = Math.max(1, Math.min(20, limit));
+  const quotas: Record<string, number> = { faction: 2, location: 2, "academy-system": 1, relationship: 2, event: 2, "soul-beast": 2, character: 6, "character-timeline": 6, "character-power": 4 };
+  const selected: Array<(typeof ranked)[number]> = [];
+  const kindCounts = new Map<string, number>();
+  const selectedKeys = new Set<string>();
+  let unrelatedFactionCount = 0;
+  for (const item of ranked) {
+    const key = `${item.kind}:${item.subjectId ?? item.subjectName}`;
+    if (selectedKeys.has(key)) continue;
+    const direct = item.explicitlyMentioned || item.currentLocation || item.localFaction;
+    const count = kindCounts.get(item.kind) ?? 0;
+    if (!direct && count >= (quotas[item.kind] ?? 2)) continue;
+    if (item.kind === "faction" && !direct && unrelatedFactionCount >= 1) continue;
+    selected.push(item);
+    selectedKeys.add(key);
+    kindCounts.set(item.kind, count + 1);
+    if (item.kind === "faction" && !direct) unrelatedFactionCount += 1;
+    if (selected.length >= maximum) break;
+  }
+  return selected.map(({ explicitlyMentioned: _explicitlyMentioned, currentLocation: _currentLocation, localFaction: _localFaction, ...item }) => item);
 }
 
 export interface RetrievedWorldLogic {
@@ -788,11 +835,42 @@ function seedWorldLogic(): void {
 export function retrieveWorldLogic(game: StoredGame, query: string, limit = 8): RetrievedWorldLogic[] {
   const era = game.view.era ?? eraAtYear(game.view.worldTime?.year ?? 0);
   const queryVector = embedMemoryText(query);
+  const actionQuery = query.split("\n", 1)[0] ?? query;
+  const routineOnly = /休息|睡觉|恢复疲劳|吃饭|洗漱|散步|整理房间|普通日常/.test(actionQuery) && !/公开|天赋|武魂|秘密|敌|威胁|学院|导师|招募|冲突/.test(actionQuery);
+  const exceptionalTalentRelevant = /觉醒|复测|先天满魂力|高天赋|双生武魂|三生武魂|顶级武魂|变异武魂|公开.{0,10}(?:异常|天赋|第二武魂|第三武魂)/.test(actionQuery);
+  const secretRelevant = /秘密|隐藏|隐瞒|保密|无人目击|私下|暴露/.test(actionQuery);
+  const hostileRelevant = /敌对|敌人|威胁|暗杀|绑架|追杀|监视|冲突|袭击/.test(actionQuery) || exceptionalTalentRelevant;
+  const recruitmentRelevant = /学院|入学|导师|拜师|培养|招募|宗门|势力争取/.test(actionQuery) || exceptionalTalentRelevant;
   const rows = database.prepare("SELECT category, trigger_text, logic_text, metadata_json, vector_blob, importance FROM world_logic_vectors WHERE era = 0 OR era = ?").all(era) as Array<{ category: string; trigger_text: string; logic_text: string; metadata_json: string; vector_blob: Uint8Array; importance: number }>;
-  return rows.map((row) => {
+  const ranked = rows.map((row) => {
     const similarity = vectorSimilarity(queryVector, bytesToVector(row.vector_blob)) * .84 + row.importance * .16;
     return { category: row.category, trigger: row.trigger_text, logic: row.logic_text, importance: row.importance, similarity: Number(similarity.toFixed(4)), metadata: JSON.parse(row.metadata_json) as Record<string, unknown> };
-  }).filter((item) => item.similarity > .1).sort((left, right) => right.similarity - left.similarity).slice(0, Math.max(1, Math.min(16, limit)));
+  }).filter((item) => {
+    if (item.similarity <= .1) return false;
+    if (routineOnly && ["天赋反应", "培养争夺", "敌对风险", "秘密暴露", "社会反馈"].includes(item.category)) return false;
+    if (!secretRelevant && item.category === "秘密暴露") return false;
+    if (!hostileRelevant && item.category === "敌对风险") return false;
+    if (!recruitmentRelevant && item.category === "培养争夺") return false;
+    if (!exceptionalTalentRelevant && item.category === "天赋反应") return false;
+    if (!exceptionalTalentRelevant && !/公开成就|声望|传播|胜利/.test(actionQuery) && item.category === "社会反馈") return false;
+    return true;
+  }).sort((left, right) => right.similarity - left.similarity);
+  const maximum = Math.max(1, Math.min(16, limit));
+  const selected: RetrievedWorldLogic[] = [];
+  const categoryCounts = new Map<string, number>();
+  const selectionPass = new Map<RetrievedWorldLogic, number>();
+  for (const pass of [1, 2]) {
+    for (const item of ranked) {
+      if (selected.includes(item)) continue;
+      const count = categoryCounts.get(item.category) ?? 0;
+      if (count >= pass) continue;
+      selected.push(item);
+      selectionPass.set(item, pass);
+      categoryCounts.set(item.category, count + 1);
+      if (selected.length >= maximum) return selected.map((selectedItem) => ({ ...selectedItem, metadata: { ...selectedItem.metadata, retrievalReason: selectionPass.get(selectedItem) === 1 ? "先覆盖一个尚未出现的世界逻辑类别" : "同类别第二条高相关规则" } }));
+    }
+  }
+  return selected.map((selectedItem) => ({ ...selectedItem, metadata: { ...selectedItem.metadata, retrievalReason: selectionPass.get(selectedItem) === 1 ? "先覆盖一个尚未出现的世界逻辑类别" : "同类别第二条高相关规则" } }));
 }
 
 export function recordModelCall(input: { gameId: string; role: "intent" | "narrator"; model: string; status: "success" | "failure"; latencyMs: number; promptChars: number; outputChars: number; promptTokens?: number; completionTokens?: number; totalTokens?: number; errorCode?: string }): void {
@@ -839,6 +917,19 @@ export function getTurnTraceReplaySource(gameId: string, traceGroupId: string): 
   if (!row) return undefined;
   const attempt = database.prepare("SELECT prompt_json FROM turn_trace_attempts WHERE trace_group_id = ? AND status = 'accepted' ORDER BY attempt DESC LIMIT 1").get(row.id) as { prompt_json: string } | undefined;
   return { id: row.id, game: ensureGameState(JSON.parse(row.game_snapshot_json) as StoredGame), playerInput: row.player_input, resolution: JSON.parse(row.resolution_json) as import("./domain/model.js").ActionResolution, finalNarrative: row.final_narrative ?? "", operation: row.operation, acceptedPrompt: attempt ? JSON.parse(attempt.prompt_json) : undefined };
+}
+
+export function getTurnTraceComparisonArtifact(gameId: string, traceGroupId: string) {
+  const group = database.prepare("SELECT id, action_index, operation, player_input, resolution_json, status, final_narrative, final_audit_json, created_at, completed_at FROM turn_trace_groups WHERE id = ? AND game_id = ?").get(traceGroupId, gameId) as Record<string, unknown> | undefined;
+  if (!group) return undefined;
+  const attempts = database.prepare("SELECT attempt, prompt_json, response_json, status, audit_json, created_at, completed_at FROM turn_trace_attempts WHERE trace_group_id = ? ORDER BY attempt").all(traceGroupId) as Array<Record<string, unknown>>;
+  const parse = (value: unknown, fallback: unknown) => { try { return JSON.parse(String(value ?? "")); } catch { return fallback; } };
+  return {
+    id: String(group.id), actionIndex: Number(group.action_index), operation: String(group.operation), playerInput: String(group.player_input),
+    resolution: parse(group.resolution_json, {}), status: String(group.status), finalNarrative: String(group.final_narrative ?? ""), finalAuditIssues: parse(group.final_audit_json, []),
+    createdAt: String(group.created_at), completedAt: group.completed_at ? String(group.completed_at) : undefined,
+    attempts: attempts.map((attempt) => ({ attempt: Number(attempt.attempt), prompt: parse(attempt.prompt_json, {}), rawResponse: parse(attempt.response_json, null), status: String(attempt.status), auditIssues: parse(attempt.audit_json, []), createdAt: String(attempt.created_at), completedAt: attempt.completed_at ? String(attempt.completed_at) : undefined })),
+  };
 }
 
 export function getNarrativeDiagnostics(gameId: string) {
@@ -1123,6 +1214,8 @@ export function getMetaProgression(): MetaProgressionView {
   const historicalDraws = martialSoulCodex.reduce((sum, item) => sum + item.charges + (item.completedRuns > 0 ? 1 : 0), 0);
   const hasRedOrBetter = martialSoulCodex.some((item) => item.rarity === "红色" || item.rarity === "七彩");
   const hasRainbow = martialSoulCodex.some((item) => item.rarity === "七彩");
+  const unlockedHeirlooms = [...new Set((stored.unlockedHeirlooms ?? []).map((name) => currentHeirloomName(name) ?? name))];
+  const equippedHeirloom = currentHeirloomName(stored.equippedHeirloom);
   return {
     ...defaultMetaProgression,
     ...stored,
@@ -1131,6 +1224,8 @@ export function getMetaProgression(): MetaProgressionView {
     martialSoulCodex,
     martialSoulSummonPoolSize: META_MARTIAL_SOUL_POOL_SIZE,
     originCodex,
+    unlockedHeirlooms,
+    equippedHeirloom,
     originSummonPoolSize: META_ORIGIN_POOL_SIZE,
     summonGoldPity: stored.summonGoldPity ?? legacyPity,
     summonRedPity: stored.summonRedPity ?? (hasRedOrBetter ? legacyPity : Math.min(39, Math.max(legacyPity, historicalDraws))),
@@ -1426,8 +1521,9 @@ export function purchaseLegacyUpgrade(name: keyof typeof LEGACY_UPGRADES): MetaP
 
 export function equipLegacyHeirloom(name?: string): MetaProgressionView {
   const meta = getMetaProgression();
-  if (name && !meta.unlockedHeirlooms.includes(name)) throw new Error("这件遗物尚未解锁");
-  meta.equippedHeirloom = name;
+  const normalizedName = currentHeirloomName(name);
+  if (normalizedName && !meta.unlockedHeirlooms.includes(normalizedName)) throw new Error("这件遗物尚未解锁");
+  meta.equippedHeirloom = normalizedName;
   return saveMetaProgression(meta);
 }
 

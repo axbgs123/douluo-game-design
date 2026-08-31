@@ -13,7 +13,9 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "quality:model-smoke": "tsx scripts/model-smoke.ts",
+    "quality:model-journey": "tsx scripts/model-journey-audit.ts",
     "quality:long-session": "tsx scripts/quality-report.ts",
+    "research:fanfic-samples": "node scripts/download-public-fanfic-samples.mjs",
     "security:release": "node scripts/release-security-check.mjs"
   },
   "dependencies": {

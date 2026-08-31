@@ -77,6 +77,10 @@ export interface NpcPlanState {
   createdDay: number;
   lastOutcome?: string;
   playerImpact?: string;
+  ordinaryObligation?: string;
+  speechStyle?: string;
+  attentionFocus?: string;
+  refusalBoundary?: string;
 }
 
 export interface NpcMemoryEntry {
@@ -173,6 +177,9 @@ export interface CanonTimelineBranch {
   status: "待结算" | "已结算";
   replacementEventId?: string;
   recheckCount?: number;
+  changedDomains?: CanonCausalDomain[];
+  consequenceIds?: string[];
+  downstreamEventIds?: string[];
 }
 
 export interface CanonInterventionProject {

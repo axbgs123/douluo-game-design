@@ -161,6 +161,47 @@ export interface SoulRingView {
   color: string;
   skillName: string;
   skillDescription: string;
+  sourceType?: "魂兽" | "献祭/自愿融合" | "原著神赐" | "同人超限神赐";
+  overlimitProfile?: {
+    ordinaryLimit: number;
+    multiplier: number;
+    martialSoulQualityBonus: number;
+    physiqueBonus: number;
+    spiritBonus: number;
+    bloodlineBonus: number;
+    soulBoneBonus: number;
+    ringPositionPenalty: number;
+  };
+}
+
+export type SoulBoneSlot = "头部" | "躯干" | "左臂" | "右臂" | "左腿" | "右腿" | "外附";
+
+export interface SoulBoneSkillView {
+  name: string;
+  effect: string;
+  actionCommand: string;
+  fatigueCost: number;
+  cooldownActions: number;
+  cooldownUntilAction: number;
+  effectKind?: "攻击" | "防御" | "控制" | "治疗" | "增幅" | "位移";
+  power?: number;
+  soulPowerCost?: number;
+}
+
+export interface SoulBoneView {
+  id: string;
+  name: string;
+  slot: SoulBoneSlot;
+  years: number;
+  source: string;
+  provenance: "原著类别·同人具体魂骨" | "原著具名魂骨";
+  fusionState: "待融合" | "已融合";
+  fusedAtAction?: number;
+  attributeBonuses: { physique: number; spirit: number; perception: number };
+  skills: SoulBoneSkillView[];
+  exposed: boolean;
+  originBeastId?: string;
+  originBeastName?: string;
 }
 
 export interface SoulSpiritView {
@@ -297,6 +338,8 @@ export interface CharacterPublic extends CandidatePublic {
   martialSouls: MartialSoulView[];
   innateSoulPower: number;
   soulRank: number;
+  soulPowerCurrent?: number;
+  soulPowerMax?: number;
   cultivationProgress: string;
   condition: ConditionLabel;
   fatigue: string;
@@ -308,6 +351,7 @@ export interface CharacterPublic extends CandidatePublic {
   publiclyKnownMartialSoulIndices?: number[];
   soulRingSets: SoulRingView[][];
   soulSpirits?: SoulSpiritView[];
+  soulBones?: SoulBoneView[];
   battleArmors?: BattleArmorView[];
   abilityDescriptors: { physique: string; spirit: string; perception: string };
   personalityTraits: string[];
@@ -326,6 +370,19 @@ export interface ActiveHeirloomView {
   maxUses: number;
   remainingUses: number;
   actionCommand?: string;
+  soulBoneSkills?: Array<{ name: string; effect: string; actionCommand: string }>;
+  soulBoneFusionState?: "待融合" | "已融合";
+  soulBoneSlot?: SoulBoneSlot;
+  soulBoneYears?: number;
+  provenance?: "原著确认类别" | "原著具名唯一物" | "用户授权同人机缘" | "原著类别·同人具体魂骨";
+  canonEvidence?: string;
+  canonImpact?: string;
+  displacedOwnerNames?: string[];
+  durability?: number;
+  maxDurability?: number;
+  ammo?: number;
+  repairCost?: number;
+  historicalState?: string;
 }
 
 export interface SpecialSystemView {
@@ -744,15 +801,17 @@ export interface HuntingView {
 export interface AcademyApplicationView {
   academyId: string;
   academyName: string;
+  academySource?: "原著" | "原著归纳" | "同人场景";
   stage: "条件核对" | "材料准备" | "入学考核" | "待报到" | "已入学" | "未通过" | "已撤回";
   route: "普通学员" | "工读生" | "魂师班" | "选拔生" | "义务教育生";
-  fundingType: "家庭自费" | "工读抵扣" | "家族资助" | "学院奖助" | "宗门委培" | "公共义务教育";
+  fundingType: "家庭自费" | "工读抵扣" | "家族资助" | "学院奖助" | "所属机构委培" | "公共义务教育";
   fundingSource: string;
   obligations: string[];
-  availableFundingOptions: Array<"家庭自费" | "工读抵扣" | "家族资助" | "学院奖助" | "宗门委培" | "公共义务教育">;
+  availableFundingOptions: Array<"家庭自费" | "工读抵扣" | "家族资助" | "学院奖助" | "所属机构委培" | "公共义务教育">;
   requirements: string[];
   evidence: string[];
   fee: number;
+  feeProvenance?: "原著" | "游戏估算";
   admissionAssessmentName: string;
   assessmentRequired: boolean;
   guardianName?: string;

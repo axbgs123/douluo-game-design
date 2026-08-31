@@ -4,7 +4,7 @@ import { awakenCharacter, createGame, ERA_BASE_YEARS, finalizeCharacterShaping, 
 import { settleRun } from "./endings.js";
 import { guardActionByStoryRules, selectNarrativeRules, violatesCanonChronology } from "./story-rules.js";
 import { applyActionResult, resolveAction } from "./actions.js";
-import { advanceWorldTime, buildKnownFigures, buildMapView, canonicalFactionIdsAtDate, createHiddenWorld } from "./world.js";
+import { advanceWorldTime, buildKnownFigures, buildMapView, canonicalFactionIdsAtDate, createHiddenWorld, ensureGameState } from "./world.js";
 import { buildSceneKnowledgePack } from "./scene-knowledge.js";
 import { CANON_CHARACTERS, CANON_EVENTS, FACTIONS, canonEventSimulationDay, factionActiveAtYear } from "../data/world.js";
 import { CHARACTER_LIFE_STAGES, CHARACTER_LIFE_STAGE_CHARACTER_COUNT } from "../data/character-life-stages.js";
@@ -118,11 +118,11 @@ describe("multi-era foundations", () => {
     expect(dongQianqiu.currentGoal).not.toMatch(/白秀秀|舰队|伴侣/);
   });
 
-  it("gives the core Douluo-one cast non-overlapping public life stages without early team leakage", () => {
-    expect(CHARACTER_LIFE_STAGE_CHARACTER_COUNT).toBe(104);
+  it("gives every canon character a non-overlapping public life stage without early team leakage", () => {
+    expect(CHARACTER_LIFE_STAGE_CHARACTER_COUNT).toBe(160);
     expect(CANON_CHARACTERS).toHaveLength(160);
     const stagedIds = new Set(CHARACTER_LIFE_STAGES.map((stage) => stage.characterId));
-    expect(CANON_CHARACTERS.filter((character) => character.importance >= 4 && !stagedIds.has(character.id))).toEqual([]);
+    expect(CANON_CHARACTERS.filter((character) => !stagedIds.has(character.id))).toEqual([]);
     expect(CHARACTER_LIFE_STAGES.every((stage) => !/后来|尚未形成|真实身份|真实来历|不能公开|后世|未来/.test(stage.currentGoal))).toBe(true);
     for (const characterId of new Set(CHARACTER_LIFE_STAGES.map((stage) => stage.characterId))) {
       const stages = CHARACTER_LIFE_STAGES.filter((stage) => stage.characterId === characterId).sort((left, right) => (left.validFromYear * 360 + (left.validFromDay ?? 1)) - (right.validFromYear * 360 + (right.validFromDay ?? 1)));
@@ -140,6 +140,43 @@ describe("multi-era foundations", () => {
     expect(opening.npcs["ning-rongrong"].currentGoal).not.toContain("同伴责任");
     expect(opening.npcs["yu-xiaogang"].factionIds).toEqual([]);
     expect(opening.npcs["yu-xiaogang"].currentGoal).not.toMatch(/史莱克|培养弟子/);
+
+    const clansBeforeTangSect = createHiddenWorld(13, "longxing-city");
+    for (const id of ["tai-tan", "yang-wudi", "bai-he", "niu-gao", "bai-chenxiang"]) expect(clansBeforeTangSect.npcs[id].factionIds).not.toContain("tang-sect");
+    const clansAfterTangSect = createHiddenWorld(14, "heaven-dou-city");
+    for (const id of ["tai-tan", "yang-wudi", "bai-he", "niu-gao", "bai-chenxiang"]) expect(clansAfterTangSect.npcs[id].factionIds).toContain("tang-sect");
+    expect(createHiddenWorld(30_010, "tianluo-planet").npcs["bai-xiuxiu-dragon"].knownToPlayer).toBe(false);
+
+    const legacyStage = playingGame(1, "legacy-low-importance-stage");
+    legacyStage.view.worldTime = { era: "唐门筹备前", year: 13, day: 1, time: "08:00", season: "春" };
+    legacyStage.world = createHiddenWorld(13, "longxing-city");
+    legacyStage.world.npcs["bai-he"].currentGoal = "在唐门敏堂完成最终职责";
+    legacyStage.world.npcs["bai-he"].factionIds = ["speed-clan", "tang-sect"];
+    const repairedStage = ensureGameState(legacyStage).world.npcs["bai-he"];
+    expect(repairedStage.currentGoal).not.toContain("唐门");
+    expect(repairedStage.factionIds).toEqual(["speed-clan"]);
+
+    const alteredStage = playingGame(1, "player-altered-low-importance-stage");
+    alteredStage.view.worldTime = { era: "唐门筹备前", year: 13, day: 1, time: "08:00", season: "春" };
+    alteredStage.world = createHiddenWorld(13, "longxing-city");
+    alteredStage.world.npcs["bai-he"].currentGoal = "处理玩家促成的新组织承诺";
+    alteredStage.world.npcs["bai-he"].factionIds = ["speed-clan", "tang-sect"];
+    alteredStage.world.canonCausalFootprints.push({ id: "player-changed-bai-he", source: "玩家行动", description: "玩家提前促成白鹤的组织去向", atYear: 13, atDay: 1, locationId: "longxing-city", affectedNpcIds: ["bai-he"], affectedFactionIds: ["speed-clan", "tang-sect"], strength: 20, domains: ["goal", "faction"] });
+    const preservedStage = ensureGameState(alteredStage).world.npcs["bai-he"];
+    expect(preservedStage.currentGoal).toContain("玩家促成");
+    expect(preservedStage.factionIds).toContain("tang-sect");
+    const tournamentRelations = createHiddenWorld(8, "heaven-dou-city").npcRelations;
+    expect(tournamentRelations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ leftId: "dugu-yan", rightId: "yu-tianheng" }),
+      expect.objectContaining({ leftId: "xie-yue", rightId: "huliena" }),
+      expect.objectContaining({ leftId: "huo-wushuang", rightId: "huo-wu" }),
+    ]));
+    const xuanyuFamily = createHiddenWorld(30_000, "tianluo-planet").npcRelations;
+    expect(xuanyuFamily).toEqual(expect.arrayContaining([
+      expect.objectContaining({ leftId: "lan-xuanyu", rightId: "lan-xiao" }),
+      expect.objectContaining({ leftId: "lan-xuanyu", rightId: "nan-cheng" }),
+      expect.objectContaining({ leftId: "lan-xiao", rightId: "nan-cheng" }),
+    ]));
 
     const beforeEnrollment = createHiddenWorld(6, "shrek-village");
     expect(beforeEnrollment.npcs["ao-si-ka"].factionIds).toContain("shrek");
@@ -272,9 +309,8 @@ describe("multi-era foundations", () => {
     game.view.map = buildMapView(game);
     game.view.character!.coins = 1_000;
     game.view.character!.age = 7;
-    resolveAction(game, "进行星舰指挥模拟训练");
-    game.view.starship!.shipName = "测试登记舰";
-    game.view.starship!.shipClass = "陨星级侦察舰";
+    expect(resolveAction(game, "进行星舰指挥模拟训练").intent).toBe("无法完成");
+    game.view.starship = { license: "无", simulatorProgress: 0, simulatorSessions: 0, shipName: "测试登记舰", shipClass: "陨星级侦察舰", crew: [], missionsCompleted: 0, crewDrills: 0, crewCoordination: 0, crewEvidence: [] };
 
     expect(resolveAction(game, "承接运往天斗星的日用品运输合同").intent).toBe("承接运输合同");
     expect(game.view.tasks.find((task) => task.kind === "运输合同")?.logistics?.mode).toBe("星际货运");
@@ -322,6 +358,10 @@ describe("multi-era foundations", () => {
     expect(violatesCanonChronology("斗铠已经投入使用。", 20_000)).toBe(false);
     expect(violatesCanonChronology("星舰已经投入使用。", 20_000)).toBe(true);
     expect(violatesCanonChronology("星舰已经投入使用。", 30_000)).toBe(false);
+    expect(violatesCanonChronology("武魂殿执事负责今天的觉醒登记。", 20_000)).toBe(true);
+    expect(violatesCanonChronology("穿着武魂殿制服的林策正朝这边走来。", 20_000)).toBe(true);
+    expect(violatesCanonChronology("去找武魂殿执事素云涛请教。", 10_000)).toBe(true);
+    expect(violatesCanonChronology("旧记录里写着当年武魂殿执事负责觉醒登记。", 20_000)).toBe(false);
   });
 
   it("makes a later-era soul spirit require selection, assessment and payment", () => {
@@ -438,6 +478,7 @@ describe("multi-era foundations", () => {
   it("keeps mecha color grades tied to canon body, soul power, and customization limits", () => {
     const game = playingGame(3, "mecha-grade-limits");
     game.view.affiliations.push({ id: "federal-school", name: "明都联邦学院", role: "学员", reputation: "在册", joinedAt: "测试" });
+    game.view.character!.age = 11;
     for (let index = 0; index < 12; index += 1) resolveAction(game, "进行机甲模拟训练");
     expect(resolveAction(game, "参加白级机甲驾驶考核").intent).toBe("无法完成");
     game.view.character!.age = 18;
@@ -630,7 +671,7 @@ describe("multi-era foundations", () => {
 
   it("requires a licensed command crew and resources for interplanetary travel", () => {
     const game = playingGame(4, "starship-command-loop");
-    game.view.character!.age = 7;
+    game.view.character!.age = 12;
     game.view.character!.abilityDescriptors.perception = "优秀";
     game.view.character!.coins = 0;
     game.view.affiliations.push({ id: "fleet", name: "斗罗联邦舰队", role: "学员", reputation: "在册", joinedAt: "测试" });
@@ -642,6 +683,7 @@ describe("multi-era foundations", () => {
     for (let index = 0; index < 12; index += 1) resolveAction(game, "进行星舰指挥模拟训练");
     game.view.character!.age = 19;
     expect(resolveAction(game, "参加见习指挥考核").intent).toBe("星舰指挥考核");
+    game.view.character!.age = 24;
     expect(resolveAction(game, "参加三级指挥考核").intent).toBe("星舰指挥考核");
     resolveAction(game, "招募林航担任驾驶员成为船员");
     resolveAction(game, "招募周星图担任导航员成为船员");
@@ -681,6 +723,9 @@ describe("multi-era foundations", () => {
     for (let index = 0; index < 6; index += 1) resolveAction(game, "进行星舰指挥模拟训练");
     expect(resolveAction(game, "参加见习指挥考核").intent).toBe("无法完成");
     game.view.character!.age = 12;
+    for (let index = 0; index < 6; index += 1) resolveAction(game, "进行星舰指挥模拟训练");
+    expect(resolveAction(game, "参加见习指挥考核").intent).toBe("无法完成");
+    game.view.character!.age = 15;
     expect(resolveAction(game, "参加见习指挥考核").intent).toBe("星舰指挥考核");
     expect(resolveAction(game, "参加三级指挥考核").intent).toBe("无法完成");
   });

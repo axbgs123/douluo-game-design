@@ -182,6 +182,10 @@ interface ChatCompletionPayload {
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
+function completionTokenLimit(settings: { baseUrl: string }, tokens: number): { max_tokens: number } | { max_completion_tokens: number } {
+  return /xiaomimimo\.com/.test(settings.baseUrl) ? { max_completion_tokens: tokens } : { max_tokens: tokens };
+}
+
 interface TurnTraceContext {
   groupId: string;
   attempt: number;
@@ -248,8 +252,8 @@ async function safeRecordContextRetrieval(game: StoredGame, role: "intent" | "na
       memoryLabels: contexts.memory.map((item) => `${item.kind}#${item.actionIndex}${typeof item.metadata.chapterTitle === "string" ? ` · ${item.metadata.chapterTitle}` : ""}`),
       canonLabels: contexts.canon.map((item) => `${item.kind} · ${item.subjectName}`), logicLabels: contexts.logic.map((item) => item.category),
       memoryDetails: contexts.memory.map((item) => ({ label: `${item.kind}#${item.actionIndex}${typeof item.metadata.chapterTitle === "string" ? ` · ${item.metadata.chapterTitle}` : ""}`, snippet: item.text, similarity: item.similarity, source: String(item.metadata.source ?? item.metadata.retrievalPhase ?? "本地剧情记忆"), reason: typeof item.metadata.chapterTitle === "string" ? `先命中第${item.metadata.chapterNumber ?? "?"}章“${item.metadata.chapterTitle}”，再按场景相似度入选` : "NPC记忆或玩家已知情报允许跨章节直接入选" })),
-      canonDetails: contexts.canon.map((item) => ({ label: `${item.kind} · ${item.subjectName}`, snippet: item.text, similarity: item.similarity, source: String(item.metadata.provenance ?? item.metadata.sourceType ?? "结构化斗罗知识"), reason: "通过当前时代、日期和玩家已知范围过滤后按相似度入选" })),
-      logicDetails: contexts.logic.map((item) => ({ label: item.category, snippet: item.logic, similarity: item.similarity, source: String(item.metadata.type ?? "世界基本逻辑"), reason: `当前行动与触发条件“${item.trigger}”相关` })),
+      canonDetails: contexts.canon.map((item) => ({ label: `${item.kind} · ${item.subjectName}`, snippet: item.text, similarity: item.similarity, source: String(item.metadata.provenance ?? item.metadata.sourceType ?? "结构化斗罗知识"), reason: String(item.metadata.retrievalReason ?? "通过当前时代、日期、玩家已知范围与场景相似度筛选") })),
+      logicDetails: contexts.logic.map((item) => ({ label: item.category, snippet: item.logic, similarity: item.similarity, source: String(item.metadata.type ?? "世界基本逻辑"), reason: `${String(item.metadata.retrievalReason ?? "按行动相关性入选")}；触发条件：“${item.trigger}”` })),
     });
   } catch {
     // Retrieval has already succeeded; diagnostics must not invalidate it.
@@ -261,8 +265,9 @@ async function tracedCompletion(game: StoredGame, role: "intent" | "narrator", s
   const serialized = JSON.stringify(body);
   let recorded = false;
   try {
-    const maximumRequestChars = positiveEnvironmentInteger("DOULUO_MODEL_SMOKE_MAX_REQUEST_CHARS");
-    if (maximumRequestChars && serialized.length > maximumRequestChars) throw new Error(`真实模型冒烟请求超过 ${maximumRequestChars} 字符硬上限`);
+    const roleMaximumRequestChars = positiveEnvironmentInteger(role === "intent" ? "DOULUO_MODEL_SMOKE_MAX_INTENT_CHARS" : "DOULUO_MODEL_SMOKE_MAX_NARRATOR_CHARS");
+    const maximumRequestChars = roleMaximumRequestChars ?? positiveEnvironmentInteger("DOULUO_MODEL_SMOKE_MAX_REQUEST_CHARS");
+    if (maximumRequestChars && serialized.length > maximumRequestChars) throw new Error(`真实模型冒烟请求实际${serialized.length}字符，超过${maximumRequestChars}字符硬上限`);
     const maximumRequests = positiveEnvironmentInteger("DOULUO_MODEL_SMOKE_MAX_REQUESTS");
     if (maximumRequests && smokeRequestCount >= maximumRequests) throw new Error(`真实模型冒烟达到 ${maximumRequests} 次调用硬上限`);
     if (maximumRequests) smokeRequestCount += 1;
@@ -297,7 +302,7 @@ export async function interpretActionWithDeepSeek(game: StoredGame, playerInput:
   await safeRecordContextRetrieval(game, "intent", { memory: relevantPast, canon: [], logic: [] });
   const payload = await tracedCompletion(game, "intent", settings, {
       model: settings.model,
-      max_tokens: 256,
+      ...completionTokenLimit(settings, 256),
       thinking: { type: "disabled" },
       response_format: { type: "json_object" },
       temperature: 0.1,
@@ -366,7 +371,13 @@ export async function narrateWithDeepSeek(
     const publicIndices = new Set(game.view.character!.publiclyKnownMartialSoulIndices ?? [0]);
     const cleanSoul = ({ rarity: _rarity, grade: _grade, sourceEra: _sourceEra, originFit: _originFit, ...soul }: typeof martialSouls[number], index?: number) => ({ ...soul, visibility: index === undefined || publicIndices.has(index) ? "已公开" : "仅主角知道" });
     const cleanedSouls = martialSouls.map((soul, index) => cleanSoul(soul, index));
-    return { ...rest, martialSoul: cleanSoul(game.view.character!.martialSoul, game.view.character!.activeMartialSoulIndex), martialSouls: cleanedSouls };
+    return {
+      ...rest,
+      originProvenance: "同人原创存档事实",
+      originCanonBoundary: "该身世在本局真实成立，但玩家本人、具体家庭、监护关系、微地点与原创机构并非原著既有人物或条目",
+      martialSoul: cleanSoul(game.view.character!.martialSoul, game.view.character!.activeMartialSoulIndex),
+      martialSouls: cleanedSouls,
+    };
   })() : undefined;
   const narrativeStoryArc = privateSolitaryAction ? undefined : game.view.storyArc;
   const scenePersonNames = new Set(sceneKnowledge.entries.filter((entry) => entry.kind === "人物").map((entry) => entry.name));
@@ -376,10 +387,15 @@ export async function narrateWithDeepSeek(
     .slice(0, 8);
   const relevantIntelligence = privateSolitaryAction ? [] : game.view.intelligence.filter((item) => playerInput.includes(item.title) || item.subjectId === game.view.locationId || sceneKnowledge.entries.some((entry) => entry.id === item.subjectId)).slice(0, 8);
   const relevantTasks = privateSolitaryAction ? [] : game.view.tasks.filter((task) => task.status !== "完成" && (task.id === game.view.storyArc?.mainTaskId || playerInput.includes(task.title) || task.destinationId === game.view.locationId)).slice(0, 5);
+  const currentActionNeedsAwakeningHistory = /觉醒|复测|武魂记录|先天魂力/.test(`${playerInput} ${resolution.intent} ${resolution.ruleSummary}`);
+  const recentNarrativeForPrompt = privateSolitaryAction ? [] : game.view.narrative
+    .filter((entry) => currentActionNeedsAwakeningHistory || game.actionIndex < 2 || !(/觉醒室|觉醒阵|水晶球/.test(entry.text) && /先天满魂力|武魂显形|觉醒结果/.test(entry.text)))
+    .slice(-6)
+    .map((entry) => ({ ...entry, text: entry.text.slice(0, 1_600) }));
 
   const payload = await tracedCompletion(game, "narrator", settings, {
       model: settings.model,
-      max_tokens: 4096,
+      ...completionTokenLimit(settings, 4096),
       thinking: { type: "disabled" },
       response_format: { type: "json_object" },
       temperature: 0.72,
@@ -396,6 +412,7 @@ export async function narrateWithDeepSeek(
             "区分作者知道、模型知道与角色知道。玩家问到尚未发生的原作内容时，本地人只能给出当时能查到的常识、传闻或不知道；穿越者也只能依据其已解锁的剧情记忆。",
             "正文从眼前正在发生的动作或感官细节写起，句子长短要有变化。NPC 的说话方式要符合年龄、身份和当下顾虑。",
             "少做解释，多写手上的动作、衣物、气味、声音、停顿和不体面的细节。允许人物判断错、犹豫或话说半截。",
+            "不要反复使用‘把旧布包往肩上一甩’‘拍了拍裤腿的灰’‘声音不大但很稳’‘像是没料到六岁孩子会这样问’‘步子比来时更稳’等库存动作和AI惯用转折。细节必须来自当前人物真实持有的物品、职业习惯或眼前环境，并推动判断、关系或后果。",
             "删掉空泛升华、万能比喻、整齐排比和总结性收尾。不要使用「首先、其次、最后」「值得注意的是」「这意味着」「本质上」「不是……而是……」等模板句。",
             "不要为了文艺感把普通行动写成命运、时代、道路或宏大回响。每次只抓一两个有效细节，不要堆满五感。",
             "战斗时写清站位、试探、失误和代价；交谈时保留对方的私心与信息边界；赶路和修炼可以简写，但要留下具体变化。",
@@ -405,22 +422,44 @@ export async function narrateWithDeepSeek(
             "canonNarrativeProfile 来自斗一至斗四原著的结构抽样，只学习场景进入、人物欲望、制度落地与节奏机制，不模仿或复述原著句子。必须遵守其中的时代生活质感、场景节拍、心理距离和设定讲法。",
             "suggestions必须由你根据本次刚生成的正文结尾实时创作，程序建议只作安全兜底，不要照抄或换词。三项都必须承接本次行动已经造成的现场状态，不能重复已经完成的动作。",
             "按中国男频互动网文设计选项：三项分别推进成长/资源、关系/势力、秘密/风险；写成动作+明确对象+近期目的，控制在8至28个汉字，不能用查看地图、查看新事件、观察周围或继续行动占位。",
+            "三个suggestions不能都是‘再问一个人/再问一项条件’。即使是办事场景，也要分别给出成长准备、利益关系谈判和暴露/拒绝/暂缓等风险选择。",
             "playerInput是本次正文必须完整兑现的行动，不是可以替换的灵感。先写玩家所做之事及程序固定后果，再写由此产生的反应；不得用NPC来访、会议、转场或另一项任务抢走本次行动。",
+            "正文前两段必须已经开始执行playerInput，必要背景只能随动作带出。不得先复述觉醒、身世、上轮结果或旁人安排，再到后半段才写玩家。",
+            "调查、打听、核验、查记录类行动必须在正文前半段写出主角亲自走到具体地方、询问可接触对象、查看公开记录或交叉核对来源中的至少一项；不能只写思考、回忆、得出结论或收到消息。",
+            "修炼、体能训练与休息也必须写成可见动作：如盘膝引导魂力、跑步负重拉伸、躺下合眼并让身体放松。不能只整理信息、回想或说自己要休息。",
+            "未在sceneNpcProfiles、sceneKnowledge、relationships、knownFigures或fixedRuleResult中登记姓名的NPC，只能使用‘那名执事’‘负责老师’‘当班工作人员’等职务称呼，不得现编姓氏、名字或绰号。",
+            "非觉醒、非复测、非培养条件谈判场景，不要重述‘先天满魂力’、‘水晶冲顶’或整段觉醒过程；如果必须提及，只写已经存在的觉醒记录、身份待遇或培养影响。",
             "行动所有权是硬门禁：正文前半段必须出现玩家动作的可见执行证据和fixedRuleResult的可见结果证据。若当前行动很短，可以扩写感受、阻力与直接后果，但不能靠新增事件凑字数。",
+            "fixedRuleResult若明确禁止进舱、学习、训练或取得资格，正文只能写主角如何碰到边界、问清原因和保留下一步；不得靠‘门没锁’‘第一次免费’‘旧货摊刚好有图册’‘长辈不知从哪里弄来设备’等便利绕过程序结果。",
+            "fixedRuleResult只结算修炼、休息或一项日常行动时，不得让新NPC带着帝国回函、猎魂路线、学院录取、导师邀请或培养合同突然上门；这些必须由独立程序行动结算。",
             "若本次行动是隐藏、私下测试、独处、保密或不公开，正文不得让敲门、传唤、NPC进门、实际前往议事堂或培养会议抢走行动，也不得凭空生成未持有物品。测试确实完成后，可以用一句内心提醒承接结构化状态中已经存在的未来安排，但不能实际转场、赴会或替玩家决定如何回应；suggestions必须从私下行动完成后的真实状态继续。",
             "每个重要反应都要通过欲望、信息、权限、资源、行动、后果六环。只有已经公开且被现场人物实际目击的异常天赋，才能引发符合目击者利益和权限的复测、上报、谈条件、争夺或戒备；未显形、无人目击或仍属主角秘密时不得产生NPC反应。",
             "sceneLogicCard 中 protagonistSecrets 只供主角内心与程序审校使用，NPC 在秘密公开前绝对不能据此说话、推荐或行动。",
             "narrativeLogicPacket 是正文生成前已经通过的硬逻辑合同。generationContract是本稿的正向场景白名单：先按sceneGoal和requiredBeats搭好本场骨架，只从allowedFacts取事实，逐条避开forbiddenClaims，并严格停在endingBoundary；然后再满足protagonistContract、participantContracts、reactionChain与continuityContract。不要先自由发挥再依赖审校纠错，也不得在正文中提到逻辑包、白名单、状态版本或检查过程。",
             "retrievedLongTermMemories 是本地向量库按当前行动召回的玩家已知旧事。只在与当前场景相关时自然延续；它不能覆盖当前程序状态，也不能让未亲历该事的NPC突然知情。发生冲突时以当前结构化状态和 fixedRuleResult 为准。",
             "retrievedCanonKnowledge 是按当前时代和场景召回的斗罗结构化世界资料。地点与势力条目必须读取 metadata.provenance：原著归纳不是原著原话，原创不能宣称原著出现过。人物条目只描述当前人生时间片；未提供的后来姓名、称号、武魂变化、关系结果、势力归属与目标一律视为尚未发生。玩家已经改变其关系、资源、职位或处境时，以当前存档为准。",
+            "academyApplication.academySource为‘同人场景’时，校名只是当地场景称呼，不得声称原著明确设有该正式机构；feeProvenance为‘游戏估算’时，数字只是当地当次报价与程序结算，不得写成全大陆通用学费或原著硬设定。",
+            "已公开的先天满魂力不应继续被普通入学费卡住：平民会获得学院奖助、地方名额或发现机构招揽的现实选项，贵族与宗门子弟则由家族或所属势力先承担基础培养。可以有归属、纪律、服务年限、竞争和猎魂损耗等条件，但不得倒退成‘天才先自己凑齐普通学费才有人理会’。",
+            "工读生只是玩家明确选择且程序已经登记后的费用路线。academyApplication尚未选择工读抵扣时，不得因为平民、乡村出身或家境普通就让NPC默认主角先争工读名额；先天满魂力更应先出现奖助、招揽与培养条件的现实反应。",
+            "家庭成员只以relationships、sceneNpcProfiles与knownBackground中已登记的人为准。只登记父亲、母亲或一名监护人时，不得顺口扩写成‘父母’‘爹娘’或另一个在场家长。",
+            "机构只能兑现fixedRuleResult与participantContracts中已经明确的权限。武魂殿完成觉醒登记或一般指引，不等于已经答应安排、出钱或带队猎魂；学院、导师、家庭与武魂殿的责任不能互相代答。",
+            "斗一的武魂殿可以承担觉醒登记、魂师注册、补贴与猎魂森林凭证等实际制度职能。某个地方执事不能亲自带队，不等于‘武魂殿管不了猎魂’，也不得把合法猎魂路线缩成只能依靠宗门或学院。",
+            "fixedRuleResult与逻辑包是事实边界，不是人物台词。必须把结果改写成世界内可见行动；不得照抄‘当前只是’‘本次没有自动’‘只是具体条件’‘不等于已经无条件’等规则说明或审校口吻。",
+            "正文不得补造fixedRuleResult、economy或academyApplication中没有的精确学费、物价、补贴和预算数字。只知道贵、便宜或需要另算时，就保持模糊，不要自行写成若干金魂币。",
+            "斗一生活与训练使用当时人物能自然说出的身体部位、纸笔和训练动作，不要写‘魂导笔’‘半月板’‘膝盖内扣’等后世消费品或现代训练医学术语。",
+            "程序没有结算接受、拒绝或路线选择时，正文只能写主角听到条件后的倾向、疑虑与追问，不得替他决定是否入学、是否拜师或下一步实际去哪里。",
+            "fixedRuleResult没有登记具体日期或时辰时，不得擅自约定‘明天傍晚来找我’‘后天报到’等未来承诺；只写下一次见面前需要完成的条件。",
+            "inventory只是可用物品清单，不是每场必须露面的道具。近期已经反复出现的书袋、铜牌、木箱、旱烟杆和晨光夕阳，除非本次行动确实使用或改变它们，否则换成与当前动作直接相关的细节。",
             "玩家出身、宗门、武魂或遗物若标为原创，只是服从斗罗底层规则的同人事实，不是原著实体。只能使用结构化状态已声明的形态、能力和限制，不得补成原著古老传承、已知历史或大陆公认体系，也不得凭感觉赋予武魂灵智、主动回应、警告、拒绝、择主或隐藏能力。",
+            "魂环条目的beastId若为fanfic-overlimit-bestowed-ring，表示用户授权的同人超限神赐机缘：没有魂兽被猎杀，也不是海神考核的原著奖励。overlimitRingSecret存在时只有主角知道完整来源与年限；只有overlimitRingPublic成立后，NPC才能依据现场展示进行复测、争取和风险评估。",
+            "activeHeirloom.canonImpact或canonInfluences若记录原著具名唯一物已由玩家持有，当前存档所有权优先：原著旧持有人不能同时凭空保留同一件物品，相关赠礼、拍卖、航海、复生或暗器装备节点必须按新所有权重算。",
             "原著关系向量默认只用于保持人物行为一致，不能直接向主角陈述。只有 sceneKnowledge 或玩家情报明确证明主角已经知道该关系时，正文和NPC才可以说破；不得借旁白泄露隐藏血缘、感情、阵营或未来身份。",
             "重要原著事件在没有玩家因果足迹时保持惯性；普通人物、关系、资源和地方事件应持续自主变化。玩家形成足够的目击、关系、权限、资源、战力或势力影响后，重要事件也必须从新状态重新推演，不能强行回轨。",
             "retrievedWorldLogic 是独立的世界基本逻辑库。先核对每条的触发前提，再执行目击—复测—上报—利益判断—具体行动—状态痕迹链。高天赋会立刻改变关注、投资、收徒、拉拢、忌惮和敌对概率，但不保证成功拜师、无条件送宝、忠诚或私人好感。",
             "敌对反应必须逐级升级：可靠消息、威胁评估、监视或接触、控制失败、行动资源与可达性成立后，才可能绑架或暗杀。不得让远方敌人无来源瞬移袭击，也不得让敌人连续送死。",
             "storyArc 是程序按真实证据门槛维护的当前卷级导演状态。stageGates 决定当前阶段能否前进：未出现真实拒绝、费用、权限或风险时不得写成阻力显形；payoffLedger 未记录导师、名额、食宿、训练、身份或第一里程碑落地时不得写成阶段兑现；未有玩家重大选择时不得写成不可逆转折。sideThreads 是自主支线，除非玩家主动处理，不得抢走 centralGoal。",
             "storyArc.npcScenes 是已经进入玩家可观察范围的NPC主动要求。只能依据其中的角色、职责、动机与行动写现场压力，不得扩大成无条件收徒、送宝或强迫好感；等待回应不等于玩家已经同意。",
-            "sceneNpcProfiles 中的 directorPlan 是NPC欲望—责任—信息—权限—资源行动规划，只用于让人物主动且连续地行动。不得把完整计划、内心或未知信息直接告诉主角；只能通过现场动作、说话、拒绝、调动资源和留下的后果表现。",
+            "sceneNpcProfiles 中的 directorPlan 是NPC欲望—责任—信息—权限—资源行动规划，ordinaryObligation、attentionFocus、speechStyle和refusalBoundary分别约束其日常义务、先注意什么、怎样开口和什么事不会答应。这些只用于让人物主动且连续地行动；不得把完整计划、内心或未知信息直接告诉主角，只能通过现场动作、说话、拒绝、调动资源和留下的后果表现。",
             "儿童角色的语言必须符合年龄。六至十岁可以聪明、克制、有前世记忆或受严格教育，但若设定没有明确支持，不能连续使用数据治理、行政汇报、资源审批式口吻，也不能像成年管理者主持会议。",
             "activeLocalConsequences 是错过事件已经写入程序的持续后果。正文必须让供需、治安、伤亡、制度、关系、势力或生态变化落到当前生活中；不得把已经发生的损失恢复成事件前状态。",
             `activeFanfictionRules 是根据当前行动从四千条清单中检索出的斗${game.view.era === 1 ? "一" : game.view.era === 2 ? "二" : game.view.era === 3 ? "三" : "四"}适用规则。本次正文逐条服从，不要在正文中提到规则编号或审稿过程。`,
@@ -462,7 +501,7 @@ export async function narrateWithDeepSeek(
             intelligenceWithSources: relevantIntelligence,
             knownNpcMemories: privateSolitaryAction ? {} : Object.fromEntries(Object.values(game.world.npcs).filter((npc) => npc.knownToPlayer && npc.episodicMemory.length && (scenePersonNames.has(npc.name) || playerInput.includes(npc.name))).map((npc) => [npc.name, npc.episodicMemory.slice(-4).map(({ text, year, day, significance }) => ({ text, year, day, significance }))])),
             sceneNpcProfiles: privateSolitaryAction ? [] : [
-              ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => { const definition = characterById(npc.id); return { name: npc.name, stableTemperamentHints: definition?.personality.slice(0, 2), temperamentBoundary: "只使用当前阶段已经成立的气质、目标和责任", currentGoal: npc.currentGoal, attitude: npc.dispositionToPlayer, directorPlan: npc.activePlan ? { desire: npc.activePlan.desire, responsibility: npc.activePlan.responsibility, informationBoundary: npc.activePlan.informationBoundary, authority: npc.activePlan.authority, resources: npc.activePlan.resources, nextAction: npc.activePlan.nextAction, status: npc.activePlan.status, lastOutcome: npc.activePlan.lastOutcome, playerImpact: npc.activePlan.playerImpact } : undefined, rememberedInteractions: npc.episodicMemory.slice(-4).map(({ text, year, day, significance }) => ({ text, year, day, significance })), knownPower: game.view.knownFigures.find((item) => item.id === npc.id)?.knownPower }; }),
+              ...Object.values(game.world.npcs).filter((npc) => npc.alive && npc.knownToPlayer && npc.locationId === game.view.locationId).map((npc) => { const definition = characterById(npc.id); return { name: npc.name, stableTemperamentHints: definition?.personality.slice(0, 2), temperamentBoundary: "只使用当前阶段已经成立的气质、目标和责任", currentGoal: npc.currentGoal, attitude: npc.dispositionToPlayer, directorPlan: npc.activePlan ? { desire: npc.activePlan.desire, responsibility: npc.activePlan.responsibility, ordinaryObligation: npc.activePlan.ordinaryObligation, informationBoundary: npc.activePlan.informationBoundary, authority: npc.activePlan.authority, resources: npc.activePlan.resources, attentionFocus: npc.activePlan.attentionFocus, speechStyle: npc.activePlan.speechStyle, refusalBoundary: npc.activePlan.refusalBoundary, nextAction: npc.activePlan.nextAction, status: npc.activePlan.status, lastOutcome: npc.activePlan.lastOutcome, playerImpact: npc.activePlan.playerImpact } : undefined, rememberedInteractions: npc.episodicMemory.slice(-4).map(({ text, year, day, significance }) => ({ text, year, day, significance })), knownPower: game.view.knownFigures.find((item) => item.id === npc.id)?.knownPower }; }),
               ...game.view.relations.filter((relation) => relation.localState?.locationId === game.view.locationId && relation.category !== "势力").map((relation) => ({ name: relation.name, stableTemperamentHints: [relation.impression], temperamentBoundary: "只使用共同生活和当前关系已经形成的行为证据", currentGoal: relation.localState!.currentGoal, attitude: relation.dimensions?.trust ?? relation.strength ?? 0, directorPlan: { desire: relation.localState!.currentGoal, responsibility: relation.localState!.responsibility, informationBoundary: relation.localState!.informationBoundary, authority: relation.localState!.authority, resources: relation.localState!.resources, nextAction: relation.localState!.nextAction, status: relation.localState!.status, lastOutcome: relation.localState!.lastOutcome }, rememberedInteractions: (relation.history ?? []).slice(-4).map((item) => ({ text: `${item.reason}：${item.changes}`, year: game.view.worldTime?.year ?? 0, day: game.view.worldTime?.day ?? 1, significance: 1 })), knownPower: undefined })),
             ],
             recentNews: privateSolitaryAction ? [] : game.view.news.slice(0, 8),
@@ -472,7 +511,7 @@ export async function narrateWithDeepSeek(
             retrievedWorldLogic,
             storyArc: narrativeStoryArc,
             activeLocalConsequences: privateSolitaryAction ? [] : game.world.localConsequences.filter((item) => item.status === "生效中" && item.locationId === game.view.locationId),
-            recentNarrative: privateSolitaryAction ? [] : game.view.narrative.slice(-6).map((entry) => ({ ...entry, text: entry.text.slice(0, 1_600) })),
+            recentNarrative: recentNarrativeForPrompt,
             playerInput,
             fixedRuleResult: resolution.ruleSummary,
             fixedSuggestions: resolution.suggestions,
@@ -544,9 +583,10 @@ export async function narrateWithAuditRetries(
 ): Promise<NarrationResult | null> {
   let lastError: unknown;
   let retryGuidance: string[] = [];
+  const maximumAttempts = Math.max(1, Math.min(4, positiveEnvironmentInteger("DOULUO_MODEL_SMOKE_MAX_NARRATIVE_ATTEMPTS") ?? 4));
   const traceGroupId = randomUUID();
   await safeStartTurnTrace(traceGroupId, game, playerInput, resolution, operation);
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
     const traceContext: TurnTraceContext = { groupId: traceGroupId, attempt: attempt + 1, operation };
     try {
       const generated = await narrator(game, playerInput, resolution, signal, retryGuidance, traceContext);
@@ -564,7 +604,7 @@ export async function narrateWithAuditRetries(
       if (error instanceof NarrativeLogicPreflightError) { await safeCompleteTraceGroup(traceGroupId, "failed", undefined, issues); throw error; }
       lastError = error;
       retryGuidance = error instanceof NarrativeAuditError ? error.issues : ["上一稿没有完整返回，请重新生成完整且合法的 JSON 正文"];
-      if (attempt < 3) onRetry?.(attempt + 2, retryGuidance.join("、"));
+      if (attempt < maximumAttempts - 1) onRetry?.(attempt + 2, retryGuidance.join("、"));
     }
   }
   await safeCompleteTraceGroup(traceGroupId, "failed", undefined, retryGuidance);

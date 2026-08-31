@@ -88,9 +88,11 @@ function dwellingOptions(origin: OriginTemplate, location: string): string[] {
   if (/少宗主|继承人|宗主独子|嫡系/.test(origin.name)) return ["主峰继承人院东厢", "宗主院落第二进独室", "内门议事堂后的少主院", "护山阵内侧的继承人居所", "藏经阁与主峰之间的独院", "宗门核心区的临崖静室"];
   if (/亲传|核心弟子|圣子|圣女/.test(origin.name)) return ["内门弟子院甲字房", "授业长老院外侧弟子房", "核心演武场北侧静室", "藏书楼后的亲传小院", "主殿东侧弟子厢房", "拟态修炼区旁的独院"];
   if (/长老|斗罗|供奉/.test(origin.name)) return ["长老府东侧子弟院", "供奉殿家属区独院", "封号斗罗府邸第二进", "长老演武场后的暖阁", "内城警戒区家属院", "长老私宅藏书室旁卧房"];
+  if (/贵族别院|朱氏旁院|王府|公爵府|宫廷家属区|乡间庄园/.test(`${location}${origin.name}`)) return ["别院东厢房", "演武院后的独室", "家族课堂旁暖阁", "护卫值房内侧小院", "主院第二进卧房", "家族藏书室旁东厢"];
   if (/商队|乡道/.test(location)) return ["头车后的篷车", "装药材的二号车厢", "车队东侧折篷", "护卫火堆旁的小帐", "驮兽栏后的旧篷车", "领队车外侧的窄铺位"];
-  if (/城堡|府邸|王府|公爵府|山门|剑谷|宗/.test(`${location}${origin.name}`)) return ["东院临竹厢房", "演武场北侧独院", "藏书楼后的青瓦小院", "内门膳堂西侧偏院", "主院第二进暖阁", "护山石阶下的旧执事院"];
-  if (/城|学院|街|码头|酒馆|分殿|黑市/.test(location)) return ["东市石桥旁二层木屋", "分殿后巷第三间院子", "南门水井边的灰瓦屋", "旧货栈二楼靠街房", "学院后墙外的窄院", "码头仓房后的木板屋"];
+  if (/码头|海港|渔行|港区/.test(`${location}${origin.name}`)) return ["码头仓房后的木板屋", "渔行晒网场旁的灰瓦屋", "港区货栈二楼小间", "修船棚后的两间木屋", "河道入港处的石基小院", "码头工人巷尾的窄院"];
+  if (/城堡|府邸|别院|旁院|王府|公爵府|山门|剑谷|宗/.test(`${location}${origin.name}`)) return ["东院临竹厢房", "演武场北侧独院", "藏书楼后的青瓦小院", "内门膳堂西侧偏院", "主院第二进暖阁", "护山石阶下的旧执事院"];
+  if (/城|学院|街|酒馆|分殿|黑市/.test(location)) return ["东市石桥旁二层木屋", "分殿后巷第三间院子", "南门水井边的灰瓦屋", "旧货栈二楼靠街房", "学院后墙外的窄院", "西市杂货铺楼上的两间房"];
   if (/山|森林|药谷|猎户|采石/.test(`${location}${origin.name}`)) return ["山口第一座石屋", "药圃北边的竹篱小院", "旧猎棚旁的木屋", "溪水拐弯处的双间草房", "背风坡下的半石院", "林场仓棚后的矮屋"];
   return ["村东老槐树下的土院", "水井南侧第三间草房", "晒谷场后的两间瓦屋", "河堤边的木门小院", "村口石桥旁的旧屋", "里正家西侧的窄院"];
 }
@@ -251,16 +253,16 @@ const BASE_ORIGINS: OriginTemplate[] = [
   },
   {
     id: "seven-treasure-core",
-    name: "七宝琉璃宗内门亲传",
-    summary: "他从小住在七宝城堡内院，宁风致亲自看过他的启蒙课业。",
-    details: ["剑斗罗答应在觉醒后试他三剑，输赢都要记进内门考册。", "宗门已经替他留出一间修炼室，门上还没有挂牌。", "宁荣荣把他当作同辈竞争者，见面时从不肯先服软。"],
+    name: "七宝琉璃宗内院培养候选",
+    summary: "他的监护人在七宝琉璃宗内务体系任职，因此能和其他家属子弟一起接受识字、礼法与基础体能启蒙。",
+    details: ["觉醒结果会先由内院教习复核，再决定是否进入正式培养名册。", "训练室、拟态场地与猎魂帮助都要按成绩和职责申请，没有提前留给他的私人份额。", "同批候选之间会竞争资源，但尚没有原著人物对他作出授业或关注承诺。"],
     locations: ["七宝琉璃宗城堡内院"],
     preferredCategories: ["器武魂", "兽武魂"],
     weight: 3,
     tier: "稀有",
-    route: "上三宗天骄",
+    route: "上三宗内院竞争",
     selfKnowledge: "本地人 · 身世明确",
-    knownBackgrounds: ["他知道自己已被列入内门亲传名册。觉醒结果会决定由剑斗罗、骨斗罗还是宗门教习接手。"],
+    knownBackgrounds: ["他知道自己只是内院培养候选；觉醒、复核与同辈考核会决定由普通教习负责、提高资源等级或退出候选名单。"],
     fixedTraits: ["宗门荣誉", "骄傲"],
     roleTags: ["七宝琉璃宗", "权贵", "天才", "正邪皆可"],
   },
@@ -268,14 +270,14 @@ const BASE_ORIGINS: OriginTemplate[] = [
     id: "spirit-hall-elder-child",
     name: "武魂殿封号长老之子",
     summary: "他的父亲是长老殿新晋封号斗罗霜戈，名字没有写进公开名册。",
-    details: ["教皇殿与长老殿都派人来旁观这次觉醒，谁也没有解释原因。", "父亲只教过他一句话，武魂殿记得住有价值的人。", "侍从昨夜烧掉了一封来自供奉殿的密信。"],
+    details: ["父亲可以安排家中教习与长老殿内部觉醒，却不能替他预定父亲所属派系之外的高层关注。", "觉醒档案会按长老家属规矩复测并登记；只有结果足够重要，上报后才可能引来派系接触。", "家族能先承担住处、基础训练和安全；额外资源仍要说清由谁签字、拿来做什么、孩子要承担什么。"],
     locations: ["武魂城长老殿东侧府邸"],
     preferredCategories: ["器武魂", "兽武魂", "本体武魂"],
     weight: 2,
     tier: "神话",
     route: "武魂殿权贵",
     selfKnowledge: "本地人 · 身世明确",
-    knownBackgrounds: ["他清楚父亲的封号和自己能调动的资源，也知道长老之子的身份会招来监视、拉拢与暗杀。"],
+    knownBackgrounds: ["他清楚父亲的封号和家中现有资源，也知道长老之子的身份会带来内部审查；拉拢、监视或敌对升级必须等真实价值与消息传播成立。"],
     fixedTraits: ["权势敏感", "好胜"],
     roleTags: ["武魂殿", "权贵", "天才", "反派"],
   },
@@ -456,7 +458,20 @@ const REPRESENTATIVE_LOW_TIER_ORIGIN_IDS = new Set([
   "scout-orphan", "spirit-beekeeper", "small-sect-collateral-heir", "beast-raid-survivor", "seven-treasure-caravan-guard",
 ]);
 
-const ACTIVE_ORIGINS = ORIGINS.filter((origin) => ["传奇", "神话"].includes(resolvedOriginTier(origin)) || REPRESENTATIVE_LOW_TIER_ORIGIN_IDS.has(origin.id));
+// These legacy definitions remain loadable for existing saves and codex entries, but no longer
+// enter new random draws. Stacking a complete second-world cultivation system on top of a six-year-old
+// makes the opening read like generic crossover xuanhuan instead of a life beginning inside Douluo.
+const LEGACY_CROSSOVER_ORIGIN_IDS = new Set([
+  "cultivator-reincarnation", "hidden-tang-line", "alchemy-reborn", "formation-reborn", "talisman-reborn",
+  "body-cultivator-reborn", "sword-spirit-reborn", "myth-blood-dreamer", "ancient-general-reborn",
+  "physician-reborn", "craftsman-reborn", "daoist-remnant",
+]);
+
+const ACTIVE_ORIGINS = ORIGINS.filter((origin) =>
+  !LEGACY_CROSSOVER_ORIGIN_IDS.has(origin.id)
+  && (["传奇", "神话"].includes(resolvedOriginTier(origin)) || REPRESENTATIVE_LOW_TIER_ORIGIN_IDS.has(origin.id)),
+);
+export const ACTIVE_ORIGIN_IDS = ACTIVE_ORIGINS.map((origin) => origin.id);
 export const ORIGIN_CURATION_STATS = {
   before: ORIGINS.length,
   after: ACTIVE_ORIGINS.length,
@@ -1004,13 +1019,30 @@ function specificOrigin(
   const specialRelations: Record<string, CandidatePublic["startingRelations"]> = {
     "seven-treasure-core": [
       { name: "宁远山", relation: "内门监护人", impression: "既盼他成材，也会把失误如实写进宗门考册", faction: "七宝琉璃宗", strength: 68, category: "亲属" },
-      { name: "宁风致", relation: "宗主与启蒙导师", impression: "愿意给机会，尚未决定投入多少资源", faction: "七宝琉璃宗", strength: 34, category: "师友" },
-      { name: "尘心", relation: "候选授业者", impression: "只看剑心、天赋与临阵反应", faction: "七宝琉璃宗", strength: 18, category: "师友" },
+      { name: "内院教习许衡", relation: "候选班教习", impression: "负责基础训练与如实记录，无权替宗门高层承诺亲传", faction: "七宝琉璃宗", strength: 24, category: "师友" },
+      { name: "内务管事周伯", relation: "培养名册管事", impression: "只按复核结果、名额和实际职责调配基础资源", faction: "七宝琉璃宗", strength: 16, category: "势力" },
     ],
     "spirit-hall-elder-child": [
       { name: "凌峥（霜戈斗罗）", relation: "父亲", impression: "要求很高，必要时也会动用长老资源护子", faction: "武魂殿", strength: 73, category: "亲属" },
       { name: "沈静娴", relation: "母亲", impression: "熟悉武魂城的规矩，比父亲更在意孩子能否活得长久", faction: "武魂殿", strength: 82, category: "亲属" },
       { name: "长老殿侍从长魏崇", relation: "家臣", impression: "忠于霜戈斗罗，对继承人仍在观察", faction: "武魂殿", strength: 41, category: "势力" },
+    ],
+    "scout-orphan": [
+      { name: "斥候营轮值监护组", relation: "集体收养监护人", impression: "全营按轮值表照看孩子，训练和出勤责任分开记录", faction: "星罗边军", strength: 64, category: "势力" },
+      { name: "斥候老兵韩岭", relation: "主要生活监护人", impression: "教他辨路与藏踪，也会阻止他参加不适龄的危险任务", faction: "星罗边军", strength: 72, category: "师友" },
+    ],
+    "bibi-dong-secret-ward": [
+      { name: "静院管事苏嬷嬷", relation: "日常监护人", impression: "负责衣食、启蒙和安全，不替教皇决定亲情或继承", faction: "武魂殿", strength: 68, category: "其他" },
+      { name: "比比东", relation: "名义养母与教皇殿监护人", impression: "已经提供制度性保护，但私人态度、额外资源与培养方向都要由后续行动形成", faction: "武魂殿", strength: 10, category: "势力" },
+    ],
+    "rongrong-betrothed-companion": [
+      { name: guardian, relation: "父亲", impression: "把婚约视为家族安排，也知道双方随时可以拒绝", strength: 76, category: "亲属" },
+      { name: secondGuardian, relation: "母亲", impression: "关心孩子在客卿院的处境，不把婚约当成感情凭证", strength: 80, category: "亲属" },
+      { name: "宁荣荣", relation: "可撤销婚约的同龄候选", impression: "只知道长辈安排，不因此产生好感、服从或共同利益", faction: "七宝琉璃宗", strength: 0, category: "其他" },
+    ],
+    "gu-rong-rescued-ward": [
+      { name: "七宝教养院轮值管事", relation: "日常监护人", impression: "按宗门名册照料生活与基础教育，不替任何长老承诺继承", faction: "七宝琉璃宗", strength: 58, category: "其他" },
+      { name: "古榕", relation: "救命恩人与偶尔过问者", impression: "确认孩子安全后交由宗门照料；过问不等于父职、授业或无条件偏爱", faction: "七宝琉璃宗", strength: 18, category: "师友" },
     ],
     "hidden-sect-heir": [
       { name: "顾玄一", relation: "父亲与宗主", impression: "不会溺爱少宗主，更不许借长辈实力横行", faction: "太玄剑宗", strength: 76, category: "亲属" },
@@ -1054,8 +1086,12 @@ function specificOrigin(
     "void-arrival-unbound": [],
   };
   const specialFamilies: Record<string, string> = {
-    "seven-treasure-core": "内门监护人宁远山；宗主宁风致亲自过问课业",
+    "seven-treasure-core": "内门监护人宁远山；与其他内院家属子弟共同接受基础启蒙",
     "spirit-hall-elder-child": "父亲凌峥是霜戈斗罗；母亲沈静娴",
+    "scout-orphan": "边军斥候营已经完成集体收养登记；轮值监护不等于没有稳定责任人",
+    "bibi-dong-secret-ward": "教皇殿承担名义监护；静院管事负责日常生活，名义养母身份不等于私人亲情",
+    "rongrong-betrothed-companion": `${guardian}与${secondGuardian}共同抚养；婚约候选关系不替代家庭监护`,
+    "gu-rong-rescued-ward": "七宝教养院承担日常监护；古榕只保留救命恩人与偶尔过问者身份",
     "hidden-sect-heir": "父亲顾玄一是宗主；母亲商青蘅执掌药堂",
     "blue-lightning-heir": "父亲玉承雷；母亲柳静娴",
     "clear-sky-sealed-branch": "养父唐守岳；养母白兰芝",
@@ -1067,6 +1103,10 @@ function specificOrigin(
     "void-arrival-unbound": "独自抵达；没有监护人、当地亲属或预设熟人",
   };
   const specialHouseholdStructures: Record<string, string> = {
+    "scout-orphan": "斥候营集体收养",
+    "bibi-dong-secret-ward": "教皇殿名义收养",
+    "rongrong-betrothed-companion": "双亲家庭",
+    "gu-rong-rescued-ward": "宗门轮值教养",
     "fierce-beast-raised": "魂兽监护",
     "void-arrival-unbound": "独身无监护",
   };
@@ -1075,24 +1115,27 @@ function specificOrigin(
   const dwelling = `${location} · ${authority}管辖区 · ${dwellings[dwellingIndex]}`;
   const specialStartingRelations = specialRelations[origin.id];
   const householdVariants = ["双亲家庭", "单亲父亲", "单亲母亲", "孤儿", "祖辈抚养", "收养家庭", "宗门共同抚养", "师徒监护", "商队集体抚养", "兄姐抚养", "寄居亲族", "家臣监护"] as const;
-  let householdStructure: typeof householdVariants[number] = householdVariants[stableIndex(`${origin.id}:household`, householdVariants.length)];
-  if (/孤儿|遗孤|无籍/.test(`${origin.name}${origin.summary}`)) householdStructure = "孤儿";
-  else if (/收养|养子|养女/.test(`${origin.name}${origin.summary}`)) householdStructure = "收养家庭";
-  else if (/商队/.test(`${origin.name}${location}`)) householdStructure = "商队集体抚养";
-  else if (/亲传|弟子/.test(origin.name)) householdStructure = "师徒监护";
-  else if (/少宗主|核心|嫡系|皇室|公爵|长老|斗罗|继承/.test(origin.name)) householdStructure = stableIndex(`${origin.id}:elite-household`, 4) < 3 ? "双亲家庭" : "家臣监护";
+  const householdIdentity = `${origin.name}${origin.summary}${location}${authority}${(origin.roleTags ?? []).join("")}`;
+  let compatibleHouseholds: Array<typeof householdVariants[number]> = ["双亲家庭", "单亲父亲", "单亲母亲", "祖辈抚养", "兄姐抚养", "寄居亲族"];
+  if (/收养|养子|养女/.test(householdIdentity)) compatibleHouseholds = ["收养家庭"];
+  else if (/孤儿|遗孤|无籍孤童|慈幼院|收容院|孤儿院/.test(householdIdentity)) compatibleHouseholds = ["孤儿"];
+  else if (/商队|商道|车队/.test(`${origin.name}${location}`)) compatibleHouseholds = ["商队集体抚养"];
+  else if (/亲传|正式弟子|学徒/.test(origin.name)) compatibleHouseholds = ["师徒监护"];
+  else if (/共同抚养|教养院/.test(householdIdentity)) compatibleHouseholds = ["宗门共同抚养"];
+  else if (/少宗主|核心嫡系|皇室|王府|公爵|贵族|联姻候选|朱氏旁支|世家|长老之子|斗罗之子|指定继承人/.test(householdIdentity)) compatibleHouseholds = ["双亲家庭", "单亲父亲", "单亲母亲", "祖辈抚养", "寄居亲族", "家臣监护"];
+  const householdStructure: typeof householdVariants[number] = compatibleHouseholds[stableIndex(`${origin.id}:household`, compatibleHouseholds.length)];
   const sibling = `${familySurname}${pick(random, GIVEN_NAMES)}${pick(random, GIVEN_NAMES)}`;
   const grandparent = `${familySurname}${pick(random, FATHER_GIVEN_NAMES)}`;
   const genericHouseholds: Record<typeof householdVariants[number], { summary: string; members: CandidatePublic["household"]["members"]; relations: CandidatePublic["startingRelations"] }> = {
     "双亲家庭": { summary: `${guardian}与${secondGuardian}共同抚养，家中决定通常要经过两人商量。`, members: [{ name: guardian, role: "父亲", note: "负责家庭主要生计" }, { name: secondGuardian, role: "母亲", note: "掌管日常开支与照料" }], relations: [{ name: guardian, relation: "父亲", impression: "盼着孩子觉醒，又怕结果招来麻烦", strength: 78, category: "亲属" }, { name: secondGuardian, relation: "母亲", impression: "提前收好了路上要用的干粮和旧衣", strength: 82, category: "亲属" }] },
     "单亲父亲": { summary: `${guardian}独自抚养孩子，另一位亲生家长的去向有明确记录或仍待调查。`, members: [{ name: guardian, role: "父亲", note: "一人承担生计与监护" }], relations: [{ name: guardian, relation: "父亲", impression: "不善表达，但把觉醒需要的费用提前留了出来", strength: 86, category: "亲属" }] },
     "单亲母亲": { summary: `${secondGuardian}独自抚养孩子，家中没有默认存在但从未出场的父亲。`, members: [{ name: secondGuardian, role: "母亲", note: "一人承担生计与监护" }], relations: [{ name: secondGuardian, relation: "母亲", impression: "对外很强硬，回家后才会谈担忧", strength: 87, category: "亲属" }] },
-    "孤儿": { summary: `孩子没有可确认的在世父母，由${authority}登记并提供最低限度照看。`, members: [{ name: `${location}公养舍`, role: "集体监护", note: "负责食宿，不等同于亲属关系" }], relations: [{ name: `${location}公养舍管事`, relation: "监护人", impression: "按名册照看所有孩子，不会无条件偏爱任何一人", strength: 42, category: "其他" }] },
+    "孤儿": { summary: `孩子没有可确认的在世父母，由${authority}按现有职责登记并提供最低限度照看。`, members: [{ name: `${authority}轮值照看组`, role: "集体监护", note: "负责基本食宿，不等同于亲属关系或虚构的固定教养机构" }], relations: [{ name: `${authority}轮值管事`, relation: "监护人", impression: "按现有名册和职责照看孩子，不会无条件偏爱任何一人", strength: 42, category: "其他" }] },
     "祖辈抚养": { summary: `${grandparent}负责抚养，父母可能亡故、失踪、服役或长期在外。`, members: [{ name: grandparent, role: "祖父或外祖父", note: "年纪已大，仍维持家庭" }], relations: [{ name: grandparent, relation: "祖辈监护人", impression: "把许多旧事压在心里，只希望孩子先平安长大", strength: 89, category: "亲属" }] },
     "收养家庭": { summary: `${guardian}在户籍或宗门名册上是养父，收养原因有记录，不强行补写亲生父母。`, members: [{ name: guardian, role: "养父", note: "拥有正式监护关系" }], relations: [{ name: guardian, relation: "养父", impression: "愿意保护孩子，也保留着关于来历的一部分秘密", strength: 84, category: "亲属" }] },
-    "宗门共同抚养": { summary: `孩子由${authority}统一安排食宿、教习与轮值监护，亲缘不是主要纽带。`, members: [{ name: `${authority}教养院`, role: "宗门监护", note: "由数名教习轮值照看" }], relations: [{ name: `${authority}教养执事`, relation: "宗门监护人", impression: "会依据纪律、天赋和贡献调整资源", strength: 48, category: "势力" }] },
+    "宗门共同抚养": { summary: `孩子由${authority}按现有人员统一安排食宿、启蒙与轮值监护，亲缘不是主要纽带。`, members: [{ name: `${authority}轮值照看组`, role: "共同监护", note: "由已有教习或执事轮值，不额外虚构教养院" }], relations: [{ name: `${authority}负责监护的执事`, relation: "机构监护人", impression: "依据纪律、实际表现和可用资源调整安排", strength: 48, category: "势力" }] },
     "师徒监护": { summary: `${guardian}既是监护人也是启蒙老师，生活与修炼规矩无法完全分开。`, members: [{ name: guardian, role: "师父与监护人", note: "负责生活和启蒙训练" }], relations: [{ name: guardian, relation: "师父与监护人", impression: "护短但不纵容，最看重是否肯吃苦", strength: 76, category: "师友" }] },
-    "商队集体抚养": { summary: `孩子随商队长大，由领队、账房和护卫轮流照看，没有固定不变的家庭日程。`, members: [{ name: "永顺商队", role: "集体监护", note: "多名成年人共同承担照看" }], relations: [{ name: "永顺商队老账房", relation: "长辈", impression: "会留饭，也会把弄坏的货物记到账上", strength: 66, category: "其他" }] },
+    "商队集体抚养": { summary: `孩子随${authority}的队伍长大，由领队、账房和护卫轮流照看，没有固定不变的家庭日程。`, members: [{ name: `${authority}轮值照看组`, role: "集体监护", note: "多名随队成年人共同承担照看" }], relations: [{ name: `${authority}老账房`, relation: "长辈", impression: "会留饭，也会把弄坏的货物记到账上", strength: 66, category: "其他" }] },
     "兄姐抚养": { summary: `${sibling}是主要监护人，为维持生活已经提前承担成年人的工作。`, members: [{ name: sibling, role: "兄姐", note: "实际承担监护和生计" }], relations: [{ name: sibling, relation: "兄姐与监护人", impression: "嘴上嫌麻烦，遇事却总会先挡在前面", strength: 88, category: "亲属" }] },
     "寄居亲族": { summary: `孩子寄住在${guardian}一家，吃住有保障，但资源分配会先考虑亲生子女。`, members: [{ name: guardian, role: "叔伯或舅父", note: "提供住所并代行监护" }], relations: [{ name: guardian, relation: "寄居亲族", impression: "愿意尽责任，但会清楚计算家里的承受能力", strength: 58, category: "亲属" }] },
     "家臣监护": { summary: `父母或身份核心人物并不负责日常生活，由${guardian}这名家臣长期监护。`, members: [{ name: guardian, role: "家臣监护人", note: "忠诚首先指向家族或势力" }], relations: [{ name: guardian, relation: "家臣监护人", impression: "照顾细致，但遇到家族命令时会优先服从上级", strength: 62, category: "势力" }] },
@@ -1108,14 +1151,20 @@ function specificOrigin(
         : /星罗|朱氏/.test(authorityText) ? "星罗帝国"
           : /天斗|王府/.test(authorityText) ? "天斗帝国"
             : /武魂殿|教皇殿|长老殿/.test(authorityText) ? "武魂殿" : undefined;
-  const awakeningContact = awakeningFaction
+  const laterEra = origin.id.startsWith("d4-") ? 4 : origin.id.startsWith("d3-") ? 3 : origin.id.startsWith("d2-") ? 2 : 1;
+  const laterAwakeningContact = laterEra === 4
+    ? { name: "当地儿童觉醒室工作人员", relation: "联邦儿童觉醒工作人员", impression: "只按当代觉醒与监护档案办事", faction: "斗罗联邦", strength: 8, category: "势力" as const }
+    : laterEra === 3 ? { name: "当地传灵师", relation: "受邀负责儿童觉醒的传灵师", impression: "按当代学院与传灵塔流程记录结果", faction: "传灵塔", strength: 10, category: "势力" as const }
+      : laterEra === 2 ? { name: "当地觉醒魂师", relation: "负责当地儿童觉醒的魂师", impression: "按所在帝国的当代记录方式办事", faction: /明都|日月/.test(`${location}${authority}`) ? "日月帝国" : /星罗/.test(`${location}${authority}`) ? "星罗帝国" : "天魂帝国", strength: 9, category: "势力" as const } : undefined;
+  const awakeningContact = laterAwakeningContact ?? (awakeningFaction
     ? { name: `${awakeningFaction}觉醒教习`, relation: "所属势力觉醒魂师", impression: "依本势力名册主持觉醒并评估培养路线", faction: awakeningFaction, strength: 18, category: "势力" as const }
-    : { name: officer, relation: "武魂殿巡查执事", impression: "按地方公共觉醒名册办事", faction: "武魂殿", strength: 8, category: "势力" as const };
+    : { name: officer, relation: "武魂殿巡查执事", impression: "按地方公共觉醒名册办事", faction: "武魂殿", strength: 8, category: "势力" as const });
   const startingRelations = specialStartingRelations ?? [...genericHousehold.relations, awakeningContact];
   const householdMembers = specialStartingRelations
     ? specialStartingRelations.filter((item) => item.category === "亲属" || /监护|养父|养母|父亲|母亲/.test(item.relation)).map((item) => ({ name: item.name, role: item.relation, note: item.impression }))
     : genericHousehold.members;
-  const district = /宗|殿|府|堡|山门|剑谷/.test(`${authority}${location}`) ? `${authority}核心或附属居住区` : `${location}户籍辖区`;
+  const district = /宗|殿|府|堡|山门|剑谷|贵族|联姻议会|别院|旁院/.test(`${authority}${location}`) ? `${authority}核心或附属居住区` : `${location}户籍辖区`;
+  const eliteResidence = /长老|斗罗|宗主|核心|嫡系|皇室|王府|公爵|贵族|联姻候选|别院|旁院/.test(`${origin.name}${location}`);
   const room = /独院|暖阁|静室|卧房/.test(dwellings[dwellingIndex]) ? dwellings[dwellingIndex] : `${dwellings[dwellingIndex]}内侧卧房`;
   return {
     location,
@@ -1155,8 +1204,10 @@ function specificOrigin(
       district,
       building: dwellings[dwellingIndex],
       room,
-      security: /长老|斗罗|宗主|核心|嫡系|皇室|公爵/.test(origin.name) ? "有固定守卫、身份核验与势力内部巡查" : /宗|殿|府|堡/.test(authority) ? "受所属势力外围巡查保护" : "依靠门闩、邻里与当地治安",
-      nearby: [authority, `${location}觉醒点`, /城|宗|殿|府/.test(location) ? `${location}集市` : `${location}水井或公共空地`],
+      security: eliteResidence ? "有固定守卫、身份核验与势力内部巡查" : /宗|殿|府|堡/.test(authority) ? "受所属势力外围巡查保护" : "依靠门闩、邻里与当地治安",
+      nearby: eliteResidence
+        ? [authority, "所属势力已有训练场（是否开放需另行询问）", "住处正门与车马停靠处"]
+        : [authority, "当地办理觉醒的地点（具体位置待询问）", /城|宗|殿|府/.test(location) ? "附近公开集市或补给点" : "水井或公共空地"],
     },
   };
 }
@@ -1349,14 +1400,14 @@ const ERA_LIFE_GOALS: Record<GameEra, string[]> = {
 
 const ORIGIN_GOALS: Record<string, string[]> = {
   "seven-treasure-core": [
-    "在宁荣荣离宗前进入七宝琉璃宗继承序列前三，并让剑、骨两位斗罗都认可他的道路",
-    "找到七宝琉璃塔突破七层限制的可验证方法，决定公开给宗门还是据为己有",
-    "在武魂殿袭击发生前改造宗门防线，让七宝城堡少死一半的人",
+    "在十五岁前凭公开成绩进入七宝琉璃宗核心培养序列，并取得两名有权长老的书面认可",
+    "建立一套适合自身武魂、又能与七宝辅助魂师稳定配合的训练路线",
+    "推动宗门完成一次有记录的防卫与疏散演练，用实际结果换取改造权限",
   ],
   "spirit-hall-elder-child": [
     "在二十岁前进入武魂殿长老殿，并建立一支不依附教皇派或供奉派的班底",
     "帮助父亲晋升九十五级，随后亲手决定长老一脉在大陆战争中的立场",
-    "取代黄金一代中的一人，代表武魂殿赢下魂师大赛冠军",
+    "通过武魂殿内部选拔建立自己的固定队伍，再凭真实战绩争取大赛名单",
   ],
   "hidden-sect-heir": [
     "破解太玄剑宗封山旧誓，让宗门能在不依赖护山阵势的情况下立足大陆",
@@ -1365,7 +1416,7 @@ const ORIGIN_GOALS: Record<string, string[]> = {
   ],
   "blue-lightning-heir": [
     "在十二岁前取得雷池第一席，压过同辈嫡系并获得宗门核心传承",
-    "改变蓝电霸王龙宗覆灭的结局，至少提前找出一个潜伏的内应",
+    "调查宗门外围防务与附属家族的真实漏洞，用可核验证据推动一次整改",
     "让自己的武魂完成一次龙血进化，同时避免沦为只靠血脉的宗门工具",
   ],
   "clear-sky-sealed-branch": [
@@ -1374,7 +1425,7 @@ const ORIGIN_GOALS: Record<string, string[]> = {
     "找到一条不依靠昊天锤血脉也能获得宗门承认的道路",
   ],
   "heaven-royal-ward": [
-    "在雪夜大帝病重前查明太子府的异常，并决定揭发、合作还是借机夺权",
+    "建立不依赖传闻的王府情报与证据渠道，再决定如何参与太子府和旁支贵族的公开竞争",
     "保住旁系王府的封爵和领地，再让五名有实权的贵族公开效忠",
     "进入天斗帝国继承棋局，成为摄政者、皇帝或真正操盘的人",
   ],
@@ -1496,12 +1547,21 @@ function goalWeight(candidate: HiddenCandidate, goal: string, tailored: Set<stri
   return base * (tailored.has(goal) ? 2.4 : 1) * roleFit * personalityFit;
 }
 
+function lifeGoalWithinCharacterKnowledge(candidate: HiddenCandidate, goal: string): boolean {
+  const identity = `${candidate.originId} ${candidate.public.originName} ${candidate.public.originSummary} ${candidate.public.selfKnowledge} ${candidate.public.knownBackground} ${candidate.roleTags.join(" ")}`;
+  const hasPlotMemory = candidate.originId === "modern-transmigrator" || /知道原作主线|剧情知识|原著记忆/.test(identity);
+  if (/原作天才|原本会死去的重要人物/.test(goal)) return hasPlotMemory;
+  if (/杀戮之都|杀神领域/.test(goal)) return hasPlotMemory || /杀戮之都外围|入口黑市|地下势力|黑市|武魂殿裁决/.test(identity);
+  if (/海神岛|黑级考核/.test(goal)) return hasPlotMemory || /海神岛|海魂师|海港|海盗|渔户|海上/.test(identity);
+  return true;
+}
+
 function lifeGoalOptions(candidate: HiddenCandidate, seed: string, rerollIndex: number, personality: PersonalityProfile, excluded = new Set<string>(), count = 3): string[] {
   const random = createRandom(`${seed}:goals:${candidate.public.id}:${rerollIndex}`);
   const tailored = new Set(ORIGIN_GOALS[candidate.originId] ?? []);
   const year = candidate.public.birthYearOffset ?? 0;
   const era: GameEra = year >= 25000 ? 4 : year >= 15000 ? 3 : year >= 5000 ? 2 : 1;
-  const remaining = [...new Set([...tailored, ...ERA_LIFE_GOALS[era]])].filter((goal) => !excluded.has(goal));
+  const remaining = [...new Set([...tailored, ...ERA_LIFE_GOALS[era]])].filter((goal) => !excluded.has(goal) && lifeGoalWithinCharacterKnowledge(candidate, goal));
   const selected: string[] = [];
   while (selected.length < count && remaining.length) {
     const choice = weightedPick(random, remaining.map((goal) => ({ goal, weight: goalWeight(candidate, goal, tailored, personality) })));
@@ -1688,7 +1748,7 @@ export function createGame(input: CreateGameInput, meta?: MetaProgressionView): 
   const initialLocationId = inferLocationId(hiddenCandidates[0]?.public.location ?? "诺丁城");
   const world = createHiddenWorld(hiddenCandidates[0]?.public.birthYearOffset ?? 0, initialLocationId);
   const game: StoredGame = {
-    schemaVersion: 51,
+    schemaVersion: 52,
     revision: 0,
     hiddenCandidates,
     personalityProfile: profile,
@@ -1962,12 +2022,12 @@ function buildAwakeningPrelude(candidate: HiddenCandidate, profile: PersonalityP
   const era: GameEra = birthYear >= 25_000 ? 4 : birthYear >= 15_000 ? 3 : birthYear >= 5_000 ? 2 : 1;
   const scenes: Record<string, [string, string, string]> = {
     "seven-treasure-core": [
-      "七宝城堡的内院刚开门，觉醒厅外已经站着宗门教习和几名同龄孩子。宁风致没有坐主位，只在屏风后留了一盏茶。",
-      `${candidate.public.name}跟着宁远山走到阵前。尘心靠在窗边，视线在${pronoun}的手腕上停了一瞬。${candidate.public.name}${reaction}。`,
+      "七宝城堡的内院刚开门，觉醒厅外已经站着候选班教习、内务管事和几名同龄孩子。今天的结果会直接写进培养名册。",
+      `${candidate.public.name}跟着宁远山走到阵前。教习许衡先核对旧训练记录，内务管事只在资源栏旁留出空白。${candidate.public.name}${reaction}。`,
       `六块黑石嵌进七宝纹地砖。教习合上内门考册，叫了${candidate.public.name}的名字。`,
     ],
     "spirit-hall-elder-child": [
-      "武魂城长老殿东厅封了门。教皇殿和供奉殿各来一人，隔着长桌谁也不先开口。",
+      "武魂城长老殿东厅封了门。到场的是家中长辈、负责登记的内务执事和主持觉醒的红衣主教，没有其他派系提前占下位置。",
       `霜戈斗罗没有靠近，只把自己的长戈横在膝前。${candidate.public.name}${reaction}，侍从长魏崇悄悄退到门边。`,
       `觉醒阵旁摆着两颗备用水晶球。主持仪式的红衣主教核对完家徽，叫${candidate.public.name}入阵。`,
     ],
@@ -2079,8 +2139,13 @@ export const SECT_AWAKENING_CONTEXTS: Record<string, AwakeningContext> = {
   "hidden-phoenix-ridge": { factionId: "hidden-phoenix-ridge", factionName: "栖凤岭", officiant: "栖凤岭护火师", venue: "赤羽台地火阵" },
 };
 
+function hasDirectInstitutionalIdentity(selected: HiddenCandidate): boolean {
+  const identity = `${selected.public.originName}${selected.public.originSummary}${selected.public.originFacts.map((item) => item.value).join("")}${selected.roleTags.join(" ")}`;
+  return /少宗主|宗门.*(?:弟子|继承人|旁系)|内门|外门子弟|核心嫡系|封山支脉|小宗门旁系继承人|两宗盟约交换寄养|教养院|学院.*(?:院长|舞团|药圃|童工|家属)|武魂殿.*(?:长老|候选|预备役|观察营|收容院|主教|圣女|裁决|教皇殿)|武魂圣殿内院|武魂主殿|地下势力少主/.test(identity);
+}
+
 function awakeningContext(selected: HiddenCandidate): AwakeningContext {
-  const text = `${selected.originId}${selected.public.originName}${selected.roleTags.join("")}`;
+  const text = `${selected.originId}${selected.public.originName}${selected.public.originFacts.map((item) => item.value).join("")}${selected.roleTags.join("")}`;
   const souls = selected.martialSouls?.length ? selected.martialSouls : [selected.martialSoul];
   const soulNames = souls.map((soul) => soul.name);
   const year = selected.public.birthYearOffset ?? 0;
@@ -2090,9 +2155,16 @@ function awakeningContext(selected: HiddenCandidate): AwakeningContext {
   if (/七宝/.test(text)) return { factionId: "seven-treasure", factionName: "七宝琉璃宗", officiant: "七宝琉璃宗觉醒教习", venue: "宗门觉醒堂", notableNpc: soulNames.includes("七杀剑") ? { id: "chen-xin", name: "尘心" } : soulNames.includes("骨龙") ? { id: "gu-rong", name: "古榕" } : soulNames.some((name) => /七宝琉璃塔|九宝琉璃塔/.test(name)) ? { id: "ning-fengzhi", name: "宁风致" } : undefined };
   if (/蓝电/.test(text)) return { factionId: "blue-lightning", factionName: "蓝电霸王龙宗", officiant: "蓝电霸王龙宗雷池教习", venue: "宗门觉醒石台" };
   if (/昊天/.test(text)) return { factionId: "clear-sky", factionName: "昊天宗", officiant: "昊天宗支脉长老", venue: "支脉觉醒堂", notableNpc: soulNames.includes("昊天锤") ? { id: "tang-xiao", name: "唐啸" } : undefined };
+  if (/炽火学院/.test(text)) return { factionId: "blazing-academy", factionName: "炽火学院", officiant: "炽火学院负责觉醒的魂师", venue: "学院内部觉醒室" };
+  if (/天水学院/.test(text)) return { factionId: "skywater-academy", factionName: "天水学院", officiant: "天水学院负责觉醒的魂师", venue: "学院内部觉醒室" };
+  if (/植物学院/.test(text)) return { factionId: "botanical-academy", factionName: "植物学院", officiant: "植物学院负责觉醒的魂师", venue: "学院内部觉醒室" };
   if (/星罗|朱氏/.test(text) && year < 15_000) return { factionId: "star-luo", factionName: "星罗帝国", officiant: "所属家族觉醒教官", venue: "家族觉醒场" };
   if (/天斗|王府/.test(text)) return { factionId: "heaven-dou", factionName: "天斗帝国", officiant: "宫廷觉醒魂师", venue: "王府觉醒厅" };
   if (/武魂殿|教皇殿|长老殿/.test(text)) return { factionId: "spirit-hall", factionName: "武魂殿", officiant: "武魂殿觉醒执事", venue: "武魂殿觉醒厅" };
+  if (hasDirectInstitutionalIdentity(selected)) {
+    const authority = selected.public.originFacts.find((item) => item.label === "归属")?.value ?? selected.public.originName;
+    return { factionId: `origin-${selected.originId}`, factionName: authority, officiant: `${authority}负责觉醒的魂师`, venue: `${authority}内部觉醒室` };
+  }
   if (/传灵塔/.test(text)) return { factionId: "spirit-pagoda", factionName: "传灵塔", officiant: "传灵塔传灵师", venue: "传灵塔职员区觉醒室" };
   if (/两万年唐门|唐门外务堂/.test(text)) return { factionId: "d3-tang-sect", factionName: "两万年唐门", officiant: "唐门外务堂觉醒教习", venue: "唐门外务堂觉醒室" };
   if (/联邦舰队/.test(text)) return { factionId: "d4-federal-fleet", factionName: "斗罗联邦舰队", officiant: "舰队军属觉醒中心教师", venue: "舰队军属区觉醒中心" };
@@ -2112,8 +2184,9 @@ type OpeningMode = "public" | "internal" | "noble" | "unbound" | "beast";
 function openingMode(game: StoredGame, selected: HiddenCandidate, awakening: AwakeningContext): OpeningMode {
   if (selected.originId === "void-arrival-unbound") return "unbound";
   if (selected.originId === "fierce-beast-raised") return "beast";
-  if (/皇室|王府|公爵|贵族|质子|星罗帝国|天斗帝国/.test(`${selected.public.originName}${awakening.factionName}`)) return "noble";
-  if (game.view.affiliations.length || /少宗主|内门亲传|核心嫡系|封山支脉|外门家庭|基层职员子女|军属子女|长老之子|宗主.*子|宗门.*弟子/.test(`${selected.public.originName}${selected.roleTags.join(" ")}`)) return "internal";
+  const identity = `${selected.public.originName}${selected.public.originSummary}${selected.public.originFacts.map((item) => item.value).join("")}${selected.roleTags.join(" ")}`;
+  if (game.view.affiliations.length || hasDirectInstitutionalIdentity(selected) || selected.public.openingStyle?.startsWith("宗门开局")) return "internal";
+  if (/皇室|王府|公爵|贵族|质子|宫廷|联姻候选|皇族/.test(identity)) return "noble";
   return "public";
 }
 
@@ -2253,6 +2326,8 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     martialSouls: soulViews,
     innateSoulPower: selected.innateSoulPower,
     soulRank: selected.innateSoulPower,
+    soulPowerMax: 80 + selected.innateSoulPower * 8 + (selected.spirit === "顶尖" ? 35 : selected.spirit === "优秀" ? 18 : 5),
+    soulPowerCurrent: 80 + selected.innateSoulPower * 8 + (selected.spirit === "顶尖" ? 35 : selected.spirit === "优秀" ? 18 : 5),
     cultivationProgress: selected.innateSoulPower >= 10 ? "等待第一魂环" : "刚刚起步",
     condition: "良好",
     fatigue: "轻松",
@@ -2316,15 +2391,42 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
     game.view.inventory = [...start.inventory];
     game.view.affiliations = start.affiliation ? [{ ...start.affiliation, reputation: "身份已确认", joinedAt: "出生" }] : [];
   } else {
-    game.view.inventory = [...(selected.originStart?.items ?? []), "旧布包", "半日干粮"];
+    const residenceText = `${selected.public.originName}${selected.public.location}${selected.public.residence.security}`;
+    const dailyCarry = /贵族|王府|公爵|固定守卫/.test(residenceText) ? ["家用行囊", "当日点心"]
+      : /商队|商道|车队/.test(residenceText) ? ["随车布袋", "行路干粮"]
+        : /森林|山|猎|药谷/.test(residenceText) ? ["旧皮囊", "包好的干粮"] : ["布面书袋", "当日干粮"];
+    game.view.inventory = [...(selected.originStart?.items ?? []), ...dailyCarry];
   }
   game.world.flags.destinyPressure = selected.originStart?.pressure ?? 1;
   game.world.flags.originAdvantage = selected.originStart?.advantage ?? selected.public.originAdvantage;
   game.world.flags.originBurden = selected.originStart?.burden ?? selected.public.originBurden;
   if (game.legacy.equippedHeirloom) {
-    game.view.inventory.push(game.legacy.equippedHeirloom);
     const heirloom = heirloomByName(game.legacy.equippedHeirloom);
-    if (heirloom) game.view.activeHeirloom = { id: heirloom.id, name: heirloom.name, rarity: heirloom.rarity, description: heirloom.description, effect: heirloom.effect, trigger: heirloom.trigger, status: "等待触发", maxUses: heirloom.maxUses, remainingUses: heirloom.maxUses, actionCommand: heirloom.actionCommand };
+    if (heirloom) {
+      game.legacy.equippedHeirloom = heirloom.name;
+      if (!/魂骨/.test(heirloom.name)) game.view.inventory.push(heirloom.name);
+      if (heirloom.effectKind === "storageSoulTool") {
+        game.view.inventoryLoad.capacity += 40;
+        game.view.inventoryLoad.storage = [...new Set([...game.view.inventoryLoad.storage, "小型储物魂导器：只存死物"] )];
+      } else if (heirloom.effectKind === "livingStorage") {
+        game.view.inventoryLoad.capacity += 80;
+        game.view.inventoryLoad.storage = [...new Set([...game.view.inventoryLoad.storage, "如意百宝囊：可存活物，仍需空气食物与体型条件"] )];
+      }
+      if (heirloom.soulBone) {
+        game.view.character!.soulBones ??= [];
+        game.view.character!.soulBones.push({ id: heirloom.id, name: heirloom.name, slot: heirloom.soulBone.slot, years: heirloom.soulBone.years, source: "局外遗物", provenance: "原著类别·同人具体魂骨", fusionState: "待融合", attributeBonuses: { ...heirloom.soulBone.attributeBonuses }, skills: heirloom.soulBone.skills.map((skill) => ({ ...skill, cooldownUntilAction: 0 })), exposed: false });
+      }
+      const ageSteps = heirloom.artifactMechanics ? Math.max(0, (game.view.era ?? 1) - heirloom.artifactMechanics.originEra) : 0;
+      const durabilityRatio = [1, .78, .55, .4][Math.min(3, ageSteps)] ?? .4;
+      const durability = heirloom.artifactMechanics ? Math.max(1, Math.round(heirloom.artifactMechanics.durabilityMax * durabilityRatio)) : undefined;
+      const ammo = heirloom.artifactMechanics?.ammoMax !== undefined ? Math.max(0, heirloom.artifactMechanics.ammoMax - ageSteps) : undefined;
+      const historicalState = ageSteps === 0 ? "当代原物" : ageSteps === 1 ? "传世旧物·轻度磨损" : ageSteps === 2 ? "跨时代遗物·明显老化" : ageSteps >= 3 ? "万年遗物·需要专项修复与鉴定" : undefined;
+      game.view.activeHeirloom = { id: heirloom.id, name: heirloom.name, rarity: heirloom.rarity, description: heirloom.description, effect: heirloom.effect, trigger: heirloom.trigger, status: "等待触发", maxUses: heirloom.maxUses, remainingUses: ammo ?? heirloom.maxUses, actionCommand: heirloom.soulBone?.fusionCommand ?? heirloom.actionCommand, soulBoneSkills: heirloom.soulBoneSkills, soulBoneFusionState: heirloom.soulBone ? "待融合" : undefined, soulBoneSlot: heirloom.soulBone?.slot, soulBoneYears: heirloom.soulBone?.years, provenance: heirloom.provenance, canonEvidence: heirloom.canonEvidence, canonImpact: heirloom.canonImpact, displacedOwnerNames: heirloom.displacedOwnerNames, durability, maxDurability: heirloom.artifactMechanics?.durabilityMax, ammo, repairCost: heirloom.artifactMechanics?.repairCost, historicalState };
+      if (heirloom.canonImpact) {
+        game.world.flags.canonicalRelicOwnership = `${heirloom.name}：${heirloom.canonImpact}`;
+        game.view.canonInfluences.push({ id: `relic-ownership-${heirloom.id}`, action: `玩家开局持有原著唯一物${heirloom.name}`, affects: heirloom.canonImpact, strength: "已形成唯一物所有权偏转", date: `原作 ${game.view.worldTime?.year ?? 0} 年` });
+      }
+    } else game.view.inventory.push(game.legacy.equippedHeirloom);
   }
   const inheritance = game.legacy.worldInheritance;
   if (inheritance && !game.view.inventory.includes(inheritance.legacyArtifact)) game.view.inventory.push(inheritance.legacyArtifact);
@@ -2404,6 +2506,9 @@ export function awakenCharacter(game: StoredGame): CharacterPublic {
   game.world.flags.openingMode = mode;
   game.world.flags.openingInstitutionName = awakening.factionName;
   game.world.flags.openingOfficiant = awakening.officiant;
+  if (mode === "internal" && !game.view.affiliations.some((item) => item.name === awakening.factionName)) {
+    game.view.affiliations.push({ id: awakening.factionId, name: awakening.factionName, role: /学院/.test(awakening.factionName) ? "内部家属或培养候选" : "内部子弟或培养候选", reputation: "身份在册", joinedAt: "开局身份" });
+  }
   game.world.flags.openingSoulTestFocus = awakeningTestFocus(selected.martialSoul);
   game.view.chapterObjective = openingObjective(game, selected, awakening);
   const originThread = mode === "unbound" ? "取得住处、见证与临时身份"
@@ -2437,6 +2542,7 @@ function buildAwakeningResult(game: StoredGame, candidate: HiddenCandidate, awak
   const era = game.view.era ?? 1;
   const manifestation = awakeningManifestation(name, pronoun, firstSoul, sceneOfficiant, era);
   const hiddenPulse = hiddenSoulSensation(name, pronoun, souls, sceneOfficiant);
+  const institutionLabel = /学院/.test(awakening.factionName) ? "学院" : /武魂殿|圣殿|主殿/.test(awakening.factionName) ? "武魂殿机构" : /宗|门|谷|岭|阁|庄|派/.test(awakening.factionName) ? "宗门" : "所属机构";
   const audience = mode === "beast" ? "古树周围的几道气息" : candidate.originId === "hidden-sect-heir" ? "顾玄一、商青蘅与两名封阵弟子" : mode === "internal" ? "在场长辈与弟子" : mode === "noble" ? "家族长辈、教官与见证人" : "门口等候的家长与孩子";
   const fullPowerTest = era === 1
     ? `手掌贴上水晶球，白光猛地冲到顶端。${sceneOfficiant}立刻取走水晶，又换上备用的一颗复测。第二次，光仍旧一分不少。`
@@ -2472,7 +2578,7 @@ function buildAwakeningResult(game: StoredGame, candidate: HiddenCandidate, awak
       : unbound
         ? `执事啪地合上名册，叫助手拦住正要收阵石的人。\n\n“队伍晚走半个时辰。”他扫了一眼门外，又看回${name}，“先给这孩子拿水和吃的。小刘，你骑马回分殿报信，再找里正来作见证。”\n\n他没有立刻许诺收留，只把自己那张临时通行条压在桌上：“今晚以前，你至少不会再睡荒地。至于身份和培养条件，分殿的人来了再谈。”`
         : mode === "internal"
-          ? `${sceneOfficiant}把两次结果并排写下，随即收起名册。${awakening.notableNpc ? `他叫人把消息送给${awakening.notableNpc.name}，请对方亲自来看。` : `${awakening.factionName}里负责传承和护卫的几位长辈今日会被请来。`}等人到齐以后，先由谁带${name}修炼、宗门愿意拿出什么、这份结果先告诉哪些人，都要一件件谈。`
+          ? `${sceneOfficiant}把两次结果并排写下，随即收起名册。${awakening.notableNpc ? `他叫人把消息送给${awakening.notableNpc.name}，请对方亲自来看。` : `${awakening.factionName}里负责培养和安全的几位长辈今日会被请来。`}等人到齐以后，先由谁带${name}修炼、${institutionLabel}愿意拿出什么、这份结果先告诉哪些人，都要一件件谈。`
           : mode === "noble"
             ? `${sceneOfficiant}把两次结果交给在场长辈核对，家里随即留下${name}。留在族中、报名学院还是请外面的魂师来看，都有了重新商量的理由；但谁肯教、要花多少、家里想让${name}承担什么，还没有当场定死。`
             : `${sceneOfficiant}把两次结果单独记下，又留下${name}和监护人。分殿会派能作主的人过来谈学院、训练与第一魂环的帮助；在那之前，没有人能只凭一句“天才”替${name}许下全部条件。`

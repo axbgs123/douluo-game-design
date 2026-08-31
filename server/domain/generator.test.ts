@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BIRTH_PROFILE_COUNT,
+  ACTIVE_ORIGIN_IDS,
   CORE_ORIGIN_COUNT,
   CORE_ORIGIN_MECHANIC_SIGNATURE_COUNT,
   CORE_ORIGIN_UNIQUE_NAME_COUNT,
@@ -28,6 +29,7 @@ import { META_MARTIAL_SOUL_POOL_SIZE, META_MARTIAL_SOULS, metaSoulById } from ".
 import { ORIGINAL_MARTIAL_SOUL_CURATION_STATS } from "../data/original-martial-souls.js";
 import { advanceWorldTime, ensureGameState } from "./world.js";
 import { applyActionResult, resolveAction } from "./actions.js";
+import { EXPANDED_ORIGINS } from "../data/expanded-origins.js";
 
 const personality = {
   keywords: ["谨慎", "重情", "好学", "坚韧", "自由"],
@@ -101,7 +103,7 @@ describe("candidate generation", () => {
   });
 
   it("uses a curated origin pool with one stable representative home per identity", () => {
-    expect(ORIGIN_CURATION_STATS).toMatchObject({ before: 151, after: 80, byTier: { 平凡: 4, 优秀: 6, 稀有: 10, 传奇: 44, 神话: 16 } });
+    expect(ORIGIN_CURATION_STATS).toMatchObject({ before: 151, after: 68, byTier: { 平凡: 4, 优秀: 6, 稀有: 10, 传奇: 35, 神话: 13 } });
     expect(BIRTH_PROFILE_COUNT).toBeGreaterThanOrEqual(60);
     expect(BIRTH_PROFILE_COUNT).toBeLessThan(100);
     expect(CORE_ORIGIN_COUNT).toBe(BIRTH_PROFILE_COUNT);
@@ -111,6 +113,81 @@ describe("candidate generation", () => {
     expect(candidates.every((candidate) => candidate.public.birthProfileId && candidate.public.dwelling.includes(" · "))).toBe(true);
     expect(candidates.every((candidate) => candidate.public.birthProfileId === candidate.originId)).toBe(true);
     expect(candidates.every((candidate) => candidate.public.mapX >= 0 && candidate.public.mapX <= 100 && candidate.public.mapY >= 0 && candidate.public.mapY <= 100)).toBe(true);
+    expect(ACTIVE_ORIGIN_IDS).toContain("modern-transmigrator");
+    expect(ACTIVE_ORIGIN_IDS).toContain("void-arrival-unbound");
+    expect(ACTIVE_ORIGIN_IDS).not.toContain("alchemy-reborn");
+    expect(ACTIVE_ORIGIN_IDS).not.toContain("daoist-remnant");
+    expect(ACTIVE_ORIGIN_IDS).not.toContain("sword-spirit-reborn");
+    const shrekNeighbor = EXPANDED_ORIGINS.find((origin) => origin.id === "shrek-neighbor")!;
+    expect(`${shrekNeighbor.name}${shrekNeighbor.summary}${shrekNeighbor.advantage}`).not.toMatch(/弗兰德|预定|口头约定|受过一次指点/);
+    const publicAwakening = EXPANDED_ORIGINS.find((origin) => origin.id === "temple-saint-candidate")!;
+    expect(`${publicAwakening.name}${publicAwakening.summary}`).toContain("不是圣女");
+    const slaughterEdge = EXPANDED_ORIGINS.find((origin) => origin.id === "slaughter-descendant")!;
+    expect(`${slaughterEdge.summary}${slaughterEdge.burden}`).toMatch(/从未声称自己进入又逃出|不是杀戮之都/);
+    const remnant = EXPANDED_ORIGINS.find((origin) => origin.id === "hundred-thousand-remnant")!;
+    expect(`${remnant.summary}${remnant.knownBackgrounds?.join("")}${remnant.startingItems?.join("")}`).not.toMatch(/识海|精神之海|魂骨碎片/);
+  });
+
+  it("不把贵族联姻候选子弟与商队抚养、码头木板屋随机拼接", () => {
+    const candidate = generateCandidates("star-luo-elite-household-coherence", 0, "男", undefined, 0, 1, [], "star-luo-spare-pair-sibling")[0].public;
+    expect(candidate.birthProfileId).toBe("star-luo-spare-pair-sibling");
+    expect(`${candidate.household.structure}${candidate.household.summary}${candidate.originFacts.map((item) => item.value).join("")}`).not.toMatch(/商队集体抚养|永顺商队|老账房/);
+    expect(`${candidate.dwelling}${candidate.residence.building}${candidate.residence.room}`).not.toMatch(/码头仓房|木板屋|旧货栈/);
+    expect(candidate.residence.security).toContain("固定守卫");
+  });
+
+  it("全部精选身份中有明确府邸别院的子弟都保持家庭和住处同源", () => {
+    const establishedResidences = EXPANDED_ORIGINS.filter((origin) => /贵族别院|朱氏旁院|公爵府|王府|乡间庄园/.test(origin.locations.join("")));
+    expect(establishedResidences.length).toBeGreaterThan(0);
+    for (const origin of establishedResidences) {
+      const candidate = generateCandidates(`elite-residence-${origin.id}`, 0, "男", undefined, 0, 1, [], origin.id)[0].public;
+      expect(`${candidate.household.structure}${candidate.household.summary}`, origin.id).not.toMatch(/商队集体抚养|公养舍|码头老账房/);
+      expect(`${candidate.residence.building}${candidate.residence.room}`, origin.id).not.toMatch(/码头仓房|木板屋|旧货栈/);
+    }
+  });
+
+  it("全部现役斗一身份的抚养结构和住处必须能从身份本身推出", () => {
+    for (const originId of ACTIVE_ORIGIN_IDS) {
+      const candidate = generateCandidates(`all-origin-coherence-${originId}`, 0, "女", undefined, 0, 1, [], originId)[0].public;
+      const identity = `${candidate.originName}${candidate.originSummary}${candidate.location}${candidate.originFacts.map((item) => item.value).join("")}`;
+      const home = `${candidate.household.structure}${candidate.household.summary}${candidate.dwelling}${candidate.residence.building}`;
+      if (/商队集体抚养|永顺商队/.test(home)) expect(identity, originId).toMatch(/商队|商道|车队/);
+      expect(home, originId).not.toContain("公养舍");
+      if (!identity.includes("教养院")) expect(home, originId).not.toContain("教养院");
+      if (/码头仓房|码头.*木板屋/.test(home)) expect(identity, originId).toMatch(/码头|渔|海|商队|港/);
+      if (/孤儿|遗孤/.test(candidate.originName)) expect(candidate.household.structure, originId).not.toBe("双亲家庭");
+      if (/收养|养子|养女/.test(`${candidate.originName}${candidate.originSummary}`)) expect(`${candidate.household.structure}${candidate.household.summary}`, originId).toMatch(/收养|养父|养母|宗门共同抚养|教养/);
+      if (/家庭|农户|猎户|铁匠|医馆|家族|传人/.test(candidate.originName) && !/商队|收养|养子|养女|孤儿|遗孤/.test(candidate.originName)) {
+        expect(`${candidate.household.structure}${candidate.household.summary}`, originId).not.toMatch(/宗门共同抚养|永顺商队老账房|家臣监护|师徒监护/);
+      }
+    }
+    const scout = generateCandidates("scout-orphan-adoption", 0, "男", undefined, 0, 1, [], "scout-orphan")[0].public;
+    expect(`${scout.household.structure}${scout.household.summary}${scout.startingRelations.map((item) => item.relation).join("")}`).toMatch(/集体收养|轮值监护/);
+  });
+
+  it("原著留白关系保留事实但不自动生成亲情、爱情、授业或继承", () => {
+    const bibi = generateCandidates("bibi-ward-boundary", 0, "男", undefined, 0, 1, [], "bibi-dong-secret-ward")[0].public;
+    expect(bibi.startingRelations.find((item) => item.name === "比比东")).toMatchObject({ strength: 10, category: "势力" });
+    expect(bibi.originFacts.find((item) => item.label === "开局优势")?.value).toContain("仍需另行取得权限");
+    const rongrong = generateCandidates("rongrong-betrothed-boundary", 0, "男", undefined, 0, 1, [], "rongrong-betrothed-companion")[0].public;
+    expect(rongrong.startingRelations.find((item) => item.name === "宁荣荣")).toMatchObject({ strength: 0 });
+    expect(rongrong.startingRelations.find((item) => item.name === "宁荣荣")?.impression).toMatch(/不因此产生好感|不.*感情/);
+    const guRong = generateCandidates("gu-rong-ward-boundary", 0, "女", undefined, 0, 1, [], "gu-rong-rescued-ward")[0].public;
+    expect(guRong.startingRelations.find((item) => item.name === "古榕")).toMatchObject({ strength: 18 });
+    expect(guRong.startingRelations.find((item) => item.name === "古榕")?.impression).toContain("不等于父职");
+  });
+
+  it("斗一现役出生资料不倒灌后世制度或凭空生成正式微地点", () => {
+    for (const originId of ACTIVE_ORIGIN_IDS) {
+      const candidate = generateCandidates(`era-one-origin-language-${originId}`, 0, "男", undefined, 0, 1, [], originId)[0].public;
+      const text = `${candidate.originName}${candidate.originSummary}${candidate.originFacts.map((item) => item.value).join("")}${candidate.selfKnowledge}${candidate.knownBackground}`;
+      expect(text, originId).not.toMatch(/传灵塔|魂灵体系|升灵台|斗铠|机甲|星舰|联邦儿童觉醒|精神之海|意识海|识海/);
+      expect(text, originId).not.toMatch(/项目管理|数据治理|行政汇报|资源配置|审批记录|问责机制|KPI/);
+      expect(candidate.residence.nearby.join(""), originId).not.toMatch(/演武院|附属静院觉醒点|教养院觉醒点|内院集市|府邸集市/);
+      for (const relation of candidate.startingRelations) {
+        if (/所属势力觉醒魂师|可撤销婚约的同龄候选|候选授业者|普通接待人员/.test(relation.relation)) expect(relation.strength, `${originId}:${relation.name}`).toBeLessThanOrEqual(24);
+      }
+    }
   });
 
   it("uses all five visible rarity levels", () => {
@@ -339,6 +416,14 @@ describe("candidate generation", () => {
     expect(JSON.stringify(eraThree.view.chapterObjective)).toMatch(/魂师班|魂灵路线/);
   });
 
+  it("斗二至斗四出生关系不再沿用斗一武魂殿巡查执事", () => {
+    for (const [era, originId] of [[2, "d2-wandering-healer"], [3, "d3-east-sea-worker"], [4, "d4-colony-child"]] as const) {
+      const candidate = generateCandidates(`later-awakening-contact-${era}`, 0, "男", undefined, 0, era, [], originId)[0].public;
+      expect(JSON.stringify(candidate.startingRelations), originId).not.toMatch(/武魂殿|素云涛/);
+      expect(JSON.stringify(candidate.startingRelations), originId).toMatch(era === 2 ? /当地觉醒魂师/ : era === 3 ? /传灵师/ : /联邦儿童觉醒/);
+    }
+  });
+
   it("keeps noble and beast-raised openings on their own authority and survival tracks", () => {
     const prepare = (originId: string, seed: string) => {
       const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed });
@@ -367,7 +452,7 @@ describe("candidate generation", () => {
       ],
     };
     const upgradedNoble = ensureGameState(migratedNoble);
-    expect(upgradedNoble.schemaVersion).toBe(51);
+    expect(upgradedNoble.schemaVersion).toBe(52);
     expect(JSON.stringify(upgradedNoble.view.chapterObjective)).toMatch(/家族培养.*学院.*外部导师/);
 
     const firstStep = resolveAction(noble, `请${noble.world.flags.openingOfficiant}完成武魂复核测试`);
@@ -499,6 +584,37 @@ describe("candidate generation", () => {
     expect(game.view.suggestions.every((suggestion) => !suggestion.includes("武魂殿"))).toBe(true);
   });
 
+  it("本地人身世目标不提前泄露原著未来事件", () => {
+    for (const originId of ["seven-treasure-core", "blue-lightning-heir", "heaven-royal-ward"]) {
+      const game = createGame({ gender: "男", difficulty: "标准", seed: `origin-goal-chronology-${originId}` });
+      game.hiddenCandidates[0].originId = originId;
+      selectCandidate(game, game.hiddenCandidates[0].public.id);
+      finalizeCharacterShaping(game, { keywords: ["谨慎", "坚韧", "好学"], answers: {} });
+      expect(game.view.shaping!.lifeGoalOptions.join("；"), originId).not.toMatch(/宁荣荣离宗|武魂殿袭击|宗门覆灭|雪夜大帝病重|太子府异常/);
+    }
+  });
+
+  it("普通本地儿童的人生目标不使用读者知识或秘密地点知识", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "ordinary-life-goal-knowledge" });
+    const hidden = game.hiddenCandidates[0];
+    hidden.originId = "village-farmer";
+    hidden.roleTags = ["平民", "乡村", "本地人"];
+    hidden.public.originName = "圣魂村普通农户孩子";
+    hidden.public.originSummary = "家里种地，对大陆秘密地点没有可靠情报。";
+    hidden.public.selfKnowledge = "本地人 · 身世明确";
+    hidden.public.knownBackground = "只知道村镇、家人和地方觉醒常识。";
+    selectCandidate(game, hidden.public.id);
+    const draft = game.view.shaping!.personalityOptions[0];
+    finalizeCharacterShaping(game, { keywords: draft.keywords, answers: {} });
+    const observed = new Set(game.view.shaping!.lifeGoalOptions);
+    for (let index = 0; index < 40; index += 1) {
+      game.view.shaping!.goalRerollsUsed = 0;
+      rerollCharacterShaping(game, "goals");
+      game.view.shaping!.lifeGoalOptions.forEach((goal) => observed.add(goal));
+    }
+    expect([...observed].join("；")).not.toMatch(/原作天才|原本会死去|杀戮之都|杀神领域|海神岛|黑级考核/);
+  });
+
   it("makes powerful martial souls more likely to draw harder life goals", () => {
     let weakExtreme = 0;
     let strongExtreme = 0;
@@ -596,7 +712,7 @@ describe("candidate generation", () => {
     expect(game.world.flags.awakeningAttention).toBe("最高优先");
     expect(game.view.tasks.some((task) => task.id === "awakening-recruitment")).toBe(true);
     expect(game.world.dynamicEvents.some((event) => /商议培养安排/.test(event.title) && event.status === "可介入")).toBe(true);
-    expect(game.view.narrative.at(-1)?.text).toMatch(/把两次结果单独记下|队伍晚走半个时辰/);
+    expect(game.view.narrative.at(-1)?.text).toMatch(/把两次结果单独记下|把两次结果并排写下|队伍晚走半个时辰/);
     expect(game.view.suggestions.some((suggestion) => suggestion.includes(game.view.character!.martialSoul.name) && /测试|确认/.test(suggestion))).toBe(true);
     expect(game.view.suggestions.every((suggestion) => !/查看地图|查看新事件|观察周围|继续行动/.test(suggestion))).toBe(true);
   });
@@ -615,6 +731,17 @@ describe("candidate generation", () => {
     expect(suggestions.every((item) => item.length >= 8 && item.length <= 28)).toBe(true);
     expect(suggestions.every((item) => !/查看地图|查看新事件|观察周围|继续行动|不可见副武魂|唐三/.test(item))).toBe(true);
     expect(suggestions.some((item) => /修炼|武魂/.test(item))).toBe(true);
+    expect(sanitizeNarrativeSuggestions(game, [...liveAi, "练习武魂收放", "询问学院费用", "拒绝公开秘密"], game.view.suggestions)).toHaveLength(3);
+    expect(sanitizeNarrativeSuggestions(game, ["保留拒绝当前路线的选择", ...liveAi], game.view.suggestions)).not.toContain("保留拒绝当前路线的选择");
+  });
+
+  it("斗一正文拒绝后世教具和现代训练医学措辞", () => {
+    const game = createGame({ era: 1, gender: "男", difficulty: "标准", seed: "era-one-training-language" });
+    selectCandidate(game, game.view.candidates[0].id);
+    finalizeCharacterShaping(game, personality);
+    awakenCharacter(game);
+    expect(auditNarrative(game, "老师让他买一支魂导笔，又提醒膝盖内扣会伤半月板。"))
+      .toContain("斗一正文使用了后世教具或现代训练医学术语");
   });
 
   it("rejects overlong AI choices instead of cutting them into broken sentences", () => {
@@ -624,6 +751,28 @@ describe("candidate generation", () => {
     expect(suggestions).not.toContain(overlong.slice(0, 28));
     expect(suggestions.every((item) => item.length <= 28)).toBe(true);
     expect(sanitizeNarrativeSuggestions(game, ["请长老测试体征、魂力流向、收放与承"], ["独自测试武魂消耗", "询问家人修炼安排", "暂缓公开隐藏异常"])).not.toContain("请长老测试体征、魂力流向、收放与承");
+  });
+
+  it("六岁角色的实时选项不使用主持会议、审批和资源治理口吻", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "child-choice-manager-language" });
+    selectCandidate(game, game.view.candidates[0].id);
+    finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(game);
+    const suggestions = sanitizeNarrativeSuggestions(game, ["主持长老会审批资源配置", "召集高层制定治理方案", "独自练习武魂收放"], ["询问监护人今天怎么训练", "暂不公开隐藏异常"]);
+    expect(suggestions.join("；")).not.toMatch(/主持|审批|资源配置|治理方案|召集高层/);
+    expect(suggestions).toContain("独自练习武魂收放");
+  });
+
+  it("实时选项不会退化成三个换对象询问", () => {
+    const game = createGame({ gender: "男", difficulty: "标准", seed: "choice-query-diversity" });
+    selectCandidate(game, game.view.candidates[0].id);
+    finalizeCharacterShaping(game, { keywords: ["谨慎", "好学", "坚韧"], answers: {} });
+    awakenCharacter(game);
+    const suggestions = sanitizeNarrativeSuggestions(game, ["询问教习训练条件", "追问管事食宿费用", "请长老说明猎魂帮助"], ["练习武魂收放", "暂缓公开第二武魂", "比较现有修炼资源"]);
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions.filter((item) => /询问|追问|请.*说明/.test(item)).length).toBeLessThanOrEqual(1);
+    expect(suggestions.some((item) => /练习|比较|训练|资源/.test(item))).toBe(true);
+    expect(suggestions.some((item) => /暂缓|隐藏|拒绝|风险|公开/.test(item))).toBe(true);
   });
 
   it("replaces vague screenshot-style choices with canon-grounded awakening actions", () => {
@@ -694,6 +843,12 @@ describe("candidate generation", () => {
     expect(Number(game.world.flags.talentHostileRisk)).toBe(3);
     expect(auditNarrative(game, "水晶球完全亮起。先天满魂力。众人随后各自回家。"))
       .toContain("异常觉醒结果没有引发负责觉醒的人、同行长辈或围观者的具体反应");
+    expect(auditNarrative(game, "他把觉醒记录收进包里，上面的先天满魂力与今天要问的入学费用是两件事。"))
+      .not.toContain("异常觉醒结果没有引发负责觉醒的人、同行长辈或围观者的具体反应");
+    expect(auditNarrative(game, "他翻开旧档案，里面记着当年觉醒室使用的水晶球，也写明了先天满魂力。"))
+      .not.toContain("异常觉醒结果没有引发负责觉醒的人、同行长辈或围观者的具体反应");
+    expect(auditNarrative(game, "他想起觉醒那天，水晶球里的白光冲到顶端时，周围人看他的眼神。"))
+      .not.toContain("异常觉醒结果没有引发负责觉醒的人、同行长辈或围观者的具体反应");
   });
 
   it("carries a settled worldline into the next era without copying combat power", () => {

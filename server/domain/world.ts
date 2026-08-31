@@ -30,12 +30,12 @@ const RELATIONSHIP_EVENT_PREREQUISITES: Record<string, string> = {
   "d4-xuanyu-xiuxiu": "d4-high-energy-class",
 };
 
-function ensureCanonRelationshipBaselines(npcs: Record<string, WorldNpcState>, relations: HiddenWorldState["npcRelations"], year: number, day: number, suppressedCanonEvents: string[] = []): void {
+function ensureCanonRelationshipBaselines(npcs: Record<string, WorldNpcState>, relations: HiddenWorldState["npcRelations"], year: number, day: number, suppressedCanonEvents: string[] = [], firedCanonEvents: string[] = []): void {
   const era = eraIndexAtYear(year);
   for (const definition of CANON_RELATIONSHIPS) {
     if (definition.era !== era || definition.validFromYear > year || (definition.validFromYear === year && (definition.validFromDay ?? 1) > day) || (definition.validUntilYear !== undefined && definition.validUntilYear < year)) continue;
     const prerequisite = RELATIONSHIP_EVENT_PREREQUISITES[definition.id];
-    if (prerequisite && suppressedCanonEvents.includes(prerequisite)) continue;
+    if (prerequisite && (!firedCanonEvents.includes(prerequisite) || suppressedCanonEvents.includes(prerequisite))) continue;
     const left = npcs[definition.fromId]; const right = npcs[definition.toId];
     if (!left?.alive || !right?.alive || relations.some((item) => (item.leftId === left.id && item.rightId === right.id) || (item.leftId === right.id && item.rightId === left.id))) continue;
     const competitive = /竞争|冲突|怨恨|权力/.test(`${definition.relation}${definition.dynamics}`);
@@ -339,11 +339,12 @@ export function createHiddenWorld(startYear: number, startLocationId: string, st
     return [definition.id, state];
   }));
 
+  const firedCanonEvents = CANON_EVENTS.filter((event) => canonEventSimulationOrdinal(event) < ordinal(startYear, startDay)).map((event) => event.id);
   const npcRelations: HiddenWorldState["npcRelations"] = [];
-  ensureCanonRelationshipBaselines(npcs, npcRelations, startYear, startDay);
+  ensureCanonRelationshipBaselines(npcs, npcRelations, startYear, startDay, [], firedCanonEvents);
   return {
     npcs,
-    firedCanonEvents: CANON_EVENTS.filter((event) => canonEventSimulationOrdinal(event) < ordinal(startYear, startDay)).map((event) => event.id),
+    firedCanonEvents,
     suppressedCanonEvents: [],
     deviation: 0,
     canonCausalFootprints: [],
@@ -1175,6 +1176,57 @@ function appendBranchPropagation(game: StoredGame, event: CanonEvent, branch: Hi
   game.world.canonCausalFootprints = game.world.canonCausalFootprints.slice(-120);
 }
 
+function recordBranchWorldConsequences(game: StoredGame, event: CanonEvent, branch: HiddenWorldState["canonTimelineBranches"][number], causes: CanonCausalFootprint[]): void {
+  const locationId = event.locationId ?? game.world.npcs[event.participantIds[0]]?.locationId ?? game.view.locationId ?? "notting-city";
+  const changedDomains = [...new Set<CanonCausalDomain>(causes.flatMap((cause) => cause.domains ?? inferCausalDomains(cause.source, cause.description)).concat(["goal", "relationship"]))];
+  const downstreamEventIds = CANON_EVENTS.filter((candidate) => {
+    const rule = canonEventDependencyRule(candidate.id);
+    return candidate.id !== event.id && [...(rule?.requiredAll ?? []), ...(rule?.requiredAny ?? []), ...(rule?.catalysts ?? [])].includes(event.id);
+  }).map((candidate) => candidate.id);
+  const duration = branch.state === "延后" ? 180 : 360;
+  const riskDelta = branch.state === "取消" ? -Math.max(2, event.inertia * 2) : branch.state === "替代" ? event.inertia * 2 : event.inertia;
+  const conflictEvent = /袭击|战争|毁灭|战|入侵|政变|猎魂/.test(event.title);
+  const advancedSupply = /魂导|机甲|斗铠|舰队|星际|深渊/.test(event.title);
+  const marketEffects = conflictEvent ? [
+    { category: advancedSupply ? "魂导材料" as const : "金属" as const, supplyDelta: branch.state === "取消" ? 1 : -1, demandDelta: branch.state === "取消" ? -2 : 2 },
+    { category: "粮食" as const, supplyDelta: branch.state === "取消" ? 1 : -1, demandDelta: branch.state === "取消" ? -1 : 1 },
+  ] : [];
+  const consequenceSpecs = [
+    {
+      id: `canon-branch-${branch.id}-institution`,
+      kind: changedDomains.some((domain) => domain === "faction" || domain === "institution") ? "势力" as const : "制度" as const,
+      summary: branch.state === "延后" ? `“${event.title}”未在旧时点落地，相关人员、许可与组织准备正在重新组合。` : branch.state === "替代" ? `“${event.title}”的原有组织条件已失效，相关势力正围绕新责任与利益重新站队。` : `“${event.title}”被取消后，原本为它调动的名额、人手与权限重新回到现有组织争夺中。`,
+      effects: [] as typeof marketEffects,
+      risk: riskDelta,
+    },
+    {
+      id: `canon-branch-${branch.id}-relations`,
+      kind: "关系" as const,
+      summary: `相关人物不再沿用“${event.title}”的旧目标，他们会根据存活、责任、资源与已知信息重新决定合作或对立。`,
+      effects: [] as typeof marketEffects,
+      risk: 0,
+    },
+    ...(marketEffects.length ? [{
+      id: `canon-branch-${branch.id}-resources`,
+      kind: "供需" as const,
+      summary: branch.state === "取消" ? `原为“${event.title}”集中调动的战备物资部分回流，但归属与责任仍需重新分配。` : `“${event.title}”转入${branch.state}后，旧补给路线与新准备同时存在，当地物资供需已经变动。`,
+      effects: marketEffects,
+      risk: 0,
+    }] : []),
+  ];
+  branch.changedDomains = changedDomains;
+  branch.downstreamEventIds = downstreamEventIds;
+  branch.consequenceIds = consequenceSpecs.map((item) => item.id);
+  for (const item of consequenceSpecs) {
+    game.world.localConsequences = game.world.localConsequences.filter((existing) => existing.id !== item.id);
+    game.world.localConsequences.push({ id: item.id, sourceEventId: event.id, locationId, kind: item.kind, summary: item.summary, magnitude: Math.max(2, event.inertia), marketEffects: item.effects, riskDelta: item.risk, startedOrdinal: branch.resolveOrdinal, expiresOrdinal: branch.resolveOrdinal + duration, status: "生效中" });
+  }
+  game.world.localConsequences = game.world.localConsequences.slice(-160);
+  const replacement = game.world.dynamicEvents.find((item) => item.id === branch.replacementEventId);
+  if (replacement) replacement.consequences = consequenceSpecs.map((item) => item.summary);
+  if (downstreamEventIds.length) branch.summary += ` 已记录${downstreamEventIds.length}个直接后继节点等待按新条件结算。`;
+}
+
 function settleCanonTimelineBranch(game: StoredGame, branch: HiddenWorldState["canonTimelineBranches"][number], event: CanonEvent, messages: string[]): void {
   if (branch.status === "已结算") return;
   const linked = linkedCausesForEvent(game, event, branch.resolveOrdinal);
@@ -1227,6 +1279,7 @@ function settleCanonTimelineBranch(game: StoredGame, branch: HiddenWorldState["c
     delete npc.activePlan;
   }
   appendBranchPropagation(game, event, branch, causalStrength);
+  recordBranchWorldConsequences(game, event, branch, causes);
   game.world.metrics.historicalImpact += event.inertia * (branch.state === "延后" ? 2 : 3);
   if (observable) {
     const label = branch.state === "延后" ? "发生时间改变" : branch.state === "替代" ? "出现替代走向" : "原定节点取消";
@@ -1401,7 +1454,7 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
   setDate(previousOrdinal);
   messages.push(...simulateCanonEvents(game, previousOrdinal, previousOrdinal));
   reconcileTimedFactionMemberships(game, time.year, time.day);
-  ensureCanonRelationshipBaselines(game.world.npcs, game.world.npcRelations, time.year, time.day, game.world.suppressedCanonEvents);
+  ensureCanonRelationshipBaselines(game.world.npcs, game.world.npcRelations, time.year, time.day, game.world.suppressedCanonEvents, game.world.firedCanonEvents);
   let cursor = previousOrdinal;
   while (cursor < currentOrdinal) {
     const cursorDate = dateAtOrdinal(cursor);
@@ -1414,7 +1467,7 @@ export function advanceWorldTime(game: StoredGame, minutes: number): string[] {
     if (time.year > cursorDate.year) simulateNpcYears(game, time.year);
     messages.push(...simulateCanonEvents(game, cursor + 1, boundary));
     reconcileTimedFactionMemberships(game, time.year, time.day);
-    ensureCanonRelationshipBaselines(game.world.npcs, game.world.npcRelations, time.year, time.day, game.world.suppressedCanonEvents);
+    ensureCanonRelationshipBaselines(game.world.npcs, game.world.npcRelations, time.year, time.day, game.world.suppressedCanonEvents, game.world.firedCanonEvents);
     ensureNpcPlans(game);
     messages.push(...simulateNpcAutonomy(game, cursor, boundary));
     messages.push(...propagateSocialRumors(game, boundary));
@@ -1523,7 +1576,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
     const matched = game.view.candidates.find((item) => item.id === hidden.public.id);
     if (matched) hidden.public = matched;
   }
-  legacy.schemaVersion = 51;
+  legacy.schemaVersion = 52;
   legacy.revision ??= 0;
   legacy.world ??= createHiddenWorld(startYear, locationId);
   legacy.world.discoveredLocations ??= [locationId];
@@ -1537,8 +1590,10 @@ export function ensureGameState(game: StoredGame): StoredGame {
     for (const task of game.view.tasks ?? []) if (task.destinationId === "heavenly-soul-city") task.destinationId = "heaven-dou-city";
   }
   legacy.world.npcRelations ??= [];
+  legacy.world.firedCanonEvents ??= [];
+  legacy.world.suppressedCanonEvents ??= [];
   if (previousSchemaVersion < 35) legacy.world.npcRelations = legacy.world.npcRelations.filter((relation) => !relation.history?.length || !relation.history.every((item) => item.delta === 0 && item.reason.startsWith("原著关系基线：")));
-  ensureCanonRelationshipBaselines(legacy.world.npcs, legacy.world.npcRelations, game.view.worldTime?.year ?? startYear, game.view.worldTime?.day ?? 1, legacy.world.suppressedCanonEvents);
+  ensureCanonRelationshipBaselines(legacy.world.npcs, legacy.world.npcRelations, game.view.worldTime?.year ?? startYear, game.view.worldTime?.day ?? 1, legacy.world.suppressedCanonEvents, legacy.world.firedCanonEvents);
   legacy.world.canonCausalFootprints ??= [];
   for (const cause of legacy.world.canonCausalFootprints) {
     cause.domains ??= inferCausalDomains(cause.source, cause.description);
@@ -1552,10 +1607,11 @@ export function ensureGameState(game: StoredGame): StoredGame {
     branch.originalDatePrecision ??= canonEventDatePrecision(event);
     const window = canonEventSimulationWindow(event);
     branch.originalWindow ??= [window.startDay, window.endDay];
+    branch.changedDomains ??= [];
+    branch.consequenceIds ??= [];
+    branch.downstreamEventIds ??= [];
   }
   legacy.world.canonInterventionProjects ??= [];
-  legacy.world.firedCanonEvents ??= [];
-  legacy.world.suppressedCanonEvents ??= [];
   legacy.world.dynamicEvents ??= [];
   legacy.world.localConsequences ??= [];
   legacy.world.socialRumors ??= [];
@@ -1969,6 +2025,113 @@ export function ensureGameState(game: StoredGame): StoredGame {
     }
     game.world.flags.schema51YearOnlyScheduleReconciled = true;
   }
+  if (previousSchemaVersion < 52) {
+    const duplicateEventId = "d1-haotian-return";
+    const canonicalEventId = "clear-sky-return";
+    const remapIds = (ids: string[]): string[] => [...new Set(ids.map((id) => id === duplicateEventId ? canonicalEventId : id))];
+    game.world.firedCanonEvents = remapIds(game.world.firedCanonEvents);
+    game.world.suppressedCanonEvents = remapIds(game.world.suppressedCanonEvents);
+    for (const cause of game.world.canonCausalFootprints) {
+      if (cause.originEventId === duplicateEventId) cause.originEventId = canonicalEventId;
+      if (cause.targetEventId === duplicateEventId) cause.targetEventId = canonicalEventId;
+    }
+    for (const branch of game.world.canonTimelineBranches) {
+      if (branch.eventId !== duplicateEventId) continue;
+      branch.eventId = canonicalEventId;
+      const canonical = CANON_EVENTS.find((event) => event.id === canonicalEventId)!;
+      branch.originalYear = canonical.year;
+      branch.originalDay = canonEventSimulationDay(canonical);
+      branch.originalDatePrecision = canonEventDatePrecision(canonical);
+      const window = canonEventSimulationWindow(canonical);
+      branch.originalWindow = [window.startDay, window.endDay];
+    }
+    for (const project of game.world.canonInterventionProjects) if (project.eventId === duplicateEventId) {
+      project.eventId = canonicalEventId;
+      project.title = CANON_EVENTS.find((event) => event.id === canonicalEventId)?.title ?? project.title;
+      project.targetOrdinal = canonEventSimulationOrdinal(CANON_EVENTS.find((event) => event.id === canonicalEventId)!);
+    }
+    for (const record of game.world.intelligenceRecords) if (record.subjectType === "事件" && record.subjectId === duplicateEventId) record.subjectId = canonicalEventId;
+    for (const project of game.view.canonInterventions ?? []) if (project.eventId === duplicateEventId) {
+      project.eventId = canonicalEventId;
+      const canonical = CANON_EVENTS.find((event) => event.id === canonicalEventId)!;
+      project.title = canonical.title;
+      project.targetDate = canonEventDateLabel(canonical);
+    }
+
+    const currentOrdinal = ordinal(startYear, game.view.worldTime?.day ?? 1);
+    const correctedScheduleIds = ["d2-undead-demesne", "d2-sun-moon-war", "d2-beibei-tangya-rescue", "d2-shrek-defense", "d2-final-holy-spirit", "d4-elf-star", "d4-forest-star-trial"];
+    for (const project of game.world.canonInterventionProjects.filter((item) => correctedScheduleIds.includes(item.eventId))) {
+      const event = CANON_EVENTS.find((candidate) => candidate.id === project.eventId);
+      if (event) project.targetOrdinal = canonEventSimulationOrdinal(event);
+    }
+    for (const project of (game.view.canonInterventions ?? []).filter((item) => correctedScheduleIds.includes(item.eventId))) {
+      const event = CANON_EVENTS.find((candidate) => candidate.id === project.eventId);
+      if (event) project.targetDate = canonEventDateLabel(event);
+    }
+    const movedLaterIds = new Set(["d2-sun-moon-war", "d2-beibei-tangya-rescue", "d2-shrek-defense", "d2-final-holy-spirit", "d4-forest-star-trial"]);
+    const prematurelyFired = new Set(CANON_EVENTS.filter((event) => movedLaterIds.has(event.id) && canonEventSimulationOrdinal(event) > currentOrdinal && game.world.firedCanonEvents.includes(event.id)).filter((event) => {
+      const playerEvidence = game.world.canonCausalFootprints.some((cause) => cause.targetEventId === event.id || cause.originEventId === event.id)
+        || game.world.canonTimelineBranches.some((branch) => branch.eventId === event.id)
+        || game.view.canonInfluences.some((influence) => influence.action.includes(event.title))
+        || game.world.intelligenceRecords.some((record) => record.subjectType === "事件" && record.subjectId === event.id && record.confidence >= 60);
+      return !playerEvidence;
+    }).map((event) => event.id));
+    if (prematurelyFired.size) {
+      game.world.firedCanonEvents = game.world.firedCanonEvents.filter((id) => !prematurelyFired.has(id));
+      for (const event of CANON_EVENTS.filter((item) => prematurelyFired.has(item.id))) for (const participantId of event.participantIds) {
+        const npc = game.world.npcs[participantId];
+        const locationAltered = game.world.canonCausalFootprints.some((cause) => cause.affectedNpcIds.includes(participantId) && causeHasDomain(cause, "location", "faction", "institution"));
+        if (npc && !locationAltered && event.locationId && npc.locationId === event.locationId) npc.locationId = canonicalLocationAtYear(participantId, startYear, game.view.worldTime?.day ?? 1);
+      }
+    }
+    for (const branch of game.world.canonTimelineBranches.filter((item) => item.status === "已结算" && !(item.consequenceIds?.length))) {
+      const event = CANON_EVENTS.find((candidate) => candidate.id === branch.eventId);
+      if (!event) continue;
+      const causes = game.world.canonCausalFootprints.filter((cause) => branch.causeIds.includes(cause.id));
+      recordBranchWorldConsequences(game, event, branch, causes);
+    }
+    for (const consequence of game.world.localConsequences) if (consequence.expiresOrdinal < currentOrdinal) consequence.status = "已消退";
+    const movedEarlierEvents = ["soul-hunt-operation", "seven-treasure-attack", "blue-lightning-destruction", "d2-undead-demesne", "d4-elf-star"].map((id) => CANON_EVENTS.find((event) => event.id === id)!).sort((left, right) => canonEventSimulationOrdinal(left) - canonEventSimulationOrdinal(right));
+    const migrationMessages: string[] = [];
+    for (const event of movedEarlierEvents) {
+      const eventOrdinal = canonEventSimulationOrdinal(event);
+      if (eventOrdinal > currentOrdinal || game.world.firedCanonEvents.includes(event.id) || game.world.suppressedCanonEvents.includes(event.id)) continue;
+      const dependencyFailure = canonDependencyFailure(game, event);
+      if (dependencyFailure) ensureCanonDependencyCauses(game, event, eventOrdinal, dependencyFailure);
+      const linked = linkedCausesForEvent(game, event, eventOrdinal);
+      const linkedCauses = linked.map((item) => item.cause);
+      const causalStrength = combinedCausalStrength(linked);
+      const resistance = event.inertia * 8 * ({ 爽: .8, 简单: .9, 标准: 1, 困难: 1.15, 地狱: 1.3 }[game.view.difficulty]) * canonCatalystResistanceFactor(game, event);
+      if (!dependencyFailure && causalStrength < resistance) {
+        game.world.firedCanonEvents.push(event.id);
+        applyFactionJoinsForEvent(game, event.id);
+        continue;
+      }
+      game.world.suppressedCanonEvents.push(event.id);
+      const livingCount = event.participantIds.filter((id) => game.world.npcs[id]?.alive).length;
+      const missingCritical = (Boolean(event.participantIds[0]) && !game.world.npcs[event.participantIds[0]]?.alive) || livingCount < Math.ceil(event.participantIds.length / 2);
+      const factionRedirected = linked.some((item) => item.strength >= resistance * .5 && causeHasDomain(item.cause, "faction", "institution"));
+      const state = dependencyFailure?.state ?? (missingCritical ? "取消" as const : causalStrength >= resistance * 1.6 || factionRedirected ? "替代" as const : "延后" as const);
+      const delayDays = state === "延后" ? Math.max(30, Math.min(180, Math.round(event.inertia * 18 + causalStrength / 2))) : 0;
+      const branch: HiddenWorldState["canonTimelineBranches"][number] = {
+        id: `branch-${event.id}-schema52`, eventId: event.id, state, originalYear: event.year, originalDay: canonEventSimulationDay(event), originalDatePrecision: canonEventDatePrecision(event), originalWindow: (() => { const window = canonEventSimulationWindow(event); return [window.startDay, window.endDay]; })(), resolveOrdinal: eventOrdinal + delayDays, causeIds: linkedCauses.map((cause) => cause.id), affectedNpcIds: [...event.participantIds], affectedFactionIds: [...eventParticipantFactions(game, event)], summary: "Schema 52按修正后的原著顺序等待新条件结算", status: "待结算", changedDomains: [], consequenceIds: [], downstreamEventIds: [],
+      };
+      game.world.canonTimelineBranches.push(branch);
+      if (state !== "延后") settleCanonTimelineBranch(game, branch, event, migrationMessages);
+    }
+    settlePendingCanonBranches(game, currentOrdinal, migrationMessages);
+    game.world.firedCanonEvents = [...new Set(game.world.firedCanonEvents)];
+    game.world.suppressedCanonEvents = [...new Set(game.world.suppressedCanonEvents)];
+    game.world.canonTimelineBranches = game.world.canonTimelineBranches.slice(-120);
+    game.world.npcRelations = game.world.npcRelations.filter((relation) => {
+      const definition = CANON_RELATIONSHIPS.find((candidate) => (candidate.fromId === relation.leftId && candidate.toId === relation.rightId) || (candidate.fromId === relation.rightId && candidate.toId === relation.leftId));
+      const prerequisite = definition ? RELATIONSHIP_EVENT_PREREQUISITES[definition.id] : undefined;
+      if (!prerequisite || (game.world.firedCanonEvents.includes(prerequisite) && !game.world.suppressedCanonEvents.includes(prerequisite))) return true;
+      return !relation.history?.length || !relation.history.every((item) => item.delta === 0 && item.reason.startsWith("原著关系基线："));
+    });
+    game.world.flags.schema52CanonOrderReconciled = true;
+    game.world.flags.schema52SecondCanonOrderReconciled = true;
+  }
   if (previousSchemaVersion < 35) {
     const day = game.view.worldTime?.day ?? 1;
     const replacements: Array<[string, string]> = [];
@@ -2015,12 +2178,76 @@ export function ensureGameState(game: StoredGame): StoredGame {
     game.storyMemory.npcNotes = Object.fromEntries(Object.entries(game.storyMemory.npcNotes).map(([name, note]) => [replaceFutureFacts(name), replaceFutureFacts(note)]));
   }
   game.legacy ??= { upgrades: {} };
+  if (game.view.character) {
+    game.view.character.soulBones ??= [];
+    const spiritBase = game.view.character.abilityDescriptors.spirit === "顶尖" ? 35 : game.view.character.abilityDescriptors.spirit === "优秀" ? 18 : 5;
+    const boneBonus = game.view.character.soulBones.filter((bone) => bone.fusionState === "已融合").reduce((sum, bone) => sum + bone.attributeBonuses.spirit, 0);
+    const soulPowerMax = 80 + game.view.character.soulRank * 8 + spiritBase + boneBonus * 2;
+    game.view.character.soulPowerMax ??= soulPowerMax;
+    game.view.character.soulPowerCurrent ??= game.view.character.soulPowerMax;
+    game.view.character.soulPowerMax = soulPowerMax;
+    game.view.character.soulPowerCurrent = Math.max(0, Math.min(soulPowerMax, game.view.character.soulPowerCurrent));
+  }
   if (!game.view.activeHeirloom && game.legacy.equippedHeirloom && game.view.character) {
     const heirloom = heirloomByName(game.legacy.equippedHeirloom);
-    if (heirloom) game.view.activeHeirloom = { id: heirloom.id, name: heirloom.name, rarity: heirloom.rarity, description: heirloom.description, effect: heirloom.effect, trigger: heirloom.trigger, status: "等待触发", maxUses: heirloom.maxUses, remainingUses: heirloom.maxUses, actionCommand: heirloom.actionCommand };
+    if (heirloom) {
+      if (heirloom.soulBone && !game.view.character.soulBones!.some((bone) => bone.id === heirloom.id)) game.view.character.soulBones!.push({ id: heirloom.id, name: heirloom.name, slot: heirloom.soulBone.slot, years: heirloom.soulBone.years, source: "局外遗物迁移", provenance: "原著类别·同人具体魂骨", fusionState: "待融合", attributeBonuses: { ...heirloom.soulBone.attributeBonuses }, skills: heirloom.soulBone.skills.map((skill) => ({ ...skill, cooldownUntilAction: 0 })), exposed: false });
+      const bone = game.view.character.soulBones!.find((item) => item.id === heirloom.id);
+      const ageSteps = heirloom.artifactMechanics ? Math.max(0, (game.view.era ?? 1) - heirloom.artifactMechanics.originEra) : 0;
+      const ratio = [1, .78, .55, .4][Math.min(3, ageSteps)] ?? .4;
+      const durability = heirloom.artifactMechanics ? Math.max(1, Math.round(heirloom.artifactMechanics.durabilityMax * ratio)) : undefined;
+      const ammo = heirloom.artifactMechanics?.ammoMax !== undefined ? Math.max(0, heirloom.artifactMechanics.ammoMax - ageSteps) : undefined;
+      game.view.activeHeirloom = { id: heirloom.id, name: heirloom.name, rarity: heirloom.rarity, description: heirloom.description, effect: heirloom.effect, trigger: heirloom.trigger, status: "等待触发", maxUses: heirloom.maxUses, remainingUses: ammo ?? heirloom.maxUses, actionCommand: bone?.fusionState === "已融合" ? heirloom.soulBone?.skills[0]?.actionCommand ?? heirloom.actionCommand : heirloom.soulBone?.fusionCommand ?? heirloom.actionCommand, soulBoneSkills: heirloom.soulBoneSkills, soulBoneFusionState: bone?.fusionState, soulBoneSlot: heirloom.soulBone?.slot, soulBoneYears: heirloom.soulBone?.years, provenance: heirloom.provenance, canonEvidence: heirloom.canonEvidence, canonImpact: heirloom.canonImpact, displacedOwnerNames: heirloom.displacedOwnerNames, durability, maxDurability: heirloom.artifactMechanics?.durabilityMax, ammo, repairCost: heirloom.artifactMechanics?.repairCost, historicalState: ageSteps === 0 ? "当代原物" : ageSteps === 1 ? "传世旧物·轻度磨损" : ageSteps === 2 ? "跨时代遗物·明显老化" : "万年遗物·需要专项修复与鉴定" };
+    }
   }
   if (game.view.activeHeirloom) {
+    const previousName = game.view.activeHeirloom.name;
     const definition = heirloomByName(game.view.activeHeirloom.name);
+    if (definition) {
+      game.view.activeHeirloom.name = definition.name;
+      game.view.activeHeirloom.description = definition.description;
+      game.view.activeHeirloom.effect = definition.effect;
+      game.view.activeHeirloom.trigger = definition.trigger;
+      game.view.activeHeirloom.actionCommand = definition.actionCommand;
+      game.view.activeHeirloom.soulBoneSkills = definition.soulBoneSkills;
+      game.view.activeHeirloom.provenance = definition.provenance;
+      game.view.activeHeirloom.canonEvidence = definition.canonEvidence;
+      game.view.activeHeirloom.canonImpact = definition.canonImpact;
+      game.view.activeHeirloom.displacedOwnerNames = definition.displacedOwnerNames;
+      if (definition.artifactMechanics) {
+        const ageSteps = Math.max(0, (game.view.era ?? 1) - definition.artifactMechanics.originEra);
+        const ratio = [1, .78, .55, .4][Math.min(3, ageSteps)] ?? .4;
+        game.view.activeHeirloom.maxDurability ??= definition.artifactMechanics.durabilityMax;
+        game.view.activeHeirloom.durability ??= Math.max(1, Math.round(definition.artifactMechanics.durabilityMax * ratio));
+        game.view.activeHeirloom.repairCost = definition.artifactMechanics.repairCost;
+        game.view.activeHeirloom.ammo ??= definition.artifactMechanics.ammoMax !== undefined ? Math.max(0, definition.artifactMechanics.ammoMax - ageSteps) : undefined;
+        game.view.activeHeirloom.historicalState ??= ageSteps === 0 ? "当代原物" : ageSteps === 1 ? "传世旧物·轻度磨损" : ageSteps === 2 ? "跨时代遗物·明显老化" : "万年遗物·需要专项修复与鉴定";
+      }
+      if (definition.effectKind === "storageSoulTool" && !game.view.inventoryLoad.storage.includes("小型储物魂导器：只存死物")) {
+        game.view.inventoryLoad.capacity += 40;
+        game.view.inventoryLoad.storage.push("小型储物魂导器：只存死物");
+      } else if (definition.effectKind === "livingStorage" && !game.view.inventoryLoad.storage.some((item) => item.startsWith("如意百宝囊"))) {
+        game.view.inventoryLoad.capacity += 80;
+        game.view.inventoryLoad.storage.push("如意百宝囊：可存活物，仍需空气食物与体型条件");
+      }
+      const existingBone = game.view.character?.soulBones?.find((bone) => bone.id === definition.id);
+      if (definition.soulBone && game.view.character && !existingBone) game.view.character.soulBones!.push({ id: definition.id, name: definition.name, slot: definition.soulBone.slot, years: definition.soulBone.years, source: "旧存档遗物迁移", provenance: "原著类别·同人具体魂骨", fusionState: game.view.activeHeirloom.remainingUses < game.view.activeHeirloom.maxUses ? "已融合" : "待融合", fusedAtAction: game.view.activeHeirloom.remainingUses < game.view.activeHeirloom.maxUses ? game.actionIndex : undefined, attributeBonuses: { ...definition.soulBone.attributeBonuses }, skills: definition.soulBone.skills.map((skill) => ({ ...skill, cooldownUntilAction: 0 })), exposed: Number(game.world.flags.heirloomExposureRisk ?? 0) > 0 });
+      const bone = game.view.character?.soulBones?.find((item) => item.id === definition.id);
+      if (definition.soulBone) {
+        game.view.activeHeirloom.soulBoneFusionState = bone?.fusionState ?? "待融合";
+        game.view.activeHeirloom.soulBoneSlot = definition.soulBone.slot;
+        game.view.activeHeirloom.soulBoneYears = definition.soulBone.years;
+        game.view.activeHeirloom.actionCommand = bone?.fusionState === "已融合" ? definition.soulBone.skills[0]?.actionCommand : definition.soulBone.fusionCommand;
+      }
+      game.view.inventory = /魂骨/.test(definition.name)
+        ? game.view.inventory.filter((item) => heirloomByName(item)?.id !== definition.id)
+        : game.view.inventory.map((item) => heirloomByName(item)?.id === definition.id ? definition.name : item);
+      if (game.legacy.equippedHeirloom === previousName) game.legacy.equippedHeirloom = definition.name;
+      if (definition.id === "heirloom-time-anchor" && Number(game.world.flags.heirloomTimeAnchorActions ?? 0) > 0) {
+        game.world.flags.heirloomFocusActions = Math.min(5, Number(game.world.flags.heirloomTimeAnchorActions));
+        delete game.world.flags.heirloomTimeAnchorActions;
+      }
+    }
     game.view.activeHeirloom.maxUses ??= definition?.maxUses ?? 1;
     game.view.activeHeirloom.remainingUses ??= game.view.activeHeirloom.status === "本局已触发" ? 0 : game.view.activeHeirloom.maxUses;
     game.view.activeHeirloom.status = game.view.activeHeirloom.remainingUses > 0 ? "等待触发" : "本局已触发";
@@ -2109,13 +2336,30 @@ export function ensureGameState(game: StoredGame): StoredGame {
   for (const affiliation of game.view.affiliations) if (affiliation.id === "min-clan" && singleClanIds[affiliation.name]) affiliation.id = singleClanIds[affiliation.name];
   game.view.inventory = game.view.inventory.map((item) => item === "地方临时身份凭据" ? "临时来处证明" : item);
   if (game.view.academyApplication) {
-    const application = game.view.academyApplication as typeof game.view.academyApplication & Partial<Pick<import("../../shared/game.js").AcademyApplicationView, "fundingType" | "fundingSource" | "obligations" | "availableFundingOptions">>;
+    const application = game.view.academyApplication as typeof game.view.academyApplication & Partial<Pick<import("../../shared/game.js").AcademyApplicationView, "academySource" | "fundingType" | "fundingSource" | "obligations" | "availableFundingOptions" | "feeProvenance">>;
     const academyEra = game.view.era ?? 1;
     const academyProfile = academyEraLifeProfile(academyEra);
+    if (application.academyName === "星罗城初级魂师学院") application.academyName = "星罗城当地初级魂师学院";
+    if (application.academyName === "索托初级魂师学院") application.academyName = "索托城当地初级魂师学院";
+    application.academySource ??= ["史莱克学院", "诺丁初级魂师学院", "天斗皇家学院", "日月皇家魂导师学院", "东海学院"].includes(application.academyName) ? "原著" : "同人场景";
+    application.feeProvenance ??= "游戏估算";
     application.fundingType ??= application.route === "工读生" ? "工读抵扣" : game.view.era === 3 && application.fee === 0 ? "公共义务教育" : "家庭自费";
+    if ((application.fundingType as string) === "宗门委培") application.fundingType = "所属机构委培";
     application.fundingSource ??= application.fundingType === "工读抵扣" ? "旧存档工读名额与在校劳动抵扣" : application.fundingType === "公共义务教育" ? "斗三适龄免费义务教育安排" : "本人及家庭支付";
     application.obligations ??= application.fundingType === "工读抵扣" ? ["按排班完成适龄校内劳动", "劳动不能替代课程与考核"] : application.fundingType === "公共义务教育" ? ["完成适龄基础课程与纪律要求", "额外培养资源仍需另算"] : ["家庭承担学费、食宿与路费", "不附带工读、宗门或奖助义务"];
     application.availableFundingOptions ??= ["家庭自费", ...(game.view.era === 1 ? ["工读抵扣" as const] : []), ...(game.view.era === 3 ? ["公共义务教育" as const] : [])];
+    const automaticallySelectedOldSelfFunding = application.fundingType === "家庭自费" && application.stage === "材料准备" && application.evidence.some((item) => /暂选家庭自费/.test(item)) && !application.evidence.some((item) => /费用路线由/.test(item));
+    if (automaticallySelectedOldSelfFunding && game.view.character?.innateSoulPower === 10) {
+      const opening = String(game.world.flags.openingMode ?? "");
+      const sponsor = game.view.affiliations.filter((item) => !/学院/.test(item.name));
+      application.fundingType = opening === "noble" ? "家族资助" : sponsor.length === 1 ? "所属机构委培" : "学院奖助";
+      application.fundingSource = application.fundingType === "家族资助" ? "有签字权的家族监护人承担基础费用" : application.fundingType === "所属机构委培" ? `${sponsor[0].name}委托培养额度` : `${application.academyName}先天满魂力奖助复核`;
+      application.obligations = application.fundingType === "家族资助" ? ["接受家族对费用用途的核对", "玩家仍可谈培养路线与退出条件"] : application.fundingType === "所属机构委培" ? [`向${sponsor[0].name}提交阶段培养记录`, "委培不等于放弃个人选择"] : ["维持奖助纪律与培养记录", "食宿、训练与猎魂帮助分开核对"];
+      application.availableFundingOptions = [...new Set([...application.availableFundingOptions, application.fundingType])];
+      application.fee = 0;
+      application.assessmentRequired = /史莱克|皇家|日月皇家|星际学院/.test(application.academyName) || academyEra >= 2;
+      application.evidence.push(`旧存档修正：已公开先天满魂力不再默认被普通入学费卡住，基础费用改由${application.fundingSource}承担`);
+    }
     application.admissionAssessmentName ??= /史莱克|皇家|日月皇家|星际学院/.test(application.academyName) ? "学院入学考核" : academyEra === 1 ? "觉醒证明与来处查验" : academyEra === 2 ? "学院入学考核" : academyEra === 3 ? "魂力测试与分班" : "入学与分班测试";
     application.assessmentRequired ??= /史莱克|皇家|日月皇家|星际学院/.test(application.academyName) || academyEra >= 2;
     if (previousSchemaVersion < 45 && academyEra === 1 && !application.assessmentRequired && application.stage === "入学考核") {
@@ -2249,6 +2493,7 @@ export function ensureGameState(game: StoredGame): StoredGame {
       for (const narrative of game.view.narrative) if (narrative.kind === "narration") narrative.text = toThirdPersonNarrative(narrative.text, game.view.character.name, game.view.character.gender);
     }
   }
+  reconcileTimedFactionMemberships(game, game.view.worldTime?.year ?? startYear, game.view.worldTime?.day ?? 1);
   game.view.map = buildMapView(game);
   game.view.mapHierarchy = buildMapHierarchy(game);
   game.view.knownFigures = buildKnownFigures(game);

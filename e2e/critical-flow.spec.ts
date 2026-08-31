@@ -12,6 +12,7 @@ async function seedUnlimitedMartialSoulWarehouse() {
   meta.summonGoldPity = 0;
   meta.summonRedPity = 0;
   meta.summonRainbowPity = 0;
+  meta.unlockedHeirlooms = [...new Set([...meta.unlockedHeirlooms, "外附魂骨·护心甲", "万年头部魂骨·凝神", "同人机缘·超限神赐魂环"] )];
   database.saveMetaProgression(meta);
   database.drawMetaMartialSoul(() => .9);
 }
@@ -85,6 +86,26 @@ async function seedEarlyGrowthGame() {
   game.view.character!.coins = 100;
   if (!game.view.relations.some((relation) => relation.category === "亲属")) game.view.relations.push({ id: "e2e-guardian", name: "顾伯", relation: "监护人", impression: "负责食宿与入学签字", strength: 70, category: "亲属" });
   database.saveGame(game, "e2e.early-growth-fixture");
+}
+
+async function seedHeirloomGameplayGame(heirloom: "外附魂骨·护心甲" | "同人机缘·超限神赐魂环", characterName: string, requestId: string) {
+  process.env.DOULUO_DATA_DIR = process.env.DOULUO_E2E_DATA_DIR ?? "/tmp/douluo-text-rpg-e2e";
+  const [generator, database] = await Promise.all([import("../server/domain/generator.js"), import("../server/db.js")]);
+  fixtureDatabase = database;
+  const game = generator.createGame({ era: 1, gender: "男", difficulty: "标准", seed: requestId });
+  game.legacy.equippedHeirloom = heirloom;
+  generator.selectCandidate(game, game.view.candidates[0].id, characterName);
+  const personality = game.view.shaping!.personalityOptions[0];
+  generator.finalizeCharacterShaping(game, { personalityId: personality.id, keywords: personality.keywords, answers: Object.fromEntries(personality.questions.map((question) => [question.id, question.options[0].id])) });
+  generator.awakenCharacter(game);
+  generator.selectLifeGoal(game, game.view.shaping!.lifeGoalOptions[0]);
+  if (heirloom === "同人机缘·超限神赐魂环") {
+    game.view.character!.soulRank = 10;
+    game.view.character!.soulRings = [];
+    game.view.character!.soulRingSets[game.view.character!.activeMartialSoulIndex] = game.view.character!.soulRings;
+    game.world.flags.openingInstitutionName = "武魂殿长老殿";
+  }
+  database.saveGame(game, requestId);
 }
 
 async function seedInheritanceRightsGame() {
@@ -490,7 +511,7 @@ test("候选页只显示人工身份并保证三张开局流派不同", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "抽取三名角色" }).click();
   await expect(page.getByRole("heading", { name: "选择角色" })).toBeVisible();
-  await expect(page.getByText("出生池现有 80 份具体档案", { exact: false })).toBeVisible();
+  await expect(page.getByText("出生池现有 68 份具体档案", { exact: false })).toBeVisible();
   const styles = await page.locator(".opening-style").allTextContents();
   expect(styles).toHaveLength(3);
   expect(new Set(styles).size).toBe(3);
@@ -521,7 +542,43 @@ test("局外召唤区直接提供武魂、身世与遗物仓库", async ({ page 
   await expect(page.locator(".origin-pity-rules")).toContainText("七彩保底 60 抽");
   await page.getByTestId("summon-tab-heirlooms").click();
   await expect(page.locator(".heirloom-warehouse-section")).toBeVisible();
+  await expect(page.locator(".heirloom-warehouse-section")).toContainText("与金手指处于同一能力级别");
   await expect(page.locator(".heirloom-warehouse-section")).toContainText("每局发动次数限制");
+  await expect(page.locator(".heirloom-warehouse-section")).toContainText("魂技 · 护心骨甲");
+  await expect(page.locator(".heirloom-warehouse-section")).toContainText("同人机缘·超限神赐魂环");
+  await expect(page.locator(".heirloom-warehouse-section")).toContainText("来源：原著类别·同人具体魂骨");
+  await expect(page.locator(".heirloom-warehouse-section")).toContainText("来源：用户授权同人机缘");
+});
+
+test("魂骨遗物可以从界面完成融合、发动并进入冷却", async ({ page }) => {
+  await seedHeirloomGameplayGame("外附魂骨·护心甲", "魂骨流程验收", "e2e.soul-bone-heirloom");
+  await page.goto("/");
+  await page.locator(".save-shelf article").filter({ hasText: "魂骨流程验收" }).getByRole("button").first().click();
+  await page.getByRole("button", { name: /^遗物/ }).click();
+  const relic = page.locator(".heirloom-slot-panel");
+  await expect(relic).toContainText("待融合 · 外附 · 30000年");
+  await relic.getByRole("button", { name: "融合外附魂骨·护心甲" }).click();
+  await expect(relic).toContainText("已融合 · 外附 · 30000年");
+  await expect(relic).toContainText("魂力消耗35");
+  await relic.getByRole("button", { name: "发动外附魂骨护住下一次重创" }).click();
+  await expect(relic).toContainText("冷却至行动");
+  await page.getByRole("button", { name: "人物", exact: true }).click();
+  await expect(page.locator(".stat-list")).toContainText("可用魂力");
+});
+
+test("超限魂环可以从界面赋予、保密后主动公开并产生机构任务", async ({ page }) => {
+  await seedHeirloomGameplayGame("同人机缘·超限神赐魂环", "超限魂环验收", "e2e.overlimit-ring-heirloom");
+  await page.goto("/");
+  await page.locator(".save-shelf article").filter({ hasText: "超限魂环验收" }).getByRole("button").first().click();
+  await page.getByRole("button", { name: /^遗物/ }).click();
+  await page.locator(".heirloom-slot-panel").getByRole("button", { name: "使用超限神赐魂环突破瓶颈" }).click();
+  await page.getByRole("button", { name: "武魂", exact: true }).click();
+  await expect(page.locator(".ring-list")).toContainText("同人机缘·超限神赐魂环");
+  await expect(page.locator(".ring-list .ring-紫")).toBeVisible();
+  await submitAction(page, "公开展示超限魂环");
+  await page.getByRole("button", { name: /^任务/ }).click();
+  await expect(page.locator(".panel-content")).toContainText("武魂殿复核超限魂环");
+  await expect(page.locator(".panel-content")).toContainText("比较武魂殿提出的培养与保密条件");
 });
 
 test("模型设置显示本地向量记忆状态", async ({ page }) => {
@@ -601,11 +658,8 @@ test("斗一普通学院按原著来处证明入学，拜师仍需评估和试�
   await submitAction(page, "申请诺丁初级魂师学院入学");
   await page.getByRole("button", { name: /^任务/ }).click();
   await expect(page.locator(".growth-application-panel")).toContainText("材料准备");
-  await expect(page.locator(".growth-application-panel")).toContainText("普通学员 · 家庭自费");
-  await expect(page.locator(".growth-application-panel")).not.toContainText("工读生 · 工读抵扣");
-  await submitAction(page, "改走学院奖助路线");
   await expect(page.locator(".growth-application-panel")).toContainText("普通学员 · 学院奖助");
-  await submitAction(page, "改走家庭自费路线");
+  await expect(page.locator(".growth-application-panel")).not.toContainText("工读生 · 工读抵扣");
   await submitAction(page, "准备诺丁初级魂师学院需要的证明");
   await expect(page.locator(".growth-application-panel")).toContainText("待报到");
   await expect(page.locator(".growth-application-panel")).toContainText("觉醒证明与来处查验");
@@ -623,6 +677,7 @@ test("斗一普通学院按原著来处证明入学，拜师仍需评估和试�
   await submitAction(page, `与${firstPeer}完成一次小组练习`);
   await submitAction(page, "参加第三堂魂师基础课程");
   await submitAction(page, `与${secondPeer}完成一次小组练习`);
+  await submitAction(page, "向学院老师核对奖助成绩要求");
   await expect(page.locator(".growth-application-panel")).toContainText("阶段考核");
   await submitAction(page, "参加基础课程与实战检查");
   await expect(page.locator(".growth-application-panel")).toContainText("入学初期 · 阶段完成");
@@ -752,10 +807,11 @@ test("玩家可以从界面进入斗四且出生地图不会显示斗一地标",
   await expect(page.getByText("天斗帝国", { exact: true })).toHaveCount(0);
 });
 
-test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状态", async ({ page }) => {
+test("斗二斗三斗四专属系统在幼年和无来源时不会凭空增加进度", async ({ page }) => {
   await createPlayingCharacter(page, 2);
   await clickEraAction(page, "学习核心阵法", "学习一级魂导器核心阵法");
-  await expect(page.getByText(/熟练度 [1-9][0-9]?%/)).toBeVisible();
+  await expect(page.locator(".narrative-stream")).toContainText("没有可核对的魂导课程");
+  await expect(page.getByText(/熟练度 [1-9][0-9]?%/)).toHaveCount(0);
   await expect(page.getByText("魂灵与魂导纪元", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "返回书架" }).click();
@@ -764,15 +820,16 @@ test("斗二斗三斗四专属系统可以从浏览器行动并显示持久状�
   await expect(page.getByText("傲来城", { exact: true }).first()).toBeVisible();
   await clickEraAction(page, "机甲模拟", "进行机甲模拟训练");
   await expect(page.getByText("机甲资质 · 无", { exact: true })).toBeVisible();
-  await expect(page.getByText(/模拟训练 \d+% · 1 次/)).toBeVisible();
+  await expect(page.getByText(/模拟训练 0% · 0 次/)).toBeVisible();
+  await expect(page.locator(".narrative-stream")).toContainText("幼龄基础教育阶段");
 
   await page.getByRole("button", { name: "返回书架" }).click();
   await createPlayingCharacter(page, 4);
   await expect(page.locator(".world-clock strong")).toContainText("蓝轩宇");
   await expect(page.locator(".world-clock strong")).not.toContainText("唐三");
   await clickEraAction(page, "舰桥模拟", "进行星舰指挥模拟训练");
-  await expect(page.getByText("星舰资格 · 无", { exact: true })).toBeVisible();
-  await expect(page.getByText(/指挥训练 0% · 真实飞行 0 小时 · 船员 0 · 舰桥协同 0% · 完成任务 0/)).toBeVisible();
+  await expect(page.locator(".narrative-stream")).toContainText("基础教育阶段");
+  await expect(page.getByText(/指挥训练 [1-9][0-9]?%/)).toHaveCount(0);
 });
 
 test("机构分支、失败代价与具名复核人会谈会持久显示到任务界面", async ({ page }) => {
